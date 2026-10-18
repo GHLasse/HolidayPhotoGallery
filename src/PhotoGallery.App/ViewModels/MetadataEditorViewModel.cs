@@ -103,6 +103,11 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
     public void Load(IReadOnlyList<PhotoItemViewModel> items)
     {
+        foreach (var old in _items)
+            old.PropertyChanged -= Item_PropertyChanged;
+        foreach (var item in items)
+            item.PropertyChanged += Item_PropertyChanged;
+
         _loading = true;
         try
         {
@@ -187,6 +192,18 @@ public sealed class MetadataEditorViewModel : ObservableObject
             DateTaken = date,
         };
         return true;
+    }
+
+    // Whenever a shown photo's file changes (rating, rotation, location, place names...), show the new
+    // values. Unsaved edits in the panel are kept; then only the details below the title are refreshed.
+    private void Item_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(PhotoItemViewModel.Photo))
+            return;
+        if (!IsDirty)
+            Load(_items);
+        else if (_items is [var single])
+            Details = DescribeSingle(single.Photo);
     }
 
     private void MarkChanged(ref bool flag)
