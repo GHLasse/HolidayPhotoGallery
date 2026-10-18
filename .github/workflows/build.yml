@@ -57,27 +57,20 @@ jobs:
           foreach ($i in 1..12) { foreach ($n in 1..40) { Copy-Item (Join-Path $photos "camera$i.jpg") (Join-Path $holiday "copy$i-$n.jpg") } }
           @{ Folders = @($holiday, $photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
-          # Run under ProcDump: WinUI only tells a debugger why it crashes, and ProcDump prints that.
-          Invoke-WebRequest https://download.sysinternals.com/files/Procdump.zip -OutFile "$env:RUNNER_TEMP\procdump.zip"
-          Expand-Archive "$env:RUNNER_TEMP\procdump.zip" "$env:RUNNER_TEMP\procdump" -Force
-          # Several starts, since the crash depends on timing; the first one also fills the index.
+          # Several starts, since the crash this guards against depended on timing; the first also fills the index.
           foreach ($run in 1..6) {
-            $out = "$env:RUNNER_TEMP\procdump$run.txt"
-            $pd = Start-Process "$env:RUNNER_TEMP\procdump\procdump64.exe" -ArgumentList '-accepteula', '-l', '-e', '-x', $env:RUNNER_TEMP, "`"$($exe.FullName)`"" -RedirectStandardOutput $out -PassThru -NoNewWindow
+            $p = Start-Process $exe.FullName -PassThru
             Start-Sleep -Seconds 15
-            $app = Get-Process HolidayPhotoGallery -ErrorAction SilentlyContinue
-            if ($app) {
+            if (-not $p.HasExited) {
               "Start $run`: app is running"
-              $app | Stop-Process -Force
-              $pd | Wait-Process -Timeout 20 -ErrorAction SilentlyContinue
-              Get-Process procdump64 -ErrorAction SilentlyContinue | Stop-Process -Force
+              Stop-Process -Id $p.Id -Force
+              Start-Sleep -Seconds 2
               continue
             }
-            "Start $run`: app crashed"
-            $pd | Wait-Process -Timeout 20 -ErrorAction SilentlyContinue
-            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 40 }
-            "===== ProcDump"
-            Get-Content $out | Where-Object { $_.Trim() } | Select-Object -Last 150
+            "Start $run`: app exited with code $($p.ExitCode)"
+            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 60 }
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue |
+              Where-Object { $_.LevelDisplayName -in 'Error', 'Critical' } | Format-List TimeCreated, ProviderName, Message
             exit 1
           }
       - name: Upload app

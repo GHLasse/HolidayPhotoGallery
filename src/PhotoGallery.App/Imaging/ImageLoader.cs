@@ -22,9 +22,14 @@ public static class ImageLoader
         using var thumbnail = await file.GetThumbnailAsync(ThumbnailMode.SingleItem, size, ThumbnailOptions.ResizeThumbnail);
         if (thumbnail is null)
             return null;
-        var bitmap = new BitmapImage();
-        await bitmap.SetSourceAsync(thumbnail);
-        return bitmap;
+
+        // Decoded here, completely, before the stream is closed. A BitmapImage given the stream would
+        // decode it later on its own, after "using" has closed it, and that crashed the app inside WinUI.
+        var decoder = await BitmapDecoder.CreateAsync(thumbnail);
+        var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        var source = new SoftwareBitmapSource();
+        await source.SetBitmapAsync(bitmap);
+        return source;
     }
 
     /// <summary>
