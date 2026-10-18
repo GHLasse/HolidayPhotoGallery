@@ -74,8 +74,11 @@ jobs:
           # WinUI only reports why it crashed to a debugger: start it once more under ProcDump to print that.
           Invoke-WebRequest https://download.sysinternals.com/files/Procdump.zip -OutFile "$env:RUNNER_TEMP\procdump.zip"
           Expand-Archive "$env:RUNNER_TEMP\procdump.zip" "$env:RUNNER_TEMP\procdump" -Force
-          & "$env:RUNNER_TEMP\procdump\procdump64.exe" -accepteula -l -e -x $env:RUNNER_TEMP $exe.FullName 2>&1 |
-            Select-String -NotMatch '^\s*$' | Select-Object -Last 150
+          $out = "$env:RUNNER_TEMP\procdump.txt"
+          $pd = Start-Process "$env:RUNNER_TEMP\procdump\procdump64.exe" -ArgumentList '-accepteula', '-l', '-e', '-x', $env:RUNNER_TEMP, "`"$($exe.FullName)`"" -RedirectStandardOutput $out -PassThru -NoNewWindow
+          $pd | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
+          Get-Process HolidayPhotoGallery, procdump64 -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Content $out | Where-Object { $_.Trim() } | Select-Object -Last 150
           exit 1
       - name: Upload app
         if: always()
