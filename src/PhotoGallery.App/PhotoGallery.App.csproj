@@ -36,6 +36,13 @@
     <ProjectReference Include="..\PhotoGallery.Core\PhotoGallery.Core.csproj" />
   </ItemGroup>
 
+  <!-- The map page, served to WebView2 from the app folder. -->
+  <ItemGroup>
+    <None Remove="Assets\map.html" />
+    <Content Remove="Assets\map.html" />
+    <Content Include="Assets\map.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Ship ExifTool next to the app when scripts/Get-ExifTool.ps1 has downloaded it. -->
   <ItemGroup Condition="Exists('..\..\tools\exiftool\exiftool.exe')">
     <None Include="..\..\tools\exiftool\**\*" Link="exiftool\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

@@ -520,6 +520,45 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                      (items.Count > dated.Count ? $"; {items.Count - dated.Count} without a date were left alone" : "");
     }
 
+    /// <summary>Writes a GPS position into the photos, or with null removes their GPS information.</summary>
+    public async Task SetLocationAsync(IReadOnlyList<PhotoItemViewModel> items, GeoPosition? position)
+    {
+        if (_metadata is null || _indexer is null || items.Count == 0)
+            return;
+
+        var changes = position is { } p ? new MetadataChanges { Location = p } : new MetadataChanges { RemoveLocation = true };
+        var failures = new List<string>();
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                StatusText = $"Saving the location of {i + 1} of {items.Count}…";
+                try
+                {
+                    await _metadata.WriteAsync(item.Path, changes);
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        ErrorMessage = failures.Count == 0 ? null : "Some locations could not be saved. " + string.Join(" ", failures);
+        var done = items.Count - failures.Count;
+        StatusText = position is null
+            ? $"Removed the location from {done} photo(s)"
+            : $"Placed {done} photo(s) on the map";
+    }
+
     private async Task RefreshTagsAsync() => UpdateTags(await Task.Run(_index.GetTagCounts));
 
     /// <summary>Synchronous on purpose: the app exits as soon as the window's Closed handler returns.</summary>

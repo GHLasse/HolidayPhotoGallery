@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     private int _viewerIndex;
     private int _viewerLoadVersion;
     private bool _handlingSelection;
+    private bool _selectingFromMap;
 
     public MainWindow()
     {
@@ -35,6 +36,18 @@ public sealed partial class MainWindow : Window
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
 
+        MapView.AssignRequested += async (items, position) =>
+        {
+            await ViewModel.SetLocationAsync(items, position);
+            RefreshMap(fit: false);
+        };
+        MapView.RemoveRequested += async items =>
+        {
+            await ViewModel.SetLocationAsync(items, null);
+            RefreshMap(fit: false);
+        };
+        MapView.PhotoClicked += MapPhotoClicked;
+
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
         Closed += (_, _) => ViewModel.Dispose();
@@ -48,6 +61,8 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
+            else if (e.PropertyName is nameof(MainViewModel.Photos) && IsMapOpen)
+                RefreshMap(fit: false);
         };
         SyncCameraCombo();
         _ = ViewModel.InitializeAsync();
@@ -173,11 +188,55 @@ public sealed partial class MainWindow : Window
             if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
                 return; // Leave the panel showing the edit that needs fixing.
             ViewModel.Editor.Load(SelectedPhotos);
+            if (IsMapOpen)
+                MapView.ShowSelection(SelectedPhotos, fit: !_selectingFromMap); // don't jump away from a clicked marker
         }
         finally
         {
             _handlingSelection = false;
         }
+    }
+
+    // ---- Map ----
+
+    private bool IsMapOpen => MapView.Visibility == Visibility.Visible;
+
+    private async void Map_Click(object sender, RoutedEventArgs e)
+    {
+        var open = MapToggle.IsChecked == true;
+        MapColumn.Width = open ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        MapView.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        if (!open)
+            return;
+        await MapView.StartAsync();
+        RefreshMap(fit: true);
+    }
+
+    private void RefreshMap(bool fit)
+    {
+        MapView.ShowPhotos(ViewModel.Photos);
+        MapView.ShowSelection(SelectedPhotos, fit);
+    }
+
+    private void MapPhotoClicked(string path, bool addToSelection)
+    {
+        var item = ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+            return;
+        _selectingFromMap = true;
+        if (addToSelection)
+        {
+            if (PhotoGrid.SelectedItems.Contains(item))
+                PhotoGrid.SelectedItems.Remove(item);
+            else
+                PhotoGrid.SelectedItems.Add(item);
+        }
+        else
+        {
+            PhotoGrid.SelectedItem = item;
+        }
+        _selectingFromMap = false;
+        PhotoGrid.ScrollIntoView(item);
     }
 
     private async void Save_Click(object sender, RoutedEventArgs e) => await ViewModel.SaveEditsAsync();
