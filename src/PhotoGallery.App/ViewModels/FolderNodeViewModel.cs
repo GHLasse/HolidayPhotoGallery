@@ -3,18 +3,22 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace PhotoGallery.App.ViewModels;
 
-/// <summary>A folder in the navigation tree. Subfolders are listed when the node is first expanded.</summary>
+/// <summary>
+/// A folder in the navigation tree. Subfolders are listed one level ahead of what is expanded, so
+/// the tree can show expand arrows from real children. (Binding TreeViewItem.HasUnrealizedChildren
+/// instead crashed the app inside WinUI now and then at startup.)
+/// </summary>
 public sealed class FolderNodeViewModel : ObservableObject
 {
     private bool _childrenLoaded;
-    private bool _hasUnrealizedChildren;
 
     public FolderNodeViewModel(string fullPath, bool isRoot)
     {
         FullPath = fullPath;
         IsRoot = isRoot;
         Name = isRoot ? fullPath : System.IO.Path.GetFileName(fullPath);
-        _hasUnrealizedChildren = HasSubfolders(fullPath);
+        if (isRoot)
+            LoadChildren();
     }
 
     public string FullPath { get; }
@@ -25,13 +29,15 @@ public sealed class FolderNodeViewModel : ObservableObject
 
     public ObservableCollection<FolderNodeViewModel> Children { get; } = [];
 
-    public bool HasUnrealizedChildren
+    /// <summary>Called as the node expands: its children list their own subfolders, for their arrows.</summary>
+    public void PrepareToExpand()
     {
-        get => _hasUnrealizedChildren;
-        private set => SetProperty(ref _hasUnrealizedChildren, value);
+        LoadChildren();
+        foreach (var child in Children)
+            child.LoadChildren();
     }
 
-    public void LoadChildren()
+    private void LoadChildren()
     {
         if (_childrenLoaded)
             return;
@@ -39,7 +45,6 @@ public sealed class FolderNodeViewModel : ObservableObject
 
         foreach (var dir in EnumerateSubfolders(FullPath))
             Children.Add(new FolderNodeViewModel(dir, isRoot: false));
-        HasUnrealizedChildren = false;
     }
 
     private static readonly EnumerationOptions SubfolderOptions = new()
@@ -57,18 +62,6 @@ public sealed class FolderNodeViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return [];
-        }
-    }
-
-    private static bool HasSubfolders(string path)
-    {
-        try
-        {
-            return Directory.EnumerateDirectories(path, "*", SubfolderOptions).Any();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
         }
     }
 }

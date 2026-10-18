@@ -153,7 +153,7 @@ public sealed partial class MainWindow : Window
     private void FolderTree_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
     {
         if (args.Item is FolderNodeViewModel folder)
-            folder.LoadChildren();
+            folder.PrepareToExpand();
     }
 
     private void PhotoGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)

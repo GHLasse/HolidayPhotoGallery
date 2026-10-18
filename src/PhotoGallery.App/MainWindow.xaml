@@ -125,7 +125,6 @@
                     <TreeView.ItemTemplate>
                         <DataTemplate x:DataType="vm:FolderNodeViewModel">
                             <TreeViewItem ItemsSource="{x:Bind Children}"
-                                          HasUnrealizedChildren="{x:Bind HasUnrealizedChildren, Mode=OneWay}"
                                           AutomationProperties.Name="{x:Bind Name}"
                                           ToolTipService.ToolTip="{x:Bind FullPath}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
