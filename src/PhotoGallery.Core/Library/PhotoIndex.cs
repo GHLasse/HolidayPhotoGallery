@@ -11,7 +11,7 @@ namespace PhotoGallery.Core.Library;
 /// </summary>
 public sealed class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 4;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -61,7 +61,14 @@ public sealed class PhotoIndex : IDisposable
                 orientation INTEGER NOT NULL DEFAULT 1,
                 width INTEGER,
                 height INTEGER,
-                camera TEXT COLLATE NOCASE
+                camera TEXT COLLATE NOCASE,
+                latitude REAL,
+                longitude REAL,
+                country TEXT,
+                country_code TEXT,
+                state TEXT,
+                city TEXT,
+                sublocation TEXT
             );
             CREATE INDEX IF NOT EXISTS ix_photos_folder ON photos(folder);
             CREATE INDEX IF NOT EXISTS ix_photos_date ON photos(date_taken);
@@ -106,14 +113,19 @@ public sealed class PhotoIndex : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height, camera)
-            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height, $camera)
+            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height, camera, latitude, longitude,
+                                country, country_code, state, city, sublocation)
+            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height, $camera, $lat, $lon,
+                    $country, $countryCode, $state, $city, $sublocation)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
                 date_offset_minutes = excluded.date_offset_minutes, rating = excluded.rating,
                 caption = excluded.caption, orientation = excluded.orientation,
-                width = excluded.width, height = excluded.height, camera = excluded.camera
+                width = excluded.width, height = excluded.height, camera = excluded.camera,
+                latitude = excluded.latitude, longitude = excluded.longitude,
+                country = excluded.country, country_code = excluded.country_code, state = excluded.state,
+                city = excluded.city, sublocation = excluded.sublocation
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", photo.Path);
@@ -129,6 +141,13 @@ public sealed class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$width", (object?)photo.Width ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$height", (object?)photo.Height ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$camera", (object?)photo.Camera ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$lat", (object?)photo.Location?.Latitude ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$lon", (object?)photo.Location?.Longitude ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$country", (object?)photo.Place?.Country ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$countryCode", (object?)photo.Place?.CountryCode ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$state", (object?)photo.Place?.State ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$city", (object?)photo.Place?.City ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$sublocation", (object?)photo.Place?.Sublocation ?? DBNull.Value);
         var id = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         using var delete = _connection.CreateCommand();
@@ -227,6 +246,8 @@ public sealed class PhotoIndex : IDisposable
                     var name = $"$word{i++}";
                     where.Add($"""
                         (p.file_name LIKE {name} ESCAPE '\' OR p.caption LIKE {name} ESCAPE '\'
+                         OR p.country LIKE {name} ESCAPE '\' OR p.state LIKE {name} ESCAPE '\'
+                         OR p.city LIKE {name} ESCAPE '\' OR p.sublocation LIKE {name} ESCAPE '\'
                          OR EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag LIKE {name} ESCAPE '\'))
                         """);
                     cmd.Parameters.AddWithValue(name, $"%{EscapeLike(word)}%");
@@ -236,7 +257,8 @@ public sealed class PhotoIndex : IDisposable
             var sql = new StringBuilder("""
                 SELECT p.id, p.path, p.folder, p.file_size, p.file_mtime, p.date_taken, p.date_offset_minutes,
                        p.rating, p.caption, p.orientation, p.width, p.height, p.camera,
-                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id) AS tags
+                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id) AS tags,
+                       p.latitude, p.longitude, p.country, p.country_code, p.state, p.city, p.sublocation
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -307,7 +329,23 @@ public sealed class PhotoIndex : IDisposable
             Height = r.IsDBNull(11) ? null : r.GetInt32(11),
             Camera = r.IsDBNull(12) ? null : r.GetString(12),
             Tags = r.IsDBNull(13) ? [] : r.GetString(13).Split('\u001f'),
+            Location = r.IsDBNull(14) || r.IsDBNull(15) ? null : new GeoPosition(r.GetDouble(14), r.GetDouble(15)),
+            Place = ReadPlace(r, 16),
         };
+    }
+
+    private static PlaceName? ReadPlace(SqliteDataReader r, int first)
+    {
+        string? Text(int i) => r.IsDBNull(i) ? null : r.GetString(i);
+        var place = new PlaceName
+        {
+            Country = Text(first),
+            CountryCode = Text(first + 1),
+            State = Text(first + 2),
+            City = Text(first + 3),
+            Sublocation = Text(first + 4),
+        };
+        return place.IsEmpty ? null : place;
     }
 
     private static string FolderCondition(SqliteCommand cmd, string folder, bool includeSubfolders)

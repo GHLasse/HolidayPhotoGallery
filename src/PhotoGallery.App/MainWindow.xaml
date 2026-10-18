@@ -58,6 +58,14 @@
                         <FontIcon Glyph="&#xEC92;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+                <AppBarToggleButton x:Name="MapToggle" Icon="Map" Label="Map" Click="Map_Click"
+                                    ToolTipService.ToolTip="Show where the photos were taken, and place the selected photos on the map" />
+                <AppBarButton Label="Add place names" Click="AddPlaceNames_Click"
+                              ToolTipService.ToolTip="Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xE707;" />
+                    </AppBarButton.Icon>
+                </AppBarButton>
             </CommandBar>
             <AutoSuggestBox Grid.Column="1" VerticalAlignment="Center" MaxWidth="480" HorizontalAlignment="Stretch"
                             PlaceholderText="Search names, captions and tags"
@@ -159,12 +167,17 @@
         </Grid>
 
         <!-- Photo grid -->
-        <Grid Grid.Row="2" Grid.Column="1" Margin="8,0" RowSpacing="4">
+        <Grid Grid.Row="2" Grid.Column="1" Margin="8,0,8,8" RowSpacing="4" ColumnSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock Margin="4,0" Text="{x:Bind local:Ui.FolderHeader(ViewModel.SelectedFolder), Mode=OneWay}"
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <!-- The map, next to the grid like in Geosetter; opened with the Map button. -->
+                <ColumnDefinition x:Name="MapColumn" Width="0" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.ColumnSpan="2" Margin="4,0" Text="{x:Bind local:Ui.FolderHeader(ViewModel.SelectedFolder), Mode=OneWay}"
                        Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
             <GridView x:Name="PhotoGrid" Grid.Row="1"
                       ItemsSource="{x:Bind ViewModel.Photos, Mode=OneWay}"
@@ -193,6 +206,7 @@
                     </DataTemplate>
                 </GridView.ItemTemplate>
             </GridView>
+            <controls:MapPanel x:Name="MapView" Grid.Row="1" Grid.Column="1" Visibility="Collapsed" />
         </Grid>
 
         <!-- Metadata panel -->

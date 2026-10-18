@@ -27,6 +27,8 @@ public sealed record PhotoMetadata
 
     public double? Longitude { get; init; }
 
+    public PlaceName? Place { get; init; }
+
     /// <summary>Camera make and model, e.g. "Apple iPhone 15 Pro" or "Canon EOS R6".</summary>
     public string? Camera { get; init; }
 }

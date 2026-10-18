@@ -26,5 +26,15 @@ public sealed record MetadataChanges
     /// <summary>EXIF orientation 1-8.</summary>
     public int? Orientation { get; init; }
 
-    public bool IsEmpty => Tags is null && Rating is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null && Orientation is null;
+    /// <summary>The new GPS position. Altitude and other GPS details already in the file are left alone.</summary>
+    public GeoPosition? Location { get; init; }
+
+    /// <summary>Removes all GPS information from the file.</summary>
+    public bool RemoveLocation { get; init; }
+
+    /// <summary>The place names to write; fields left empty are removed from the file.</summary>
+    public PlaceName? Place { get; init; }
+
+    public bool IsEmpty => Tags is null && Rating is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null &&
+                           Orientation is null && Location is null && !RemoveLocation && Place is null;
 }
