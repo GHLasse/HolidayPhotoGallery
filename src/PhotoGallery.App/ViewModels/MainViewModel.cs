@@ -435,8 +435,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         StatusText = skipped == 0
             ? $"Rotated {rotatable.Count} photo(s)"
             : $"Rotated {rotatable.Count} photo(s). {skipped} skipped: rotating HEIC, PNG, WebP and GIF files is not supported yet.";
-        if (Editor.Items.Count > 0)
-            Editor.Load(Editor.Items);
     }
 
     /// <summary>
@@ -471,8 +469,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             ErrorMessage = $"Could not rate {item.FileName}: {ex.Message}";
         }
-        if (Editor.Items.Contains(item))
-            Editor.Load(Editor.Items);
     }
 
     /// <summary>
@@ -631,8 +627,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (unknown > 0)
             notes.Add($"{unknown} with no place found");
         StatusText = $"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : "");
-        if (Editor.Items.Count > 0)
-            Editor.Load(Editor.Items);
     }
 
     private async Task RefreshTagsAsync() => UpdateTags(await Task.Run(_index.GetTagCounts));
