@@ -7,6 +7,7 @@ using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Geocoding;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
+using PhotoGallery.Core.Tagging;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -14,6 +15,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly string DataFolder = LibrarySettings.DefaultDataFolder;
     private static readonly string SettingsPath = Path.Combine(DataFolder, "settings.json");
+    private static readonly string TagModelFolder = TagModel.DefaultFolder(DataFolder);
 
     private readonly ExifToolProcess? _exifTool;
     private readonly PhotoIndex _index;
@@ -40,6 +42,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private List<CameraFilterViewModel> _cameras = [AllCameras];
     private ReverseGeocoder? _geocoder;
     private readonly PhotoEditService? _photoEditor;
+    private ImageTagger? _tagger;
+    private float[][]? _labelVectors;
 
     public MainViewModel()
     {
@@ -633,6 +637,193 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         StatusText = $"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : "");
     }
 
+    public static bool IsTagModelInstalled => TagModel.IsInstalled(TagModelFolder);
+
+    /// <summary>The language the tag list is written in ("de" or "en"); Windows' language until the user picks one.</summary>
+    public string AutoTagLanguage =>
+        _settings.AutoTagging.Language ?? (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "de" ? "de" : "en");
+
+    /// <summary>The tags auto-tagging may use: the user's list, or the starter list in their language.</summary>
+    public IReadOnlyList<string> AutoTagLabels => _settings.AutoTagging.Tags ?? AutoTags.StarterList(AutoTagLanguage);
+
+    public double AutoTagThreshold => _settings.AutoTagging.Threshold;
+
+    /// <summary>Saves the tag list (null means the starter list), its language and how clearly a tag must stand out.</summary>
+    public void SaveAutoTagSettings(IReadOnlyList<string>? labels, string language, double threshold)
+    {
+        _settings.AutoTagging.Tags = labels?.ToList();
+        _settings.AutoTagging.Language = language;
+        _settings.AutoTagging.Threshold = Math.Clamp(threshold, 0.01, 0.99);
+        _settings.Save(SettingsPath);
+        _labelVectors = null;
+    }
+
+    /// <summary>Downloads the tagging model once (about 660 MB), showing progress in the status bar.</summary>
+    public async Task<bool> DownloadTagModelAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var progress = new Progress<double>(p => StatusText = $"Downloading the tagging model… {p:P0}");
+            await TagModel.DownloadAsync(TagModelFolder, progress);
+            StatusText = "The tagging model is ready.";
+            return true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
+        {
+            ErrorMessage = $"The tagging model could not be downloaded ({ex.Message}). Check the internet connection and try again; what was already downloaded is kept.";
+            StatusText = "";
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Recognises what is in each photo with the local model and writes the tags from the user's list
+    /// that fit well enough, as "Auto/…". Earlier auto tags are replaced; the user's own tags stay.
+    /// </summary>
+    public async Task AutoTagAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        if (_metadata is null || _indexer is null)
+            return;
+        if (items.Count == 0)
+        {
+            ErrorMessage = "Select the photos to tag.";
+            return;
+        }
+        var labels = AutoTagLabels;
+        if (labels.Count == 0)
+        {
+            ErrorMessage = "The auto-tag list is empty. Add tags to it in Auto-tag settings.";
+            return;
+        }
+
+        var threshold = AutoTagThreshold;
+        var failures = new List<string>();
+        var tagged = 0;
+        var added = 0;
+        IsBusy = true;
+        try
+        {
+            if (_tagger is null)
+            {
+                StatusText = "Loading the tagging model…";
+                _tagger = await Task.Run(() => ImageTagger.Load(TagModelFolder));
+            }
+            if (_labelVectors is null)
+            {
+                var tagger = _tagger;
+                var language = AutoTagLanguage;
+                var prompts = labels.Select(l => AutoTags.Prompt(l, language)).ToList();
+                _labelVectors = await Task.Run(() => tagger.EmbedTexts(prompts));
+            }
+            var vectors = _labelVectors;
+
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                StatusText = $"Tagging {i + 1} of {items.Count}…";
+                try
+                {
+                    // A small copy is plenty: the model looks at 224 × 224 pixels.
+                    var image = await ImageLoader.DecodePixelsAsync(item.Path, 512);
+                    var tagger = _tagger;
+                    var scores = await Task.Run(() =>
+                    {
+                        var vector = tagger.EmbedImage(image.Pixels, image.Width, image.Height);
+                        return ImageTagger.Scores(vector, vectors);
+                    });
+                    var picked = AutoTags.Pick(labels, scores, threshold);
+                    var tags = AutoTags.Replace(item.Photo.Tags, picked);
+                    tagged++;
+                    added += picked.Count;
+                    if (tags.SequenceEqual(item.Photo.Tags))
+                        continue;
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Tags = tags });
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidDataException)
+        {
+            // A damaged download: removing the model lets the next attempt download it again.
+            _tagger?.Dispose();
+            _tagger = null;
+            _labelVectors = null;
+            TryDeleteTagModel();
+            failures.Add($"The tagging model could not be loaded ({ex.Message}). It will be downloaded again next time.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        ErrorMessage = failures.Count == 0 ? null : "Some photos could not be tagged. " + string.Join(" ", failures);
+        StatusText = $"Auto-tagged {tagged} photo(s) with {added} tag(s)";
+        await RefreshTagsAsync();
+    }
+
+    /// <summary>Removes the "Auto/…" tags from the photos; the user's own tags stay.</summary>
+    public async Task RemoveAutoTagsAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        if (_metadata is null || _indexer is null)
+            return;
+        var tagged = items.Where(i => i.Photo.Tags.Any(AutoTags.IsAuto)).ToList();
+        if (tagged.Count == 0)
+        {
+            StatusText = items.Count == 0 ? "Select the photos to remove auto tags from." : "None of the selected photos has auto tags.";
+            return;
+        }
+
+        var failures = new List<string>();
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < tagged.Count; i++)
+            {
+                var item = tagged[i];
+                StatusText = $"Removing auto tags from {i + 1} of {tagged.Count}…";
+                try
+                {
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Tags = AutoTags.Replace(item.Photo.Tags, []) });
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        ErrorMessage = failures.Count == 0 ? null : "Some auto tags could not be removed. " + string.Join(" ", failures);
+        StatusText = $"Removed auto tags from {tagged.Count - failures.Count} photo(s)";
+        await RefreshTagsAsync();
+    }
+
+    private static void TryDeleteTagModel()
+    {
+        try
+        {
+            Directory.Delete(TagModelFolder, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     /// <summary>
     /// Writes a crop (fractions of the photo's width and height) and/or a brightness curve into the photo
     /// at full resolution. The version before is kept in the hidden .originals folder.
@@ -735,5 +926,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _exifTool?.Dispose();
         _index.Dispose();
         _geocoder?.Dispose();
+        _tagger?.Dispose();
     }
 }
