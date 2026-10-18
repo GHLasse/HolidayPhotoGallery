@@ -43,6 +43,9 @@ jobs:
           $photos = Join-Path $env:RUNNER_TEMP 'SmokePhotos'
           New-Item -ItemType Directory -Force $photos, $data | Out-Null
           Copy-Item tests/PhotoGallery.Core.Tests/TestData/* $photos
+          # Like a real library: a holiday subfolder that is also added on its own, next to its parent.
+          $holiday = Join-Path $photos 'Costa Rica 2026'
+          New-Item -ItemType Directory -Force $holiday | Out-Null
           # Several cameras and tags, so the camera and tag filters are rebuilt as on a real library.
           $jpg = 'tests/PhotoGallery.Core.Tests/TestData/sample.jpg'
           foreach ($i in 1..12) {
@@ -52,9 +55,6 @@ jobs:
           }
           # As many photos as a holiday, so the grid loads hundreds of thumbnails like on a user's PC.
           foreach ($i in 1..12) { foreach ($n in 1..40) { Copy-Item (Join-Path $photos "camera$i.jpg") (Join-Path $holiday "copy$i-$n.jpg") } }
-          # Like a real library: a holiday subfolder that is also added on its own, next to its parent.
-          $holiday = Join-Path $photos 'Costa Rica 2026'
-          New-Item -ItemType Directory -Force $holiday | Out-Null
           @{ Folders = @($holiday, $photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
           $p = Start-Process $exe.FullName -PassThru
