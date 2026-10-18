@@ -33,7 +33,9 @@ public sealed partial class MainWindow : Window
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
 
-        Closed += async (_, _) => await ViewModel.DisposeAsync();
+        // Must finish before the handler returns: an awaited shutdown never completed, because the app
+        // exits at the first await, leaving ExifTool running and the app folder locked.
+        Closed += (_, _) => ViewModel.Dispose();
         _ = ViewModel.InitializeAsync();
     }
 

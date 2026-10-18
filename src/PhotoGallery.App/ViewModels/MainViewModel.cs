@@ -6,7 +6,7 @@ using PhotoGallery.Core.Metadata;
 
 namespace PhotoGallery.App.ViewModels;
 
-public sealed class MainViewModel : ObservableObject, IAsyncDisposable
+public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly string DataFolder = LibrarySettings.DefaultDataFolder;
     private static readonly string SettingsPath = Path.Combine(DataFolder, "settings.json");
@@ -501,10 +501,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task RefreshTagsAsync() => UpdateTags(await Task.Run(_index.GetTagCounts));
 
-    public async ValueTask DisposeAsync()
+    /// <summary>Synchronous on purpose: the app exits as soon as the window's Closed handler returns.</summary>
+    public void Dispose()
     {
-        if (_exifTool is not null)
-            await _exifTool.DisposeAsync();
+        _exifTool?.Dispose();
         _index.Dispose();
     }
 }
