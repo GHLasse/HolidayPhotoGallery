@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.Globalization;
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Geocoding;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 
@@ -34,6 +36,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _cameraIndex;
     private bool _isUpdatingCameras;
     private List<CameraFilterViewModel> _cameras = [AllCameras];
+    private ReverseGeocoder? _geocoder;
 
     public MainViewModel()
     {
@@ -559,6 +562,79 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             : $"Placed {done} photo(s) on the map";
     }
 
+    /// <summary>
+    /// Looks up country, region, city and district for each photo's GPS position (OpenStreetMap Nominatim,
+    /// one request per second) and writes them into the file. Photos without GPS are skipped.
+    /// </summary>
+    public async Task AddPlaceNamesAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        if (_metadata is null || _indexer is null)
+            return;
+        if (items.Count == 0)
+        {
+            ErrorMessage = "Select the photos to add place names to.";
+            return;
+        }
+
+        var located = items.Where(i => i.Photo.Location is not null).ToList();
+        var skipped = items.Count - located.Count;
+        if (located.Count == 0)
+        {
+            ErrorMessage = "None of the selected photos has a GPS position. Place them on the map first.";
+            return;
+        }
+
+        _geocoder ??= new ReverseGeocoder(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName);
+        var failures = new List<string>();
+        var unknown = 0;
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < located.Count; i++)
+            {
+                var item = located[i];
+                StatusText = $"Looking up the place of {i + 1} of {located.Count}…";
+                try
+                {
+                    var place = await _geocoder.LookUpAsync(item.Photo.Location!.Value);
+                    if (place is null)
+                    {
+                        unknown++;
+                        continue;
+                    }
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Place = place });
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                }
+                catch (HttpRequestException ex)
+                {
+                    // Without a connection every further lookup fails the same way.
+                    failures.Add($"The place lookup did not work ({ex.Message}). Check the internet connection.");
+                    break;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or TaskCanceledException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        ErrorMessage = failures.Count == 0 ? null : "Some place names could not be added. " + string.Join(" ", failures);
+        var done = located.Count - unknown - failures.Count;
+        var notes = new List<string>();
+        if (skipped > 0)
+            notes.Add($"{skipped} without GPS skipped");
+        if (unknown > 0)
+            notes.Add($"{unknown} with no place found");
+        StatusText = $"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : "");
+        if (Editor.Items.Count > 0)
+            Editor.Load(Editor.Items);
+    }
+
     private async Task RefreshTagsAsync() => UpdateTags(await Task.Run(_index.GetTagCounts));
 
     /// <summary>Synchronous on purpose: the app exits as soon as the window's Closed handler returns.</summary>
@@ -566,5 +642,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         _exifTool?.Dispose();
         _index.Dispose();
+        _geocoder?.Dispose();
     }
 }

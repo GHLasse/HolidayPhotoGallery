@@ -204,6 +204,10 @@ public sealed class MetadataEditorViewModel : ObservableObject
             lines.Add($"{dw} × {dh} pixels");
         }
         lines.Add(FormatSize(photo.FileSize));
+        if (photo.Place is { } place)
+            lines.Add(place.ToString());
+        if (photo.Location is { } at)
+            lines.Add(string.Format(System.Globalization.CultureInfo.CurrentCulture, "GPS {0:0.00000}, {1:0.00000}", at.Latitude, at.Longitude));
         lines.Add(photo.Folder);
         return string.Join(Environment.NewLine, lines);
     }

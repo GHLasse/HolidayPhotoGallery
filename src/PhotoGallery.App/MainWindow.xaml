@@ -60,6 +60,12 @@
                 </AppBarButton>
                 <AppBarToggleButton x:Name="MapToggle" Icon="Map" Label="Map" Click="Map_Click"
                                     ToolTipService.ToolTip="Show where the photos were taken, and place the selected photos on the map" />
+                <AppBarButton Label="Add place names" Click="AddPlaceNames_Click"
+                              ToolTipService.ToolTip="Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xE707;" />
+                    </AppBarButton.Icon>
+                </AppBarButton>
             </CommandBar>
             <AutoSuggestBox Grid.Column="1" VerticalAlignment="Center" MaxWidth="480" HorizontalAlignment="Stretch"
                             PlaceholderText="Search names, captions and tags"

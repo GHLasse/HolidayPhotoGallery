@@ -212,4 +212,26 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             Service.WriteAsync(path, new MetadataChanges { Location = new GeoPosition(91, 0) }));
     }
+
+    [ExifToolTheory]
+    [InlineData(".jpg")]
+    [InlineData(".heic")]
+    [InlineData(".png")]
+    public async Task Writes_and_reads_back_place_names(string extension)
+    {
+        var path = _temp.CopySample(extension);
+        var place = new PlaceName { Country = "Deutschland", CountryCode = "DE", State = "Baden-Württemberg", City = "Heidelberg", Sublocation = "Altstadt" };
+
+        await Service.WriteAsync(path, new MetadataChanges { Place = place });
+        Assert.Equal(place, (await Service.ReadAsync(path)).Place);
+
+        // A place without a district removes the old district.
+        await Service.WriteAsync(path, new MetadataChanges { Place = place with { Sublocation = null } });
+        Assert.Null((await Service.ReadAsync(path)).Place!.Sublocation);
+        if (extension == ".jpg")
+        {
+            var iptc = await _exifTool!.RunAsync(["-s3", "-IPTC:City", "-IPTC:Sub-location", path]);
+            Assert.Equal("Heidelberg", iptc.Output.Trim());
+        }
+    }
 }

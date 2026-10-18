@@ -212,6 +212,8 @@ public sealed partial class MainWindow : Window
         RefreshMap(fit: true);
     }
 
+    private async void AddPlaceNames_Click(object sender, RoutedEventArgs e) => await ViewModel.AddPlaceNamesAsync(SelectedPhotos);
+
     private void RefreshMap(bool fit)
     {
         MapView.ShowPhotos(ViewModel.Photos);

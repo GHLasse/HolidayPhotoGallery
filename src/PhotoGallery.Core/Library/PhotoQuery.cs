@@ -8,7 +8,7 @@ public sealed record PhotoQuery
 
     public bool IncludeSubfolders { get; init; } = true;
 
-    /// <summary>Free text matched against file name, caption and tags. Every word must match.</summary>
+    /// <summary>Free text matched against file name, caption, tags and place names. Every word must match.</summary>
     public string? Text { get; init; }
 
     /// <summary>Every one of these tags must be present.</summary>

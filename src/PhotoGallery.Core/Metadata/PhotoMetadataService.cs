@@ -20,6 +20,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-XMP-photoshop:DateCreated", "-ExifIFD:CreateDate",
         "-IFD0:Orientation", "-XMP-tiff:Orientation",
         "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
+        "-XMP-photoshop:Country", "-XMP-iptcCore:CountryCode", "-XMP-photoshop:State", "-XMP-photoshop:City", "-XMP-iptcCore:Location",
+        "-IPTC:Country-PrimaryLocationName", "-IPTC:Province-State", "-IPTC:City", "-IPTC:Sub-location",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -250,8 +252,27 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-XMP-exif:GPSLongitude={Degrees(location.Longitude)}");
         }
 
+        if (changes.Place is { } place)
+        {
+            // The IPTC Core fields in XMP, which Lightroom, Bridge and digiKam use, plus the older IPTC
+            // fields in JPEG and TIFF. An empty value removes the field.
+            static string Clean(string? value) => value?.Trim() ?? "";
+            args.Add($"-XMP-photoshop:Country={Clean(place.Country)}");
+            args.Add($"-XMP-iptcCore:CountryCode={Clean(place.CountryCode).ToUpperInvariant()}");
+            args.Add($"-XMP-photoshop:State={Clean(place.State)}");
+            args.Add($"-XMP-photoshop:City={Clean(place.City)}");
+            args.Add($"-XMP-iptcCore:Location={Clean(place.Sublocation)}");
+            if (hasIptc)
+            {
+                args.Add($"-IPTC:Country-PrimaryLocationName={Clean(place.Country)}");
+                args.Add($"-IPTC:Province-State={Clean(place.State)}");
+                args.Add($"-IPTC:City={Clean(place.City)}");
+                args.Add($"-IPTC:Sub-location={Clean(place.Sublocation)}");
+            }
+        }
+
         // IPTC needs to be told its text is UTF-8, or non-ASCII tags and captions are garbled in other apps.
-        if (hasIptc && (changes.Tags is not null || changes.Caption is not null))
+        if (hasIptc && (changes.Tags is not null || changes.Caption is not null || changes.Place is not null))
             args.Add("-IPTC:CodedCharacterSet=UTF8");
 
         args.Add(path);
@@ -332,7 +353,24 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Latitude = GetNumber(item, "Composite:GPSLatitude"),
             Longitude = GetNumber(item, "Composite:GPSLongitude"),
             Camera = CameraName(GetString(item, "IFD0:Make"), GetString(item, "IFD0:Model")),
+            Place = ParsePlace(item),
         };
+    }
+
+    private static PlaceName? ParsePlace(JsonElement item)
+    {
+        string? First(params string[] keys) =>
+            keys.Select(k => GetString(item, k)?.Trim()).FirstOrDefault(v => !string.IsNullOrEmpty(v));
+
+        var place = new PlaceName
+        {
+            Country = First("XMP-photoshop:Country", "IPTC:Country-PrimaryLocationName"),
+            CountryCode = First("XMP-iptcCore:CountryCode"),
+            State = First("XMP-photoshop:State", "IPTC:Province-State"),
+            City = First("XMP-photoshop:City", "IPTC:City"),
+            Sublocation = First("XMP-iptcCore:Location", "IPTC:Sub-location"),
+        };
+        return place.IsEmpty ? null : place;
     }
 
     /// <summary>

@@ -67,6 +67,11 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Equal(14.4850, located.Location.Value.Longitude, 5);
         Assert.Null(_index.Search(new PhotoQuery()).Single(p => p.Path == rome).Location);
 
+        await service.WriteAsync(beach, new MetadataChanges { Place = new PlaceName { Country = "Italia", City = "Positano" } });
+        await indexer.RefreshFileAsync(beach);
+        Assert.Equal([beach], _index.Search(new PhotoQuery { Text = "positano" }).Select(p => p.Path));
+        Assert.Equal("Positano, Italia", _index.Search(new PhotoQuery { Text = "italia" }).Single().Place!.ToString());
+
         // Sorted by date taken, undated last.
         Assert.Equal([home, rome, beach], _index.Search(new PhotoQuery()).Select(p => p.Path));
     }

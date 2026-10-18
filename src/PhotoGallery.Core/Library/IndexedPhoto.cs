@@ -31,6 +31,8 @@ public sealed record IndexedPhoto
 
     public GeoPosition? Location { get; init; }
 
+    public PlaceName? Place { get; init; }
+
     public string FileName => System.IO.Path.GetFileName(Path);
 
     public static IndexedPhoto From(FileInfo file, PhotoMetadata metadata) => new()
@@ -48,5 +50,6 @@ public sealed record IndexedPhoto
         Height = metadata.Height,
         Camera = metadata.Camera,
         Location = metadata.Latitude is { } lat && metadata.Longitude is { } lon ? new GeoPosition(lat, lon) : null,
+        Place = metadata.Place,
     };
 }
