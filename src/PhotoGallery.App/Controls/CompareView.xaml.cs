@@ -55,17 +55,16 @@ public sealed partial class CompareView : UserControl
         for (var i = 0; i < items.Count; i++)
         {
             var pane = CreatePane(items[i], i);
-            Grid.SetColumn(pane.Root, i % columns);
-            Grid.SetRow(pane.Root, i / columns);
-            PaneGrid.Children.Add(pane.Root);
+            Grid.SetColumn(pane.Host, i % columns);
+            Grid.SetRow(pane.Host, i / columns);
+            PaneGrid.Children.Add(pane.Host);
             _panes.Add(pane);
         }
 
         HintText.Text = items.Count == 1
             ? "Keys 1–5 rate this photo, 0 clears the rating. Left and Right go to the previous or next photo. Ctrl + mouse wheel zooms."
             : "Click a photo to highlight it. Keys 1–5 rate it, 0 clears the rating, Tab moves to the next photo. Ctrl + mouse wheel zooms.";
-        SetActive(0);
-        CloseButton.Focus(FocusState.Programmatic);
+        SetActive(0, FocusState.Programmatic);
         _ = LoadImagesAsync();
     }
 
@@ -132,8 +131,27 @@ public sealed partial class CompareView : UserControl
             Child = body,
         };
 
-        var pane = new Pane(item, root, scroller, image, rating, status);
-        root.PointerPressed += (_, _) => SetActive(index);
+        // The pane itself can take keyboard focus, so the rating keys keep working after a click.
+        // Without this, clicking a photo moved focus out of the compare view and the keys went nowhere.
+        var host = new ContentControl
+        {
+            Content = root,
+            IsTabStop = true,
+            UseSystemFocusVisuals = false,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        };
+
+        var pane = new Pane(item, host, root, scroller, image, rating, status);
+        // handledEventsToo: the scroll viewer and rating control mark clicks as handled,
+        // which used to stop the click from highlighting the photo.
+        // A pane cannot take focus before it is on screen, so the first one grabs it once loaded.
+        host.Loaded += (_, _) =>
+        {
+            if (index == _activeIndex)
+                host.Focus(FocusState.Programmatic);
+        };
+        host.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => SetActive(index, FocusState.Pointer)), handledEventsToo: true);
         // Only the photo under the mouse leads; the others follow it. Without this, the
         // programmatic scrolling of the followers would echo back and fight the leader.
         scroller.PointerEntered += (_, _) => _driver = pane;
@@ -167,11 +185,12 @@ public sealed partial class CompareView : UserControl
         }
     }
 
-    private void SetActive(int index)
+    private void SetActive(int index, FocusState focus)
     {
         if (_panes.Count == 0)
             return;
         _activeIndex = Math.Clamp(index, 0, _panes.Count - 1);
+        _panes[_activeIndex].Host.Focus(focus);
         var accent = ThemeBrush("AccentFillColorDefaultBrush", Colors.DodgerBlue);
         for (var i = 0; i < _panes.Count; i++)
         {
@@ -211,7 +230,9 @@ public sealed partial class CompareView : UserControl
             await handler(pane.Item, stars);
     }
 
-    private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
+    // PreviewKeyDown runs before the focused control sees the key, so the scroll viewer and
+    // rating control can't swallow Tab, the arrows or the number keys.
+    private async void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (_panes.Count == 0)
             return;
@@ -226,7 +247,7 @@ public sealed partial class CompareView : UserControl
                 e.Handled = true;
                 var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
                     .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-                SetActive((_activeIndex + (shift ? _panes.Count - 1 : 1)) % _panes.Count);
+                SetActive((_activeIndex + (shift ? _panes.Count - 1 : 1)) % _panes.Count, FocusState.Keyboard);
                 return;
             case VirtualKey.Left or VirtualKey.Right when _panes.Count == 1:
                 e.Handled = true;
@@ -254,9 +275,10 @@ public sealed partial class CompareView : UserControl
 
     private void Close_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
 
-    private sealed class Pane(PhotoItemViewModel item, Border root, ScrollViewer scroller, Image image, RatingControl rating, TextBlock status)
+    private sealed class Pane(PhotoItemViewModel item, ContentControl host, Border root, ScrollViewer scroller, Image image, RatingControl rating, TextBlock status)
     {
         public PhotoItemViewModel Item { get; } = item;
+        public ContentControl Host { get; } = host;
         public Border Root { get; } = root;
         public ScrollViewer Scroller { get; } = scroller;
         public Image Image { get; } = image;
