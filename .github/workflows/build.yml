@@ -57,29 +57,29 @@ jobs:
           foreach ($i in 1..12) { foreach ($n in 1..40) { Copy-Item (Join-Path $photos "camera$i.jpg") (Join-Path $holiday "copy$i-$n.jpg") } }
           @{ Folders = @($holiday, $photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
-          $p = Start-Process $exe.FullName -PassThru
-          Start-Sleep -Seconds 15
-          if (-not $p.HasExited) {
-            # Second start: the index from the first run is now filled, as on a user's PC.
-            Stop-Process -Id $p.Id -Force; Start-Sleep -Seconds 2
-            $p = Start-Process $exe.FullName -PassThru
-            Start-Sleep -Seconds 15
-          }
-          $alive = -not $p.HasExited
-          foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName }
-          if ($alive) { "App is running after two starts"; Stop-Process -Id $p.Id -Force; exit 0 }
-          "App exited with code $($p.ExitCode)"
-          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue |
-            Where-Object { $_.LevelDisplayName -in 'Error', 'Critical' } | Format-List TimeCreated, ProviderName, Message
-          # WinUI only reports why it crashed to a debugger: start it once more under ProcDump to print that.
+          # Run under ProcDump: WinUI only tells a debugger why it crashes, and ProcDump prints that.
           Invoke-WebRequest https://download.sysinternals.com/files/Procdump.zip -OutFile "$env:RUNNER_TEMP\procdump.zip"
           Expand-Archive "$env:RUNNER_TEMP\procdump.zip" "$env:RUNNER_TEMP\procdump" -Force
-          $out = "$env:RUNNER_TEMP\procdump.txt"
-          $pd = Start-Process "$env:RUNNER_TEMP\procdump\procdump64.exe" -ArgumentList '-accepteula', '-l', '-e', '-x', $env:RUNNER_TEMP, "`"$($exe.FullName)`"" -RedirectStandardOutput $out -PassThru -NoNewWindow
-          $pd | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
-          Get-Process HolidayPhotoGallery, procdump64 -ErrorAction SilentlyContinue | Stop-Process -Force
-          Get-Content $out | Where-Object { $_.Trim() } | Select-Object -Last 150
-          exit 1
+          # Several starts, since the crash depends on timing; the first one also fills the index.
+          foreach ($run in 1..6) {
+            $out = "$env:RUNNER_TEMP\procdump$run.txt"
+            $pd = Start-Process "$env:RUNNER_TEMP\procdump\procdump64.exe" -ArgumentList '-accepteula', '-l', '-e', '-x', $env:RUNNER_TEMP, "`"$($exe.FullName)`"" -RedirectStandardOutput $out -PassThru -NoNewWindow
+            Start-Sleep -Seconds 15
+            $app = Get-Process HolidayPhotoGallery -ErrorAction SilentlyContinue
+            if ($app) {
+              "Start $run`: app is running"
+              $app | Stop-Process -Force
+              $pd | Wait-Process -Timeout 20 -ErrorAction SilentlyContinue
+              Get-Process procdump64 -ErrorAction SilentlyContinue | Stop-Process -Force
+              continue
+            }
+            "Start $run`: app crashed"
+            $pd | Wait-Process -Timeout 20 -ErrorAction SilentlyContinue
+            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 40 }
+            "===== ProcDump"
+            Get-Content $out | Where-Object { $_.Trim() } | Select-Object -Last 150
+            exit 1
+          }
       - name: Upload app
         if: always()
         uses: actions/upload-artifact@v4
