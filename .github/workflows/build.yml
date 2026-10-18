@@ -50,6 +50,8 @@ jobs:
             Copy-Item $jpg $file
             exiftool -q -overwrite_original "-Make=Maker$($i % 4)" "-Model=Model $($i % 4)" "-XMP-dc:Subject=Tag$($i % 3)" $file
           }
+          # As many photos as a holiday, so the grid loads hundreds of thumbnails like on a user's PC.
+          foreach ($i in 1..12) { foreach ($n in 1..40) { Copy-Item (Join-Path $photos "camera$i.jpg") (Join-Path $photos "copy$i-$n.jpg") } }
           @{ Folders = @($photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
           $p = Start-Process $exe.FullName -PassThru
