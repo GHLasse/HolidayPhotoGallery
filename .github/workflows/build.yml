@@ -71,6 +71,11 @@ jobs:
           "App exited with code $($p.ExitCode)"
           Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue |
             Where-Object { $_.LevelDisplayName -in 'Error', 'Critical' } | Format-List TimeCreated, ProviderName, Message
+          # WinUI only reports why it crashed to a debugger: start it once more under ProcDump to print that.
+          Invoke-WebRequest https://download.sysinternals.com/files/Procdump.zip -OutFile "$env:RUNNER_TEMP\procdump.zip"
+          Expand-Archive "$env:RUNNER_TEMP\procdump.zip" "$env:RUNNER_TEMP\procdump" -Force
+          & "$env:RUNNER_TEMP\procdump\procdump64.exe" -accepteula -l -e -x $env:RUNNER_TEMP $exe.FullName 2>&1 |
+            Select-String -NotMatch '^\s*$' | Select-Object -Last 150
           exit 1
       - name: Upload app
         if: always()
