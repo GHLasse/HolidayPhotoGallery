@@ -39,12 +39,23 @@ jobs:
         run: |
           $data = Join-Path $env:LOCALAPPDATA 'HolidayPhotoGallery'
           Remove-Item "$data\*.log" -ErrorAction SilentlyContinue
+          # A library with the sample photos, so startup also loads, lists and indexes real files.
+          $photos = Join-Path $env:RUNNER_TEMP 'SmokePhotos'
+          New-Item -ItemType Directory -Force $photos, $data | Out-Null
+          Copy-Item tests/PhotoGallery.Core.Tests/TestData/* $photos
+          @{ Folders = @($photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
           $p = Start-Process $exe.FullName -PassThru
-          Start-Sleep -Seconds 25
+          Start-Sleep -Seconds 15
+          if (-not $p.HasExited) {
+            # Second start: the index from the first run is now filled, as on a user's PC.
+            Stop-Process -Id $p.Id -Force; Start-Sleep -Seconds 2
+            $p = Start-Process $exe.FullName -PassThru
+            Start-Sleep -Seconds 15
+          }
           $alive = -not $p.HasExited
           foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName }
-          if ($alive) { "App is running after 25 s"; Stop-Process -Id $p.Id -Force; exit 0 }
+          if ($alive) { "App is running after two starts"; Stop-Process -Id $p.Id -Force; exit 0 }
           "App exited with code $($p.ExitCode)"
           Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue |
             Where-Object { $_.LevelDisplayName -in 'Error', 'Critical' } | Format-List TimeCreated, ProviderName, Message
