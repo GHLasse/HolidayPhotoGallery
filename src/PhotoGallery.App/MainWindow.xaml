@@ -35,7 +35,16 @@
                 <AppBarButton Icon="Add" Label="Add folder" Click="AddFolder_Click" ToolTipService.ToolTip="Add a folder to the library" />
                 <AppBarButton Icon="Refresh" Label="Rescan" Click="Rescan_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}" ToolTipService.ToolTip="Look for new, changed and deleted photos" />
                 <AppBarSeparator />
-                <AppBarButton x:Name="RotateLeftButton" Icon="Rotate" Label="Left" Click="RotateLeft_Click" ToolTipService.ToolTip="Rotate left (Ctrl+,)" />
+                <!-- Windows has one rotate arrow (clockwise); mirrored, it points counter-clockwise. -->
+                <AppBarButton x:Name="RotateLeftButton" Label="Left" Click="RotateLeft_Click" ToolTipService.ToolTip="Rotate left (Ctrl+,)">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
+                            <FontIcon.RenderTransform>
+                                <ScaleTransform ScaleX="-1" />
+                            </FontIcon.RenderTransform>
+                        </FontIcon>
+                    </AppBarButton.Icon>
+                </AppBarButton>
                 <AppBarButton x:Name="RotateRightButton" Label="Right" Click="RotateRight_Click" ToolTipService.ToolTip="Rotate right (Ctrl+.)">
                     <AppBarButton.Icon>
                         <FontIcon Glyph="&#xE7AD;" />
@@ -292,7 +301,11 @@
                 <TextBlock x:Name="ViewerTitle" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <Button Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="Rotate left">
-                        <SymbolIcon Symbol="Rotate" />
+                        <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
+                            <FontIcon.RenderTransform>
+                                <ScaleTransform ScaleX="-1" />
+                            </FontIcon.RenderTransform>
+                        </FontIcon>
                     </Button>
                     <Button Click="ViewerRotateRight_Click" ToolTipService.ToolTip="Rotate right">
                         <FontIcon Glyph="&#xE7AD;" />
