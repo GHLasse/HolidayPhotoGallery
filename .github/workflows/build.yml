@@ -66,9 +66,9 @@ jobs:
           New-Item -Force $key | Out-Null
           Set-ItemProperty $key DumpFolder $dumps -Type ExpandString
           Set-ItemProperty $key DumpType 2 -Type DWord
-          foreach ($run in 1..25) {
+          foreach ($run in 1..60) {
             $p = Start-Process $exe.FullName -PassThru
-            Start-Sleep -Seconds 15
+            Start-Sleep -Seconds 8
             if (-not $p.HasExited) {
               "Start $run`: app is running"
               Stop-Process -Id $p.Id -Force
