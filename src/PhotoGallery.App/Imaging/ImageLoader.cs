@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics.Imaging;
@@ -46,7 +47,30 @@ public static class ImageLoader
     public static async Task<ImageSource> DecodeAsync(string path, uint maxSize) =>
         await ToImageSourceAsync(await Task.Run(() => DecodeBitmapAsync(path, maxSize)));
 
-    private static async Task<SoftwareBitmap> DecodeBitmapAsync(string path, uint maxSize)
+    /// <summary>
+    /// The photo's upright pixels as 8-bit BGRA with straight alpha, for editing; <paramref name="maxSize"/>
+    /// limits the longer side (uint.MaxValue gives full size). Runs on a background thread.
+    /// </summary>
+    public static Task<DecodedImage> DecodePixelsAsync(string path, uint maxSize) => Task.Run(async () =>
+    {
+        using var bitmap = await DecodeBitmapAsync(path, maxSize, BitmapAlphaMode.Straight);
+        var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+        bitmap.CopyToBuffer(pixels.AsBuffer());
+        return new DecodedImage(pixels, bitmap.PixelWidth, bitmap.PixelHeight);
+    });
+
+    /// <summary>Shows decoded (possibly edited) pixels; call on the UI thread.</summary>
+    public static async Task<ImageSource> ToImageSourceAsync(DecodedImage image)
+    {
+        var bitmap = await Task.Run(() =>
+        {
+            using var straight = SoftwareBitmap.CreateCopyFromBuffer(image.Pixels.AsBuffer(), BitmapPixelFormat.Bgra8, image.Width, image.Height, BitmapAlphaMode.Straight);
+            return SoftwareBitmap.Convert(straight, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        });
+        return await ToImageSourceAsync(bitmap);
+    }
+
+    private static async Task<SoftwareBitmap> DecodeBitmapAsync(string path, uint maxSize, BitmapAlphaMode alpha = BitmapAlphaMode.Premultiplied)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);
         using var stream = await file.OpenReadAsync();
@@ -66,7 +90,7 @@ public static class ImageLoader
         // Not disposed here: the image source keeps using the pixels after SetBitmapAsync.
         return await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8,
-            BitmapAlphaMode.Premultiplied,
+            alpha,
             transform,
             ExifOrientationMode.RespectExifOrientation,
             ColorManagementMode.ColorManageToSRgb);
@@ -79,3 +103,6 @@ public static class ImageLoader
         return source;
     }
 }
+
+/// <summary>Upright 8-bit BGRA pixels with straight alpha.</summary>
+public sealed record DecodedImage(byte[] Pixels, int Width, int Height);

@@ -292,6 +292,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid Padding="12,8" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
@@ -310,6 +311,29 @@
                     <Button Click="ViewerRotateRight_Click" ToolTipService.ToolTip="Rotate right">
                         <FontIcon Glyph="&#xE7AD;" />
                     </Button>
+                    <AppBarSeparator />
+                    <ToggleButton x:Name="ViewerCropButton" Click="ViewerCrop_Click" ToolTipService.ToolTip="Crop">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE7A8;" FontSize="16" />
+                            <TextBlock Text="Crop" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton x:Name="ViewerAutoButton" Click="ViewerAuto_Click" ToolTipService.ToolTip="Adjust contrast and brightness automatically">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE706;" FontSize="16" />
+                            <TextBlock Text="Auto adjust" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <Button x:Name="ViewerUndoButton" Click="ViewerUndo_Click" IsEnabled="False" ToolTipService.ToolTip="Undo the last saved edit of this photo">
+                        <FontIcon Glyph="&#xE7A7;" />
+                    </Button>
+                    <Button x:Name="ViewerRevertButton" Click="ViewerRevert_Click" IsEnabled="False" ToolTipService.ToolTip="Go back to the original photo, before any edits">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE81C;" FontSize="16" />
+                            <TextBlock Text="Revert" />
+                        </StackPanel>
+                    </Button>
+                    <AppBarSeparator />
                     <Button x:Name="ViewerCloseButton" Click="ViewerClose_Click" ToolTipService.ToolTip="Back to the gallery (Esc)">
                         <SymbolIcon Symbol="Cancel" />
                         <Button.KeyboardAccelerators>
@@ -318,7 +342,7 @@
                     </Button>
                 </StackPanel>
             </Grid>
-            <Image x:Name="ViewerImage" Grid.Row="1" Stretch="Uniform" Margin="56,0,56,16" />
+            <controls:EditCanvas x:Name="ViewerCanvas" Grid.Row="1" Margin="56,0,56,16" />
             <ProgressRing x:Name="ViewerProgress" Grid.Row="1" IsActive="False" />
             <TextBlock x:Name="ViewerError" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="480" />
             <Button Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8" Click="ViewerPrevious_Click" ToolTipService.ToolTip="Previous (Left arrow)">
@@ -333,6 +357,39 @@
                     <KeyboardAccelerator Key="Right" Invoked="ViewerAccelerator_Invoked" />
                 </Button.KeyboardAccelerators>
             </Button>
+            <!-- Shown while a crop or auto adjust is being previewed; nothing is written before Save. -->
+            <Grid x:Name="ViewerEditBar" Grid.Row="2" Padding="12,8" ColumnSpacing="8" Visibility="Collapsed"
+                  Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="CropRatioCombo" VerticalAlignment="Center" MinWidth="130" SelectedIndex="0"
+                          SelectionChanged="CropRatio_SelectionChanged" ToolTipService.ToolTip="Shape of the crop">
+                    <ComboBoxItem Content="Free" />
+                    <ComboBoxItem Content="Original shape" />
+                    <ComboBoxItem Content="3:2" />
+                    <ComboBoxItem Content="4:3" />
+                    <ComboBoxItem Content="16:9" />
+                    <ComboBoxItem Content="1:1" />
+                    <ComboBoxItem Content="2:3" />
+                    <ComboBoxItem Content="3:4" />
+                    <ComboBoxItem Content="9:16" />
+                </ComboBox>
+                <TextBlock x:Name="ViewerEditHint" Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <ComboBox x:Name="SaveFormatCombo" Grid.Column="2" VerticalAlignment="Center" MinWidth="150" SelectedIndex="0"
+                          ToolTipService.ToolTip="Save in the photo's own format, or as JPEG for sharing">
+                    <ComboBoxItem Content="Original format" />
+                    <ComboBoxItem Content="Save as JPEG" />
+                </ComboBox>
+                <Button Grid.Column="3" Style="{ThemeResource AccentButtonStyle}" Content="Save" Click="ViewerSaveEdit_Click"
+                        ToolTipService.ToolTip="Write the edit into the photo; the original is kept in the hidden .originals folder" />
+                <Button Grid.Column="4" Content="Cancel" Click="ViewerCancelEdit_Click" />
+            </Grid>
         </Grid>
 
         <!-- Compare view for picking the best photos -->
