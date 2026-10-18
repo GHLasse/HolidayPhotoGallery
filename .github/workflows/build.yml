@@ -43,6 +43,13 @@ jobs:
           $photos = Join-Path $env:RUNNER_TEMP 'SmokePhotos'
           New-Item -ItemType Directory -Force $photos, $data | Out-Null
           Copy-Item tests/PhotoGallery.Core.Tests/TestData/* $photos
+          # Several cameras and tags, so the camera and tag filters are rebuilt as on a real library.
+          $jpg = 'tests/PhotoGallery.Core.Tests/TestData/sample.jpg'
+          foreach ($i in 1..12) {
+            $file = Join-Path $photos "camera$i.jpg"
+            Copy-Item $jpg $file
+            exiftool -q -overwrite_original "-Make=Maker$($i % 4)" "-Model=Model $($i % 4)" "-XMP-dc:Subject=Tag$($i % 3)" $file
+          }
           @{ Folders = @($photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
           $p = Start-Process $exe.FullName -PassThru
