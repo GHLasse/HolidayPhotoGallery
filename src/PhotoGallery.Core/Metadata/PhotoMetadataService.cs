@@ -73,7 +73,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             return;
 
         if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
-            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only (see its Properties in Explorer).");
+            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.");
 
         var args = BuildWriteArguments(path, changes);
         for (var attempt = 1; ; attempt++)

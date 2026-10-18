@@ -436,6 +436,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Editor.Load(Editor.Items);
     }
 
+    /// <summary>
+    /// Clears the read-only mark from the photos in the selected folder, or in the whole library when
+    /// no folder is selected, so ratings, tags and rotation can be saved into them.
+    /// </summary>
+    public async Task MakeEditableAsync()
+    {
+        List<string> folders = SelectedFolder is { } folder ? [folder.FullPath] : [.. _settings.Folders];
+        var changed = await Task.Run(() => folders.Sum(f => ReadOnlyPhotos.MakeWritable(f)));
+        StatusText = changed switch
+        {
+            0 => "No read-only photos found.",
+            1 => "1 photo is now editable.",
+            _ => $"{changed:N0} photos are now editable.",
+        };
+    }
+
     /// <summary>Sets one photo's star rating straight away, as the compare view does.</summary>
     public async Task SetRatingAsync(PhotoItemViewModel item, int stars)
     {

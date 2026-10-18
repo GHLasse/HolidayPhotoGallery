@@ -47,6 +47,12 @@
                         <FontIcon Glyph="&#xE89F;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+                <AppBarButton Label="Make editable" Click="MakeEditable_Click"
+                              ToolTipService.ToolTip="Remove the read-only mark from all photos in the selected folder (or the whole library), e.g. after copying them from a phone">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xE785;" />
+                    </AppBarButton.Icon>
+                </AppBarButton>
                 <AppBarButton Label="Shift dates" Click="ShiftDates_Click" ToolTipService.ToolTip="Correct the date and time of the selected photos">
                     <AppBarButton.Icon>
                         <FontIcon Glyph="&#xEC92;" />

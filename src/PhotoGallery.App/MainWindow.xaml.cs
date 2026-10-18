@@ -256,6 +256,8 @@ public sealed partial class MainWindow : Window
 
     // ---- Shift dates ----
 
+    private async void MakeEditable_Click(object sender, RoutedEventArgs e) => await ViewModel.MakeEditableAsync();
+
     private async void ShiftDates_Click(object sender, RoutedEventArgs e)
     {
         var selected = SelectedPhotos;
