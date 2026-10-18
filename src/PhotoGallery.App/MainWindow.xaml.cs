@@ -14,6 +14,7 @@ namespace PhotoGallery.App;
 
 public sealed partial class MainWindow : Window
 {
+    private bool _syncingTimeZone;
     private List<PhotoItemViewModel> _viewerItems = [];
     private int _viewerIndex;
     private int _viewerLoadVersion;
@@ -36,7 +37,37 @@ public sealed partial class MainWindow : Window
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
         Closed += (_, _) => ViewModel.Dispose();
+        ViewModel.Editor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MetadataEditorViewModel.TimeZones) or nameof(MetadataEditorViewModel.TimeZoneIndex))
+                SyncTimeZoneCombo();
+        };
+        SyncTimeZoneCombo();
         _ = ViewModel.InitializeAsync();
+    }
+
+    // The list always goes in before the index; a combo box throws when given an index it doesn't have.
+    private void SyncTimeZoneCombo()
+    {
+        _syncingTimeZone = true;
+        try
+        {
+            var zones = ViewModel.Editor.TimeZones;
+            if (!ReferenceEquals(TimeZoneCombo.ItemsSource, zones))
+                TimeZoneCombo.ItemsSource = zones;
+            var index = ViewModel.Editor.TimeZoneIndex;
+            TimeZoneCombo.SelectedIndex = index >= 0 && index < zones.Count ? index : -1;
+        }
+        finally
+        {
+            _syncingTimeZone = false;
+        }
+    }
+
+    private void TimeZoneCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_syncingTimeZone && TimeZoneCombo.SelectedIndex >= 0)
+            ViewModel.Editor.TimeZoneIndex = TimeZoneCombo.SelectedIndex;
     }
 
     public MainViewModel ViewModel { get; } = new();
