@@ -72,9 +72,19 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.IsEmpty)
             return;
 
-        RemoveStaleTempFile(path);
+        await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
         var args = BuildWriteArguments(path, changes);
         var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
+        // ExifTool ignores a failure to delete its temp file after a successful save; tidy up so the
+        // next save of this photo is not blocked.
+        try
+        {
+            await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ExifToolException)
+        {
+            // Still locked: the save itself worked, and the next save tries again.
+        }
 
         var errors = output.ErrorLines.ToList();
         if (errors.Count > 0)
@@ -83,20 +93,27 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
 
     /// <summary>
     /// ExifTool writes to "photo.jpg_exiftool_tmp" first and refuses to start if that file exists.
-    /// One is only left behind when a save was interrupted (the app was killed mid-write), since this
-    /// app saves one file at a time, so it is safe to remove.
+    /// One is left behind when a save was interrupted, or when Windows still had it open (e.g. a virus
+    /// scanner) at the moment ExifTool tried to delete it. This app saves one file at a time, so an
+    /// existing one is always stale. Deleting is retried briefly in case it is still locked.
     /// </summary>
-    private static void RemoveStaleTempFile(string path)
+    private static async Task RemoveStaleTempFileAsync(string path, CancellationToken cancellationToken)
     {
         var temp = path + "_exiftool_tmp";
-        try
+        for (var attempt = 1; File.Exists(temp); attempt++)
         {
-            if (File.Exists(temp))
+            try
+            {
+                File.SetAttributes(temp, FileAttributes.Normal);
                 File.Delete(temp);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // ExifTool then reports the problem itself.
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt == 10)
+                    throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the leftover file {Path.GetFileName(temp)} cannot be removed ({ex.Message}).");
+                await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 
