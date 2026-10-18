@@ -11,7 +11,7 @@ namespace PhotoGallery.Core.Library;
 /// </summary>
 public sealed class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -61,7 +61,9 @@ public sealed class PhotoIndex : IDisposable
                 orientation INTEGER NOT NULL DEFAULT 1,
                 width INTEGER,
                 height INTEGER,
-                camera TEXT COLLATE NOCASE
+                camera TEXT COLLATE NOCASE,
+                latitude REAL,
+                longitude REAL
             );
             CREATE INDEX IF NOT EXISTS ix_photos_folder ON photos(folder);
             CREATE INDEX IF NOT EXISTS ix_photos_date ON photos(date_taken);
@@ -106,14 +108,15 @@ public sealed class PhotoIndex : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height, camera)
-            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height, $camera)
+            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height, camera, latitude, longitude)
+            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height, $camera, $lat, $lon)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
                 date_offset_minutes = excluded.date_offset_minutes, rating = excluded.rating,
                 caption = excluded.caption, orientation = excluded.orientation,
-                width = excluded.width, height = excluded.height, camera = excluded.camera
+                width = excluded.width, height = excluded.height, camera = excluded.camera,
+                latitude = excluded.latitude, longitude = excluded.longitude
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", photo.Path);
@@ -129,6 +132,8 @@ public sealed class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$width", (object?)photo.Width ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$height", (object?)photo.Height ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$camera", (object?)photo.Camera ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$lat", (object?)photo.Location?.Latitude ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$lon", (object?)photo.Location?.Longitude ?? DBNull.Value);
         var id = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         using var delete = _connection.CreateCommand();
@@ -236,7 +241,8 @@ public sealed class PhotoIndex : IDisposable
             var sql = new StringBuilder("""
                 SELECT p.id, p.path, p.folder, p.file_size, p.file_mtime, p.date_taken, p.date_offset_minutes,
                        p.rating, p.caption, p.orientation, p.width, p.height, p.camera,
-                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id) AS tags
+                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id) AS tags,
+                       p.latitude, p.longitude
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -307,6 +313,7 @@ public sealed class PhotoIndex : IDisposable
             Height = r.IsDBNull(11) ? null : r.GetInt32(11),
             Camera = r.IsDBNull(12) ? null : r.GetString(12),
             Tags = r.IsDBNull(13) ? [] : r.GetString(13).Split('\u001f'),
+            Location = r.IsDBNull(14) || r.IsDBNull(15) ? null : new GeoPosition(r.GetDouble(14), r.GetDouble(15)),
         };
     }
 

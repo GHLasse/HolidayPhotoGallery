@@ -174,4 +174,42 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         Assert.Equal(3, result.Count);
         Assert.All(paths, p => Assert.True(result.ContainsKey(p)));
     }
+
+    [ExifToolTheory]
+    [InlineData(".jpg")]
+    [InlineData(".heic")]
+    [InlineData(".png")]
+    [InlineData(".webp")]
+    [InlineData(".tiff")]
+    public async Task Writes_moves_and_removes_the_gps_position(string extension)
+    {
+        var path = _temp.CopySample(extension);
+
+        // South-west of both the equator and Greenwich, to check the hemisphere letters.
+        await Service.WriteAsync(path, new MetadataChanges { Location = new GeoPosition(-22.9519, -43.2105) });
+        var placed = await Service.ReadAsync(path);
+        Assert.Equal(-22.9519, placed.Latitude!.Value, 5);
+        Assert.Equal(-43.2105, placed.Longitude!.Value, 5);
+
+        await Service.WriteAsync(path, new MetadataChanges { Location = new GeoPosition(9.9281, -84.0907) });
+        var xmp = await _exifTool!.RunAsync(["-n", "-s3", "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude", path]);
+        Assert.Equal(["9.9281", "-84.0907"], xmp.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        var exif = await _exifTool.RunAsync(["-n", "-s3", "-GPS:GPSLatitudeRef", "-GPS:GPSLongitudeRef", path]);
+        Assert.Equal(["N", "W"], exif.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        await Service.WriteAsync(path, new MetadataChanges { RemoveLocation = true });
+        var removed = await Service.ReadAsync(path);
+        Assert.Null(removed.Latitude);
+        Assert.Null(removed.Longitude);
+        var leftovers = await _exifTool.RunAsync(["-s", "-GPS:All", "-XMP-exif:All", path]);
+        Assert.DoesNotContain("GPS", leftovers.Output);
+    }
+
+    [Fact]
+    public async Task An_impossible_gps_position_is_refused()
+    {
+        var path = _temp.CopySample(".jpg");
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            Service.WriteAsync(path, new MetadataChanges { Location = new GeoPosition(91, 0) }));
+    }
 }

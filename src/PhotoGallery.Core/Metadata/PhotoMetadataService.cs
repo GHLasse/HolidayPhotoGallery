@@ -233,6 +233,23 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-IFD0:Orientation#={Orientation.Normalize(orientation)}");
         }
 
+        if (changes.RemoveLocation)
+            args.AddRange(["-GPS:All=", "-XMP-exif:GPS*="]);
+
+        if (changes.Location is { } location)
+        {
+            if (!location.IsValid)
+                throw new ArgumentOutOfRangeException(nameof(changes), $"{location} is not a valid GPS position.");
+            // EXIF stores the distance from the equator and meridian plus a hemisphere letter; XMP keeps the sign.
+            static string Degrees(double value) => value.ToString("0.0000000", CultureInfo.InvariantCulture);
+            args.Add($"-GPS:GPSLatitude={Degrees(Math.Abs(location.Latitude))}");
+            args.Add($"-GPS:GPSLatitudeRef={(location.Latitude < 0 ? "S" : "N")}");
+            args.Add($"-GPS:GPSLongitude={Degrees(Math.Abs(location.Longitude))}");
+            args.Add($"-GPS:GPSLongitudeRef={(location.Longitude < 0 ? "W" : "E")}");
+            args.Add($"-XMP-exif:GPSLatitude={Degrees(location.Latitude)}");
+            args.Add($"-XMP-exif:GPSLongitude={Degrees(location.Longitude)}");
+        }
+
         // IPTC needs to be told its text is UTF-8, or non-ASCII tags and captions are garbled in other apps.
         if (hasIptc && (changes.Tags is not null || changes.Caption is not null))
             args.Add("-IPTC:CodedCharacterSet=UTF8");
