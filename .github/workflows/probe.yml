@@ -16,49 +16,61 @@ jobs:
       - name: Probe
         shell: python
         run: |
-          import torch, requests, numpy as np, onnxruntime as ort
+          import requests, numpy as np, onnxruntime as ort
           from PIL import Image
           from io import BytesIO
-          from transformers import AutoModel, AutoProcessor, AutoTokenizer
+          from transformers import AutoProcessor, AutoTokenizer
           from huggingface_hub import hf_hub_download
-          name = "google/siglip2-base-patch16-224"
-          model = AutoModel.from_pretrained(name).eval()
-          proc = AutoProcessor.from_pretrained(name)
-          print("logit_scale_exp", model.logit_scale.exp().item(), "logit_bias", model.logit_bias.item())
-          tok = AutoTokenizer.from_pretrained("onnx-community/siglip2-base-patch16-224-ONNX")
-          texts = ["this is a photo of beach.", "this is a photo of strand.", "this is a photo of sonnenuntergang.", "this is a photo of food."]
-          for t in texts:
-              print("TOKENS", repr(t), tok(t, padding="max_length", max_length=64)["input_ids"][:16])
-          img = Image.open(BytesIO(requests.get("http://images.cocodataset.org/val2017/000000039769.jpg").content)).convert("RGB")
-          labels = ["cat", "dog", "beach", "sofa", "remote control", "katze", "food"]
-          prompts = [f"this is a photo of {l}." for l in labels]
-          inputs = proc(text=prompts, images=img, padding="max_length", max_length=64, return_tensors="pt")
-          with torch.no_grad():
-              out = model(**inputs)
-          probs = torch.sigmoid(out.logits_per_image)[0]
-          for l, p in zip(labels, probs): print("TORCH", l, round(p.item(), 4))
-          ie = out.image_embeds[0]; te = out.text_embeds
-          print("cos", [round(x, 4) for x in (te @ ie).tolist()])
           repo = "onnx-community/siglip2-base-patch16-224-ONNX"
-          for f in ["onnx/vision_model.onnx", "onnx/text_model_quantized.onnx", "onnx/vision_model_fp16.onnx", "onnx/text_model_fp16.onnx"]:
-              path = hf_hub_download(repo, f)
-              s = ort.InferenceSession(path)
-              print(f, "IN", [(i.name, i.shape, i.type) for i in s.get_inputs()], "OUT", [(o.name, o.shape, o.type) for o in s.get_outputs()])
-              if "vision" in f:
-                  pv = inputs["pixel_values"].numpy()
-                  if "fp16" in f: pv = pv.astype(np.float16)
-                  o = s.run(None, {"pixel_values": pv})
-                  v = o[-1][0].astype(np.float32) if o[-1].ndim == 2 else o[1][0].astype(np.float32)
-                  for k, arr in zip([x.name for x in s.get_outputs()], o): print("  out", k, arr.shape)
-                  pooled = [arr for arr in o if arr.ndim == 2][0][0].astype(np.float32)
-                  pooled = pooled / np.linalg.norm(pooled)
-                  print("  vision cos with torch", float(pooled @ ie.numpy()))
-                  onnx_img = pooled
-              else:
-                  feeds = {"input_ids": inputs["input_ids"].numpy()}
-                  o = s.run(None, feeds)
-                  for k, arr in zip([x.name for x in s.get_outputs()], o): print("  out", k, arr.shape)
-                  pooled = [arr for arr in o if arr.ndim == 2][0].astype(np.float32)
-                  pooled = pooled / np.linalg.norm(pooled, axis=1, keepdims=True)
-                  print("  text cos with torch", [round(float(a @ b), 4) for a, b in zip(pooled, te.numpy())])
-                  print("  onnx probs", [round(float(1/(1+np.exp(-(model.logit_scale.exp().item()*x + model.logit_bias.item())))), 4) for x in pooled @ onnx_img])
+          proc = AutoProcessor.from_pretrained("google/siglip2-base-patch16-224")
+          tok = AutoTokenizer.from_pretrained(repo)
+          S, B = 112.66889953613281, -16.771724700927734
+          ua = {"User-Agent": "HolidayPhotoGallery-probe/1.0 (https://github.com/GHLasse/HolidayPhotoGallery)"}
+          urls = {
+            "cats": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "coco139": "http://images.cocodataset.org/val2017/000000000139.jpg",
+            "coco724": "http://images.cocodataset.org/val2017/000000000724.jpg",
+            "coco285": "http://images.cocodataset.org/val2017/000000000285.jpg",
+            "coco1000": "http://images.cocodataset.org/val2017/000000001000.jpg",
+            "beignets": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png",
+            "parrots": "https://huggingface.co/datasets/Narsil/image_dummy/raw/main/parrots.png",
+            "eiffel": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/640px-Tour_Eiffel_Wikimedia_Commons.jpg",
+            "alps": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Fronalpstock_big.jpg/800px-Fronalpstock_big.jpg",
+          }
+          images = {}
+          for k, u in urls.items():
+              try:
+                  images[k] = Image.open(BytesIO(requests.get(u, headers=ua, timeout=30).content)).convert("RGB")
+              except Exception as e:
+                  print("skip", k, e)
+          en = "beach, sea, lake, river, mountains, forest, snow, desert, city, street, building, church, castle, museum, bridge, park, garden, flowers, sunset, night, sky, food, drink, restaurant, people, group photo, portrait, child, selfie, animal, dog, cat, bird, horse, wildlife, car, boat, airplane, train, bicycle, sports, swimming pool, hotel, interior, landscape, monument, market, waterfall, document, screenshot".split(", ")
+          de = "Strand, Meer, See, Fluss, Berge, Wald, Schnee, Wüste, Stadt, Straße, Gebäude, Kirche, Burg, Museum, Brücke, Park, Garten, Blumen, Sonnenuntergang, Nacht, Himmel, Essen, Getränk, Restaurant, Menschen, Gruppenfoto, Porträt, Kind, Selfie, Tier, Hund, Katze, Vogel, Pferd, Wildtier, Auto, Boot, Flugzeug, Zug, Fahrrad, Sport, Schwimmbad, Hotel, Innenraum, Landschaft, Denkmal, Markt, Wasserfall, Dokument, Bildschirmfoto".split(", ")
+          vis = {f: ort.InferenceSession(hf_hub_download(repo, f)) for f in ["onnx/vision_model.onnx", "onnx/vision_model_fp16.onnx"]}
+          txt = {f: ort.InferenceSession(hf_hub_download(repo, f)) for f in ["onnx/text_model_quantized.onnx", "onnx/text_model_fp16.onnx"]}
+          def norm(x): x = x.astype(np.float32); return x / np.linalg.norm(x, axis=-1, keepdims=True)
+          emb = {}
+          for k, img in images.items():
+              pv = proc(images=img, return_tensors="np")["pixel_values"].astype(np.float32)
+              a = norm(vis["onnx/vision_model.onnx"].run(["pooler_output"], {"pixel_values": pv})[0])[0]
+              b = norm(vis["onnx/vision_model_fp16.onnx"].run(["pooler_output"], {"pixel_values": pv})[0])[0]
+              print("VISION", k, "fp16 vs fp32 cos", round(float(a @ b), 5))
+              emb[k] = a
+          def text_emb(sess, prompts):
+              ids = np.array([tok(p.lower(), padding="max_length", max_length=64, truncation=True)["input_ids"] for p in prompts], dtype=np.int64)
+              return norm(sess.run(["pooler_output"], {"input_ids": ids})[0])
+          templates = ["{}", "a photo of {}.", "this is a photo of {}.", "ein foto von {}."]
+          ref = {}
+          for lang, labels in [("en", en), ("de", de)]:
+              for t in templates:
+                  if lang == "en" and t.startswith("ein"): continue
+                  prompts = [t.format(l) for l in labels]
+                  q = text_emb(txt["onnx/text_model_quantized.onnx"], prompts)
+                  f = text_emb(txt["onnx/text_model_fp16.onnx"], prompts)
+                  print(f"\n=== {lang} '{t}'  q-vs-fp16 text cos min {float(np.min(np.sum(q*f,1))):.3f} mean {float(np.mean(np.sum(q*f,1))):.3f}")
+                  for k, ie in emb.items():
+                      for name, te in [("fp16", f), ("q8", q)]:
+                          cos = te @ ie
+                          sig = 1/(1+np.exp(-(S*cos+B)))
+                          sm = np.exp(S*cos - np.max(S*cos)); sm /= sm.sum()
+                          top = np.argsort(-cos)[:7]
+                          print(f"{k:9s} {name:4s} " + "  ".join(f"{labels[i]}:{cos[i]:.3f}/{sig[i]:.4f}/{sm[i]:.2f}" for i in top))
