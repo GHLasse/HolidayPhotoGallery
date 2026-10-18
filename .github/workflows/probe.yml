@@ -1,0 +1,64 @@
+name: Probe SigLIP 2
+
+on:
+  push:
+    branches: [claude/probe-siglip]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install --index-url https://download.pytorch.org/whl/cpu torch && pip install "transformers>=4.50" sentencepiece protobuf pillow requests onnxruntime huggingface_hub
+      - name: Probe
+        shell: python
+        run: |
+          import torch, requests, numpy as np, onnxruntime as ort
+          from PIL import Image
+          from io import BytesIO
+          from transformers import AutoModel, AutoProcessor, AutoTokenizer
+          from huggingface_hub import hf_hub_download
+          name = "google/siglip2-base-patch16-224"
+          model = AutoModel.from_pretrained(name).eval()
+          proc = AutoProcessor.from_pretrained(name)
+          print("logit_scale_exp", model.logit_scale.exp().item(), "logit_bias", model.logit_bias.item())
+          tok = AutoTokenizer.from_pretrained("onnx-community/siglip2-base-patch16-224-ONNX")
+          texts = ["this is a photo of beach.", "this is a photo of strand.", "this is a photo of sonnenuntergang.", "this is a photo of food."]
+          for t in texts:
+              print("TOKENS", repr(t), tok(t, padding="max_length", max_length=64)["input_ids"][:16])
+          img = Image.open(BytesIO(requests.get("http://images.cocodataset.org/val2017/000000039769.jpg").content)).convert("RGB")
+          labels = ["cat", "dog", "beach", "sofa", "remote control", "katze", "food"]
+          prompts = [f"this is a photo of {l}." for l in labels]
+          inputs = proc(text=prompts, images=img, padding="max_length", max_length=64, return_tensors="pt")
+          with torch.no_grad():
+              out = model(**inputs)
+          probs = torch.sigmoid(out.logits_per_image)[0]
+          for l, p in zip(labels, probs): print("TORCH", l, round(p.item(), 4))
+          ie = out.image_embeds[0]; te = out.text_embeds
+          print("cos", [round(x, 4) for x in (te @ ie).tolist()])
+          repo = "onnx-community/siglip2-base-patch16-224-ONNX"
+          for f in ["onnx/vision_model.onnx", "onnx/text_model_quantized.onnx", "onnx/vision_model_fp16.onnx", "onnx/text_model_fp16.onnx"]:
+              path = hf_hub_download(repo, f)
+              s = ort.InferenceSession(path)
+              print(f, "IN", [(i.name, i.shape, i.type) for i in s.get_inputs()], "OUT", [(o.name, o.shape, o.type) for o in s.get_outputs()])
+              if "vision" in f:
+                  pv = inputs["pixel_values"].numpy()
+                  if "fp16" in f: pv = pv.astype(np.float16)
+                  o = s.run(None, {"pixel_values": pv})
+                  v = o[-1][0].astype(np.float32) if o[-1].ndim == 2 else o[1][0].astype(np.float32)
+                  for k, arr in zip([x.name for x in s.get_outputs()], o): print("  out", k, arr.shape)
+                  pooled = [arr for arr in o if arr.ndim == 2][0][0].astype(np.float32)
+                  pooled = pooled / np.linalg.norm(pooled)
+                  print("  vision cos with torch", float(pooled @ ie.numpy()))
+                  onnx_img = pooled
+              else:
+                  feeds = {"input_ids": inputs["input_ids"].numpy()}
+                  o = s.run(None, feeds)
+                  for k, arr in zip([x.name for x in s.get_outputs()], o): print("  out", k, arr.shape)
+                  pooled = [arr for arr in o if arr.ndim == 2][0].astype(np.float32)
+                  pooled = pooled / np.linalg.norm(pooled, axis=1, keepdims=True)
+                  print("  text cos with torch", [round(float(a @ b), 4) for a, b in zip(pooled, te.numpy())])
+                  print("  onnx probs", [round(float(1/(1+np.exp(-(model.logit_scale.exp().item()*x + model.logit_bias.item())))), 4) for x in pooled @ onnx_img])
