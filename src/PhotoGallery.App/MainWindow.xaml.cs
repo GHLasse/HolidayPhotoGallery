@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using PhotoGallery.App.Controls;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using Windows.Graphics;
@@ -13,6 +14,8 @@ namespace PhotoGallery.App;
 
 public sealed partial class MainWindow : Window
 {
+    private bool _syncingTimeZone;
+    private bool _syncingCamera;
     private List<PhotoItemViewModel> _viewerItems = [];
     private int _viewerIndex;
     private int _viewerLoadVersion;
@@ -28,8 +31,73 @@ public sealed partial class MainWindow : Window
         RotateLeftButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)188 });
         RotateRightButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)190 });
 
-        Closed += async (_, _) => await ViewModel.DisposeAsync();
+        CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
+        CompareLayer.CloseRequested += CloseCompare;
+        CompareLayer.NavigateRequested += CompareNavigate;
+
+        // Must finish before the handler returns: an awaited shutdown never completed, because the app
+        // exits at the first await, leaving ExifTool running and the app folder locked.
+        Closed += (_, _) => ViewModel.Dispose();
+        ViewModel.Editor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MetadataEditorViewModel.TimeZones) or nameof(MetadataEditorViewModel.TimeZoneIndex))
+                SyncTimeZoneCombo();
+        };
+        SyncTimeZoneCombo();
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
+                SyncCameraCombo();
+        };
+        SyncCameraCombo();
         _ = ViewModel.InitializeAsync();
+    }
+
+    // The list always goes in before the index; a combo box throws when given an index it doesn't have.
+    private void SyncTimeZoneCombo()
+    {
+        _syncingTimeZone = true;
+        try
+        {
+            var zones = ViewModel.Editor.TimeZones;
+            if (!ReferenceEquals(TimeZoneCombo.ItemsSource, zones))
+                TimeZoneCombo.ItemsSource = zones;
+            var index = ViewModel.Editor.TimeZoneIndex;
+            TimeZoneCombo.SelectedIndex = index >= 0 && index < zones.Count ? index : -1;
+        }
+        finally
+        {
+            _syncingTimeZone = false;
+        }
+    }
+
+    private void SyncCameraCombo()
+    {
+        _syncingCamera = true;
+        try
+        {
+            var cameras = ViewModel.Cameras;
+            if (!ReferenceEquals(CameraCombo.ItemsSource, cameras))
+                CameraCombo.ItemsSource = cameras;
+            var index = ViewModel.CameraIndex;
+            CameraCombo.SelectedIndex = index >= 0 && index < cameras.Count ? index : 0;
+        }
+        finally
+        {
+            _syncingCamera = false;
+        }
+    }
+
+    private void CameraCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_syncingCamera && CameraCombo.SelectedIndex >= 0)
+            ViewModel.CameraIndex = CameraCombo.SelectedIndex;
+    }
+
+    private void TimeZoneCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_syncingTimeZone && TimeZoneCombo.SelectedIndex >= 0)
+            ViewModel.Editor.TimeZoneIndex = TimeZoneCombo.SelectedIndex;
     }
 
     public MainViewModel ViewModel { get; } = new();
@@ -69,6 +137,7 @@ public sealed partial class MainWindow : Window
         ViewModel.MinRating = 0;
         ViewModel.TakenFrom = null;
         ViewModel.TakenTo = null;
+        ViewModel.CameraIndex = 0;
         foreach (var tag in ViewModel.Tags)
             tag.IsSelected = false;
     }
@@ -84,7 +153,7 @@ public sealed partial class MainWindow : Window
     private void FolderTree_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
     {
         if (args.Item is FolderNodeViewModel folder)
-            folder.LoadChildren();
+            folder.PrepareToExpand();
     }
 
     private void PhotoGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -133,11 +202,82 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == VirtualKey.Enter && PhotoGrid.SelectedItem is PhotoItemViewModel item)
+        if (e.Key != VirtualKey.Enter)
+            return;
+        var selected = SelectedPhotos;
+        if (selected.Count == 1)
+            OpenViewer(selected[0]);
+        else if (selected.Count > 1)
+            OpenCompare(selected);
+        e.Handled = true;
+    }
+
+    // ---- Compare view ----
+
+    private void Compare_Click(object sender, RoutedEventArgs e) => OpenCompare(SelectedPhotos);
+
+    private void OpenCompare(IReadOnlyList<PhotoItemViewModel> photos)
+    {
+        if (photos.Count == 0)
         {
-            OpenViewer(item);
-            e.Handled = true;
+            ViewModel.ErrorMessage = "Select 1 to 4 photos to compare.";
+            return;
         }
+        if (photos.Count > CompareView.MaxPhotos)
+        {
+            ViewModel.ErrorMessage = $"Select at most {CompareView.MaxPhotos} photos to compare; {photos.Count} are selected.";
+            return;
+        }
+        CompareLayer.Visibility = Visibility.Visible;
+        CompareLayer.Show(photos);
+    }
+
+    private void CloseCompare()
+    {
+        var shown = CompareLayer.Photos;
+        CompareLayer.Visibility = Visibility.Collapsed;
+        if (shown.Count > 0)
+            PhotoGrid.ScrollIntoView(shown[0]);
+        PhotoGrid.Focus(FocusState.Programmatic);
+    }
+
+    // With one photo shown, Left and Right step through the grid, so photos can be rated one after another.
+    private void CompareNavigate(int step)
+    {
+        var current = CompareLayer.Photos.FirstOrDefault();
+        var index = current is null ? -1 : ViewModel.Photos.IndexOf(current);
+        var next = index + step;
+        if (index < 0 || next < 0 || next >= ViewModel.Photos.Count)
+            return;
+        var item = ViewModel.Photos[next];
+        PhotoGrid.SelectedItem = item;
+        CompareLayer.Show([item]);
+    }
+
+    // ---- Shift dates ----
+
+    private async void MakeEditable_Click(object sender, RoutedEventArgs e) => await ViewModel.MakeEditableAsync();
+
+    private async void ShiftDates_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = SelectedPhotos;
+        var dated = selected.Where(p => p.Photo.DateTaken is not null).ToList();
+        if (dated.Count == 0)
+        {
+            ViewModel.ErrorMessage = selected.Count == 0
+                ? "Select the photos whose date and time you want to correct."
+                : "None of the selected photos has a date taken to shift.";
+            return;
+        }
+
+        // Unsaved edits in the panel would otherwise be written with the old date afterwards.
+        if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
+            return;
+
+        var earliest = dated.Select(p => p.Photo.DateTaken!.Value).MinBy(d => d.Local);
+        var dialog = new ShiftDatesDialog(earliest, dated.Count, selected.Count - dated.Count) { XamlRoot = Root.XamlRoot };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ViewModel.ShiftDatesAsync(selected, dialog.Delta, dialog.NewZone);
     }
 
     // ---- Viewer ----

@@ -51,6 +51,34 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task A_temp_file_left_by_an_interrupted_save_does_not_block_saving()
+    {
+        var path = _temp.CopySample(".jpg");
+        await File.WriteAllTextAsync(path + "_exiftool_tmp", "left over");
+
+        await Service.WriteAsync(path, new MetadataChanges { Rating = 3 });
+
+        Assert.Equal(3, (await Service.ReadAsync(path)).Rating);
+        Assert.False(File.Exists(path + "_exiftool_tmp"));
+    }
+
+    [ExifToolFact]
+    public async Task A_read_only_photo_gets_a_clear_message()
+    {
+        var path = _temp.CopySample(".jpg");
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<ExifToolException>(() => Service.WriteAsync(path, new MetadataChanges { Rating = 3 }));
+            Assert.Contains("read-only", ex.Message);
+        }
+        finally
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+        }
+    }
+
+    [ExifToolFact]
     public async Task Only_the_given_fields_are_changed()
     {
         var path = _temp.CopySample(".jpg");
@@ -102,6 +130,30 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         Assert.Equal(6, m.Orientation);
         Assert.Equal(32, m.Width);
         Assert.Equal(16, m.Height);
+    }
+
+    [ExifToolTheory]
+    [InlineData(".jpg")]
+    [InlineData(".heic")]
+    public async Task Shifting_the_date_moves_create_date_too_and_reads_the_camera(string extension)
+    {
+        var path = _temp.CopySample(extension);
+        await _exifTool!.RunAsync(["-overwrite_original", "-IFD0:Make=Apple", "-IFD0:Model=iPhone 15 Pro",
+            "-ExifIFD:DateTimeOriginal=2024:07:01 23:30:00", "-ExifIFD:CreateDate=2024:07:01 23:30:00", path]);
+        var before = await Service.ReadAsync(path);
+        var delta = TimeSpan.FromHours(8);
+
+        await Service.WriteAsync(path, new MetadataChanges
+        {
+            DateTaken = before.DateTaken!.Value.Shifted(delta, TimeSpan.FromHours(9)),
+            ShiftCreateDateBy = delta,
+        });
+
+        var after = await Service.ReadAsync(path);
+        Assert.Equal("Apple iPhone 15 Pro", after.Camera);
+        Assert.Equal("2024-07-02 07:30:00 +09:00", after.DateTaken.ToString());
+        var createDate = await _exifTool.RunAsync(["-s3", "-ExifIFD:CreateDate", path]);
+        Assert.Equal("2024:07:02 07:30:00", createDate.Output.Trim());
     }
 
     [ExifToolFact]

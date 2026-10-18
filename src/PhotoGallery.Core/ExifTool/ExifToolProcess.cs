@@ -7,7 +7,7 @@ namespace PhotoGallery.Core.ExifTool;
 /// One long-running ExifTool process in "-stay_open" mode. Starting ExifTool costs far more than
 /// running a command, so the whole app shares this process and sends it commands one at a time.
 /// </summary>
-public sealed class ExifToolProcess : IAsyncDisposable
+public sealed class ExifToolProcess : IAsyncDisposable, IDisposable
 {
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
@@ -119,6 +119,37 @@ public sealed class ExifToolProcess : IAsyncDisposable
             if (line.TrimEnd() == marker)
                 return sb.ToString();
             sb.Append(line).Append('\n');
+        }
+    }
+
+    /// <summary>
+    /// Stops ExifTool synchronously, for when the app is closing and cannot wait for async work:
+    /// asks it to quit, and kills it (with its Perl child process) if it has not exited within two seconds.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.StandardInput.Write("-stay_open\nFalse\n");
+                _process.StandardInput.Flush();
+                _process.StandardInput.Close();
+                if (!_process.WaitForExit(2000))
+                    _process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // The process is already gone.
+        }
+        finally
+        {
+            _process.Dispose();
         }
     }
 

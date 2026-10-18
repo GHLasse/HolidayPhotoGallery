@@ -16,6 +16,9 @@ public sealed record PhotoQuery
 
     public int MinRating { get; init; }
 
+    /// <summary>Only photos from this camera (as in <see cref="IndexedPhoto.Camera"/>).</summary>
+    public string? Camera { get; init; }
+
     /// <summary>Inclusive, compared with the local time the photo was taken.</summary>
     public DateTime? TakenFrom { get; init; }
 

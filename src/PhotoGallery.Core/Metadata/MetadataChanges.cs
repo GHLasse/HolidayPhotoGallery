@@ -17,8 +17,14 @@ public sealed record MetadataChanges
 
     public DateTaken? DateTaken { get; init; }
 
+    /// <summary>
+    /// When the date taken is being shifted, moves the "digitized" dates (CreateDate) by the same amount,
+    /// so all the dates in the file stay consistent.
+    /// </summary>
+    public TimeSpan? ShiftCreateDateBy { get; init; }
+
     /// <summary>EXIF orientation 1-8.</summary>
     public int? Orientation { get; init; }
 
-    public bool IsEmpty => Tags is null && Rating is null && Caption is null && DateTaken is null && Orientation is null;
+    public bool IsEmpty => Tags is null && Rating is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null && Orientation is null;
 }

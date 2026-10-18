@@ -34,9 +34,21 @@ saved **in the photo files themselves**.
 - Edit rating, caption and tags for one photo or many at once (tags you add or remove apply to all
   selected photos; other tags are left alone). Edit the date taken, with its time zone offset, for single photos.
 - Rotate JPEG and TIFF photos left or right (Ctrl+, and Ctrl+.).
+- **Compare** 1 to 4 selected photos side by side (Enter or the Compare button), with zoom and pan
+  shared between them. Keys 1–5 rate the highlighted photo, 0 clears it, Tab moves on. With a single
+  photo, Left and Right step through the gallery.
+- Filter by **camera**, and **shift dates**: move the date taken of the selected photos by an amount,
+  or set the earliest one to a known time and move the rest to match, optionally setting the time zone.
+  The camera's "digitized" date moves along so all dates in the file agree.
+- Time zones are picked from Windows' list of zones, and each photo gets the offset that zone had on
+  its own date, so summer time is handled.
 
-Planned next: map view and GPS editing (Geosetter style), reverse geocoding, batch date shifting,
-face recognition, simple enhance, and Google Photos / OneDrive upload.
+## Roadmap
+
+1. ~~Compare view with rating; camera filter and date shifting~~
+2. Map panel (OpenStreetMap) to place photos, and looking up place names from GPS
+3. Crop and automatic contrast/brightness, keeping the original in a backup folder with undo
+4. Automatic tagging with a model that runs on the PC
 
 ## Building
 

@@ -9,6 +9,9 @@ namespace PhotoGallery.App.Imaging;
 /// <summary>
 /// Loads thumbnails and full-size images through Windows' own codecs (WIC). HEIC needs the
 /// free "HEIF Image Extensions" from the Microsoft Store, which most Windows 11 PCs already have.
+/// The file and codec calls run on a background thread: started from the UI thread, Windows' storage
+/// code makes blocking cross-process calls that let WinUI handle messages re-entrantly, and WinUI then
+/// ends the app (stowed exception 0xc000027b). Only the image source is made on the UI thread.
 /// </summary>
 public static class ImageLoader
 {
@@ -18,13 +21,21 @@ public static class ImageLoader
     /// </summary>
     public static async Task<ImageSource?> LoadShellThumbnailAsync(string path, uint size)
     {
+        var bitmap = await Task.Run(() => ReadShellThumbnailAsync(path, size));
+        return bitmap is null ? null : await ToImageSourceAsync(bitmap);
+    }
+
+    private static async Task<SoftwareBitmap?> ReadShellThumbnailAsync(string path, uint size)
+    {
         var file = await StorageFile.GetFileFromPathAsync(path);
         using var thumbnail = await file.GetThumbnailAsync(ThumbnailMode.SingleItem, size, ThumbnailOptions.ResizeThumbnail);
         if (thumbnail is null)
             return null;
-        var bitmap = new BitmapImage();
-        await bitmap.SetSourceAsync(thumbnail);
-        return bitmap;
+
+        // Decoded here, completely, before the stream is closed. A BitmapImage given the stream would
+        // decode it later on its own, after "using" has closed it, and that crashed the app inside WinUI.
+        var decoder = await BitmapDecoder.CreateAsync(thumbnail);
+        return await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
     }
 
     /// <summary>
@@ -32,7 +43,10 @@ public static class ImageLoader
     /// and turned upright according to its EXIF orientation. Used for the viewer, and for thumbnails
     /// right after a rotation, when Windows' thumbnail cache may still hold the old picture.
     /// </summary>
-    public static async Task<ImageSource> DecodeAsync(string path, uint maxSize)
+    public static async Task<ImageSource> DecodeAsync(string path, uint maxSize) =>
+        await ToImageSourceAsync(await Task.Run(() => DecodeBitmapAsync(path, maxSize)));
+
+    private static async Task<SoftwareBitmap> DecodeBitmapAsync(string path, uint maxSize)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);
         using var stream = await file.OpenReadAsync();
@@ -50,13 +64,16 @@ public static class ImageLoader
         };
 
         // Not disposed here: the image source keeps using the pixels after SetBitmapAsync.
-        var bitmap = await decoder.GetSoftwareBitmapAsync(
+        return await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8,
             BitmapAlphaMode.Premultiplied,
             transform,
             ExifOrientationMode.RespectExifOrientation,
             ColorManagementMode.ColorManageToSRgb);
+    }
 
+    private static async Task<ImageSource> ToImageSourceAsync(SoftwareBitmap bitmap)
+    {
         var source = new SoftwareBitmapSource();
         await source.SetBitmapAsync(bitmap);
         return source;

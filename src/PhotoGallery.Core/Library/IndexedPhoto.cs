@@ -27,6 +27,8 @@ public sealed record IndexedPhoto
 
     public int? Height { get; init; }
 
+    public string? Camera { get; init; }
+
     public string FileName => System.IO.Path.GetFileName(Path);
 
     public static IndexedPhoto From(FileInfo file, PhotoMetadata metadata) => new()
@@ -42,5 +44,6 @@ public sealed record IndexedPhoto
         Orientation = metadata.Orientation,
         Width = metadata.Width,
         Height = metadata.Height,
+        Camera = metadata.Camera,
     };
 }

@@ -25,6 +25,19 @@ public class DateTakenTests
     public void Rejects_invalid_dates(string input) => Assert.False(DateTaken.TryParse(input, out _));
 
     [Fact]
+    public void Shifting_moves_the_time_and_can_change_the_offset()
+    {
+        DateTaken.TryParse("2024-07-01 23:30:00+01:00", out var date);
+
+        // Camera still on home time (CET) in Tokyo: eight hours ahead, offset +09:00.
+        var shifted = date.Shifted(TimeSpan.FromHours(8), TimeSpan.FromHours(9));
+
+        Assert.Equal("2024-07-02 07:30:00 +09:00", shifted.ToString());
+        Assert.Equal(date.Instant, shifted.Instant);
+        Assert.Equal("2024-07-01 22:30:00 +01:00", date.Shifted(TimeSpan.FromHours(-1)).ToString());
+    }
+
+    [Fact]
     public void Instant_uses_offset()
     {
         DateTaken.TryParse("2024-07-01 10:00:00+02:00", out var date);

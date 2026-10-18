@@ -34,7 +34,62 @@ jobs:
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
       - name: Build app (x64)
         run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64
+      - name: Smoke test (start the app and check it stays up)
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:LOCALAPPDATA 'HolidayPhotoGallery'
+          Remove-Item "$data\*.log" -ErrorAction SilentlyContinue
+          # A library with the sample photos, so startup also loads, lists and indexes real files.
+          $photos = Join-Path $env:RUNNER_TEMP 'SmokePhotos'
+          New-Item -ItemType Directory -Force $photos, $data | Out-Null
+          Copy-Item tests/PhotoGallery.Core.Tests/TestData/* $photos
+          # Like a real library: a holiday subfolder that is also added on its own, next to its parent.
+          $holiday = Join-Path $photos 'Costa Rica 2026'
+          New-Item -ItemType Directory -Force $holiday | Out-Null
+          # Several cameras and tags, so the camera and tag filters are rebuilt as on a real library.
+          $jpg = 'tests/PhotoGallery.Core.Tests/TestData/sample.jpg'
+          foreach ($i in 1..12) {
+            $file = Join-Path $photos "camera$i.jpg"
+            Copy-Item $jpg $file
+            exiftool -q -overwrite_original "-Make=Maker$($i % 4)" "-Model=Model $($i % 4)" "-XMP-dc:Subject=Tag$($i % 3)" $file
+          }
+          # As many photos as a holiday, so the grid loads hundreds of thumbnails like on a user's PC.
+          foreach ($i in 1..12) { foreach ($n in 1..40) { Copy-Item (Join-Path $photos "camera$i.jpg") (Join-Path $holiday "copy$i-$n.jpg") } }
+          @{ Folders = @($holiday, $photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
+          $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
+          # Several starts, since the crash this guards against depends on timing; the first also fills the index.
+          # A crash leaves a full dump (Windows Error Reporting), which the cdb debugger then explains;
+          # attaching a debugger up front changes the timing so much that the crash no longer happens.
+          $dumps = "$env:RUNNER_TEMP\dumps"
+          New-Item -ItemType Directory -Force $dumps | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\HolidayPhotoGallery.exe'
+          New-Item -Force $key | Out-Null
+          Set-ItemProperty $key DumpFolder $dumps -Type ExpandString
+          Set-ItemProperty $key DumpType 2 -Type DWord
+          foreach ($run in 1..60) {
+            $p = Start-Process $exe.FullName -PassThru
+            Start-Sleep -Seconds 8
+            if (-not $p.HasExited) {
+              "Start $run`: app is running"
+              Stop-Process -Id $p.Id -Force
+              Start-Sleep -Seconds 2
+              continue
+            }
+            "Start $run`: app exited with code $($p.ExitCode)"
+            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 30 }
+            Start-Sleep -Seconds 10
+            $dump = Get-ChildItem $dumps -Filter *.dmp | Sort-Object LastWriteTime | Select-Object -Last 1
+            $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
+            if ($dump -and (Test-Path $cdb)) {
+              "===== crash analysis of $($dump.Name)"
+              & $cdb -z $dump.FullName -lines -c ".symfix $env:RUNNER_TEMP\symbols; .reload; !analyze -v; q" 2>&1 | Select-Object -Last 250
+            } else {
+              "No dump found in $dumps"
+            }
+            exit 1
+          }
       - name: Upload app
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: HolidayPhotoGallery-win-x64

@@ -19,7 +19,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal",
         "-XMP-photoshop:DateCreated", "-ExifIFD:CreateDate",
         "-IFD0:Orientation", "-XMP-tiff:Orientation",
-        "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Model", "-Composite:ImageSize",
+        "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -72,12 +72,75 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.IsEmpty)
             return;
 
-        var args = BuildWriteArguments(path, changes);
-        var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
+        if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
+            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.");
 
-        var errors = output.ErrorLines.ToList();
-        if (errors.Count > 0)
-            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: {string.Join(" ", errors)}");
+        var args = BuildWriteArguments(path, changes);
+        for (var attempt = 1; ; attempt++)
+        {
+            await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+            var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
+            // ExifTool ignores a failure to delete its temp file after a successful save; tidy up so the
+            // next save of this photo is not blocked.
+            try
+            {
+                await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+            }
+            catch (ExifToolException)
+            {
+                // Still locked: the save itself worked, and the next save tries again.
+            }
+
+            var errors = output.ErrorLines.ToList();
+            if (errors.Count == 0)
+                return;
+
+            // Windows briefly locks a file that was just changed, e.g. while a virus scanner checks it,
+            // so a second save of the same photo straight after the first can fail. Wait and try again.
+            if (attempt < WriteAttempts && errors.Any(IsFileLockedError))
+            {
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            var reason = string.Join(" ", errors);
+            if (errors.Any(IsFileLockedError))
+                reason += " Another program may have the photo open; close it and try again.";
+            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: {reason}");
+        }
+    }
+
+    private const int WriteAttempts = 5;
+
+    private static bool IsFileLockedError(string error) =>
+        error.Contains("for writing", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("Temporary file already exists", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("Error renaming", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// ExifTool writes to "photo.jpg_exiftool_tmp" first and refuses to start if that file exists.
+    /// One is left behind when a save was interrupted, or when Windows still had it open (e.g. a virus
+    /// scanner) at the moment ExifTool tried to delete it. This app saves one file at a time, so an
+    /// existing one is always stale. Deleting is retried briefly in case it is still locked.
+    /// </summary>
+    private static async Task RemoveStaleTempFileAsync(string path, CancellationToken cancellationToken)
+    {
+        var temp = path + "_exiftool_tmp";
+        for (var attempt = 1; File.Exists(temp); attempt++)
+        {
+            try
+            {
+                File.SetAttributes(temp, FileAttributes.Normal);
+                File.Delete(temp);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt == 10)
+                    throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the leftover file {Path.GetFileName(temp)} cannot be removed ({ex.Message}).");
+                await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     internal static List<string> BuildWriteArguments(string path, MetadataChanges changes)
@@ -149,6 +212,18 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-ExifIFD:OffsetTimeOriginal={offset ?? ""}");
             args.Add($"-XMP-exif:DateTimeOriginal={exif}{offset}");
             args.Add($"-XMP-photoshop:DateCreated={exif}{offset}");
+        }
+
+        if (changes.ShiftCreateDateBy is { } shift && shift != TimeSpan.Zero)
+        {
+            // ExifTool's date shift syntax: "Y:M:D H:M:S", added with += or subtracted with -=.
+            var abs = shift.Duration();
+            var amount = $"0:0:{abs.Days} {abs.Hours}:{abs.Minutes}:{abs.Seconds}";
+            var op = shift < TimeSpan.Zero ? "-=" : "+=";
+            args.Add($"-ExifIFD:CreateDate{op}{amount}");
+            args.Add($"-XMP-xmp:CreateDate{op}{amount}");
+            if (changes.DateTaken?.ToOffsetString() is { } digitizedOffset)
+                args.Add($"-ExifIFD:OffsetTimeDigitized={digitizedOffset}");
         }
 
         if (changes.Orientation is { } orientation)
@@ -239,8 +314,26 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Height = height,
             Latitude = GetNumber(item, "Composite:GPSLatitude"),
             Longitude = GetNumber(item, "Composite:GPSLongitude"),
-            CameraModel = GetString(item, "IFD0:Model")?.Trim(),
+            Camera = CameraName(GetString(item, "IFD0:Make"), GetString(item, "IFD0:Model")),
         };
+    }
+
+    /// <summary>
+    /// Combines make and model the way people say them: "Apple" + "iPhone 15 Pro" gives "Apple iPhone 15 Pro",
+    /// while "Canon" + "Canon EOS R6" stays "Canon EOS R6".
+    /// </summary>
+    internal static string? CameraName(string? make, string? model)
+    {
+        make = make?.Trim();
+        model = model?.Trim();
+        if (string.IsNullOrEmpty(model))
+            return string.IsNullOrEmpty(make) ? null : make;
+        if (string.IsNullOrEmpty(make))
+            return model;
+
+        // Makers often write their full company name ("NIKON CORPORATION") but only the brand in the model.
+        var brand = make.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+        return model.StartsWith(brand, StringComparison.OrdinalIgnoreCase) ? model : $"{make} {model}";
     }
 
     private static DateTaken? ParseDateTaken(JsonElement item)
