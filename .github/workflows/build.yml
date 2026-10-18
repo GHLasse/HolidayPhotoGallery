@@ -58,31 +58,34 @@ jobs:
           @{ Folders = @($holiday, $photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
           # Several starts, since the crash this guards against depends on timing; the first also fills the index.
-          # Each start runs under the cdb debugger when it is installed: WinUI only tells a debugger why it fails.
-          $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-          "Debugger: $($cdb.FullName)"
+          # A crash leaves a full dump (Windows Error Reporting), which the cdb debugger then explains;
+          # attaching a debugger up front changes the timing so much that the crash no longer happens.
+          $dumps = "$env:RUNNER_TEMP\dumps"
+          New-Item -ItemType Directory -Force $dumps | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\HolidayPhotoGallery.exe'
+          New-Item -Force $key | Out-Null
+          Set-ItemProperty $key DumpFolder $dumps -Type ExpandString
+          Set-ItemProperty $key DumpType 2 -Type DWord
           foreach ($run in 1..10) {
-            $out = "$env:RUNNER_TEMP\cdb$run.txt"
-            if ($cdb) {
-              $p = Start-Process $cdb.FullName -ArgumentList '-G', '-lines', '-logo', "`"$out`"", '-c', '"sxe -c \".exr -1;kb 40;q\" c000027b;g"', "`"$($exe.FullName)`"" -PassThru -WindowStyle Hidden
-            } else {
-              $p = Start-Process $exe.FullName -PassThru
-            }
+            $p = Start-Process $exe.FullName -PassThru
             Start-Sleep -Seconds 15
-            $app = Get-Process HolidayPhotoGallery -ErrorAction SilentlyContinue
-            if ($app) {
+            if (-not $p.HasExited) {
               "Start $run`: app is running"
-              $app | Stop-Process -Force
-              $p | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
-              Get-Process cdb -ErrorAction SilentlyContinue | Stop-Process -Force
+              Stop-Process -Id $p.Id -Force
               Start-Sleep -Seconds 2
               continue
             }
-            "Start $run`: app crashed"
+            "Start $run`: app exited with code $($p.ExitCode)"
             foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 30 }
-            if (Test-Path $out) { "===== debugger"; Get-Content $out | Select-Object -Last 200 }
-            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue |
-              Where-Object { $_.LevelDisplayName -in 'Error', 'Critical' } | Format-List TimeCreated, ProviderName, Message
+            Start-Sleep -Seconds 10
+            $dump = Get-ChildItem $dumps -Filter *.dmp | Sort-Object LastWriteTime | Select-Object -Last 1
+            $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
+            if ($dump -and (Test-Path $cdb)) {
+              "===== crash analysis of $($dump.Name)"
+              & $cdb -z $dump.FullName -lines -c ".symfix $env:RUNNER_TEMP\symbols; .reload; !analyze -v; q" 2>&1 | Select-Object -Last 250
+            } else {
+              "No dump found in $dumps"
+            }
             exit 1
           }
       - name: Upload app
