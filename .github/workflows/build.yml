@@ -57,18 +57,30 @@ jobs:
           foreach ($i in 1..12) { foreach ($n in 1..40) { Copy-Item (Join-Path $photos "camera$i.jpg") (Join-Path $holiday "copy$i-$n.jpg") } }
           @{ Folders = @($holiday, $photos) } | ConvertTo-Json | Set-Content "$data\settings.json"
           $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
-          # Several starts, since the crash this guards against depended on timing; the first also fills the index.
+          # Several starts, since the crash this guards against depends on timing; the first also fills the index.
+          # Each start runs under the cdb debugger when it is installed: WinUI only tells a debugger why it fails.
+          $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          "Debugger: $($cdb.FullName)"
           foreach ($run in 1..10) {
-            $p = Start-Process $exe.FullName -PassThru
+            $out = "$env:RUNNER_TEMP\cdb$run.txt"
+            if ($cdb) {
+              $p = Start-Process $cdb.FullName -ArgumentList '-G', '-lines', '-logo', "`"$out`"", '-c', '"sxe -c \".exr -1;kb 40;q\" c000027b;g"', "`"$($exe.FullName)`"" -PassThru -WindowStyle Hidden
+            } else {
+              $p = Start-Process $exe.FullName -PassThru
+            }
             Start-Sleep -Seconds 15
-            if (-not $p.HasExited) {
+            $app = Get-Process HolidayPhotoGallery -ErrorAction SilentlyContinue
+            if ($app) {
               "Start $run`: app is running"
-              Stop-Process -Id $p.Id -Force
+              $app | Stop-Process -Force
+              $p | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+              Get-Process cdb -ErrorAction SilentlyContinue | Stop-Process -Force
               Start-Sleep -Seconds 2
               continue
             }
-            "Start $run`: app exited with code $($p.ExitCode)"
-            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 60 }
+            "Start $run`: app crashed"
+            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 30 }
+            if (Test-Path $out) { "===== debugger"; Get-Content $out | Select-Object -Last 200 }
             Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue |
               Where-Object { $_.LevelDisplayName -in 'Error', 'Critical' } | Format-List TimeCreated, ProviderName, Message
             exit 1
