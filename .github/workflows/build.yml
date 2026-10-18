@@ -1,0 +1,41 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core-tests-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install ExifTool
+        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+      - name: Test core library
+        run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Download ExifTool
+        shell: pwsh
+        run: |
+          ./scripts/Get-ExifTool.ps1
+          "$PWD\tools\exiftool" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Test core library
+        run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
+      - name: Build app (x64)
+        run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: HolidayPhotoGallery-win-x64
+          path: src/PhotoGallery.App/bin/x64/Release/net10.0-windows10.0.19041.0/win-x64/

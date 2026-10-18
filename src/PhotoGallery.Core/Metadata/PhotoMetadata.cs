@@ -1,0 +1,31 @@
+namespace PhotoGallery.Core.Metadata;
+
+/// <summary>
+/// The metadata the gallery shows and edits for one image file, as read from the file itself.
+/// </summary>
+public sealed record PhotoMetadata
+{
+    public required string Path { get; init; }
+
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>0 = unrated, 1-5 stars. Rejected (-1) is shown as unrated.</summary>
+    public int Rating { get; init; }
+
+    public string? Caption { get; init; }
+
+    public DateTaken? DateTaken { get; init; }
+
+    /// <summary>EXIF orientation, 1-8. 1 means "as stored".</summary>
+    public int Orientation { get; init; } = 1;
+
+    public int? Width { get; init; }
+
+    public int? Height { get; init; }
+
+    public double? Latitude { get; init; }
+
+    public double? Longitude { get; init; }
+
+    public string? CameraModel { get; init; }
+}
