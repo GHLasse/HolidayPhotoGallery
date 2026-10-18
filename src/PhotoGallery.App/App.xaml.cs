@@ -15,6 +15,31 @@ public partial class App : Application
         ChildProcessGuard.Enable();
         UnhandledException += (_, e) => LogCrash(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash(e.ExceptionObject);
+        // WinUI can turn an error into an immediate crash without raising either event above, so every
+        // exception during startup is recorded; the log shows what was thrown just before a crash.
+        AppDomain.CurrentDomain.FirstChanceException += LogStartupException;
+        _startup.Start();
+    }
+
+    private static readonly System.Diagnostics.Stopwatch _startup = new();
+    private static int _startupExceptionCount;
+
+    private static void LogStartupException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+    {
+        if (_startup.Elapsed > TimeSpan.FromSeconds(30) || Interlocked.Increment(ref _startupExceptionCount) > 50)
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= LogStartupException;
+            return;
+        }
+        try
+        {
+            Directory.CreateDirectory(LibrarySettings.DefaultDataFolder);
+            File.AppendAllText(Path.Combine(LibrarySettings.DefaultDataFolder, "startup.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} {e.Exception.GetType().FullName}: {e.Exception.Message}{Environment.NewLine}{Environment.StackTrace}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch (IOException)
+        {
+        }
     }
 
     // Keeps a record of crashes, since a WinUI app otherwise just disappears.

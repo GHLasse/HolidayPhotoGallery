@@ -34,7 +34,23 @@ jobs:
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
       - name: Build app (x64)
         run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64
+      - name: Smoke test (start the app and check it stays up)
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:LOCALAPPDATA 'HolidayPhotoGallery'
+          Remove-Item "$data\*.log" -ErrorAction SilentlyContinue
+          $exe = Get-ChildItem src/PhotoGallery.App/bin/x64/Release -Recurse -Filter HolidayPhotoGallery.exe | Select-Object -First 1
+          $p = Start-Process $exe.FullName -PassThru
+          Start-Sleep -Seconds 25
+          $alive = -not $p.HasExited
+          foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName }
+          if ($alive) { "App is running after 25 s"; Stop-Process -Id $p.Id -Force; exit 0 }
+          "App exited with code $($p.ExitCode)"
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue |
+            Where-Object { $_.LevelDisplayName -in 'Error', 'Critical' } | Format-List TimeCreated, ProviderName, Message
+          exit 1
       - name: Upload app
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: HolidayPhotoGallery-win-x64
