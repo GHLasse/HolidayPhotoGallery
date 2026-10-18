@@ -14,7 +14,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$version = (Invoke-RestMethod -Uri 'https://exiftool.org/ver.txt').Trim()
+# Read ver.txt as text: Invoke-RestMethod would turn "13.10" into the number 13.1.
+$raw = (Invoke-WebRequest -Uri 'https://exiftool.org/ver.txt' -UseBasicParsing).Content
+if ($raw -is [byte[]]) { $raw = [Text.Encoding]::ASCII.GetString($raw) }
+$version = ([string]$raw).Trim()
 $zipName = "exiftool-${version}_64.zip"
 Write-Host "Downloading ExifTool $version..."
 
