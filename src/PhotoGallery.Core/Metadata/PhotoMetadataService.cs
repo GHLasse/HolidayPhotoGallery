@@ -72,24 +72,50 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.IsEmpty)
             return;
 
-        await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+        if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
+            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only (see its Properties in Explorer).");
+
         var args = BuildWriteArguments(path, changes);
-        var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
-        // ExifTool ignores a failure to delete its temp file after a successful save; tidy up so the
-        // next save of this photo is not blocked.
-        try
+        for (var attempt = 1; ; attempt++)
         {
             await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
-        }
-        catch (ExifToolException)
-        {
-            // Still locked: the save itself worked, and the next save tries again.
-        }
+            var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
+            // ExifTool ignores a failure to delete its temp file after a successful save; tidy up so the
+            // next save of this photo is not blocked.
+            try
+            {
+                await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+            }
+            catch (ExifToolException)
+            {
+                // Still locked: the save itself worked, and the next save tries again.
+            }
 
-        var errors = output.ErrorLines.ToList();
-        if (errors.Count > 0)
-            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: {string.Join(" ", errors)}");
+            var errors = output.ErrorLines.ToList();
+            if (errors.Count == 0)
+                return;
+
+            // Windows briefly locks a file that was just changed, e.g. while a virus scanner checks it,
+            // so a second save of the same photo straight after the first can fail. Wait and try again.
+            if (attempt < WriteAttempts && errors.Any(IsFileLockedError))
+            {
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            var reason = string.Join(" ", errors);
+            if (errors.Any(IsFileLockedError))
+                reason += " Another program may have the photo open; close it and try again.";
+            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: {reason}");
+        }
     }
+
+    private const int WriteAttempts = 5;
+
+    private static bool IsFileLockedError(string error) =>
+        error.Contains("for writing", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("Temporary file already exists", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("Error renaming", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// ExifTool writes to "photo.jpg_exiftool_tmp" first and refuses to start if that file exists.

@@ -63,6 +63,22 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task A_read_only_photo_gets_a_clear_message()
+    {
+        var path = _temp.CopySample(".jpg");
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<ExifToolException>(() => Service.WriteAsync(path, new MetadataChanges { Rating = 3 }));
+            Assert.Contains("read-only", ex.Message);
+        }
+        finally
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+        }
+    }
+
+    [ExifToolFact]
     public async Task Only_the_given_fields_are_changed()
     {
         var path = _temp.CopySample(".jpg");
