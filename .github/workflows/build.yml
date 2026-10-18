@@ -66,7 +66,7 @@ jobs:
           New-Item -Force $key | Out-Null
           Set-ItemProperty $key DumpFolder $dumps -Type ExpandString
           Set-ItemProperty $key DumpType 2 -Type DWord
-          foreach ($run in 1..10) {
+          foreach ($run in 1..25) {
             $p = Start-Process $exe.FullName -PassThru
             Start-Sleep -Seconds 15
             if (-not $p.HasExited) {
