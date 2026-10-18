@@ -112,6 +112,26 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
     }
 
+    /// <summary>
+    /// Copies all metadata from <paramref name="source"/> into a freshly encoded <paramref name="target"/>
+    /// whose pixels are already upright and <paramref name="width"/> × <paramref name="height"/>. The old
+    /// embedded thumbnail and colour profile are left out, since they describe the old pixels.
+    /// </summary>
+    public async Task CopyMetadataAsync(string source, string target, int width, int height, CancellationToken cancellationToken = default)
+    {
+        var output = await exifTool.RunAsync(
+        [
+            "-overwrite_original", "-m",
+            "-tagsFromFile", source, "-all:all", "--IFD1:all", "--PreviewImage", "--ThumbnailImage",
+            "-IFD0:Orientation#=1", "-XMP-tiff:Orientation=",
+            $"-ExifIFD:ExifImageWidth={width}", $"-ExifIFD:ExifImageHeight={height}",
+            target,
+        ], cancellationToken).ConfigureAwait(false);
+        var errors = output.ErrorLines.ToList();
+        if (errors.Count > 0)
+            throw new ExifToolException($"Could not copy the metadata of {Path.GetFileName(source)}: {string.Join(" ", errors)}");
+    }
+
     private const int WriteAttempts = 5;
 
     private static bool IsFileLockedError(string error) =>
