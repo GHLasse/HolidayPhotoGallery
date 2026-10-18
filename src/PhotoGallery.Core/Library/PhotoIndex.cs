@@ -11,7 +11,7 @@ namespace PhotoGallery.Core.Library;
 /// </summary>
 public sealed class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -60,7 +60,8 @@ public sealed class PhotoIndex : IDisposable
                 caption TEXT,
                 orientation INTEGER NOT NULL DEFAULT 1,
                 width INTEGER,
-                height INTEGER
+                height INTEGER,
+                camera TEXT COLLATE NOCASE
             );
             CREATE INDEX IF NOT EXISTS ix_photos_folder ON photos(folder);
             CREATE INDEX IF NOT EXISTS ix_photos_date ON photos(date_taken);
@@ -105,14 +106,14 @@ public sealed class PhotoIndex : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height)
-            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height)
+            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height, camera)
+            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height, $camera)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
                 date_offset_minutes = excluded.date_offset_minutes, rating = excluded.rating,
                 caption = excluded.caption, orientation = excluded.orientation,
-                width = excluded.width, height = excluded.height
+                width = excluded.width, height = excluded.height, camera = excluded.camera
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", photo.Path);
@@ -127,6 +128,7 @@ public sealed class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$orientation", photo.Orientation);
         cmd.Parameters.AddWithValue("$width", (object?)photo.Width ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$height", (object?)photo.Height ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$camera", (object?)photo.Camera ?? DBNull.Value);
         var id = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         using var delete = _connection.CreateCommand();
@@ -190,6 +192,12 @@ public sealed class PhotoIndex : IDisposable
                 cmd.Parameters.AddWithValue("$minRating", query.MinRating);
             }
 
+            if (!string.IsNullOrEmpty(query.Camera))
+            {
+                where.Add("p.camera = $camera");
+                cmd.Parameters.AddWithValue("$camera", query.Camera);
+            }
+
             if (query.TakenFrom is { } from)
             {
                 where.Add("p.date_taken >= $from");
@@ -227,7 +235,7 @@ public sealed class PhotoIndex : IDisposable
 
             var sql = new StringBuilder("""
                 SELECT p.id, p.path, p.folder, p.file_size, p.file_mtime, p.date_taken, p.date_offset_minutes,
-                       p.rating, p.caption, p.orientation, p.width, p.height,
+                       p.rating, p.caption, p.orientation, p.width, p.height, p.camera,
                        (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id) AS tags
                 FROM photos p
                 """);
@@ -260,6 +268,22 @@ public sealed class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>Every camera in the library (or one folder of it) with how many photos it took, most used first.</summary>
+    public IReadOnlyList<(string Camera, int Count)> GetCameraCounts(string? folder = null)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            var where = string.IsNullOrWhiteSpace(folder) ? "" : $"AND {FolderCondition(cmd, folder, true)}";
+            cmd.CommandText = $"SELECT camera, COUNT(*) FROM photos WHERE camera IS NOT NULL {where} GROUP BY camera ORDER BY COUNT(*) DESC, camera;";
+            var result = new List<(string, int)>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add((reader.GetString(0), reader.GetInt32(1)));
+            return result;
+        }
+    }
+
     private static IndexedPhoto ReadPhoto(SqliteDataReader r)
     {
         DateTaken? date = null;
@@ -281,7 +305,8 @@ public sealed class PhotoIndex : IDisposable
             Orientation = r.GetInt32(9),
             Width = r.IsDBNull(10) ? null : r.GetInt32(10),
             Height = r.IsDBNull(11) ? null : r.GetInt32(11),
-            Tags = r.IsDBNull(12) ? [] : r.GetString(12).Split('\u001f'),
+            Camera = r.IsDBNull(12) ? null : r.GetString(12),
+            Tags = r.IsDBNull(13) ? [] : r.GetString(13).Split('\u001f'),
         };
     }
 

@@ -22,6 +22,13 @@ public readonly record struct DateTaken(DateTime Local, TimeSpan? Offset)
     public override string ToString() =>
         Offset is null ? ToDisplayDate() : $"{ToDisplayDate()} {ToOffsetString()}";
 
+    /// <summary>
+    /// Moves the time by <paramref name="delta"/>, e.g. to correct a camera clock that was wrong,
+    /// and optionally records a different UTC offset (the time zone the photo was really taken in).
+    /// </summary>
+    public DateTaken Shifted(TimeSpan delta, TimeSpan? newOffset = null) =>
+        new(Local + delta, newOffset ?? Offset);
+
     public static string FormatOffset(TimeSpan offset)
     {
         var sign = offset < TimeSpan.Zero ? "-" : "+";

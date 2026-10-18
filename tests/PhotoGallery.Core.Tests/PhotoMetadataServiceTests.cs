@@ -104,6 +104,30 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         Assert.Equal(16, m.Height);
     }
 
+    [ExifToolTheory]
+    [InlineData(".jpg")]
+    [InlineData(".heic")]
+    public async Task Shifting_the_date_moves_create_date_too_and_reads_the_camera(string extension)
+    {
+        var path = _temp.CopySample(extension);
+        await _exifTool!.RunAsync(["-overwrite_original", "-IFD0:Make=Apple", "-IFD0:Model=iPhone 15 Pro",
+            "-ExifIFD:DateTimeOriginal=2024:07:01 23:30:00", "-ExifIFD:CreateDate=2024:07:01 23:30:00", path]);
+        var before = await Service.ReadAsync(path);
+        var delta = TimeSpan.FromHours(8);
+
+        await Service.WriteAsync(path, new MetadataChanges
+        {
+            DateTaken = before.DateTaken!.Value.Shifted(delta, TimeSpan.FromHours(9)),
+            ShiftCreateDateBy = delta,
+        });
+
+        var after = await Service.ReadAsync(path);
+        Assert.Equal("Apple iPhone 15 Pro", after.Camera);
+        Assert.Equal("2024-07-02 07:30:00 +09:00", after.DateTaken.ToString());
+        var createDate = await _exifTool.RunAsync(["-s3", "-ExifIFD:CreateDate", path]);
+        Assert.Equal("2024:07:02 07:30:00", createDate.Output.Trim());
+    }
+
     [ExifToolFact]
     public async Task Rotating_a_heic_is_refused()
     {

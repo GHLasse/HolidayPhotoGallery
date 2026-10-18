@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:PhotoGallery.App"
     xmlns:vm="using:PhotoGallery.App.ViewModels"
+    xmlns:controls="using:PhotoGallery.App.Controls"
     Title="Holiday Photo Gallery">
 
     <Grid x:Name="Root">
@@ -20,15 +21,15 @@
             <ColumnDefinition Width="320" />
         </Grid.ColumnDefinitions>
 
-        <!-- Toolbar: search and filters -->
-        <Grid Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8">
+        <!-- Toolbar: commands, search and filters -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <CommandBar Grid.Column="0" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="False" Background="Transparent">
                 <AppBarButton Icon="Add" Label="Add folder" Click="AddFolder_Click" ToolTipService.ToolTip="Add a folder to the library" />
@@ -40,27 +41,50 @@
                         <FontIcon Glyph="&#xE7AD;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+                <AppBarSeparator />
+                <AppBarButton Label="Compare" Click="Compare_Click" ToolTipService.ToolTip="Show 1 to 4 selected photos side by side to rate them (Enter)">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xE89F;" />
+                    </AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton Label="Shift dates" Click="ShiftDates_Click" ToolTipService.ToolTip="Correct the date and time of the selected photos">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xEC92;" />
+                    </AppBarButton.Icon>
+                </AppBarButton>
             </CommandBar>
             <AutoSuggestBox Grid.Column="1" VerticalAlignment="Center" MaxWidth="480" HorizontalAlignment="Stretch"
                             PlaceholderText="Search names, captions and tags"
                             QueryIcon="Find"
                             Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <ComboBox Grid.Column="2" VerticalAlignment="Center" MinWidth="120"
-                      PlaceholderText="Rating"
-                      SelectedIndex="{x:Bind ViewModel.MinRating, Mode=TwoWay}"
-                      ToolTipService.ToolTip="Minimum rating">
-                <ComboBoxItem Content="Any rating" />
-                <ComboBoxItem Content="★ and up" />
-                <ComboBoxItem Content="★★ and up" />
-                <ComboBoxItem Content="★★★ and up" />
-                <ComboBoxItem Content="★★★★ and up" />
-                <ComboBoxItem Content="★★★★★" />
-            </ComboBox>
-            <CalendarDatePicker Grid.Column="3" VerticalAlignment="Center" PlaceholderText="Taken from"
-                                Date="{x:Bind ViewModel.TakenFrom, Mode=TwoWay}" />
-            <CalendarDatePicker Grid.Column="4" VerticalAlignment="Center" PlaceholderText="Taken until"
-                                Date="{x:Bind ViewModel.TakenTo, Mode=TwoWay}" />
-            <Button Grid.Column="5" VerticalAlignment="Center" Content="Clear filters" Click="ClearFilters_Click" />
+            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
+                <ComboBox VerticalAlignment="Center" MinWidth="120"
+                          PlaceholderText="Rating"
+                          SelectedIndex="{x:Bind ViewModel.MinRating, Mode=TwoWay}"
+                          ToolTipService.ToolTip="Minimum rating">
+                    <ComboBoxItem Content="Any rating" />
+                    <ComboBoxItem Content="★ and up" />
+                    <ComboBoxItem Content="★★ and up" />
+                    <ComboBoxItem Content="★★★ and up" />
+                    <ComboBoxItem Content="★★★★ and up" />
+                    <ComboBoxItem Content="★★★★★" />
+                </ComboBox>
+                <ComboBox VerticalAlignment="Center" MinWidth="150" MaxWidth="260"
+                          ItemsSource="{x:Bind ViewModel.Cameras}"
+                          SelectedIndex="{x:Bind ViewModel.CameraIndex, Mode=TwoWay}"
+                          ToolTipService.ToolTip="Only photos from this camera">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CameraFilterViewModel">
+                            <TextBlock Text="{x:Bind Display}" TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <CalendarDatePicker VerticalAlignment="Center" PlaceholderText="Taken from"
+                                    Date="{x:Bind ViewModel.TakenFrom, Mode=TwoWay}" />
+                <CalendarDatePicker VerticalAlignment="Center" PlaceholderText="Taken until"
+                                    Date="{x:Bind ViewModel.TakenTo, Mode=TwoWay}" />
+                <Button VerticalAlignment="Center" Content="Clear filters" Click="ClearFilters_Click" />
+            </StackPanel>
         </Grid>
 
         <InfoBar Grid.Row="1" Grid.ColumnSpan="3" Margin="12,0,12,8" Severity="Error"
@@ -272,5 +296,8 @@
                 </Button.KeyboardAccelerators>
             </Button>
         </Grid>
+
+        <!-- Compare view for picking the best photos -->
+        <controls:CompareView x:Name="CompareLayer" Grid.RowSpan="4" Grid.ColumnSpan="3" Visibility="Collapsed" />
     </Grid>
 </Window>

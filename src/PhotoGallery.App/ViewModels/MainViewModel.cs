@@ -30,6 +30,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _searchDelay;
     private int _searchVersion;
     private bool _isUpdatingTags;
+    private string? _selectedCamera;
+    private int _cameraIndex;
+    private bool _isUpdatingCameras;
 
     public MainViewModel()
     {
@@ -50,6 +53,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<FolderNodeViewModel> Folders { get; } = [];
 
     public ObservableCollection<TagFilterViewModel> Tags { get; } = [];
+
+    /// <summary>"All cameras" followed by the cameras in the current folder.</summary>
+    public ObservableCollection<CameraFilterViewModel> Cameras { get; } = [new(null, "All cameras")];
 
     public MetadataEditorViewModel Editor { get; } = new();
 
@@ -119,6 +125,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (SetProperty(ref _minRating, Math.Max(0, value)))
                 _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Index into <see cref="Cameras"/>; 0 shows every camera.</summary>
+    public int CameraIndex
+    {
+        get => _cameraIndex;
+        set
+        {
+            if (!SetProperty(ref _cameraIndex, value) || _isUpdatingCameras)
+                return;
+            _selectedCamera = value > 0 && value < Cameras.Count ? Cameras[value].Camera : null;
+            _ = SearchAsync();
         }
     }
 
@@ -246,16 +265,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Text = SearchText,
             Tags = SelectedTags,
             MinRating = MinRating,
+            Camera = _selectedCamera,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,
         };
 
-        var (photos, tags) = await Task.Run(() => (_index.Search(query), _index.GetTagCounts()));
+        var (photos, tags, cameras) = await Task.Run(() => (_index.Search(query), _index.GetTagCounts(), _index.GetCameraCounts(query.Folder)));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
 
         Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(p => new PhotoItemViewModel(p)));
         UpdateTags(tags);
+        UpdateCameras(cameras);
         if (!IsBusy)
             StatusText = photos.Count == 1 ? "1 photo" : $"{photos.Count:N0} photos";
     }
@@ -282,6 +303,37 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var stillTicked = Tags.Where(t => t.IsSelected).Select(t => t.Tag).ToList();
         if (stillTicked.Count != _selectedTags.Count)
             SelectedTags = stillTicked;
+    }
+
+    private void UpdateCameras(IReadOnlyList<(string Camera, int Count)> cameras)
+    {
+        var wanted = cameras.Select(c => new CameraFilterViewModel(c.Camera, $"{c.Camera} ({c.Count:N0})")).ToList();
+        if (wanted.SequenceEqual(Cameras.Skip(1)))
+            return;
+
+        // Rebuilding the list resets the combo box, so the chosen camera is put back afterwards.
+        _isUpdatingCameras = true;
+        try
+        {
+            while (Cameras.Count > 1)
+                Cameras.RemoveAt(Cameras.Count - 1);
+            foreach (var c in wanted)
+                Cameras.Add(c);
+            var index = _selectedCamera is null ? 0 : wanted.FindIndex(c => c.Camera == _selectedCamera) + 1;
+            _cameraIndex = -1;
+            CameraIndex = index;
+        }
+        finally
+        {
+            _isUpdatingCameras = false;
+        }
+
+        // The chosen camera has no photos in this folder: show all of them instead.
+        if (_selectedCamera is not null && CameraIndex == 0)
+        {
+            _selectedCamera = null;
+            _ = SearchAsync();
+        }
     }
 
     private void OnTagSelectionChanged()
@@ -377,6 +429,72 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             : $"Rotated {rotatable.Count} photo(s). {skipped} skipped: rotating HEIC, PNG, WebP and GIF files is not supported yet.";
         if (Editor.Items.Count > 0)
             Editor.Load(Editor.Items);
+    }
+
+    /// <summary>Sets one photo's star rating straight away, as the compare view does.</summary>
+    public async Task SetRatingAsync(PhotoItemViewModel item, int stars)
+    {
+        if (_metadata is null || _indexer is null || item.Photo.Rating == stars)
+            return;
+        try
+        {
+            await _metadata.WriteAsync(item.Path, new MetadataChanges { Rating = stars });
+            if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                item.Photo = updated;
+            StatusText = stars == 0 ? $"Removed the rating of {item.FileName}" : $"Rated {item.FileName} {new string('★', stars)}";
+        }
+        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+        {
+            ErrorMessage = $"Could not rate {item.FileName}: {ex.Message}";
+        }
+        if (Editor.Items.Contains(item))
+            Editor.Load(Editor.Items);
+    }
+
+    /// <summary>
+    /// Moves the date taken of the photos by <paramref name="delta"/> and optionally sets a new UTC offset.
+    /// The camera's "digitized" date moves by the same amount. Photos without a date are skipped.
+    /// </summary>
+    public async Task ShiftDatesAsync(IReadOnlyList<PhotoItemViewModel> items, TimeSpan delta, TimeSpan? newOffset)
+    {
+        if (_metadata is null || _indexer is null)
+            return;
+
+        var dated = items.Where(i => i.Photo.DateTaken is not null).ToList();
+        var failures = new List<string>();
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < dated.Count; i++)
+            {
+                var item = dated[i];
+                StatusText = $"Shifting {i + 1} of {dated.Count}…";
+                try
+                {
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges
+                    {
+                        DateTaken = item.Photo.DateTaken!.Value.Shifted(delta, newOffset),
+                        ShiftCreateDateBy = delta,
+                    });
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        ErrorMessage = failures.Count == 0 ? null : "Some dates could not be changed. " + string.Join(" ", failures);
+        // Re-sort, since the photos' dates have moved.
+        await SearchAsync();
+        StatusText = $"Changed the date of {dated.Count - failures.Count} photo(s)" +
+                     (items.Count > dated.Count ? $"; {items.Count - dated.Count} without a date were left alone" : "");
     }
 
     private async Task RefreshTagsAsync() => UpdateTags(await Task.Run(_index.GetTagCounts));

@@ -19,7 +19,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal",
         "-XMP-photoshop:DateCreated", "-ExifIFD:CreateDate",
         "-IFD0:Orientation", "-XMP-tiff:Orientation",
-        "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Model", "-Composite:ImageSize",
+        "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -151,6 +151,18 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-XMP-photoshop:DateCreated={exif}{offset}");
         }
 
+        if (changes.ShiftCreateDateBy is { } shift && shift != TimeSpan.Zero)
+        {
+            // ExifTool's date shift syntax: "Y:M:D H:M:S", added with += or subtracted with -=.
+            var abs = shift.Duration();
+            var amount = $"0:0:{abs.Days} {abs.Hours}:{abs.Minutes}:{abs.Seconds}";
+            var op = shift < TimeSpan.Zero ? "-=" : "+=";
+            args.Add($"-ExifIFD:CreateDate{op}{amount}");
+            args.Add($"-XMP-xmp:CreateDate{op}{amount}");
+            if (changes.DateTaken?.ToOffsetString() is { } digitizedOffset)
+                args.Add($"-ExifIFD:OffsetTimeDigitized={digitizedOffset}");
+        }
+
         if (changes.Orientation is { } orientation)
         {
             if (!SupportedFormats.CanRotateLosslessly(path))
@@ -239,8 +251,26 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Height = height,
             Latitude = GetNumber(item, "Composite:GPSLatitude"),
             Longitude = GetNumber(item, "Composite:GPSLongitude"),
-            CameraModel = GetString(item, "IFD0:Model")?.Trim(),
+            Camera = CameraName(GetString(item, "IFD0:Make"), GetString(item, "IFD0:Model")),
         };
+    }
+
+    /// <summary>
+    /// Combines make and model the way people say them: "Apple" + "iPhone 15 Pro" gives "Apple iPhone 15 Pro",
+    /// while "Canon" + "Canon EOS R6" stays "Canon EOS R6".
+    /// </summary>
+    internal static string? CameraName(string? make, string? model)
+    {
+        make = make?.Trim();
+        model = model?.Trim();
+        if (string.IsNullOrEmpty(model))
+            return string.IsNullOrEmpty(make) ? null : make;
+        if (string.IsNullOrEmpty(make))
+            return model;
+
+        // Makers often write their full company name ("NIKON CORPORATION") but only the brand in the model.
+        var brand = make.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+        return model.StartsWith(brand, StringComparison.OrdinalIgnoreCase) ? model : $"{make} {model}";
     }
 
     private static DateTaken? ParseDateTaken(JsonElement item)
