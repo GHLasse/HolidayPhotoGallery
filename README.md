@@ -40,6 +40,8 @@ saved **in the photo files themselves**.
 - Filter by **camera**, and **shift dates**: move the date taken of the selected photos by an amount,
   or set the earliest one to a known time and move the rest to match, optionally setting the time zone.
   The camera's "digitized" date moves along so all dates in the file agree.
+- Time zones are picked from Windows' list of zones, and each photo gets the offset that zone had on
+  its own date, so summer time is handled.
 
 ## Roadmap
 

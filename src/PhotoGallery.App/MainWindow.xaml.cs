@@ -212,7 +212,7 @@ public sealed partial class MainWindow : Window
         var earliest = dated.Select(p => p.Photo.DateTaken!.Value).MinBy(d => d.Local);
         var dialog = new ShiftDatesDialog(earliest, dated.Count, selected.Count - dated.Count) { XamlRoot = Root.XamlRoot };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            await ViewModel.ShiftDatesAsync(selected, dialog.Delta, dialog.NewOffset);
+            await ViewModel.ShiftDatesAsync(selected, dialog.Delta, dialog.NewZone);
     }
 
     // ---- Viewer ----

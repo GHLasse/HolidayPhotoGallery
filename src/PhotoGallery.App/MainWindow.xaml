@@ -209,17 +209,22 @@
                     <TextBlock Text="Separate tags with commas. With several photos selected, only the tags they all share are shown; tags you add or remove apply to all of them."
                                TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}">
-                        <Grid ColumnSpacing="8">
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Header="Date taken" PlaceholderText="2024-07-01 14:30:00"
                                      Text="{x:Bind ViewModel.Editor.DateText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBox Grid.Column="1" Header="Time zone" PlaceholderText="+02:00"
-                                     Text="{x:Bind ViewModel.Editor.OffsetText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <ComboBox Grid.Row="1" Grid.ColumnSpan="2" Header="Time zone" HorizontalAlignment="Stretch"
+                                      ItemsSource="{x:Bind ViewModel.Editor.TimeZones, Mode=OneWay}"
+                                      SelectedIndex="{x:Bind ViewModel.Editor.TimeZoneIndex, Mode=TwoWay}" />
                         </Grid>
-                        <TextBlock Text="The camera's local time, and its offset from UTC if known."
+                        <TextBlock Text="The camera's local time, and where it was taken. Summer time is worked out from the date."
                                    TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <TextBlock Text="{x:Bind ViewModel.Editor.ValidationError, Mode=OneWay}" TextWrapping="Wrap"

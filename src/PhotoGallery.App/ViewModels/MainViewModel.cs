@@ -452,10 +452,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>
-    /// Moves the date taken of the photos by <paramref name="delta"/> and optionally sets a new UTC offset.
+    /// Moves the date taken of the photos by <paramref name="delta"/> and optionally puts them in a new time zone
+    /// (each photo gets that zone's offset on its own date).
     /// The camera's "digitized" date moves by the same amount. Photos without a date are skipped.
     /// </summary>
-    public async Task ShiftDatesAsync(IReadOnlyList<PhotoItemViewModel> items, TimeSpan delta, TimeSpan? newOffset)
+    public async Task ShiftDatesAsync(IReadOnlyList<PhotoItemViewModel> items, TimeSpan delta, TimeZoneChoice? newZone)
     {
         if (_metadata is null || _indexer is null)
             return;
@@ -471,9 +472,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 StatusText = $"Shifting {i + 1} of {dated.Count}…";
                 try
                 {
+                    var date = item.Photo.DateTaken!.Value;
                     await _metadata.WriteAsync(item.Path, new MetadataChanges
                     {
-                        DateTaken = item.Photo.DateTaken!.Value.Shifted(delta, newOffset),
+                        DateTaken = date.Shifted(delta, newZone?.OffsetFor(date.Local + delta)),
                         ShiftCreateDateBy = delta,
                     });
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)

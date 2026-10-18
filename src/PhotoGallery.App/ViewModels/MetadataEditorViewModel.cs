@@ -17,7 +17,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
     private string _tagsText = "";
     private double _rating = -1;
     private string _dateText = "";
-    private string _offsetText = "";
+    private List<TimeZoneChoice> _timeZones = TimeZoneChoice.List(TimeZoneChoice.Unknown());
+    private int _timeZoneIndex;
     private bool _captionChanged, _tagsChanged, _ratingChanged, _dateChanged;
     private string _summary = "No photo selected";
     private string _details = "";
@@ -83,13 +84,19 @@ public sealed class MetadataEditorViewModel : ObservableObject
         }
     }
 
-    /// <summary>UTC offset such as "+02:00", or empty when unknown.</summary>
-    public string OffsetText
+    /// <summary>The time zone choices: unknown, the offset saved in the photo (if any), then Windows' time zones.</summary>
+    public List<TimeZoneChoice> TimeZones
     {
-        get => _offsetText;
+        get => _timeZones;
+        private set => SetProperty(ref _timeZones, value);
+    }
+
+    public int TimeZoneIndex
+    {
+        get => _timeZoneIndex;
         set
         {
-            if (SetProperty(ref _offsetText, value) && !_loading)
+            if (value >= 0 && SetProperty(ref _timeZoneIndex, value) && !_loading)
                 MarkChanged(ref _dateChanged);
         }
     }
@@ -116,7 +123,13 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
             var date = items.Count == 1 ? photos[0].DateTaken : null;
             DateText = date?.ToDisplayDate() ?? "";
-            OffsetText = date?.ToOffsetString() ?? "";
+            // Photos only store an offset, not a place, so the saved offset is offered as its own entry.
+            TimeZones = date?.Offset is { } saved
+                ? TimeZoneChoice.List(TimeZoneChoice.Unknown(), TimeZoneChoice.Fixed(saved, "as saved in the photo"))
+                : TimeZoneChoice.List(TimeZoneChoice.Unknown());
+            // Reset first: replacing the list clears the combo box, so the index must be raised again even if unchanged.
+            _timeZoneIndex = -1;
+            TimeZoneIndex = date?.Offset is null ? 0 : 1;
 
             Summary = items.Count switch
             {
@@ -160,16 +173,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
                 ValidationError = $"\"{DateText}\" is not a date. Use the form 2024-07-01 14:30:00.";
                 return false;
             }
-            TimeSpan? offset = null;
-            if (!string.IsNullOrWhiteSpace(OffsetText))
-            {
-                if (!DateTaken.TryParseOffset(OffsetText, out var o))
-                {
-                    ValidationError = $"\"{OffsetText}\" is not a time zone offset. Use the form +02:00, or leave it empty.";
-                    return false;
-                }
-                offset = o;
-            }
+            var zone = TimeZoneIndex >= 0 && TimeZoneIndex < TimeZones.Count ? TimeZones[TimeZoneIndex] : null;
+            var offset = zone?.OffsetFor(parsed.Local);
             date = parsed with { Offset = offset ?? parsed.Offset };
         }
 
