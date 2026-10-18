@@ -72,12 +72,32 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.IsEmpty)
             return;
 
+        RemoveStaleTempFile(path);
         var args = BuildWriteArguments(path, changes);
         var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
 
         var errors = output.ErrorLines.ToList();
         if (errors.Count > 0)
             throw new ExifToolException($"Could not save {Path.GetFileName(path)}: {string.Join(" ", errors)}");
+    }
+
+    /// <summary>
+    /// ExifTool writes to "photo.jpg_exiftool_tmp" first and refuses to start if that file exists.
+    /// One is only left behind when a save was interrupted (the app was killed mid-write), since this
+    /// app saves one file at a time, so it is safe to remove.
+    /// </summary>
+    private static void RemoveStaleTempFile(string path)
+    {
+        var temp = path + "_exiftool_tmp";
+        try
+        {
+            if (File.Exists(temp))
+                File.Delete(temp);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // ExifTool then reports the problem itself.
+        }
     }
 
     internal static List<string> BuildWriteArguments(string path, MetadataChanges changes)

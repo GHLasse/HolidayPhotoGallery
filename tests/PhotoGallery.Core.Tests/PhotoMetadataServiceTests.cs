@@ -51,6 +51,18 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task A_temp_file_left_by_an_interrupted_save_does_not_block_saving()
+    {
+        var path = _temp.CopySample(".jpg");
+        await File.WriteAllTextAsync(path + "_exiftool_tmp", "left over");
+
+        await Service.WriteAsync(path, new MetadataChanges { Rating = 3 });
+
+        Assert.Equal(3, (await Service.ReadAsync(path)).Rating);
+        Assert.False(File.Exists(path + "_exiftool_tmp"));
+    }
+
+    [ExifToolFact]
     public async Task Only_the_given_fields_are_changed()
     {
         var path = _temp.CopySample(".jpg");
