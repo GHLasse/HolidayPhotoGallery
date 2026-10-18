@@ -15,6 +15,7 @@ namespace PhotoGallery.App;
 public sealed partial class MainWindow : Window
 {
     private bool _syncingTimeZone;
+    private bool _syncingCamera;
     private List<PhotoItemViewModel> _viewerItems = [];
     private int _viewerIndex;
     private int _viewerLoadVersion;
@@ -43,6 +44,12 @@ public sealed partial class MainWindow : Window
                 SyncTimeZoneCombo();
         };
         SyncTimeZoneCombo();
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
+                SyncCameraCombo();
+        };
+        SyncCameraCombo();
         _ = ViewModel.InitializeAsync();
     }
 
@@ -62,6 +69,29 @@ public sealed partial class MainWindow : Window
         {
             _syncingTimeZone = false;
         }
+    }
+
+    private void SyncCameraCombo()
+    {
+        _syncingCamera = true;
+        try
+        {
+            var cameras = ViewModel.Cameras;
+            if (!ReferenceEquals(CameraCombo.ItemsSource, cameras))
+                CameraCombo.ItemsSource = cameras;
+            var index = ViewModel.CameraIndex;
+            CameraCombo.SelectedIndex = index >= 0 && index < cameras.Count ? index : 0;
+        }
+        finally
+        {
+            _syncingCamera = false;
+        }
+    }
+
+    private void CameraCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_syncingCamera && CameraCombo.SelectedIndex >= 0)
+            ViewModel.CameraIndex = CameraCombo.SelectedIndex;
     }
 
     private void TimeZoneCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

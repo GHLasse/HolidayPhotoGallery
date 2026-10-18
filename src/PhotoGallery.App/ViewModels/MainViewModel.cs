@@ -33,6 +33,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string? _selectedCamera;
     private int _cameraIndex;
     private bool _isUpdatingCameras;
+    private List<CameraFilterViewModel> _cameras = [AllCameras];
 
     public MainViewModel()
     {
@@ -55,7 +56,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<TagFilterViewModel> Tags { get; } = [];
 
     /// <summary>"All cameras" followed by the cameras in the current folder.</summary>
-    public ObservableCollection<CameraFilterViewModel> Cameras { get; } = [new(null, "All cameras")];
+    private static readonly CameraFilterViewModel AllCameras = new(null, "All cameras");
+
+    /// <summary>"All cameras", then each camera in the current folder. Replaced as a whole, never edited.</summary>
+    public List<CameraFilterViewModel> Cameras
+    {
+        get => _cameras;
+        private set => SetProperty(ref _cameras, value);
+    }
 
     public MetadataEditorViewModel Editor { get; } = new();
 
@@ -315,10 +323,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _isUpdatingCameras = true;
         try
         {
-            while (Cameras.Count > 1)
-                Cameras.RemoveAt(Cameras.Count - 1);
-            foreach (var c in wanted)
-                Cameras.Add(c);
+            Cameras = [AllCameras, .. wanted];
             var index = _selectedCamera is null ? 0 : wanted.FindIndex(c => c.Camera == _selectedCamera) + 1;
             _cameraIndex = -1;
             CameraIndex = index;

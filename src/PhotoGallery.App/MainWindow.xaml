@@ -69,9 +69,10 @@
                     <ComboBoxItem Content="★★★★ and up" />
                     <ComboBoxItem Content="★★★★★" />
                 </ComboBox>
-                <ComboBox VerticalAlignment="Center" MinWidth="150" MaxWidth="260"
-                          ItemsSource="{x:Bind ViewModel.Cameras}"
-                          SelectedIndex="{x:Bind ViewModel.CameraIndex, Mode=TwoWay}"
+                <!-- Filled from code, like the time zone list: editing a bound list while x:Bind also sets
+                     the index crashed the app inside WinUI. -->
+                <ComboBox x:Name="CameraCombo" VerticalAlignment="Center" MinWidth="150" MaxWidth="260"
+                          SelectionChanged="CameraCombo_SelectionChanged"
                           ToolTipService.ToolTip="Only photos from this camera">
                     <ComboBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:CameraFilterViewModel">
