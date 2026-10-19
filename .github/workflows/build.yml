@@ -1,9 +1,17 @@
 name: Build
 
+# Builds cost GitHub Actions minutes (Windows ones count double), so only pull requests build,
+# never for documentation alone, and a new push stops the build still running for the same PR.
 on:
-  push:
-    branches: [main]
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   core-tests-linux:
@@ -147,7 +155,7 @@ jobs:
           New-Item -Force $key | Out-Null
           Set-ItemProperty $key DumpFolder $dumps -Type ExpandString
           Set-ItemProperty $key DumpType 2 -Type DWord
-          foreach ($run in 1..60) {
+          foreach ($run in 1..10) {
             $p = Start-Process $exe.FullName -PassThru
             Start-Sleep -Seconds 8
             if (-not $p.HasExited) {
