@@ -308,12 +308,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
         (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
-        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0);
+        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) +
+        (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0);
 
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
     public async Task InitializeAsync()
     {
         await SearchAsync();
+        _ = LoadGoogleUploadsAsync();
         if (IsExifToolMissing)
         {
             ErrorMessage = "ExifTool was not found, so photos cannot be indexed or edited. " +
@@ -433,7 +435,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
 
-        Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(p => new PhotoItemViewModel(p)));
+        photos = FilterByGoogle(photos);
+        Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(p => new PhotoItemViewModel(p) { IsOnGoogle = _onGoogle.Contains(p.Path) }));
         UpdateTags(tags);
         UpdatePeople(people);
         UpdateCameras(cameras);

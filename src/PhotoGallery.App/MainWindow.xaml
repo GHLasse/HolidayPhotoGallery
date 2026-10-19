@@ -227,6 +227,19 @@
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
+                <!-- Uploaded to Google Photos or not. -->
+                <DropDownButton VerticalAlignment="Center" ToolTipService.ToolTip="Show the photos that are, or aren't yet, in Google Photos">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <controls:GooglePhotosLogo Width="14" Height="14" />
+                        <TextBlock Text="Google Photos" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <ToggleMenuFlyoutItem Text="Uploaded to Google Photos" IsChecked="{x:Bind ViewModel.OnGoogleOnly, Mode=TwoWay}" />
+                            <ToggleMenuFlyoutItem Text="Not uploaded yet" IsChecked="{x:Bind ViewModel.NotOnGoogleOnly, Mode=TwoWay}" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
                 <!-- Not a filter, so Clear filters leaves it alone. Filled from code (list before index). -->
                 <ComboBox x:Name="SortCombo" VerticalAlignment="Center" MinWidth="200"
                           ToolTipService.ToolTip="Order of the photos in this folder. The default is set in Settings."
@@ -370,6 +383,12 @@
                                     ToolTipService.ToolTip="Flagged">
                                 <FontIcon Glyph="&#xE7C1;" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                             </Border>
+                            <!-- In Google Photos -->
+                            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="10"
+                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" Visibility="{x:Bind IsOnGoogle, Mode=OneWay}"
+                                    ToolTipService.ToolTip="In Google Photos">
+                                <controls:GooglePhotosLogo Width="12" Height="12" />
+                            </Border>
                             <Grid VerticalAlignment="Bottom" Height="22" Padding="6,0" ColumnSpacing="4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -426,7 +445,7 @@
                             <Border Visibility="{x:Bind IsOnGoogle}" ToolTipService.ToolTip="{x:Bind GoogleToolTip}"
                                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="6" CornerRadius="12"
                                     Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
-                                <FontIcon Glyph="&#xE753;" FontSize="14" />
+                                <controls:GooglePhotosLogo Width="16" Height="16" />
                             </Border>
                             <StackPanel Grid.Row="1" Padding="10,6,10,8">
                                 <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />

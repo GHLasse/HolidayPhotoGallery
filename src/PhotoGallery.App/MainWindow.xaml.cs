@@ -197,6 +197,8 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutTags = false;
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
+        ViewModel.OnGoogleOnly = false;
+        ViewModel.NotOnGoogleOnly = false;
         ViewModel.TakenFrom = null;
         ViewModel.TakenTo = null;
         ViewModel.CameraIndex = 0;

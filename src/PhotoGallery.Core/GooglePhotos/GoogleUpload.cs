@@ -19,12 +19,19 @@ public static class GoogleUpload
     private const int BatchSize = 20;
 
     /// <param name="albumFolder">The album the photos belong to, or null to upload them to the library only.</param>
+    /// <param name="looseUploads">
+    /// Without an album: full path → Google id of photos uploaded to the library only. Read to skip photos
+    /// already up there, and added to; the caller keeps it.
+    /// </param>
     public static async Task<UploadResult> UploadAsync(GooglePhotosClient client, string? albumFolder, IReadOnlyList<UploadPhoto> photos,
-        IProgress<UploadProgress>? progress = null, CancellationToken cancellationToken = default)
+        IProgress<UploadProgress>? progress = null, CancellationToken cancellationToken = default,
+        IDictionary<string, string>? looseUploads = null)
     {
         var info = albumFolder is null ? null : AlbumFile.Read(albumFolder) ?? new AlbumInfo();
         var link = info?.Google;
-        var uploadedBefore = link?.Items ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var uploadedBefore = albumFolder is null
+            ? looseUploads ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : link?.Items ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         string Key(string path) => albumFolder is null ? path : Path.GetRelativePath(albumFolder, path).Replace('\\', '/');
         var todo = photos.Where(p => !uploadedBefore.ContainsKey(Key(p.Path))).ToList();
@@ -74,7 +81,10 @@ public static class GoogleUpload
                     if (created[i].MediaItemId is { } id)
                     {
                         uploaded++;
-                        link?.Items.TryAdd(Key(tokens[i].Photo.Path), id);
+                        if (albumFolder is null)
+                            looseUploads?.TryAdd(Key(tokens[i].Photo.Path), id);
+                        else
+                            link?.Items.TryAdd(Key(tokens[i].Photo.Path), id);
                     }
                     else
                     {
@@ -89,5 +99,43 @@ public static class GoogleUpload
             progress?.Report(new UploadProgress(uploaded + failed, todo.Count));
         }
         return new UploadResult(uploaded, already, failed, firstError, link?.Url);
+    }
+
+    /// <summary>
+    /// Every photo known to be in Google Photos: those listed in the album files below <paramref name="roots"/>,
+    /// and <paramref name="looseUploads"/> (full paths) uploaded without an album.
+    /// </summary>
+    public static HashSet<string> UploadedPaths(IEnumerable<string> roots, IEnumerable<string> looseUploads)
+    {
+        var paths = new HashSet<string>(looseUploads, StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in roots.SelectMany(AlbumFile.FindAlbums))
+        {
+            if (AlbumFile.Read(folder)?.Google is not { } link)
+                continue;
+            foreach (var relative in link.Items.Keys)
+                paths.Add(Path.GetFullPath(Path.Combine(folder, relative)));
+        }
+        return paths;
+    }
+
+    /// <summary>The photos uploaded without an album, kept in a file of the app's own (full path → Google id).</summary>
+    public static Dictionary<string, string> LoadLooseUploads(string file)
+    {
+        try
+        {
+            if (File.Exists(file) && System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file)) is { } items)
+                return new Dictionary<string, string>(items, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            // A damaged list only means those photos show as not uploaded.
+        }
+        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static void SaveLooseUploads(string file, IReadOnlyDictionary<string, string> items)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(items));
     }
 }

@@ -15,7 +15,12 @@ public sealed partial class MainViewModel
     /// </summary>
     public static GoogleClient? BuiltInGoogleClient { get; } = ReadBuiltInGoogleClient();
 
+    private static readonly string LooseUploadsPath = Path.Combine(DataFolder, "google-uploads.json");
+
     private GoogleAuth? _googleAuth;
+    private Dictionary<string, string>? _looseUploads;
+    private HashSet<string> _onGoogle = new(StringComparer.OrdinalIgnoreCase);
+    private bool _onGoogleOnly, _notOnGoogleOnly;
     private CancellationTokenSource? _upload;
     private string _uploadText = "";
 
@@ -49,6 +54,56 @@ public sealed partial class MainViewModel
     }
 
     public bool IsUploading => UploadText.Length > 0;
+
+    /// <summary>Shows only photos uploaded to Google Photos.</summary>
+    public bool OnGoogleOnly
+    {
+        get => _onGoogleOnly;
+        set
+        {
+            if (!SetProperty(ref _onGoogleOnly, value))
+                return;
+            if (value)
+                NotOnGoogleOnly = false;
+            _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Shows only photos not yet uploaded to Google Photos.</summary>
+    public bool NotOnGoogleOnly
+    {
+        get => _notOnGoogleOnly;
+        set
+        {
+            if (!SetProperty(ref _notOnGoogleOnly, value))
+                return;
+            if (value)
+                OnGoogleOnly = false;
+            _ = SearchAsync();
+        }
+    }
+
+    private IReadOnlyList<IndexedPhoto> FilterByGoogle(IReadOnlyList<IndexedPhoto> photos) =>
+        OnGoogleOnly ? photos.Where(p => _onGoogle.Contains(p.Path)).ToList()
+        : NotOnGoogleOnly ? photos.Where(p => !_onGoogle.Contains(p.Path)).ToList()
+        : photos;
+
+    /// <summary>Reads which photos are in Google Photos (from the album files and the app's list), and marks them in the grid.</summary>
+    public async Task LoadGoogleUploadsAsync()
+    {
+        var roots = _settings.Folders.ToList();
+        var (loose, uploaded) = await Task.Run(() =>
+        {
+            var loose = _looseUploads ?? GoogleUpload.LoadLooseUploads(LooseUploadsPath);
+            return (loose, GoogleUpload.UploadedPaths(roots, loose.Keys));
+        });
+        _looseUploads = loose;
+        _onGoogle = uploaded;
+        foreach (var item in Photos)
+            item.IsOnGoogle = _onGoogle.Contains(item.Path);
+        if (OnGoogleOnly || NotOnGoogleOnly)
+            await SearchAsync();
+    }
 
     /// <summary>
     /// Opens Google's sign-in page in the browser and waits for the answer. On success the sign-in is
@@ -165,7 +220,11 @@ public sealed partial class MainViewModel
                 var before = done;
                 var progress = new Progress<UploadProgress>(p =>
                     UploadText = $"Uploading to Google Photos: {before + list.Count - p.Total + p.Done} of {total}…");
-                var result = await Task.Run(() => GoogleUpload.UploadAsync(photos, album, list, progress, cancel.Token));
+                _looseUploads ??= GoogleUpload.LoadLooseUploads(LooseUploadsPath);
+                var loose = _looseUploads;
+                var result = await Task.Run(() => GoogleUpload.UploadAsync(photos, album, list, progress, cancel.Token, loose));
+                if (album is null && result.Uploaded > 0)
+                    SaveLooseUploads();
                 done += list.Count;
                 uploaded += result.Uploaded;
                 already += result.AlreadyThere;
@@ -195,8 +254,21 @@ public sealed partial class MainViewModel
             _upload = null;
             UploadText = "";
         }
+        await LoadGoogleUploadsAsync();
         if (IsAlbumView)
             await LoadAlbumsAsync();
+    }
+
+    private void SaveLooseUploads()
+    {
+        try
+        {
+            GoogleUpload.SaveLooseUploads(LooseUploadsPath, _looseUploads!);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Warn($"Couldn't save which photos are in Google Photos: {ex.Message}");
+        }
     }
 
     private static string Summary(int uploaded, int already, int failed)

@@ -92,6 +92,12 @@ public sealed partial class MainWindow
         if (ViewModel.WithoutLocation)
             FilterBadges.Children.Add(Badge("No location", false, outlined: false, "Showing photos without a GPS position",
                                             null, "Stop filtering by no location", () => ViewModel.WithoutLocation = false));
+        if (ViewModel.OnGoogleOnly)
+            FilterBadges.Children.Add(Badge("In Google Photos", false, outlined: false, "Showing photos uploaded to Google Photos",
+                                            null, "Stop filtering by Google Photos", () => ViewModel.OnGoogleOnly = false));
+        if (ViewModel.NotOnGoogleOnly)
+            FilterBadges.Children.Add(Badge("Not in Google Photos", false, outlined: false, "Showing photos not uploaded to Google Photos yet",
+                                            null, "Stop filtering by Google Photos", () => ViewModel.NotOnGoogleOnly = false));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
             FilterBadges.Children.Add(Badge(tag.Tag, AutoTags.IsAuto(tag.Tag), outlined: false, $"Showing photos tagged {tag.Tag}",

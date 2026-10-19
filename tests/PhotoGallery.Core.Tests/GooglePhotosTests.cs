@@ -145,6 +145,36 @@ public class GooglePhotosTests
     }
 
     [Fact]
+    public async Task Knows_which_photos_are_uploaded_with_and_without_an_album()
+    {
+        using var temp = new TempFolder();
+        var google = new FakeGoogle();
+        using var auth = new GoogleAuth(new GoogleClient("id", "secret"), "refresh", google);
+        using var client = new GooglePhotosClient(auth, google);
+        var albumFolder = Path.Combine(temp.Path, "Trip");
+        Directory.CreateDirectory(Path.Combine(albumFolder, "Day 1"));
+        AlbumFile.Write(albumFolder, new AlbumInfo());
+        var inAlbum = Path.Combine(albumFolder, "Day 1", "a.jpg");
+        File.WriteAllBytes(inAlbum, [1]);
+        var notUploaded = AddPhoto(temp, "b.jpg");
+        var loose = AddPhoto(temp, "c.jpg");
+
+        await GoogleUpload.UploadAsync(client, albumFolder, [new(inAlbum, null)]);
+        var looseUploads = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var result = await GoogleUpload.UploadAsync(client, null, [new(loose, null)], looseUploads: looseUploads);
+        Assert.Equal(1, result.Uploaded);
+        Assert.Equal(1, (await GoogleUpload.UploadAsync(client, null, [new(loose, null)], looseUploads: looseUploads)).AlreadyThere);
+
+        var file = Path.Combine(temp.Path, "data", "google-uploads.json");
+        GoogleUpload.SaveLooseUploads(file, looseUploads);
+        var uploaded = GoogleUpload.UploadedPaths([temp.Path], GoogleUpload.LoadLooseUploads(file).Keys);
+
+        Assert.Contains(Path.GetFullPath(inAlbum), uploaded);
+        Assert.Contains(loose, uploaded);
+        Assert.DoesNotContain(notUploaded, uploaded);
+    }
+
+    [Fact]
     public void Reads_the_account_from_the_id_token()
     {
         static string Part(string json) => Convert.ToBase64String(Encoding.UTF8.GetBytes(json)).TrimEnd('=').Replace('+', '-').Replace('/', '_');

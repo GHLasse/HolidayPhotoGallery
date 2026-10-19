@@ -14,6 +14,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     private IndexedPhoto _photo = photo;
     private ImageSource? _thumbnail;
     private bool _thumbnailRequested;
+    private bool _isOnGoogle;
 
     public IndexedPhoto Photo
     {
@@ -30,6 +31,13 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     }
 
     public string Path => Photo.Path;
+
+    /// <summary>True when the photo has been uploaded to Google Photos; the tile shows the Google Photos mark.</summary>
+    public bool IsOnGoogle
+    {
+        get => _isOnGoogle;
+        set => SetProperty(ref _isOnGoogle, value);
+    }
 
     public string FileName => Photo.FileName;
 

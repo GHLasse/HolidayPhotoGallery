@@ -129,6 +129,16 @@ public sealed partial class MainWindow
         void ShowStatus()
         {
             panel.Children.Clear();
+            panel.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    new Controls.GooglePhotosLogo { Width = 24, Height = 24 },
+                    new TextBlock { Text = "Google Photos", Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] },
+                },
+            });
             panel.Children.Add(Text("Upload albums and photos to your Google Photos. Each album becomes a Google Photos album of the same name, " +
                 "and uploading it again later only sends the new photos. Only you see the uploaded albums, until you share them in Google Photos."));
 
@@ -149,7 +159,8 @@ public sealed partial class MainWindow
                     ShowStatus();
                 };
                 panel.Children.Add(signOut);
-                panel.Children.Add(Text("Right-click an album or photos and choose Upload to Google Photos. Google keeps the uploaded photos " +
+                panel.Children.Add(Text("Right-click an album or photos and choose Upload to Google Photos. Uploaded photos and albums show the " +
+                    "Google Photos mark, and the Google Photos filter finds what isn't uploaded yet. Google keeps the uploaded photos " +
                     "if you sign out; to remove them, delete them in Google Photos.", secondary: true));
             }
             else if (MainViewModel.BuiltInGoogleClient is { } builtIn && ViewModel.OwnGoogleClient is null)
