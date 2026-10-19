@@ -115,11 +115,63 @@
                     </AppBarButton>
                 </CommandBar.SecondaryCommands>
             </CommandBar>
-            <AutoSuggestBox Grid.Column="1" VerticalAlignment="Center" MaxWidth="480" HorizontalAlignment="Stretch"
-                            PlaceholderText="Search names, captions and tags"
-                            QueryIcon="Find"
-                            Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
+            <!-- One filter bar: everything that narrows the grid, wrapping onto a second line when the window is narrow. -->
+            <controls:WrapPanel Grid.Row="1" Grid.ColumnSpan="2">
+                <AutoSuggestBox Width="260" VerticalAlignment="Center"
+                                PlaceholderText="Search names, captions and tags"
+                                QueryIcon="Find"
+                                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <DropDownButton VerticalAlignment="Center" ToolTipService.ToolTip="Only photos with all the ticked tags">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8EC;" FontSize="14" />
+                        <TextBlock Text="Tags" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedLeft">
+                            <ListView Width="300" MaxHeight="480" SelectionMode="None" ItemsSource="{x:Bind ViewModel.Tags}">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TagFilterViewModel">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
+                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Flyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+                <DropDownButton VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasPeople, Mode=OneWay}"
+                                ToolTipService.ToolTip="Only photos with all the ticked people">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE77B;" FontSize="14" />
+                        <TextBlock Text="People" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedLeft">
+                            <ListView Width="300" MaxHeight="480" SelectionMode="None" ItemsSource="{x:Bind ViewModel.People}">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TagFilterViewModel">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
+                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Flyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
                 <ComboBox VerticalAlignment="Center" MinWidth="120"
                           PlaceholderText="Rating"
                           SelectedIndex="{x:Bind ViewModel.MinRating, Mode=TwoWay}"
@@ -153,24 +205,34 @@
                                     Date="{x:Bind ViewModel.TakenFrom, Mode=TwoWay}" />
                 <CalendarDatePicker VerticalAlignment="Center" PlaceholderText="Taken until"
                                     Date="{x:Bind ViewModel.TakenTo, Mode=TwoWay}" />
+                <!-- Photos that still need work: no own tags, nobody named, no GPS position. -->
+                <DropDownButton VerticalAlignment="Center" ToolTipService.ToolTip="Find photos that still need tags, people or a place on the map">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE9D5;" FontSize="14" />
+                        <TextBlock Text="Missing" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <ToggleMenuFlyoutItem Text="No tags (auto tags don't count)" IsChecked="{x:Bind ViewModel.WithoutTags, Mode=TwoWay}" />
+                            <ToggleMenuFlyoutItem Text="No people named" IsChecked="{x:Bind ViewModel.WithoutPeople, Mode=TwoWay}" />
+                            <ToggleMenuFlyoutItem Text="No location" IsChecked="{x:Bind ViewModel.WithoutLocation, Mode=TwoWay}" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
                 <Button VerticalAlignment="Center" Content="Clear filters" Click="ClearFilters_Click" />
                 <!-- The ticked tags and people as badges, each with × to drop it from the filter. -->
-                <StackPanel x:Name="FilterBadges" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" />
-            </StackPanel>
+                <controls:WrapPanel x:Name="FilterBadges" VerticalAlignment="Center" />
+            </controls:WrapPanel>
         </Grid>
 
         <!-- Messages as banners, newest first; filled from code when ViewModel.Notices changes. -->
         <StackPanel x:Name="NoticePanel" Grid.Row="1" Grid.ColumnSpan="3" Margin="12,0,12,0" Spacing="4" />
 
-        <!-- Navigation: folders and tags -->
+        <!-- Navigation: folders (tags and people are in the filter bar) -->
         <Grid Grid.Row="2" Grid.Column="0" Padding="8,0,0,8" RowSpacing="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="2*" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Button Grid.Row="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="AllPhotos_Click">
@@ -205,39 +267,6 @@
                     IsEnabled="{x:Bind local:Ui.IsRootFolder(ViewModel.SelectedFolder), Mode=OneWay}"
                     Click="RemoveFolder_Click"
                     ToolTipService.ToolTip="Stops showing this folder. No files are deleted." />
-            <TextBlock Grid.Row="3" Margin="8,12,0,0" Text="Tags" Style="{ThemeResource BodyStrongTextBlockStyle}" />
-            <ListView Grid.Row="4" SelectionMode="None" ItemsSource="{x:Bind ViewModel.Tags}">
-                <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="vm:TagFilterViewModel">
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
-                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-            <TextBlock Grid.Row="5" Margin="8,12,0,0" Text="People" Style="{ThemeResource BodyStrongTextBlockStyle}"
-                       Visibility="{x:Bind ViewModel.HasPeople, Mode=OneWay}" />
-            <ListView Grid.Row="6" SelectionMode="None" MaxHeight="240" ItemsSource="{x:Bind ViewModel.People}">
-                <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="vm:TagFilterViewModel">
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
-                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
         </Grid>
 
         <!-- Photo grid -->

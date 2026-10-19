@@ -30,6 +30,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string _searchText = "";
     private int _minRating;
     private bool _flaggedOnly;
+    private bool _withoutTags;
+    private bool _withoutPeople;
+    private bool _withoutLocation;
     private DateTimeOffset? _takenFrom;
     private DateTimeOffset? _takenTo;
     private string _statusText = "";
@@ -195,6 +198,39 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Shows only photos without any of the user's own tags.</summary>
+    public bool WithoutTags
+    {
+        get => _withoutTags;
+        set
+        {
+            if (SetProperty(ref _withoutTags, value))
+                _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Shows only photos with nobody named in them.</summary>
+    public bool WithoutPeople
+    {
+        get => _withoutPeople;
+        set
+        {
+            if (SetProperty(ref _withoutPeople, value))
+                _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Shows only photos without a GPS position.</summary>
+    public bool WithoutLocation
+    {
+        get => _withoutLocation;
+        set
+        {
+            if (SetProperty(ref _withoutLocation, value))
+                _ = SearchAsync();
+        }
+    }
+
     /// <summary>Index into <see cref="Cameras"/>; 0 shows every camera.</summary>
     public int CameraIndex
     {
@@ -334,6 +370,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             People = SelectedPeople,
             MinRating = MinRating,
             FlaggedOnly = FlaggedOnly,
+            WithoutTags = WithoutTags,
+            WithoutPeople = WithoutPeople,
+            WithoutLocation = WithoutLocation,
             Camera = _selectedCamera,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,

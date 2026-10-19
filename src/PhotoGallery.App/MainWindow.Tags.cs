@@ -9,7 +9,7 @@ using Orientation = Microsoft.UI.Xaml.Controls.Orientation;
 
 namespace PhotoGallery.App;
 
-/// <summary>Tags as badges: in the info pane for the selected photos, and in the filter bar for the ticked tags.</summary>
+/// <summary>Tags as badges: in the info pane for the selected photos, and in the filter bar for the active filters.</summary>
 public sealed partial class MainWindow
 {
     private static readonly char[] TagSeparators = [',', ';'];
@@ -74,6 +74,15 @@ public sealed partial class MainWindow
     private void ShowFilterBadges()
     {
         FilterBadges.Children.Clear();
+        if (ViewModel.WithoutTags)
+            FilterBadges.Children.Add(Badge("No tags", false, outlined: false, "Showing photos without your own tags (auto tags don't count)",
+                                            null, "Stop filtering by no tags", () => ViewModel.WithoutTags = false));
+        if (ViewModel.WithoutPeople)
+            FilterBadges.Children.Add(Badge("No people", false, outlined: false, "Showing photos with nobody named",
+                                            null, "Stop filtering by no people", () => ViewModel.WithoutPeople = false));
+        if (ViewModel.WithoutLocation)
+            FilterBadges.Children.Add(Badge("No location", false, outlined: false, "Showing photos without a GPS position",
+                                            null, "Stop filtering by no location", () => ViewModel.WithoutLocation = false));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
             FilterBadges.Children.Add(Badge(tag.Tag, AutoTags.IsAuto(tag.Tag), outlined: false, $"Showing photos tagged {tag.Tag}",

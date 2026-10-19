@@ -1,4 +1,5 @@
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 
@@ -26,6 +27,32 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         _photos.Dispose();
         _data.Dispose();
+    }
+
+    [ExifToolFact]
+    public async Task Finds_photos_without_tags_people_or_location()
+    {
+        var service = new PhotoMetadataService(_exifTool!);
+        var indexer = new LibraryIndexer(_index!, service);
+
+        var tagged = _photos.CopySample(".jpg", "tagged");
+        var autoOnly = _photos.CopySample(".jpg", "auto-only");
+        var bare = _photos.CopySample(".jpg", "bare");
+        await service.WriteAsync(tagged, new MetadataChanges
+        {
+            Tags = ["Italy", "Auto/Beach"],
+            Location = new GeoPosition(41.9, 12.5),
+            People = [new PersonTag("Anna", new FaceBox(0, 0, 1, 1))],
+        });
+        await service.WriteAsync(autoOnly, new MetadataChanges { Tags = ["Auto/Beach"] });
+
+        await indexer.SyncFolderAsync(_photos.Path);
+
+        string[] Find(PhotoQuery query) => _index!.Search(query).Select(p => p.Path).Order().ToArray();
+        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutTags = true }));
+        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutPeople = true }));
+        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutLocation = true }));
+        Assert.Empty(Find(new PhotoQuery { WithoutTags = true, Tags = ["Italy"] }));
     }
 
     [ExifToolFact]

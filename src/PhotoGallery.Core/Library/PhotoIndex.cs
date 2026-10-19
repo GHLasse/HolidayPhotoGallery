@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Data.Sqlite;
 using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Metadata;
+using PhotoGallery.Core.Tagging;
 
 namespace PhotoGallery.Core.Library;
 
@@ -298,6 +299,18 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.FlaggedOnly)
                 where.Add("p.flagged = 1");
+
+            if (query.WithoutTags)
+            {
+                where.Add("NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag NOT LIKE $autoTags ESCAPE '\\')");
+                cmd.Parameters.AddWithValue("$autoTags", EscapeLike(AutoTags.Parent + "/") + "%");
+            }
+
+            if (query.WithoutPeople)
+                where.Add("NOT EXISTS (SELECT 1 FROM photo_people pp WHERE pp.photo_id = p.id)");
+
+            if (query.WithoutLocation)
+                where.Add("(p.latitude IS NULL OR p.longitude IS NULL)");
 
             if (!string.IsNullOrEmpty(query.Camera))
             {
