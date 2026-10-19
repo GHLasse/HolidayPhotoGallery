@@ -224,7 +224,7 @@
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
-                <Button VerticalAlignment="Center" Content="Clear filters" Click="ClearFilters_Click" />
+                <Button x:Name="ClearFiltersButton" VerticalAlignment="Center" Content="Clear filters" Click="ClearFilters_Click" />
                 <!-- The ticked tags and people as badges, each with × to drop it from the filter. -->
                 <controls:WrapPanel x:Name="FilterBadges" VerticalAlignment="Center" />
             </controls:WrapPanel>

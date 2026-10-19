@@ -77,6 +77,11 @@ public sealed partial class MainWindow
 
     private void ShowFilterBadges()
     {
+        // The count on "Clear filters" points at filters set somewhere easy to overlook.
+        var active = ViewModel.ActiveFilterCount;
+        ClearFiltersButton.Content = active == 0 ? "Clear filters" : $"Clear filters ({active})";
+        ClearFiltersButton.IsEnabled = active > 0;
+
         FilterBadges.Children.Clear();
         if (ViewModel.WithoutTags)
             FilterBadges.Children.Add(Badge("No tags", false, outlined: false, "Showing photos without your own tags (auto tags don't count)",

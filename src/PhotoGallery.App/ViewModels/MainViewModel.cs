@@ -268,6 +268,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>How many filters "Clear filters" would reset: the search text, each tag and person, and every other filter set.</summary>
+    public int ActiveFilterCount =>
+        (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
+        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
+        (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
+        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0);
+
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
     public async Task InitializeAsync()
     {
