@@ -38,6 +38,7 @@ public sealed partial class MainWindow : Window
         RotateRightButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)190 });
 
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
+        CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
 
@@ -70,6 +71,12 @@ public sealed partial class MainWindow : Window
                 RefreshMap(fit: false);
         };
         SyncCameraCombo();
+        ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();
+        ViewModel.Notices.CollectionChanged += (_, _) => ShowNotices();
+        ViewModel.FlagsChanged += SyncFlagButton;
+        // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
+        Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
+        Root.CharacterReceived += Root_CharacterReceived;
         _ = ViewModel.InitializeAsync();
     }
 
@@ -155,14 +162,217 @@ public sealed partial class MainWindow : Window
     {
         ViewModel.SearchText = "";
         ViewModel.MinRating = 0;
+        ViewModel.FlaggedOnly = false;
         ViewModel.TakenFrom = null;
         ViewModel.TakenTo = null;
         ViewModel.CameraIndex = 0;
         foreach (var tag in ViewModel.Tags)
             tag.IsSelected = false;
+        ViewModel.ClearPeopleFilter();
     }
 
-    private void ErrorBar_CloseButtonClick(InfoBar sender, object args) => ViewModel.ErrorMessage = null;
+    // ---- Keyboard shortcuts, like Lightroom ----
+
+    private static bool IsDown(VirtualKey key) =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+    // Typing in a text box, a search box or a date picker must not set ratings or open views.
+    private bool IsTyping() =>
+        FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or CalendarDatePicker or ComboBox;
+
+    private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.F11)
+        {
+            e.Handled = true;
+            ToggleFullScreen();
+            return;
+        }
+        if (e.Key == VirtualKey.F1)
+        {
+            e.Handled = true;
+            await ShowShortcutsAsync();
+            return;
+        }
+        // The compare view handles its own keys; Ctrl and Alt combinations belong to buttons and menus.
+        if (CompareLayer.Visibility == Visibility.Visible || IsTyping() ||
+            IsDown(VirtualKey.Control) || IsDown(VirtualKey.Menu) || IsDown(VirtualKey.LeftWindows))
+        {
+            return;
+        }
+
+        var key = (int)e.Key;
+        var stars = key switch
+        {
+            >= (int)VirtualKey.Number0 and <= (int)VirtualKey.Number5 => key - (int)VirtualKey.Number0,
+            >= (int)VirtualKey.NumberPad0 and <= (int)VirtualKey.NumberPad5 => key - (int)VirtualKey.NumberPad0,
+            _ => -1,
+        };
+        if (IsDown(VirtualKey.Shift))
+            stars = -1; // Shift+number types symbols such as "?" on some keyboards.
+
+        if (IsViewerOpen)
+        {
+            if (ViewerItem is not { } item || IsEditing)
+                return;
+            if (stars >= 0)
+            {
+                e.Handled = true;
+                await ViewModel.SetRatingAsync(item, stars);
+                UpdateViewerTitle();
+            }
+            else if (e.Key == VirtualKey.P)
+            {
+                e.Handled = true;
+                await ViewModel.ToggleFlagAsync([item]);
+                UpdateViewerTitle();
+            }
+            else if (e.Key == VirtualKey.G)
+            {
+                e.Handled = true;
+                CloseViewer();
+            }
+            return;
+        }
+
+        var selected = SelectedPhotos;
+        if (stars >= 0)
+        {
+            e.Handled = true;
+            await ViewModel.SetRatingAsync(selected, stars);
+            if (!ViewModel.Editor.IsDirty)
+                ViewModel.Editor.Load(SelectedPhotos);
+            return;
+        }
+        switch (e.Key)
+        {
+            case VirtualKey.P:
+                e.Handled = true;
+                await ViewModel.ToggleFlagAsync(selected);
+                break;
+            case VirtualKey.E when selected.Count > 0:
+                e.Handled = true;
+                OpenViewer(selected[0]);
+                break;
+            case VirtualKey.C:
+                e.Handled = true;
+                OpenCompare(selected);
+                break;
+            case VirtualKey.M:
+                e.Handled = true;
+                MapToggle.IsChecked = MapToggle.IsChecked != true;
+                Map_Click(MapToggle, new RoutedEventArgs());
+                break;
+        }
+    }
+
+    // "?" is a different key on every keyboard layout, so it is caught as a typed character.
+    private async void Root_CharacterReceived(UIElement sender, CharacterReceivedRoutedEventArgs e)
+    {
+        if (e.Character == '?' && !IsTyping())
+        {
+            e.Handled = true;
+            await ShowShortcutsAsync();
+        }
+    }
+
+    private void ToggleFullScreen()
+    {
+        var full = AppWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen;
+        AppWindow.SetPresenter(full ? Microsoft.UI.Windowing.AppWindowPresenterKind.Default : Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+    }
+
+    private bool _showingShortcuts;
+
+    private async void Shortcuts_Click(object sender, RoutedEventArgs e) => await ShowShortcutsAsync();
+
+    private async Task ShowShortcutsAsync()
+    {
+        if (_showingShortcuts)
+            return;
+        (string Keys, string What)[] shortcuts =
+        [
+            ("G", "Back to the grid"),
+            ("E or Enter", "Show the photo large (Enter with several photos: compare them)"),
+            ("C", "Compare the selected photos"),
+            ("M", "Show or hide the map"),
+            ("0 – 5", "Rate the selected photos (0 removes the rating)"),
+            ("P", "Flag or unflag the selected photos"),
+            ("← →", "Previous or next photo in the viewer and compare"),
+            ("Tab", "Next photo in compare"),
+            ("Ctrl+,  Ctrl+.", "Rotate left or right"),
+            ("Ctrl+S", "Save the changes in the info pane"),
+            ("F11", "Full screen"),
+            ("Esc", "Close the viewer or compare"),
+            ("? or F1", "This list"),
+        ];
+        var grid = new Grid { ColumnSpacing = 24, RowSpacing = 8 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var i = 0; i < shortcuts.Length; i++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var keys = new TextBlock { Text = shortcuts[i].Keys, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+            var what = new TextBlock { Text = shortcuts[i].What, TextWrapping = TextWrapping.Wrap };
+            Grid.SetRow(keys, i);
+            Grid.SetRow(what, i);
+            Grid.SetColumn(what, 1);
+            grid.Children.Add(keys);
+            grid.Children.Add(what);
+        }
+        _showingShortcuts = true;
+        try
+        {
+            await new ContentDialog
+            {
+                XamlRoot = Root.XamlRoot,
+                Title = "Keyboard shortcuts",
+                Content = new ScrollViewer { Content = grid, MaxHeight = 520 },
+                CloseButtonText = "Close",
+            }.ShowAsync();
+        }
+        finally
+        {
+            _showingShortcuts = false;
+        }
+    }
+
+    // ---- Flags ----
+
+    private async void Flag_Click(object sender, RoutedEventArgs e) => await ViewModel.ToggleFlagAsync(SelectedPhotos);
+
+    private void SyncFlagButton()
+    {
+        var photos = SelectedPhotos;
+        FlagButton.IsChecked = photos.Count > 0 && photos.All(p => p.Photo.Flagged);
+    }
+
+    // ---- Banners ----
+
+    private void ShowNotices()
+    {
+        NoticePanel.Children.Clear();
+        foreach (var notice in ViewModel.Notices)
+        {
+            var bar = new InfoBar
+            {
+                Message = notice.Message,
+                IsOpen = true,
+                Severity = notice.Severity switch
+                {
+                    NoticeSeverity.Error => InfoBarSeverity.Error,
+                    NoticeSeverity.Warning => InfoBarSeverity.Warning,
+                    _ => InfoBarSeverity.Informational,
+                },
+            };
+            // Informational bars are grey by default; Lasse asked for blue ones.
+            if (notice.Severity == NoticeSeverity.Info && ThemeBrush("SystemFillColorAttentionBackgroundBrush") is { } blue)
+                bar.Background = blue;
+            bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
+            NoticePanel.Children.Add(bar);
+        }
+        NoticePanel.Margin = new Thickness(12, 0, 12, ViewModel.Notices.Count > 0 ? 8 : 0);
+    }
 
     private void FolderTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
@@ -193,6 +403,8 @@ public sealed partial class MainWindow : Window
             if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
                 return; // Leave the panel showing the edit that needs fixing.
             ViewModel.Editor.Load(SelectedPhotos);
+            SyncFlagButton();
+            _ = RefreshPeoplePanelAsync();
             if (IsMapOpen)
                 MapView.ShowSelection(SelectedPhotos, fit: !_selectingFromMap); // don't jump away from a clicked marker
         }
@@ -226,7 +438,7 @@ public sealed partial class MainWindow : Window
         var photos = SelectedPhotos;
         if (photos.Count == 0)
         {
-            ViewModel.ErrorMessage = "Select the photos to tag.";
+            ViewModel.Warn("Select the photos to tag.");
             return;
         }
         if (!MainViewModel.IsTagModelInstalled)
@@ -317,12 +529,12 @@ public sealed partial class MainWindow : Window
     {
         if (photos.Count == 0)
         {
-            ViewModel.ErrorMessage = "Select 1 to 4 photos to compare.";
+            ViewModel.Warn("Select 1 to 4 photos to compare.");
             return;
         }
         if (photos.Count > CompareView.MaxPhotos)
         {
-            ViewModel.ErrorMessage = $"Select at most {CompareView.MaxPhotos} photos to compare; {photos.Count} are selected.";
+            ViewModel.Warn($"Select at most {CompareView.MaxPhotos} photos to compare; {photos.Count} are selected.");
             return;
         }
         CompareLayer.Visibility = Visibility.Visible;
@@ -361,9 +573,9 @@ public sealed partial class MainWindow : Window
         var dated = selected.Where(p => p.Photo.DateTaken is not null).ToList();
         if (dated.Count == 0)
         {
-            ViewModel.ErrorMessage = selected.Count == 0
+            ViewModel.Warn(selected.Count == 0
                 ? "Select the photos whose date and time you want to correct."
-                : "None of the selected photos has a date taken to shift.";
+                : "None of the selected photos has a date taken to shift.");
             return;
         }
 
@@ -414,7 +626,7 @@ public sealed partial class MainWindow : Window
         EndEdit();
         var version = ++_viewerLoadVersion;
         var item = _viewerItems[_viewerIndex];
-        ViewerTitle.Text = $"{item.FileName}   ({_viewerIndex + 1} of {_viewerItems.Count})";
+        UpdateViewerTitle();
         ViewerError.Text = "";
         ViewerProgress.IsActive = true;
         UpdateUndoButtons();
@@ -450,6 +662,15 @@ public sealed partial class MainWindow : Window
             if (version == _viewerLoadVersion)
                 ViewerProgress.IsActive = false;
         }
+    }
+
+    // The rating and flag are in the title, so 0–5 and P show their effect in the viewer.
+    private void UpdateViewerTitle()
+    {
+        if (ViewerItem is not { } item)
+            return;
+        var marks = (item.Photo.Rating > 0 ? "   " + new string('★', item.Photo.Rating) : "") + (item.Photo.Flagged ? "   ⚑ Flagged" : "");
+        ViewerTitle.Text = $"{item.FileName}   ({_viewerIndex + 1} of {_viewerItems.Count}){marks}";
     }
 
     // Esc first leaves an edit, then the viewer.

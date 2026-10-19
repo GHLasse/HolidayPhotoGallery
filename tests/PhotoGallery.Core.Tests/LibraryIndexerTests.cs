@@ -40,7 +40,7 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         DateTaken.TryParse("2024-07-01 10:00:00", out var july);
         DateTaken.TryParse("2023-12-24 18:00:00", out var christmas);
         await service.WriteAsync(rome, new MetadataChanges { Tags = ["Italy", "City"], Rating = 5, DateTaken = july });
-        await service.WriteAsync(beach, new MetadataChanges { Tags = ["Italy", "Beach"], Rating = 3, Caption = "Sunset" });
+        await service.WriteAsync(beach, new MetadataChanges { Tags = ["Italy", "Beach"], Rating = 3, Caption = "Sunset", Flagged = true });
         await service.WriteAsync(home, new MetadataChanges { Tags = ["Garden"], DateTaken = christmas });
 
         await indexer.SyncFolderAsync(_photos.Path);
@@ -48,6 +48,7 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Equal(3, _index!.Search(new PhotoQuery()).Count);
         Assert.Equal([rome, beach], _index.Search(new PhotoQuery { Tags = ["italy"] }).Select(p => p.Path));
         Assert.Equal([rome], _index.Search(new PhotoQuery { MinRating = 4 }).Select(p => p.Path));
+        Assert.Equal([beach], _index.Search(new PhotoQuery { FlaggedOnly = true }).Select(p => p.Path));
         Assert.Equal([home], _index.Search(new PhotoQuery { TakenTo = new DateTime(2023, 12, 24) }).Select(p => p.Path));
         Assert.Equal([beach], _index.Search(new PhotoQuery { Text = "sun" }).Select(p => p.Path));
         Assert.Equal([home], _index.Search(new PhotoQuery { Folder = Path.Combine(_photos.Path, "Home") }).Select(p => p.Path));

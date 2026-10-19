@@ -29,6 +29,9 @@ public sealed partial class CompareView : UserControl
     /// <summary>Raised when the user rates a photo; the handler writes it to the file.</summary>
     public event Func<PhotoItemViewModel, int, Task>? RatingChanged;
 
+    /// <summary>Raised when the user presses P to flag or unflag the photo; the handler writes it to the file.</summary>
+    public event Func<PhotoItemViewModel, Task>? FlagRequested;
+
     /// <summary>Raised with -1 or +1 when a single photo is shown and the user presses Left or Right.</summary>
     public event Action<int>? NavigateRequested;
 
@@ -108,11 +111,23 @@ public sealed partial class CompareView : UserControl
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 360,
         };
+        var flag = new FontIcon
+        {
+            Glyph = "\uE7C1",
+            FontSize = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = ThemeBrush("AccentTextFillColorPrimaryBrush", Colors.DodgerBlue),
+            Visibility = item.Photo.Flagged ? Visibility.Visible : Visibility.Collapsed,
+        };
+        ToolTipService.SetToolTip(flag, "Flagged (P)");
         var footer = new Grid { ColumnSpacing = 8, Padding = new Thickness(8, 4, 8, 4) };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.Children.Add(name);
-        Grid.SetColumn(rating, 1);
+        Grid.SetColumn(flag, 1);
+        footer.Children.Add(flag);
+        Grid.SetColumn(rating, 2);
         footer.Children.Add(rating);
 
         var body = new Grid();
@@ -142,7 +157,7 @@ public sealed partial class CompareView : UserControl
             VerticalContentAlignment = VerticalAlignment.Stretch,
         };
 
-        var pane = new Pane(item, host, root, scroller, image, rating, status);
+        var pane = new Pane(item, host, root, scroller, image, rating, status, flag);
         // handledEventsToo: the scroll viewer and rating control mark clicks as handled,
         // which used to stop the click from highlighting the photo.
         // A pane cannot take focus before it is on screen, so the first one grabs it once loaded.
@@ -239,9 +254,17 @@ public sealed partial class CompareView : UserControl
 
         switch (e.Key)
         {
-            case VirtualKey.Escape:
+            // G goes back to the grid, like Lightroom.
+            case VirtualKey.Escape or VirtualKey.G:
                 e.Handled = true;
                 CloseRequested?.Invoke();
+                return;
+            case VirtualKey.P:
+                e.Handled = true;
+                var flagged = _panes[_activeIndex];
+                if (FlagRequested is { } flag)
+                    await flag(flagged.Item);
+                flagged.Flag.Visibility = flagged.Item.Photo.Flagged ? Visibility.Visible : Visibility.Collapsed;
                 return;
             case VirtualKey.Tab:
                 e.Handled = true;
@@ -275,8 +298,9 @@ public sealed partial class CompareView : UserControl
 
     private void Close_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
 
-    private sealed class Pane(PhotoItemViewModel item, ContentControl host, Border root, ScrollViewer scroller, Image image, RatingControl rating, TextBlock status)
+    private sealed class Pane(PhotoItemViewModel item, ContentControl host, Border root, ScrollViewer scroller, Image image, RatingControl rating, TextBlock status, FontIcon flag)
     {
+        public FontIcon Flag { get; } = flag;
         public PhotoItemViewModel Item { get; } = item;
         public ContentControl Host { get; } = host;
         public Border Root { get; } = root;

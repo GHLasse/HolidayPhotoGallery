@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Faces;
 
 namespace PhotoGallery.Core.Metadata;
 
@@ -14,7 +15,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     private static readonly string[] ReadTags =
     [
         "-XMP-dc:Subject", "-IPTC:Keywords", "-XMP-microsoft:LastKeywordXMP", "-IFD0:XPKeywords",
-        "-XMP-xmp:Rating", "-XMP-microsoft:RatingPercent", "-IFD0:Rating",
+        "-XMP-xmp:Rating", "-XMP-microsoft:RatingPercent", "-IFD0:Rating", "-XMP-digiKam:PickLabel",
         "-XMP-dc:Title", "-XMP-dc:Description", "-IFD0:XPTitle", "-IFD0:ImageDescription", "-IPTC:Caption-Abstract",
         "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal",
         "-XMP-photoshop:DateCreated", "-ExifIFD:CreateDate",
@@ -22,6 +23,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
         "-XMP-photoshop:Country", "-XMP-iptcCore:CountryCode", "-XMP-photoshop:State", "-XMP-photoshop:City", "-XMP-iptcCore:Location",
         "-IPTC:Country-PrimaryLocationName", "-IPTC:Province-State", "-IPTC:City", "-IPTC:Sub-location",
+        $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -45,7 +47,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (paths.Count == 0)
             return result;
 
-        var args = new List<string> { "-json", "-n", "-G1" };
+        // -struct keeps each face region together instead of splitting it into parallel lists.
+        var args = new List<string> { "-json", "-n", "-G1", "-struct" };
         args.AddRange(ReadTags);
         args.AddRange(paths);
 
@@ -77,7 +80,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.");
 
-        var args = BuildWriteArguments(path, changes);
+        // People tags are rewritten as a whole, keeping the file's other regions; Windows' copy of them
+        // is measured on the upright photo, so it changes when the photo is rotated.
+        var current = changes.People is not null || changes.Orientation is not null
+            ? await ReadAsync(path, cancellationToken).ConfigureAwait(false)
+            : null;
+        var args = BuildWriteArguments(path, changes, current);
         for (var attempt = 1; ; attempt++)
         {
             await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
@@ -115,7 +123,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     /// <summary>
     /// Copies all metadata from <paramref name="source"/> into a freshly encoded <paramref name="target"/>
     /// whose pixels are already upright and <paramref name="width"/> × <paramref name="height"/>. The old
-    /// embedded thumbnail and colour profile are left out, since they describe the old pixels.
+    /// embedded thumbnail, colour profile and regions are left out, since they describe the old pixels.
     /// </summary>
     public async Task CopyMetadataAsync(string source, string target, int width, int height, CancellationToken cancellationToken = default)
     {
@@ -123,6 +131,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         [
             "-overwrite_original", "-m",
             "-tagsFromFile", source, "-all:all", "--IFD1:all", "--PreviewImage", "--ThumbnailImage",
+            // Face and other regions are measured on the old pixels; the people are moved separately.
+            "--XMP-mwg-rs:all", "--XMP-MP:all",
             "-IFD0:Orientation#=1", "-XMP-tiff:Orientation=",
             $"-ExifIFD:ExifImageWidth={width}", $"-ExifIFD:ExifImageHeight={height}",
             target,
@@ -165,7 +175,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
     }
 
-    internal static List<string> BuildWriteArguments(string path, MetadataChanges changes)
+    internal static List<string> BuildWriteArguments(string path, MetadataChanges changes, PhotoMetadata? current = null)
     {
         var hasIptc = HasIptc(path);
         var args = new List<string>
@@ -214,6 +224,11 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 args.Add($"-IFD0:RatingPercent={percent}");
             }
         }
+
+        // The flag is digiKam's pick label "accepted" (3), the nearest thing to Lightroom's pick flag that
+        // other programs can read. Unflagging only removes that value, so a reject mark from elsewhere stays.
+        if (changes.Flagged is { } flagged)
+            args.Add(flagged ? "-XMP-digiKam:PickLabel=3" : "-XMP-digiKam:PickLabel-=3");
 
         if (changes.Caption is { } caption)
         {
@@ -291,6 +306,14 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        var people = changes.People ?? (changes.Orientation is not null && current is { People.Count: > 0 } ? current.People : null);
+        if (people is not null)
+        {
+            args.AddRange(FaceRegions.WriteArguments(
+                people, current?.OtherRegions ?? [], current?.Width, current?.Height,
+                changes.Orientation ?? current?.Orientation ?? 1));
+        }
+
         // IPTC needs to be told its text is UTF-8, or non-ASCII tags and captions are garbled in other apps.
         if (hasIptc && (changes.Tags is not null || changes.Caption is not null || changes.Place is not null))
             args.Add("-IPTC:CodedCharacterSet=UTF8");
@@ -359,12 +382,14 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
 
         var orientation = (int)(GetNumber(item, "IFD0:Orientation") ?? GetNumber(item, "XMP-tiff:Orientation") ?? 1);
+        var (people, otherRegions) = FaceRegions.Read(item, Orientation.Normalize(orientation));
 
         return new PhotoMetadata
         {
             Path = path,
             Tags = TagList.Normalize(tags),
             Rating = Math.Clamp(rating, 0, 5),
+            Flagged = GetNumber(item, "XMP-digiKam:PickLabel") == 3,
             Caption = caption,
             DateTaken = ParseDateTaken(item),
             Orientation = Orientation.Normalize(orientation),
@@ -374,6 +399,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Longitude = GetNumber(item, "Composite:GPSLongitude"),
             Camera = CameraName(GetString(item, "IFD0:Make"), GetString(item, "IFD0:Model")),
             Place = ParsePlace(item),
+            People = people,
+            OtherRegions = otherRegions,
         };
     }
 

@@ -1,4 +1,5 @@
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Metadata;
 
 namespace PhotoGallery.Core.Editing;
@@ -15,9 +16,11 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// Replaces the photo with an edited version. <paramref name="writeImage"/> writes the new, upright
     /// pixels (without metadata) to the path it is given, in the format of <paramref name="extension"/>.
     /// Returns the photo's path, which changes when the format does (e.g. HEIC saved as JPEG).
+    /// <paramref name="crop"/> is the part of the upright photo that was kept, if it was cropped; the people
+    /// named in the photo are moved with it, and dropped when they were cut off.
     /// </summary>
     public async Task<string> SaveEditAsync(string path, string extension, int width, int height,
-                                            Func<string, Task> writeImage, CancellationToken cancellationToken = default)
+                                            Func<string, Task> writeImage, FaceBox? crop = null, CancellationToken cancellationToken = default)
     {
         if (File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.");
@@ -34,6 +37,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         {
             await writeImage(temp).ConfigureAwait(false);
             await metadata.CopyMetadataAsync(path, temp, width, height, cancellationToken).ConfigureAwait(false);
+            await MovePeopleAsync(path, temp, crop, cancellationToken).ConfigureAwait(false);
 
             EditHistory.BackUp(path);
             File.Move(temp, newPath, overwrite: true);
@@ -49,6 +53,30 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
             if (File.Exists(temp))
                 File.Delete(temp);
         }
+    }
+
+    /// <summary>
+    /// The edited photo is upright (orientation 1) and maybe cropped, so the people's boxes are turned and
+    /// cropped to match. Other programs' regions are not copied (see CopyMetadataAsync): they describe the old pixels.
+    /// </summary>
+    private async Task MovePeopleAsync(string source, string target, FaceBox? crop, CancellationToken cancellationToken)
+    {
+        var before = await metadata.ReadAsync(source, cancellationToken).ConfigureAwait(false);
+        if (before.People.Count == 0)
+            return;
+        var people = new List<PersonTag>();
+        foreach (var person in before.People)
+        {
+            var box = person.Box.ToUpright(before.Orientation);
+            if (crop is { } c)
+            {
+                if (box.AfterCrop(c) is not { } moved)
+                    continue;
+                box = moved;
+            }
+            people.Add(person with { Box = box });
+        }
+        await metadata.WriteAsync(target, new MetadataChanges { People = people }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Undoes the most recent edit; returns the photo's path, which may change back to the old name.</summary>

@@ -32,6 +32,24 @@ jobs:
           [ -f "$dir/cats.jpg" ] || curl -sSfL --retry 3 -o "$dir/cats.jpg" http://images.cocodataset.org/val2017/000000039769.jpg
           ls -l "$dir"
           echo "PHOTOGALLERY_TAG_MODEL=$dir" >> "$GITHUB_ENV"
+      - name: Cache face models
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/face-model
+          key: face-model-yunet-sface-v1
+      - name: Download face models and sample portraits
+        run: |
+          dir="$RUNNER_TEMP/face-model"
+          mkdir -p "$dir"
+          zoo=https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models
+          for f in face_detection_yunet/face_detection_yunet_2023mar.onnx face_recognition_sface/face_recognition_sface_2021dec.onnx; do
+            [ -f "$dir/$(basename $f)" ] || curl -sSfL --retry 3 -o "$dir/$(basename $f)" "$zoo/$f"
+          done
+          for f in obama.jpg obama2.jpg biden.jpg two_people.jpg; do
+            [ -f "$dir/$f" ] || curl -sSfL --retry 3 -o "$dir/$f" "https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/$f"
+          done
+          ls -l "$dir"
+          echo "PHOTOGALLERY_FACE_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 
@@ -67,6 +85,27 @@ jobs:
           if (-not (Test-Path $cats)) { curl.exe -sSfL --retry 3 -o $cats http://images.cocodataset.org/val2017/000000039769.jpg }
           Get-ChildItem $dir
           "PHOTOGALLERY_TAG_MODEL=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Cache face models
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/face-model
+          key: face-model-yunet-sface-v1
+      - name: Download face models and sample portraits
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'face-model'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $zoo = 'https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models'
+          foreach ($f in 'face_detection_yunet/face_detection_yunet_2023mar.onnx', 'face_recognition_sface/face_recognition_sface_2021dec.onnx') {
+            $target = Join-Path $dir (Split-Path $f -Leaf)
+            if (-not (Test-Path $target)) { curl.exe -sSfL --retry 3 -o $target "$zoo/$f" }
+          }
+          foreach ($f in 'obama.jpg', 'obama2.jpg', 'biden.jpg', 'two_people.jpg') {
+            $target = Join-Path $dir $f
+            if (-not (Test-Path $target)) { curl.exe -sSfL --retry 3 -o $target "https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/$f" }
+          }
+          Get-ChildItem $dir
+          "PHOTOGALLERY_FACE_MODEL=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
       - name: Build app (x64)

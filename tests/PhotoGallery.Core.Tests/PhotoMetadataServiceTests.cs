@@ -39,6 +39,7 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         {
             Tags = ["Strand", "Italien", "Familie Müller"],
             Rating = 4,
+            Flagged = true,
             Caption = "Sonnenuntergang\nam Meer",
             DateTaken = date,
         });
@@ -46,8 +47,22 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         var m = await Service.ReadAsync(path);
         Assert.Equal(["Strand", "Italien", "Familie Müller"], m.Tags);
         Assert.Equal(4, m.Rating);
+        Assert.True(m.Flagged);
         Assert.Equal("Sonnenuntergang\nam Meer", m.Caption);
         Assert.Equal(date, m.DateTaken);
+    }
+
+    [ExifToolFact]
+    public async Task Unflagging_removes_the_flag_but_keeps_a_reject_mark_from_elsewhere()
+    {
+        var path = _temp.CopySample(".jpg");
+        await Service.WriteAsync(path, new MetadataChanges { Flagged = true });
+        await Service.WriteAsync(path, new MetadataChanges { Flagged = false });
+        Assert.False((await Service.ReadAsync(path)).Flagged);
+
+        await _exifTool!.RunAsync(["-overwrite_original", "-XMP-digiKam:PickLabel=1", path]);
+        await Service.WriteAsync(path, new MetadataChanges { Flagged = false });
+        Assert.Equal("1", (await _exifTool.RunAsync(["-s3", "-n", "-XMP-digiKam:PickLabel", path])).Output.Trim());
     }
 
     [ExifToolFact]

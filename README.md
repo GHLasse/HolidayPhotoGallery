@@ -49,6 +49,8 @@ saved **in the photo files themselves**.
 2. Map panel (OpenStreetMap) to place photos, and looking up place names from GPS
 3. Crop and automatic contrast/brightness, keeping the original in a backup folder with undo
 4. Automatic tagging with a model that runs on the PC
+5. Finding and naming people, with names saved in the files (read and written the way Lightroom,
+   digiKam and Windows Live Photo Gallery keep them)
 
 ## Building
 
@@ -80,3 +82,6 @@ The app is a plain `.exe` that carries its own Windows App SDK runtime, so nothi
 ## Credits
 
 Metadata handling uses [ExifTool](https://exiftool.org) by Phil Harvey.
+Faces are found with [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) (MIT licence)
+and recognised with [SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface) (Apache 2.0),
+both from the OpenCV model zoo and downloaded on first use.

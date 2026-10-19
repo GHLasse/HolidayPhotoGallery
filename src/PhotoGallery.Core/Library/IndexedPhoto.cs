@@ -1,3 +1,4 @@
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Metadata;
 
 namespace PhotoGallery.Core.Library;
@@ -17,6 +18,8 @@ public sealed record IndexedPhoto
 
     public int Rating { get; init; }
 
+    public bool Flagged { get; init; }
+
     public string? Caption { get; init; }
 
     public IReadOnlyList<string> Tags { get; init; } = [];
@@ -33,6 +36,9 @@ public sealed record IndexedPhoto
 
     public PlaceName? Place { get; init; }
 
+    /// <summary>The people named in the file, with their faces on the stored pixels.</summary>
+    public IReadOnlyList<PersonTag> People { get; init; } = [];
+
     public string FileName => System.IO.Path.GetFileName(Path);
 
     public static IndexedPhoto From(FileInfo file, PhotoMetadata metadata) => new()
@@ -43,6 +49,7 @@ public sealed record IndexedPhoto
         FileModifiedUtc = file.LastWriteTimeUtc,
         DateTaken = metadata.DateTaken,
         Rating = metadata.Rating,
+        Flagged = metadata.Flagged,
         Caption = metadata.Caption,
         Tags = metadata.Tags,
         Orientation = metadata.Orientation,
@@ -51,5 +58,6 @@ public sealed record IndexedPhoto
         Camera = metadata.Camera,
         Location = metadata.Latitude is { } lat && metadata.Longitude is { } lon ? new GeoPosition(lat, lon) : null,
         Place = metadata.Place,
+        People = metadata.People,
     };
 }

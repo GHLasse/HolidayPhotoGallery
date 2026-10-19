@@ -23,6 +23,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
             if (SetProperty(ref _photo, value))
             {
                 OnPropertyChanged(nameof(Stars));
+                OnPropertyChanged(nameof(FlagVisibility));
                 OnPropertyChanged(nameof(Tooltip));
             }
         }
@@ -35,6 +36,9 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     public bool CanRotate => SupportedFormats.CanRotateLosslessly(Path);
 
     public string Stars => Photo.Rating > 0 ? new string('★', Photo.Rating) : "";
+
+    public Microsoft.UI.Xaml.Visibility FlagVisibility =>
+        Photo.Flagged ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public string Tooltip
     {

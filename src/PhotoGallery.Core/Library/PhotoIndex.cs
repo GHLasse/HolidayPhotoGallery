@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Data.Sqlite;
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Metadata;
 
 namespace PhotoGallery.Core.Library;
@@ -9,9 +10,9 @@ namespace PhotoGallery.Core.Library;
 /// A SQLite index of the photos in the library, used only to search and sort quickly.
 /// It holds nothing that is not also in the files, so it can be deleted and rebuilt at any time.
 /// </summary>
-public sealed class PhotoIndex : IDisposable
+public sealed partial class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 4;
+    private const int SchemaVersion = 6;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -30,15 +31,24 @@ public sealed class PhotoIndex : IDisposable
         }.ToString());
         _connection.Open();
         EnsureSchema();
+        RelinkFaces();
     }
 
     private void EnsureSchema()
     {
         var version = Convert.ToInt32(Scalar("PRAGMA user_version;"), CultureInfo.InvariantCulture);
-        if (version != SchemaVersion)
+        if (version == 5)
+        {
+            // Flags came with version 6; adding the column keeps the faces already found.
+            Execute("ALTER TABLE photos ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;");
+        }
+        else if (version != SchemaVersion)
         {
             // The index is only a cache, so an outdated layout is simply rebuilt.
             Execute("""
+                DROP TABLE IF EXISTS faces;
+                DROP TABLE IF EXISTS face_scans;
+                DROP TABLE IF EXISTS photo_people;
                 DROP TABLE IF EXISTS photo_tags;
                 DROP TABLE IF EXISTS photos;
                 """);
@@ -57,6 +67,7 @@ public sealed class PhotoIndex : IDisposable
                 date_taken TEXT,
                 date_offset_minutes INTEGER,
                 rating INTEGER NOT NULL DEFAULT 0,
+                flagged INTEGER NOT NULL DEFAULT 0,
                 caption TEXT,
                 orientation INTEGER NOT NULL DEFAULT 1,
                 width INTEGER,
@@ -78,6 +89,31 @@ public sealed class PhotoIndex : IDisposable
                 PRIMARY KEY (photo_id, tag)
             );
             CREATE INDEX IF NOT EXISTS ix_photo_tags_tag ON photo_tags(tag);
+            CREATE TABLE IF NOT EXISTS photo_people (
+                photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+                name TEXT NOT NULL COLLATE NOCASE,
+                x REAL NOT NULL, y REAL NOT NULL, w REAL NOT NULL, h REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_photo_people_photo ON photo_people(photo_id);
+            CREATE INDEX IF NOT EXISTS ix_photo_people_name ON photo_people(name);
+            -- Photos the face finder has looked at, so a photo without faces is not looked at again.
+            CREATE TABLE IF NOT EXISTS face_scans (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
+            );
+            -- Faces the face finder found (boxes on the stored pixels). "person" mirrors the name in the
+            -- file when a named person's box covers the face; "rejected" holds names the user said it is not.
+            CREATE TABLE IF NOT EXISTS faces (
+                id INTEGER PRIMARY KEY,
+                photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+                x REAL NOT NULL, y REAL NOT NULL, w REAL NOT NULL, h REAL NOT NULL,
+                score REAL NOT NULL,
+                embedding BLOB NOT NULL,
+                thumbnail BLOB,
+                person TEXT COLLATE NOCASE,
+                rejected TEXT,
+                ignored INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS ix_faces_photo ON faces(photo_id);
             PRAGMA user_version = {SchemaVersion};
             """);
     }
@@ -113,14 +149,14 @@ public sealed class PhotoIndex : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height, camera, latitude, longitude,
+            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
                                 country, country_code, state, city, sublocation)
-            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height, $camera, $lat, $lon,
+            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $flagged, $caption, $orientation, $width, $height, $camera, $lat, $lon,
                     $country, $countryCode, $state, $city, $sublocation)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
-                date_offset_minutes = excluded.date_offset_minutes, rating = excluded.rating,
+                date_offset_minutes = excluded.date_offset_minutes, rating = excluded.rating, flagged = excluded.flagged,
                 caption = excluded.caption, orientation = excluded.orientation,
                 width = excluded.width, height = excluded.height, camera = excluded.camera,
                 latitude = excluded.latitude, longitude = excluded.longitude,
@@ -136,6 +172,7 @@ public sealed class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$date", (object?)photo.DateTaken?.Local.ToString(DateFormat, CultureInfo.InvariantCulture) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$offset", (object?)(photo.DateTaken?.Offset is { } o ? (int)o.TotalMinutes : null) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$rating", photo.Rating);
+        cmd.Parameters.AddWithValue("$flagged", photo.Flagged ? 1 : 0);
         cmd.Parameters.AddWithValue("$caption", (object?)photo.Caption ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$orientation", photo.Orientation);
         cmd.Parameters.AddWithValue("$width", (object?)photo.Width ?? DBNull.Value);
@@ -164,6 +201,54 @@ public sealed class PhotoIndex : IDisposable
             insert.Parameters.AddWithValue("$id", id);
             insert.Parameters.AddWithValue("$tag", tag);
             insert.ExecuteNonQuery();
+        }
+
+        using var deletePeople = _connection.CreateCommand();
+        deletePeople.Transaction = tx;
+        deletePeople.CommandText = "DELETE FROM photo_people WHERE photo_id = $id;";
+        deletePeople.Parameters.AddWithValue("$id", id);
+        deletePeople.ExecuteNonQuery();
+
+        foreach (var person in photo.People)
+        {
+            using var insert = _connection.CreateCommand();
+            insert.Transaction = tx;
+            insert.CommandText = "INSERT INTO photo_people (photo_id, name, x, y, w, h) VALUES ($id, $name, $x, $y, $w, $h);";
+            insert.Parameters.AddWithValue("$id", id);
+            insert.Parameters.AddWithValue("$name", person.Name);
+            insert.Parameters.AddWithValue("$x", person.Box.X);
+            insert.Parameters.AddWithValue("$y", person.Box.Y);
+            insert.Parameters.AddWithValue("$w", person.Box.Width);
+            insert.Parameters.AddWithValue("$h", person.Box.Height);
+            insert.ExecuteNonQuery();
+        }
+
+        LinkFaces(id, photo.People, tx);
+    }
+
+    /// <summary>Gives each found face of a photo the name of the person whose box covers it in the file, if any.</summary>
+    private void LinkFaces(long photoId, IReadOnlyList<PersonTag> people, SqliteTransaction tx)
+    {
+        var faces = new List<(long Id, FaceBox Box)>();
+        using (var select = _connection.CreateCommand())
+        {
+            select.Transaction = tx;
+            select.CommandText = "SELECT id, x, y, w, h FROM faces WHERE photo_id = $id;";
+            select.Parameters.AddWithValue("$id", photoId);
+            using var reader = select.ExecuteReader();
+            while (reader.Read())
+                faces.Add((reader.GetInt64(0), new FaceBox(reader.GetDouble(1), reader.GetDouble(2), reader.GetDouble(3), reader.GetDouble(4))));
+        }
+
+        foreach (var (faceId, box) in faces)
+        {
+            var person = FaceLinks.PersonFor(box, people);
+            using var update = _connection.CreateCommand();
+            update.Transaction = tx;
+            update.CommandText = "UPDATE faces SET person = $person WHERE id = $face;";
+            update.Parameters.AddWithValue("$person", (object?)person ?? DBNull.Value);
+            update.Parameters.AddWithValue("$face", faceId);
+            update.ExecuteNonQuery();
         }
     }
 
@@ -211,6 +296,9 @@ public sealed class PhotoIndex : IDisposable
                 cmd.Parameters.AddWithValue("$minRating", query.MinRating);
             }
 
+            if (query.FlaggedOnly)
+                where.Add("p.flagged = 1");
+
             if (!string.IsNullOrEmpty(query.Camera))
             {
                 where.Add("p.camera = $camera");
@@ -239,6 +327,13 @@ public sealed class PhotoIndex : IDisposable
                 cmd.Parameters.AddWithValue(name, tag);
             }
 
+            foreach (var person in query.People.Distinct(StringComparer.CurrentCultureIgnoreCase))
+            {
+                var name = $"$person{i++}";
+                where.Add($"EXISTS (SELECT 1 FROM photo_people pp WHERE pp.photo_id = p.id AND pp.name = {name})");
+                cmd.Parameters.AddWithValue(name, person);
+            }
+
             if (!string.IsNullOrWhiteSpace(query.Text))
             {
                 foreach (var word in query.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -248,7 +343,8 @@ public sealed class PhotoIndex : IDisposable
                         (p.file_name LIKE {name} ESCAPE '\' OR p.caption LIKE {name} ESCAPE '\'
                          OR p.country LIKE {name} ESCAPE '\' OR p.state LIKE {name} ESCAPE '\'
                          OR p.city LIKE {name} ESCAPE '\' OR p.sublocation LIKE {name} ESCAPE '\'
-                         OR EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag LIKE {name} ESCAPE '\'))
+                         OR EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag LIKE {name} ESCAPE '\')
+                         OR EXISTS (SELECT 1 FROM photo_people pp WHERE pp.photo_id = p.id AND pp.name LIKE {name} ESCAPE '\'))
                         """);
                     cmd.Parameters.AddWithValue(name, $"%{EscapeLike(word)}%");
                 }
@@ -258,7 +354,10 @@ public sealed class PhotoIndex : IDisposable
                 SELECT p.id, p.path, p.folder, p.file_size, p.file_mtime, p.date_taken, p.date_offset_minutes,
                        p.rating, p.caption, p.orientation, p.width, p.height, p.camera,
                        (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id) AS tags,
-                       p.latitude, p.longitude, p.country, p.country_code, p.state, p.city, p.sublocation
+                       p.latitude, p.longitude, p.country, p.country_code, p.state, p.city, p.sublocation,
+                       (SELECT group_concat(name || char(30) || x || char(30) || y || char(30) || w || char(30) || h, char(31))
+                        FROM photo_people pp WHERE pp.photo_id = p.id) AS people,
+                       p.flagged
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -331,7 +430,23 @@ public sealed class PhotoIndex : IDisposable
             Tags = r.IsDBNull(13) ? [] : r.GetString(13).Split('\u001f'),
             Location = r.IsDBNull(14) || r.IsDBNull(15) ? null : new GeoPosition(r.GetDouble(14), r.GetDouble(15)),
             Place = ReadPlace(r, 16),
+            People = r.IsDBNull(21) ? [] : ReadPeople(r.GetString(21)),
+            Flagged = r.GetInt32(22) != 0,
         };
+    }
+
+    private static List<PersonTag> ReadPeople(string packed)
+    {
+        var people = new List<PersonTag>();
+        foreach (var entry in packed.Split('\u001f'))
+        {
+            var parts = entry.Split('\u001e');
+            if (parts.Length != 5)
+                continue;
+            double N(int i) => double.Parse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture);
+            people.Add(new PersonTag(parts[0], new FaceBox(N(1), N(2), N(3), N(4))));
+        }
+        return people;
     }
 
     private static PlaceName? ReadPlace(SqliteDataReader r, int first)
