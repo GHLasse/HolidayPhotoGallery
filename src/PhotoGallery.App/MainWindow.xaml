@@ -22,7 +22,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Toolbar: commands, search and filters -->
-        <Grid Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4">
+        <Grid x:Name="TopBar" Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -400,7 +400,7 @@
         </ScrollViewer>
 
         <!-- Status bar -->
-        <Grid Grid.Row="3" Grid.ColumnSpan="3" Padding="12,4" ColumnSpacing="12">
+        <Grid x:Name="StatusBar" Grid.Row="3" Grid.ColumnSpan="3" Padding="12,4" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="200" />

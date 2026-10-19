@@ -88,6 +88,8 @@ public sealed partial class MainWindow : Window
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
         Root.CharacterReceived += Root_CharacterReceived;
+        Root.ActualThemeChanged += Root_ActualThemeChanged;
+        ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
         _ = ViewModel.InitializeAsync();
     }
 
@@ -873,6 +875,10 @@ public sealed partial class MainWindow : Window
             },
         };
 
+        // Appearance tab
+        var appearance = AppearanceTab(out var chosenAppearance, out var revertAppearance);
+        appearance.Visibility = Visibility.Collapsed;
+
         // Keyboard tab
         var keyboard = new ScrollViewer { Content = ShortcutList(), MaxHeight = 480, Visibility = Visibility.Collapsed };
 
@@ -881,12 +887,15 @@ public sealed partial class MainWindow : Window
         var croppingTab = new SelectorBarItem { Text = "Cropping", Icon = new FontIcon { Glyph = "\uE7A8" } };
         tabs.Items.Add(taggingTab);
         tabs.Items.Add(croppingTab);
+        var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
+        tabs.Items.Add(appearanceTab);
         var keyboardTab = new SelectorBarItem { Text = "Keyboard", Icon = new FontIcon { Glyph = "\uE765" } };
         tabs.Items.Add(keyboardTab);
         tabs.SelectionChanged += (_, _) =>
         {
             tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
             cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
+            appearance.Visibility = tabs.SelectedItem == appearanceTab ? Visibility.Visible : Visibility.Collapsed;
             keyboard.Visibility = tabs.SelectedItem == keyboardTab ? Visibility.Visible : Visibility.Collapsed;
         };
 
@@ -901,8 +910,8 @@ public sealed partial class MainWindow : Window
                 Children =
                 {
                     tabs,
-                    // Both tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { tagging, cropping, keyboard } },
+                    // The tabs share one cell so the dialog keeps its size when switching.
+                    new Grid { MinHeight = 480, Children = { tagging, cropping, appearance, keyboard } },
                 },
             },
             PrimaryButtonText = "Save",
@@ -910,8 +919,13 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            revertAppearance();
             return;
+        }
 
+        var (theme, palette) = chosenAppearance();
+        ViewModel.SaveAppearance(theme, palette);
         var code = language.SelectedIndex == 1 ? "de" : "en";
         list.AddTyped();
         var labels = list.Tags;

@@ -807,6 +807,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The crop shape the crop tool starts with (a CropRatios key).</summary>
     public string CropRatio => _settings.CropRatio;
 
+    /// <summary>"system", "light" or "dark".</summary>
+    public string Theme => _settings.Theme;
+
+    public string Palette => _settings.Palette;
+
+    public void SaveAppearance(string theme, string palette)
+    {
+        _settings.Theme = theme;
+        _settings.Palette = palette;
+        _settings.Save(SettingsPath);
+    }
+
     public void SaveCropRatio(string key)
     {
         _settings.CropRatio = key;
