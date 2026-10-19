@@ -802,24 +802,15 @@ public sealed partial class MainWindow : Window
         language.Items.Add("Deutsch");
         language.SelectedIndex = ViewModel.AutoTagLanguage == "de" ? 1 : 0;
 
-        // AcceptsReturn has to be on before the text is set, or the box keeps only the first line.
-        var list = new TextBox
-        {
-            Header = "Tags the photos may get, one per line",
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.NoWrap,
-            Height = 240,
-        };
-        list.Text = string.Join("\r", ViewModel.AutoTagLabels);
-        ScrollViewer.SetVerticalScrollBarVisibility(list, ScrollBarVisibility.Auto);
+        var list = new TagListEditor("Tags the photos may get", ViewModel.AutoTagLabels);
 
         // Switching the language swaps in the starter list for it, unless the user has made their own list.
         var shownLanguage = ViewModel.AutoTagLanguage;
         language.SelectionChanged += (_, _) =>
         {
             var picked = language.SelectedIndex == 1 ? "de" : "en";
-            if (AutoTags.ParseList(list.Text).SequenceEqual(AutoTags.StarterList(shownLanguage)))
-                list.Text = string.Join("\r", AutoTags.StarterList(picked));
+            if (list.Tags.SequenceEqual(AutoTags.StarterList(shownLanguage)))
+                list.Tags = AutoTags.StarterList(picked);
             shownLanguage = picked;
         };
 
@@ -829,7 +820,7 @@ public sealed partial class MainWindow : Window
         threshold.ValueChanged += (_, _) => ShowThreshold();
 
         var reset = new HyperlinkButton { Content = "Use the starter list", Padding = new Thickness(0) };
-        reset.Click += (_, _) => list.Text = string.Join("\r", AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en"));
+        reset.Click += (_, _) => list.Tags = AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en");
 
         var tagging = new StackPanel
         {
@@ -842,7 +833,7 @@ public sealed partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                 },
                 language,
-                list,
+                list.View,
                 reset,
                 threshold,
             },
@@ -903,7 +894,7 @@ public sealed partial class MainWindow : Window
             return;
 
         var code = language.SelectedIndex == 1 ? "de" : "en";
-        var labels = AutoTags.ParseList(list.Text);
+        var labels = list.Tags;
         // Kept as "the starter list" while unchanged, so it follows the language.
         var isStarter = labels.SequenceEqual(AutoTags.StarterList(code));
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
