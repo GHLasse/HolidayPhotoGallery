@@ -47,6 +47,26 @@ jobs:
         run: |
           ./scripts/Get-ExifTool.ps1
           "$PWD\tools\exiftool" | Out-File -FilePath $env:GITHUB_PATH -Append
+      # The tagging model here too: ONNX Runtime on Windows loads it differently than on Linux.
+      - name: Cache tagging model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tag-model
+          key: tag-model-siglip2-base-patch16-224-fp16-v1
+      - name: Download tagging model
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'tag-model'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $base = 'https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main'
+          foreach ($f in 'onnx/vision_model_fp16.onnx', 'onnx/text_model_fp16.onnx', 'tokenizer.model') {
+            $target = Join-Path $dir (Split-Path $f -Leaf)
+            if (-not (Test-Path $target)) { curl.exe -sSfL --retry 3 -o $target "$base/$f" }
+          }
+          $cats = Join-Path $dir 'cats.jpg'
+          if (-not (Test-Path $cats)) { curl.exe -sSfL --retry 3 -o $cats http://images.cocodataset.org/val2017/000000039769.jpg }
+          Get-ChildItem $dir
+          "PHOTOGALLERY_TAG_MODEL=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
       - name: Build app (x64)

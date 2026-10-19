@@ -36,7 +36,9 @@ public sealed class ImageTagger : IDisposable
     /// <summary>Loads the model from <paramref name="folder"/> (see <see cref="TagModel"/>); takes a few seconds.</summary>
     public static ImageTagger Load(string folder)
     {
-        using var options = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
+        // Only the basic optimisations: on Windows the extended ones (layer-norm fusion) break on the
+        // half-precision model and ONNX Runtime refuses to load it.
+        using var options = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC };
         // Leave a core free so the app stays responsive while a batch is tagged.
         options.IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount - 1);
 

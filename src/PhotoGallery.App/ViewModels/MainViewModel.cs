@@ -754,12 +754,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidDataException)
         {
-            // A damaged download: removing the model lets the next attempt download it again.
+            // Downloads are checked for completeness, so the files are kept; the next attempt loads them again.
             _tagger?.Dispose();
             _tagger = null;
             _labelVectors = null;
-            TryDeleteTagModel();
-            failures.Add($"The tagging model could not be loaded ({ex.Message}). It will be downloaded again next time.");
+            failures.Add($"The tagging model could not be loaded ({ex.Message}).");
         }
         finally
         {
@@ -811,17 +810,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ErrorMessage = failures.Count == 0 ? null : "Some auto tags could not be removed. " + string.Join(" ", failures);
         StatusText = $"Removed auto tags from {tagged.Count - failures.Count} photo(s)";
         await RefreshTagsAsync();
-    }
-
-    private static void TryDeleteTagModel()
-    {
-        try
-        {
-            Directory.Delete(TagModelFolder, recursive: true);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-        }
     }
 
     /// <summary>

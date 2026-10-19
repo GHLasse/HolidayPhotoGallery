@@ -57,13 +57,18 @@ public static class TagModel
                 await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                 await using var output = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true);
                 var buffer = new byte[1 << 16];
+                long length = 0;
                 int read;
                 while ((read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
                 {
                     await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    length += read;
                     done += read;
                     progress?.Report(Math.Min(1, (double)done / DownloadSize));
                 }
+                // A connection that drops can end the stream early without an error.
+                if (response.Content.Headers.ContentLength is { } expected && length != expected)
+                    throw new HttpRequestException($"The download of {file} stopped after {length:N0} of {expected:N0} bytes.");
             }
             File.Move(part, target, overwrite: true);
         }
