@@ -99,6 +99,9 @@ public static class FaceRegions
             var regions = people.Select(p =>
             {
                 var b = p.Box.Clamp().ToUpright(orientation);
+                // A person tagged without marking a face has no rectangle, as Windows Live Photo Gallery writes it.
+                if (b.Area > 0.9)
+                    return $"{{PersonDisplayName={Escape(p.Name)}}}";
                 // The rectangle is one text value whose commas have to be escaped for ExifTool.
                 return $"{{PersonDisplayName={Escape(p.Name)},Rectangle={Number(b.X)}|, {Number(b.Y)}|, {Number(b.Width)}|, {Number(b.Height)}}}";
             });

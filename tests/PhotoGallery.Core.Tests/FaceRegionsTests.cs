@@ -137,6 +137,19 @@ public sealed class FaceRegionsTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task A_person_tagged_without_a_face_has_no_windows_rectangle()
+    {
+        var path = _temp.CopySample(".jpg");
+
+        await Service.WriteAsync(path, new MetadataChanges { People = [new("Ben", new FaceBox(0, 0, 1, 1))] });
+
+        var m = await Service.ReadAsync(path);
+        AssertClose(new FaceBox(0, 0, 1, 1), Assert.Single(m.People).Box);
+        Assert.Contains("Ben", await Raw(path, "-XMP-MP:RegionPersonDisplayName"));
+        Assert.DoesNotContain("0", await Raw(path, "-XMP-MP:RegionRectangle"));
+    }
+
+    [ExifToolFact]
     public async Task Rotating_keeps_the_people_on_their_faces()
     {
         var path = _temp.CopySample(".jpg");

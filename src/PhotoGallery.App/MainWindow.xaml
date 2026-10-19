@@ -92,6 +92,7 @@
                             <MenuFlyoutItem Text="Find people in all photos shown" Click="FindPeopleInAll_Click" />
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem Text="Name the people found…" Click="NamePeople_Click" />
+                            <MenuFlyoutItem Text="Add a person to the selected photos…" Click="AddPerson_Click" />
                         </MenuFlyout>
                     </AppBarButton.Flyout>
                 </AppBarButton>

@@ -360,6 +360,54 @@ public sealed partial class MainViewModel
         return changed;
     }
 
+    /// <summary>
+    /// Tags a person on photos without marking a face, e.g. someone seen from behind. Like Windows Live Photo
+    /// Gallery, the tag covers the whole photo. Photos that already name the person are left as they are.
+    /// </summary>
+    public async Task<int> AddPersonAsync(IReadOnlyList<PhotoItemViewModel> items, string name)
+    {
+        name = name.Trim();
+        if (_metadata is null || _indexer is null || items.Count == 0 || name.Length == 0)
+            return 0;
+
+        await _peopleWriting.WaitAsync();
+        var failures = new List<string>();
+        var changed = 0;
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                StatusText = $"Adding {name} to {i + 1} of {items.Count} photo(s)…";
+                try
+                {
+                    var current = await _metadata.ReadAsync(item.Path);
+                    if (current.People.Any(p => p.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase)))
+                        continue;
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { People = [.. current.People, new PersonTag(name, new FaceBox(0, 0, 1, 1))] });
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                    changed++;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+            _peopleWriting.Release();
+        }
+
+        ErrorMessage = failures.Count == 0 ? null : "Some photos could not be changed. " + string.Join(" ", failures);
+        StatusText = $"Added {name} to {changed} photo(s)";
+        await AfterPeopleChangedAsync();
+        return changed;
+    }
+
     /// <summary>Remembers that the face is not this person, so they are not suggested for it again.</summary>
     public async Task RejectSuggestionAsync(FoundFace face, string name)
     {

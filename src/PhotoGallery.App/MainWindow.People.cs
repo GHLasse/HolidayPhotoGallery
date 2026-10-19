@@ -52,9 +52,18 @@ public sealed partial class MainWindow
     {
         var version = ++_peopleVersion;
         var photos = SelectedPhotos;
-        if (photos.Count != 1)
+        if (photos.Count == 0)
         {
             PeopleSection.Visibility = Visibility.Collapsed;
+            return;
+        }
+        if (photos.Count > 1)
+        {
+            PeopleList.Children.Clear();
+            PeopleList.Children.Add(AddPersonBox(photos));
+            PeopleHint.Text = $"Adds the person to all {photos.Count} selected photos, without marking a face.";
+            PeopleHint.Visibility = Visibility.Visible;
+            PeopleSection.Visibility = Visibility.Visible;
             return;
         }
 
@@ -84,6 +93,7 @@ public sealed partial class MainWindow
 
         for (var i = 0; i < withoutFace.Count; i++)
             PeopleList.Children.Add(PersonRow(item, withoutFace[i], pictures[i]));
+        PeopleList.Children.Add(AddPersonBox([item]));
 
         PeopleHint.Text = !looked
             ? "Use People → Find people in the selected photos to look for faces in this photo."
@@ -190,6 +200,60 @@ public sealed partial class MainWindow
             sender.IsEnabled = true;
         };
         return box;
+    }
+
+    /// <summary>A box to tag someone whose face was not found (e.g. seen from behind) on the photos.</summary>
+    private AutoSuggestBox AddPersonBox(IReadOnlyList<PhotoItemViewModel> photos)
+    {
+        AutoSuggestBox? box = null;
+        box = NameBox(name =>
+        {
+            box!.Text = "";
+            // Written in the background; the status bar shows how far it is.
+            _ = ViewModel.AddPersonAsync(photos, name);
+            return Task.CompletedTask;
+        });
+        box.PlaceholderText = photos.Count == 1 ? "Add someone not found…" : "Add a person…";
+        box.QueryIcon = new SymbolIcon(Symbol.AddFriend);
+        return box;
+    }
+
+    private async void AddPerson_Click(object sender, RoutedEventArgs e)
+    {
+        var photos = SelectedPhotos;
+        if (photos.Count == 0)
+        {
+            ViewModel.ErrorMessage = "Select the photos to add a person to.";
+            return;
+        }
+        var nameBox = NameBox(_ => Task.CompletedTask);
+        nameBox.Header = "Who is in these photos?";
+        nameBox.PlaceholderText = "Name";
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = photos.Count == 1 ? "Add a person to the photo" : $"Add a person to {photos.Count} photos",
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    nameBox,
+                    new TextBlock
+                    {
+                        Text = "For someone whose face was not found, e.g. seen from behind. No face is marked.",
+                        TextWrapping = TextWrapping.Wrap,
+                        FontSize = 12,
+                        Opacity = 0.7,
+                    },
+                },
+            },
+            PrimaryButtonText = "Add",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && nameBox.Text.Trim() is { Length: > 0 } name)
+            _ = ViewModel.AddPersonAsync(photos, name);
     }
 
     /// <summary>A round picture of a face; a person symbol when there is none.</summary>
