@@ -243,11 +243,13 @@ public sealed partial class MainWindow
             return;
         }
 
+        // Big groups are shown a page at a time, so every face that gets a name has been seen.
         const int Shown = 40;
         var index = 0;
+        var start = 0;
+        string? lastName = null;
         var heading = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var faces = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 68, ItemHeight = 68, MaximumRowsOrColumns = 8 };
-        var more = new TextBlock { FontSize = 12, Opacity = 0.7 };
         var nameBox = NameBox(_ => Task.CompletedTask);
         nameBox.Header = "Who is this?";
         nameBox.PlaceholderText = "Name";
@@ -269,7 +271,6 @@ public sealed partial class MainWindow
                     {
                         heading,
                         faces,
-                        more,
                         nameBox,
                         problem,
                         hide,
@@ -286,11 +287,14 @@ public sealed partial class MainWindow
         void Show()
         {
             var group = groups[index];
-            heading.Text = $"Group {index + 1} of {groups.Count}: {group.Faces.Count} face(s) that look like the same person. " +
+            var page = group.Faces.Count > Shown
+                ? $" (showing {start + 1} to {Math.Min(start + Shown, group.Faces.Count)})"
+                : "";
+            heading.Text = $"Group {index + 1} of {groups.Count}: {group.Faces.Count} face(s) that look like the same person{page}. " +
                            "Click a face that doesn't belong to leave it out.";
             faces.Children.Clear();
             toggles.Clear();
-            foreach (var face in group.Faces.Take(Shown))
+            foreach (var face in group.Faces.Skip(start).Take(Shown))
             {
                 var toggle = new ToggleButton { IsChecked = true, Padding = new Thickness(2), Content = FacePicture(face.Thumbnail, 56) };
                 toggle.Checked += (_, _) => toggle.Opacity = 1;
@@ -299,17 +303,24 @@ public sealed partial class MainWindow
                 faces.Children.Add(toggle);
                 toggles.Add((toggle, face));
             }
-            more.Text = group.Faces.Count > Shown ? $"and {group.Faces.Count - Shown} more like these" : "";
-            more.Visibility = more.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-            nameBox.Text = group.Suggestion?.Name ?? "";
+            nameBox.Text = lastName ?? group.Suggestion?.Name ?? "";
             problem.Text = "";
         }
 
-        IReadOnlyList<FoundFace> Chosen() =>
-            [.. toggles.Where(t => t.Toggle.IsChecked == true).Select(t => t.Face), .. groups[index].Faces.Skip(Shown)];
+        IReadOnlyList<FoundFace> Chosen() => [.. toggles.Where(t => t.Toggle.IsChecked == true).Select(t => t.Face)];
 
-        void Next()
+        // The next page of this group, keeping the name just used, or else the next group.
+        void Next(string? name = null)
         {
+            start += Shown;
+            if (start < groups[index].Faces.Count)
+            {
+                lastName = name ?? lastName;
+                Show();
+                return;
+            }
+            start = 0;
+            lastName = null;
             index++;
             if (index >= groups.Count)
                 dialog.Hide();
@@ -338,7 +349,7 @@ public sealed partial class MainWindow
                 dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = true;
                 deferral.Complete();
             }
-            Next();
+            Next(name);
         };
         dialog.SecondaryButtonClick += (_, args) =>
         {
