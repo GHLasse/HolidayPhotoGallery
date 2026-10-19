@@ -9,6 +9,8 @@ public sealed class LibrarySettings
 
     public List<string> Folders { get; set; } = [];
 
+    public AutoTagSettings AutoTagging { get; set; } = new();
+
     /// <summary>The crop shape the crop tool starts with (a <see cref="Editing.CropRatios"/> key).</summary>
     public string CropRatio { get; set; } = Editing.CropRatios.Original;
 
@@ -36,4 +38,22 @@ public sealed class LibrarySettings
         File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonOptions));
         File.Move(temp, path, overwrite: true);
     }
+}
+
+/// <summary>What auto-tagging may use (see <see cref="Tagging.AutoTags"/>).</summary>
+public sealed class AutoTagSettings
+{
+    /// <summary>The user's tag list; null until they change it, which means the starter list in their language.</summary>
+    public List<string>? Tags { get; set; }
+
+    /// <summary>"de" or "en": the language the tags are written in; null until the user picks one.</summary>
+    public string? Language { get; set; }
+
+    /// <summary>
+    /// How clearly a tag has to stand out from the rest of the list, from 0 to 1, before it is written
+    /// (see <see cref="Tagging.ImageTagger.Scores"/>). Higher means fewer, surer tags.
+    /// </summary>
+    public double Threshold { get; set; } = DefaultThreshold;
+
+    public const double DefaultThreshold = 0.15;
 }

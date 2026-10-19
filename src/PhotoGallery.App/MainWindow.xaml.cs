@@ -7,6 +7,7 @@ using PhotoGallery.App.Controls;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Editing;
+using PhotoGallery.Core.Tagging;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
@@ -217,6 +218,37 @@ public sealed partial class MainWindow : Window
     }
 
     private async void AddPlaceNames_Click(object sender, RoutedEventArgs e) => await ViewModel.AddPlaceNamesAsync(SelectedPhotos);
+
+    // ---- Auto-tagging ----
+
+    private async void AutoTag_Click(object sender, RoutedEventArgs e)
+    {
+        var photos = SelectedPhotos;
+        if (photos.Count == 0)
+        {
+            ViewModel.ErrorMessage = "Select the photos to tag.";
+            return;
+        }
+        if (!MainViewModel.IsTagModelInstalled)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Root.XamlRoot,
+                Title = "Download the tagging model?",
+                Content = "Auto-tagging recognises what is in your photos on this PC, so no photo is sent anywhere. " +
+                          $"It needs an image-recognition model (Google's SigLIP 2) of about {TagModel.DownloadSize / 1_000_000:N0} MB, " +
+                          "which is downloaded once from Hugging Face and kept in the app's data folder.",
+                PrimaryButtonText = "Download",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadTagModelAsync())
+                return;
+        }
+        await ViewModel.AutoTagAsync(photos);
+    }
+
+    private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e) => await ViewModel.RemoveAutoTagsAsync(SelectedPhotos);
 
     private void RefreshMap(bool fit)
     {
@@ -537,10 +569,89 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
+        // Tagging tab
+        var language = new ComboBox { Header = "Language of the tags", MinWidth = 160 };
+        language.Items.Add("English");
+        language.Items.Add("Deutsch");
+        language.SelectedIndex = ViewModel.AutoTagLanguage == "de" ? 1 : 0;
+
+        // AcceptsReturn has to be on before the text is set, or the box keeps only the first line.
+        var list = new TextBox
+        {
+            Header = "Tags the photos may get, one per line",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            Height = 240,
+        };
+        list.Text = string.Join("\r", ViewModel.AutoTagLabels);
+        ScrollViewer.SetVerticalScrollBarVisibility(list, ScrollBarVisibility.Auto);
+
+        // Switching the language swaps in the starter list for it, unless the user has made their own list.
+        var shownLanguage = ViewModel.AutoTagLanguage;
+        language.SelectionChanged += (_, _) =>
+        {
+            var picked = language.SelectedIndex == 1 ? "de" : "en";
+            if (AutoTags.ParseList(list.Text).SequenceEqual(AutoTags.StarterList(shownLanguage)))
+                list.Text = string.Join("\r", AutoTags.StarterList(picked));
+            shownLanguage = picked;
+        };
+
+        var threshold = new Slider { Minimum = 5, Maximum = 80, StepFrequency = 1, Value = Math.Round(ViewModel.AutoTagThreshold * 100) };
+        void ShowThreshold() => threshold.Header = $"How clearly a tag must stand out: {threshold.Value:0} % (higher: fewer, surer tags)";
+        ShowThreshold();
+        threshold.ValueChanged += (_, _) => ShowThreshold();
+
+        var reset = new HyperlinkButton { Content = "Use the starter list", Padding = new Thickness(0) };
+        reset.Click += (_, _) => list.Text = string.Join("\r", AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en"));
+
+        var tagging = new StackPanel
+        {
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Auto-tagging only uses tags from this list and writes them as Auto/…, so you can tell them apart from your own tags and remove them together. Your own tags are never changed.",
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                language,
+                list,
+                reset,
+                threshold,
+            },
+        };
+
+        // Cropping tab
         var crop = new ComboBox { Header = "Crop shape to start with", MinWidth = 320 };
         foreach (var ratio in CropRatios.All)
             crop.Items.Add(ratio.Name);
         crop.SelectedIndex = CropRatios.All.ToList().IndexOf(CropRatios.Find(ViewModel.CropRatio));
+
+        var cropping = new StackPanel
+        {
+            Spacing = 12,
+            Visibility = Visibility.Collapsed,
+            Children =
+            {
+                crop,
+                new TextBlock
+                {
+                    Text = "The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping.",
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            },
+        };
+
+        var tabs = new SelectorBar();
+        var taggingTab = new SelectorBarItem { Text = "Tagging", Icon = new FontIcon { Glyph = "\uE8EC" }, IsSelected = true };
+        var croppingTab = new SelectorBarItem { Text = "Cropping", Icon = new FontIcon { Glyph = "\uE7A8" } };
+        tabs.Items.Add(taggingTab);
+        tabs.Items.Add(croppingTab);
+        tabs.SelectionChanged += (_, _) =>
+        {
+            tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
+            cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
+        };
 
         var dialog = new ContentDialog
         {
@@ -549,21 +660,27 @@ public sealed partial class MainWindow : Window
             Content = new StackPanel
             {
                 Spacing = 12,
+                MinWidth = 400,
                 Children =
                 {
-                    crop,
-                    new TextBlock
-                    {
-                        Text = "The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping.",
-                        TextWrapping = TextWrapping.Wrap,
-                    },
+                    tabs,
+                    // Both tabs share one cell so the dialog keeps its size when switching.
+                    new Grid { MinHeight = 480, Children = { tagging, cropping } },
                 },
             },
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && crop.SelectedIndex >= 0)
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        var code = language.SelectedIndex == 1 ? "de" : "en";
+        var labels = AutoTags.ParseList(list.Text);
+        // Kept as "the starter list" while unchanged, so it follows the language.
+        var isStarter = labels.SequenceEqual(AutoTags.StarterList(code));
+        ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
+        if (crop.SelectedIndex >= 0)
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
     }
 
