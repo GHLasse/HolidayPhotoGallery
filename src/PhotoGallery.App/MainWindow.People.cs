@@ -248,6 +248,8 @@ public sealed partial class MainWindow
         var index = 0;
         var start = 0;
         string? lastName = null;
+        var busy = false;
+        var closeWhenDone = false;
         var heading = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var faces = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 68, ItemHeight = 68, MaximumRowsOrColumns = 8 };
         var nameBox = NameBox(_ => Task.CompletedTask);
@@ -338,18 +340,31 @@ public sealed partial class MainWindow
                 problem.Text = name.Length == 0 ? "Type a name first." : "Every face is left out.";
                 return;
             }
-            var deferral = args.GetDeferral();
-            dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = false;
+            // No deferral: the dialog stays responsive, so Done can be pressed while the names are written.
+            busy = true;
+            dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = hide.IsEnabled = false;
             try
             {
                 await ViewModel.NameFacesAsync(chosen, name);
             }
             finally
             {
-                dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = true;
-                deferral.Complete();
+                busy = false;
+                dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = hide.IsEnabled = true;
             }
-            Next(name);
+            if (closeWhenDone)
+                dialog.Hide();
+            else
+                Next(name);
+        };
+        // Done while names are still being written closes the dialog once they are.
+        dialog.Closing += (_, args) =>
+        {
+            if (!busy)
+                return;
+            args.Cancel = true;
+            closeWhenDone = true;
+            problem.Text = "Finishing writing the names, then closing…";
         };
         dialog.SecondaryButtonClick += (_, args) =>
         {
