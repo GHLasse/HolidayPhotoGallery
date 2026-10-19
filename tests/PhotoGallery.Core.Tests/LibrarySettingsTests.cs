@@ -16,6 +16,25 @@ public class LibrarySettingsTests
     }
 
     [Fact]
+    public void Saves_and_loads_the_auto_tag_list_and_crop_shape()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "settings.json");
+
+        var settings = new LibrarySettings { CropRatio = "16:9" };
+        settings.AutoTagging.Tags = ["Strand", "Berge", "Hund"];
+        settings.AutoTagging.Language = "de";
+        settings.AutoTagging.Threshold = 0.3;
+        settings.Save(path);
+
+        var loaded = LibrarySettings.Load(path);
+        Assert.Equal(["Strand", "Berge", "Hund"], loaded.AutoTagging.Tags);
+        Assert.Equal("de", loaded.AutoTagging.Language);
+        Assert.Equal(0.3, loaded.AutoTagging.Threshold);
+        Assert.Equal("16:9", loaded.CropRatio);
+    }
+
+    [Fact]
     public void Damaged_or_missing_file_gives_empty_settings()
     {
         using var temp = new TempFolder();

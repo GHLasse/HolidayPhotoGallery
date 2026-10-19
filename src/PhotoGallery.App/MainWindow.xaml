@@ -81,17 +81,12 @@
                         <FontIcon Glyph="&#xE8EC;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+                <AppBarButton Label="Settings" Click="Settings_Click" ToolTipService.ToolTip="Settings for tagging and cropping">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </AppBarButton.Icon>
+                </AppBarButton>
                 <CommandBar.SecondaryCommands>
-                    <AppBarButton Label="Settings…" Click="Settings_Click">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE713;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Auto-tag settings…" Click="AutoTagSettings_Click">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE8EC;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
                     <AppBarButton Label="Remove auto tags" Click="RemoveAutoTags_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
                                   ToolTipService.ToolTip="Remove the Auto/… tags from the selected photos; your own tags stay">
                         <AppBarButton.Icon>
