@@ -75,6 +75,13 @@
                         <FontIcon Glyph="&#xE707;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+                <CommandBar.SecondaryCommands>
+                    <AppBarButton Label="Settings…" Click="Settings_Click">
+                        <AppBarButton.Icon>
+                            <FontIcon Glyph="&#xE713;" />
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                </CommandBar.SecondaryCommands>
             </CommandBar>
             <AutoSuggestBox Grid.Column="1" VerticalAlignment="Center" MaxWidth="480" HorizontalAlignment="Stretch"
                             PlaceholderText="Search names, captions and tags"
@@ -367,18 +374,15 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ComboBox x:Name="CropRatioCombo" VerticalAlignment="Center" MinWidth="130" SelectedIndex="0"
-                          SelectionChanged="CropRatio_SelectionChanged" ToolTipService.ToolTip="Shape of the crop">
-                    <ComboBoxItem Content="Free" />
-                    <ComboBoxItem Content="Original shape" />
-                    <ComboBoxItem Content="3:2" />
-                    <ComboBoxItem Content="4:3" />
-                    <ComboBoxItem Content="16:9" />
-                    <ComboBoxItem Content="1:1" />
-                    <ComboBoxItem Content="2:3" />
-                    <ComboBoxItem Content="3:4" />
-                    <ComboBoxItem Content="9:16" />
-                </ComboBox>
+                <!-- Filled from code (CropRatios), starting with the shape chosen in Settings. -->
+                <StackPanel x:Name="CropShapePanel" Orientation="Horizontal" Spacing="4">
+                    <ComboBox x:Name="CropRatioCombo" VerticalAlignment="Center" MinWidth="130" MaxWidth="320"
+                              SelectionChanged="CropRatio_SelectionChanged" ToolTipService.ToolTip="Shape of the crop" />
+                    <ToggleButton x:Name="CropTurnButton" VerticalAlignment="Center" Click="CropTurn_Click"
+                                  ToolTipService.ToolTip="Turn the crop between landscape and portrait">
+                        <FontIcon Glyph="&#xE8AB;" FontSize="14" />
+                    </ToggleButton>
+                </StackPanel>
                 <TextBlock x:Name="ViewerEditHint" Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <ComboBox x:Name="SaveFormatCombo" Grid.Column="2" VerticalAlignment="Center" MinWidth="150" SelectedIndex="0"

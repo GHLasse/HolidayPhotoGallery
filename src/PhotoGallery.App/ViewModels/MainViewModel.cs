@@ -633,6 +633,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         StatusText = $"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : "");
     }
 
+    /// <summary>The crop shape the crop tool starts with (a CropRatios key).</summary>
+    public string CropRatio => _settings.CropRatio;
+
+    public void SaveCropRatio(string key)
+    {
+        _settings.CropRatio = key;
+        _settings.Save(SettingsPath);
+    }
+
     /// <summary>
     /// Writes a crop (fractions of the photo's width and height) and/or a brightness curve into the photo
     /// at full resolution. The version before is kept in the hidden .originals folder.

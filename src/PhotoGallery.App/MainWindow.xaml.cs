@@ -472,6 +472,8 @@ public sealed partial class MainWindow : Window
             ViewerCropButton.IsChecked = false;
             return;
         }
+        if (ViewerCropButton.IsChecked == true)
+            ResetCropRatio();
         ViewerCanvas.Ratio = SelectedCropRatio();
         ViewerCanvas.IsCropping = ViewerCropButton.IsChecked == true;
         UpdateEditBar();
@@ -510,23 +512,65 @@ public sealed partial class MainWindow : Window
             ViewerCanvas.Ratio = SelectedCropRatio();
     }
 
-    private double SelectedCropRatio() => CropRatioCombo.SelectedIndex switch
+    private void CropTurn_Click(object sender, RoutedEventArgs e)
     {
-        1 when _viewerPixels is { } p => (double)p.Width / p.Height,
-        2 => 3.0 / 2,
-        3 => 4.0 / 3,
-        4 => 16.0 / 9,
-        5 => 1,
-        6 => 2.0 / 3,
-        7 => 3.0 / 4,
-        8 => 9.0 / 16,
-        _ => 0,
-    };
+        if (ViewerCropButton.IsChecked == true)
+            ViewerCanvas.Ratio = SelectedCropRatio();
+    }
+
+    private double SelectedCropRatio() =>
+        _viewerPixels is { } p && CropRatioCombo.SelectedIndex >= 0
+            ? CropRatios.Resolve(CropRatios.All[CropRatioCombo.SelectedIndex], p.Width, p.Height, CropTurnButton.IsChecked == true)
+            : 0;
+
+    // Each crop starts with the shape chosen in Settings, upright like the photo.
+    private void ResetCropRatio()
+    {
+        if (CropRatioCombo.Items.Count == 0)
+        {
+            foreach (var ratio in CropRatios.All)
+                CropRatioCombo.Items.Add(ratio.Name);
+        }
+        CropRatioCombo.SelectedIndex = CropRatios.All.ToList().IndexOf(CropRatios.Find(ViewModel.CropRatio));
+        CropTurnButton.IsChecked = false;
+    }
+
+    private async void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var crop = new ComboBox { Header = "Crop shape to start with", MinWidth = 320 };
+        foreach (var ratio in CropRatios.All)
+            crop.Items.Add(ratio.Name);
+        crop.SelectedIndex = CropRatios.All.ToList().IndexOf(CropRatios.Find(ViewModel.CropRatio));
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "Settings",
+            Content = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    crop,
+                    new TextBlock
+                    {
+                        Text = "The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping.",
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                },
+            },
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && crop.SelectedIndex >= 0)
+            ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
+    }
 
     private void UpdateEditBar()
     {
         ViewerEditBar.Visibility = IsEditing ? Visibility.Visible : Visibility.Collapsed;
-        CropRatioCombo.Visibility = ViewerCropButton.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        CropShapePanel.Visibility = ViewerCropButton.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (ViewerItem is not { } item)
             return;
 

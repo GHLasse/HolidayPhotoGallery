@@ -9,13 +9,15 @@ namespace PhotoGallery.App.Controls;
 
 /// <summary>
 /// Shows a photo as large as fits and, while cropping, a crop frame that can be moved by dragging
-/// inside it and resized by its corners, optionally held to a fixed ratio. The crop is reported as
+/// inside it and resized by its corners, optionally held to a fixed ratio, with golden ratio lines
+/// inside to compose by. The crop is reported as
 /// fractions of the photo's width and height, so it applies to the full-size file as well.
 /// </summary>
 public sealed partial class EditCanvas : UserControl
 {
     private const double MinSize = 24;
     private const double HandleReach = 18;
+    private const double GoldenSection = 0.381966; // 1 - 1/φ
 
     private int _pixelWidth = 1, _pixelHeight = 1;
     private Rect _crop;            // in display coordinates within Frame
@@ -114,6 +116,10 @@ public sealed partial class EditCanvas : UserControl
         Place(ShadeLeft, 0, _crop.Y, _crop.X, _crop.Height);
         Place(ShadeRight, _crop.Right, _crop.Y, w - _crop.Right, _crop.Height);
         Place(CropFrame, _crop.X, _crop.Y, _crop.Width, _crop.Height);
+        Place(GoldenLeft, _crop.X + _crop.Width * GoldenSection, _crop.Y, 1, _crop.Height);
+        Place(GoldenRight, _crop.Right - _crop.Width * GoldenSection, _crop.Y, 1, _crop.Height);
+        Place(GoldenTop, _crop.X, _crop.Y + _crop.Height * GoldenSection, _crop.Width, 1);
+        Place(GoldenBottom, _crop.X, _crop.Bottom - _crop.Height * GoldenSection, _crop.Width, 1);
         PlaceHandle(HandleTopLeft, _crop.Left, _crop.Top);
         PlaceHandle(HandleTopRight, _crop.Right, _crop.Top);
         PlaceHandle(HandleBottomLeft, _crop.Left, _crop.Bottom);
