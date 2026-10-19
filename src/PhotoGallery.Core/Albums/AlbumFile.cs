@@ -11,6 +11,21 @@ public sealed record AlbumInfo
 
     /// <summary>The cover photo, relative to the album folder; null means the album's first photo.</summary>
     public string? Cover { get; init; }
+
+    /// <summary>The album's copy in Google Photos, once it has been uploaded.</summary>
+    public GoogleAlbumLink? Google { get; init; }
+}
+
+/// <summary>The Google Photos album an album was uploaded to, and which of its photos are up there.</summary>
+public sealed record GoogleAlbumLink
+{
+    public required string AlbumId { get; init; }
+
+    /// <summary>The album's page in Google Photos.</summary>
+    public string? Url { get; init; }
+
+    /// <summary>Photo path relative to the album folder (with "/") → Google's id for it.</summary>
+    public Dictionary<string, string> Items { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>

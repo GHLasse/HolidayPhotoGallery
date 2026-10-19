@@ -1,0 +1,43 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
+
+namespace PhotoGallery.App.Controls;
+
+/// <summary>
+/// The Google Photos pinwheel, drawn in code so it stays sharp at any size: four half-discs turning around
+/// the centre. Like the app's other icons it takes the text colour (its Foreground), so it fits the
+/// theme and palette. Marks what is in Google Photos (OneDrive gets its own mark).
+/// </summary>
+public sealed partial class GooglePhotosLogo : UserControl
+{
+    public GooglePhotosLogo()
+    {
+        var canvas = new Canvas { Width = 24, Height = 24 };
+        for (var i = 0; i < 4; i++)
+        {
+            // A half-disc on the line from the left edge to the centre, bulging upwards; each next blade is turned a quarter.
+            var blade = new Microsoft.UI.Xaml.Shapes.Path
+            {
+                Data = new PathGeometry
+                {
+                    Figures =
+                    {
+                        new PathFigure
+                        {
+                            StartPoint = new(1, 12),
+                            IsClosed = true,
+                            Segments = { new ArcSegment { Point = new(12, 12), Size = new(5.5, 5.5), SweepDirection = SweepDirection.Clockwise } },
+                        },
+                    },
+                },
+                RenderTransform = new RotateTransform { Angle = 90 * i, CenterX = 12, CenterY = 12 },
+            };
+            blade.SetBinding(Shape.FillProperty, new Binding { Source = this, Path = new PropertyPath(nameof(Foreground)) });
+            canvas.Children.Add(blade);
+        }
+        Content = new Viewbox { Child = canvas };
+    }
+}

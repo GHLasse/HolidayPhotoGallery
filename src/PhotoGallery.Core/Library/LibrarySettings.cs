@@ -32,6 +32,14 @@ public sealed class LibrarySettings
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 
+    /// <summary>The user's own Google Cloud client, when they use one instead of the app's built-in one.</summary>
+    public string? GoogleClientId { get; set; }
+
+    public string? GoogleClientSecret { get; set; }
+
+    /// <summary>The Google account signed in, for display; the sign-in itself is kept in Windows' credential store.</summary>
+    public string? GoogleAccount { get; set; }
+
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HolidayPhotoGallery");
 

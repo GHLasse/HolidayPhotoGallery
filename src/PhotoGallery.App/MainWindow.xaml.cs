@@ -197,6 +197,8 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutTags = false;
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
+        ViewModel.OnGoogleOnly = false;
+        ViewModel.NotOnGoogleOnly = false;
         ViewModel.TakenFrom = null;
         ViewModel.TakenTo = null;
         ViewModel.CameraIndex = 0;
@@ -830,7 +832,9 @@ public sealed partial class MainWindow : Window
         CropTurnButton.IsChecked = false;
     }
 
-    private async void Settings_Click(object sender, RoutedEventArgs e)
+    private async void Settings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
+
+    private async Task ShowSettingsAsync(bool googleTab = false)
     {
         // Tagging tab
         var language = new ComboBox { Header = "Language of the tags", MinWidth = 160 };
@@ -936,6 +940,11 @@ public sealed partial class MainWindow : Window
         var appearance = AppearanceTab(out var chosenAppearance, out var revertAppearance);
         appearance.Visibility = Visibility.Collapsed;
 
+        // Google Photos tab
+        using var dialogClosed = new CancellationTokenSource();
+        var google = GoogleTab(dialogClosed.Token);
+        google.Visibility = Visibility.Collapsed;
+
         // Keyboard tab
         var keyboard = new ScrollViewer { Content = ShortcutList(), MaxHeight = 480, Visibility = Visibility.Collapsed };
 
@@ -948,6 +957,8 @@ public sealed partial class MainWindow : Window
         tabs.Items.Add(croppingTab);
         var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
         tabs.Items.Add(appearanceTab);
+        var googleTabItem = new SelectorBarItem { Text = "Google Photos", Icon = new FontIcon { Glyph = "\uE753" } };
+        tabs.Items.Add(googleTabItem);
         var keyboardTab = new SelectorBarItem { Text = "Keyboard", Icon = new FontIcon { Glyph = "\uE765" } };
         tabs.Items.Add(keyboardTab);
         tabs.SelectionChanged += (_, _) =>
@@ -956,8 +967,11 @@ public sealed partial class MainWindow : Window
             tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
             cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
             appearance.Visibility = tabs.SelectedItem == appearanceTab ? Visibility.Visible : Visibility.Collapsed;
+            google.Visibility = tabs.SelectedItem == googleTabItem ? Visibility.Visible : Visibility.Collapsed;
             keyboard.Visibility = tabs.SelectedItem == keyboardTab ? Visibility.Visible : Visibility.Collapsed;
         };
+        if (googleTab)
+            tabs.SelectedItem = googleTabItem;
 
         var dialog = new ContentDialog
         {
@@ -971,14 +985,16 @@ public sealed partial class MainWindow : Window
                 {
                     tabs,
                     // The tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, keyboard } },
+                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, google, keyboard } },
                 },
             },
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        var answer = await dialog.ShowAsync();
+        dialogClosed.Cancel();
+        if (answer != ContentDialogResult.Primary)
         {
             revertAppearance();
             return;

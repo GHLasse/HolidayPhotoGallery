@@ -12,6 +12,12 @@ public sealed record Album
     /// <summary>The cover photo's full path, or null for an album without photos.</summary>
     public string? CoverPath { get; init; }
 
+    /// <summary>The album's page in Google Photos, once it has been uploaded there.</summary>
+    public string? GoogleUrl { get; init; }
+
+    /// <summary>How many of its photos are in Google Photos.</summary>
+    public int GooglePhotoCount { get; init; }
+
     /// <summary>Photos in the album, its subfolders included.</summary>
     public int PhotoCount { get; init; }
 
@@ -52,6 +58,8 @@ public sealed record Album
             PhotoCount = summary.Count,
             From = summary.From,
             To = summary.To,
+            GoogleUrl = info.Google?.Url,
+            GooglePhotoCount = info.Google?.Items.Count ?? 0,
         };
     }
 

@@ -109,7 +109,11 @@ jobs:
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
       - name: Build app (x64)
-        run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64
+        # The Google Photos key comes from the repository's secrets; without them the app asks users for their own.
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64 "-p:GoogleClientId=$env:GOOGLE_CLIENT_ID" "-p:GoogleClientSecret=$env:GOOGLE_CLIENT_SECRET"
       - name: Smoke test (start the app and check it stays up)
         shell: pwsh
         run: |
