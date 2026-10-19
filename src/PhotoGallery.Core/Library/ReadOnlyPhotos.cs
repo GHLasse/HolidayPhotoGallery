@@ -6,6 +6,19 @@ namespace PhotoGallery.Core.Library;
 /// </summary>
 public static class ReadOnlyPhotos
 {
+    /// <summary>Whether any photo in the folder or its subfolders is marked read-only.</summary>
+    public static bool HasAny(string folder)
+    {
+        try
+        {
+            return LibraryIndexer.EnumeratePhotos(folder).Any(f => f.IsReadOnly);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false; // A folder that can't be read has nothing to make editable either.
+        }
+    }
+
     /// <summary>Clears the read-only flag of every photo in the folder and its subfolders; returns how many changed.</summary>
     public static int MakeWritable(string folder)
     {

@@ -56,7 +56,7 @@
                         <FontIcon Glyph="&#xE89F;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
-                <AppBarButton Label="Make editable" Click="MakeEditable_Click"
+                <AppBarButton Label="Make editable" Click="MakeEditable_Click" Visibility="{x:Bind ViewModel.HasReadOnlyPhotos, Mode=OneWay}"
                               ToolTipService.ToolTip="Remove the read-only mark from all photos in the selected folder (or the whole library), e.g. after copying them from a phone">
                     <AppBarButton.Icon>
                         <FontIcon Glyph="&#xE785;" />

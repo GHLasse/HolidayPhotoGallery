@@ -17,7 +17,9 @@ public sealed class ReadOnlyPhotosTests : IDisposable
         File.SetAttributes(top, FileAttributes.ReadOnly);
         File.SetAttributes(nested, FileAttributes.ReadOnly);
 
+        Assert.True(ReadOnlyPhotos.HasAny(_temp.Path));
         Assert.Equal(2, ReadOnlyPhotos.MakeWritable(_temp.Path));
+        Assert.False(ReadOnlyPhotos.HasAny(_temp.Path));
 
         Assert.False(new FileInfo(top).IsReadOnly);
         Assert.False(new FileInfo(nested).IsReadOnly);

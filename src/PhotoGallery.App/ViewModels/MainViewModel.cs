@@ -33,6 +33,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private bool _withoutTags;
     private bool _withoutPeople;
     private bool _withoutLocation;
+    private bool _hasReadOnlyPhotos;
     private DateTimeOffset? _takenFrom;
     private DateTimeOffset? _takenTo;
     private string _statusText = "";
@@ -151,7 +152,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         set
         {
             if (SetProperty(ref _selectedFolder, value))
+            {
                 _ = SearchAsync();
+                _ = CheckReadOnlyAsync();
+            }
         }
     }
 
@@ -342,6 +346,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
         await SearchAsync();
+        await CheckReadOnlyAsync();
     }
 
     private async Task SearchSoonAsync()
@@ -545,13 +550,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Warn($"Rotated {rotatable.Count} photo(s). {skipped} skipped: rotating HEIC, PNG, WebP and GIF files is not supported yet.");
     }
 
+    /// <summary>Whether "Make editable" has anything to do in the selected folder (or the whole library).</summary>
+    public bool HasReadOnlyPhotos
+    {
+        get => _hasReadOnlyPhotos;
+        private set => SetProperty(ref _hasReadOnlyPhotos, value);
+    }
+
+    private List<string> ShownFolders() => SelectedFolder is { } folder ? [folder.FullPath] : [.. _settings.Folders];
+
+    private async Task CheckReadOnlyAsync()
+    {
+        var folders = ShownFolders();
+        var any = await Task.Run(() => folders.Any(ReadOnlyPhotos.HasAny));
+        // Another folder may have been picked while this one was checked.
+        if (folders.SequenceEqual(ShownFolders()))
+            HasReadOnlyPhotos = any;
+    }
+
     /// <summary>
     /// Clears the read-only mark from the photos in the selected folder, or in the whole library when
     /// no folder is selected, so ratings, tags and rotation can be saved into them.
     /// </summary>
     public async Task MakeEditableAsync()
     {
-        List<string> folders = SelectedFolder is { } folder ? [folder.FullPath] : [.. _settings.Folders];
+        var folders = ShownFolders();
         var changed = await Task.Run(() => folders.Sum(f => ReadOnlyPhotos.MakeWritable(f)));
         Inform(changed switch
         {
@@ -559,6 +582,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             1 => "1 photo is now editable.",
             _ => $"{changed:N0} photos are now editable.",
         });
+        await CheckReadOnlyAsync();
     }
 
     /// <summary>Sets one photo's star rating straight away, as the compare view does.</summary>
