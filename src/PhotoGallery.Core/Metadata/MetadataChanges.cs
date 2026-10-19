@@ -1,3 +1,5 @@
+using PhotoGallery.Core.Faces;
+
 namespace PhotoGallery.Core.Metadata;
 
 /// <summary>
@@ -35,6 +37,9 @@ public sealed record MetadataChanges
     /// <summary>The place names to write; fields left empty are removed from the file.</summary>
     public PlaceName? Place { get; init; }
 
+    /// <summary>The complete new list of people in the photo (faces on the stored pixels); other regions stay.</summary>
+    public IReadOnlyList<PersonTag>? People { get; init; }
+
     public bool IsEmpty => Tags is null && Rating is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null &&
-                           Orientation is null && Location is null && !RemoveLocation && Place is null;
+                           Orientation is null && Location is null && !RemoveLocation && Place is null && People is null;
 }

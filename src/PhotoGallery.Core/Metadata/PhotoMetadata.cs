@@ -1,3 +1,5 @@
+using PhotoGallery.Core.Faces;
+
 namespace PhotoGallery.Core.Metadata;
 
 /// <summary>
@@ -31,4 +33,10 @@ public sealed record PhotoMetadata
 
     /// <summary>Camera make and model, e.g. "Apple iPhone 15 Pro" or "Canon EOS R6".</summary>
     public string? Camera { get; init; }
+
+    /// <summary>The people named in the photo, with their faces on the stored pixels.</summary>
+    public IReadOnlyList<PersonTag> People { get; init; } = [];
+
+    /// <summary>Regions other programs wrote that are not named people; kept when the people change.</summary>
+    public IReadOnlyList<OtherRegion> OtherRegions { get; init; } = [];
 }

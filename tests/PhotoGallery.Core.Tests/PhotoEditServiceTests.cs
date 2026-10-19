@@ -1,5 +1,6 @@
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 
@@ -96,6 +97,30 @@ public sealed class PhotoEditServiceTests : IAsyncLifetime
         await Editor.SaveEditAsync(path, ".jpg", 100, 80, FreshImage(".jpg"));
 
         Assert.Equal([path], LibraryIndexer.EnumeratePhotos(_temp.Path).Select(f => f.FullName));
+    }
+
+    [ExifToolFact]
+    public async Task Cropping_moves_the_people_with_the_photo()
+    {
+        var path = _temp.CopySample(".jpg");
+        // Turned clockwise: Anna's face at the top left of the stored pixels is at the top right of the upright photo.
+        await Metadata.WriteAsync(path, new MetadataChanges
+        {
+            Orientation = 6,
+            People = [new("Anna", new FaceBox(0, 0, 0.1, 0.2)), new("Ben", new FaceBox(0.1, 0.8, 0.1, 0.1))],
+        });
+        await _exifTool!.RunAsync(["-overwrite_original", "-XMP-mwg-rs:RegionInfo+={RegionList=[{Area={X=0.5,Y=0.5,W=0.1,H=0.1,Unit=normalized},Type=Focus}]}", path]);
+
+        // Keep the right half of the upright photo, where Anna is; Ben is on the left.
+        await Editor.SaveEditAsync(path, ".jpg", 50, 100, FreshImage(".jpg"), new FaceBox(0.5, 0, 0.5, 1));
+
+        var edited = await Metadata.ReadAsync(path);
+        var anna = Assert.Single(edited.People);
+        Assert.Equal("Anna", anna.Name);
+        Assert.Equal(0.6, anna.Box.X, 4);
+        Assert.Equal(0.4, anna.Box.Width, 4);
+        Assert.Equal(0.1, anna.Box.Height, 4);
+        Assert.Empty(edited.OtherRegions);
     }
 
     [ExifToolFact]
