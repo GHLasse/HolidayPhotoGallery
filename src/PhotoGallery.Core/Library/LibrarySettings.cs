@@ -23,6 +23,9 @@ public sealed class LibrarySettings
     /// <summary>Whether a photo is copied to the hidden .originals folder before it is opened in another app.</summary>
     public bool BackUpBeforeOpenWith { get; set; } = true;
 
+    /// <summary>The order the photo grid starts in for every folder (a <see cref="PhotoSort"/> key).</summary>
+    public string PhotoSort { get; set; } = Library.PhotoSort.Oldest;
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 

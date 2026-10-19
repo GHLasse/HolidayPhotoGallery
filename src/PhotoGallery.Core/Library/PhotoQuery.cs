@@ -8,6 +8,9 @@ public sealed record PhotoQuery
 
     public bool IncludeSubfolders { get; init; } = true;
 
+    /// <summary>The order to show the photos in (a <see cref="PhotoSort"/> key).</summary>
+    public string Sort { get; init; } = PhotoSort.Oldest;
+
     /// <summary>Free text matched against file name, caption, tags and place names. Every word must match.</summary>
     public string? Text { get; init; }
 

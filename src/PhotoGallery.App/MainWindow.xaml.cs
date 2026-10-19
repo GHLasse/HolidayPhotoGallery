@@ -7,6 +7,7 @@ using PhotoGallery.App.Controls;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Editing;
+using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Tagging;
 using Windows.Foundation;
 using Windows.Graphics;
@@ -67,11 +68,16 @@ public sealed partial class MainWindow : Window
         };
         SyncTimeZoneCombo();
         FillAlbumSortCombo();
+        foreach (var (_, label) in PhotoSort.All)
+            SortCombo.Items.Add(label);
+        SortCombo.SelectedIndex = ViewModel.SortIndex;
         ViewModel.PhotoChangedOutside += OnPhotoChangedOutside;
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
+            else if (e.PropertyName is nameof(MainViewModel.SortIndex))
+                SortCombo.SelectedIndex = ViewModel.SortIndex;
             else if (e.PropertyName is nameof(MainViewModel.PeopleByName))
                 _ = ShowTopPeopleAsync();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
@@ -172,6 +178,12 @@ public sealed partial class MainWindow : Window
         FolderTree.SelectedItem = null;
         ViewModel.IsAlbumView = false;
         ViewModel.SelectedFolder = null;
+    }
+
+    private void SortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SortCombo.SelectedIndex >= 0)
+            ViewModel.SortIndex = SortCombo.SelectedIndex;
     }
 
     private void ClearFilters_Click(object sender, RoutedEventArgs e)
@@ -860,6 +872,26 @@ public sealed partial class MainWindow : Window
             },
         };
 
+        // Gallery tab
+        var defaultSort = new ComboBox { Header = "Order of the photos in every folder", MinWidth = 320 };
+        foreach (var (_, label) in PhotoSort.All)
+            defaultSort.Items.Add(label);
+        defaultSort.SelectedIndex = ViewModel.DefaultSortIndex;
+        var gallery = new StackPanel
+        {
+            Spacing = 12,
+            Visibility = Visibility.Collapsed,
+            Children =
+            {
+                defaultSort,
+                new TextBlock
+                {
+                    Text = "Each folder opens in this order. The order box in the filter bar changes it for the folder you are looking at.",
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            },
+        };
+
         // Editing tab
         var crop = new ComboBox { Header = "Crop shape to start with", MinWidth = 320 };
         foreach (var ratio in CropRatios.All)
@@ -904,6 +936,8 @@ public sealed partial class MainWindow : Window
         var tabs = new SelectorBar();
         var taggingTab = new SelectorBarItem { Text = "Tagging", Icon = new FontIcon { Glyph = "\uE8EC" }, IsSelected = true };
         var croppingTab = new SelectorBarItem { Text = "Editing", Icon = new FontIcon { Glyph = "\uE7A8" } };
+        var galleryTab = new SelectorBarItem { Text = "Gallery", Icon = new FontIcon { Glyph = "\uE8B9" } };
+        tabs.Items.Add(galleryTab);
         tabs.Items.Add(taggingTab);
         tabs.Items.Add(croppingTab);
         var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
@@ -912,6 +946,7 @@ public sealed partial class MainWindow : Window
         tabs.Items.Add(keyboardTab);
         tabs.SelectionChanged += (_, _) =>
         {
+            gallery.Visibility = tabs.SelectedItem == galleryTab ? Visibility.Visible : Visibility.Collapsed;
             tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
             cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
             appearance.Visibility = tabs.SelectedItem == appearanceTab ? Visibility.Visible : Visibility.Collapsed;
@@ -930,7 +965,7 @@ public sealed partial class MainWindow : Window
                 {
                     tabs,
                     // The tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { tagging, cropping, appearance, keyboard } },
+                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, keyboard } },
                 },
             },
             PrimaryButtonText = "Save",
@@ -953,6 +988,8 @@ public sealed partial class MainWindow : Window
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
         if (crop.SelectedIndex >= 0)
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
+        if (defaultSort.SelectedIndex >= 0)
+            ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
     }
