@@ -1108,6 +1108,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Synchronous on purpose: the app exits as soon as the window's Closed handler returns.</summary>
     public void Dispose()
     {
+        StopWatching();
         _exifTool?.Dispose();
         _index.Dispose();
         _geocoder?.Dispose();

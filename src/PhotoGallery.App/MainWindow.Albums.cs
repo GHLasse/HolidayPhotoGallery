@@ -113,6 +113,8 @@ public sealed partial class MainWindow
     private void PhotoMenu_Opening(object sender, object e)
     {
         var photos = SelectedPhotos;
+        OpenWithItem.IsEnabled = photos.Count == 1;
+        ShowInFolderItem.IsEnabled = photos.Count == 1;
         var album = photos.Count == 1 ? ViewModel.FindAlbumFor(photos[0].Path) : null;
         AlbumCoverItem.IsEnabled = album is not null;
         AlbumCoverItem.Text = album is null

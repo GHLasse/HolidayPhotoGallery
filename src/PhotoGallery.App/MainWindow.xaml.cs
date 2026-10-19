@@ -67,6 +67,7 @@ public sealed partial class MainWindow : Window
         };
         SyncTimeZoneCombo();
         FillAlbumSortCombo();
+        ViewModel.PhotoChangedOutside += OnPhotoChangedOutside;
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
@@ -859,11 +860,18 @@ public sealed partial class MainWindow : Window
             },
         };
 
-        // Cropping tab
+        // Editing tab
         var crop = new ComboBox { Header = "Crop shape to start with", MinWidth = 320 };
         foreach (var ratio in CropRatios.All)
             crop.Items.Add(ratio.Name);
         crop.SelectedIndex = CropRatios.All.ToList().IndexOf(CropRatios.Find(ViewModel.CropRatio));
+
+        var backUp = new ToggleSwitch
+        {
+            Header = "Keep a copy of a photo before opening it in another app",
+            IsOn = ViewModel.BackUpBeforeOpenWith,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
 
         var cropping = new StackPanel
         {
@@ -875,6 +883,12 @@ public sealed partial class MainWindow : Window
                 new TextBlock
                 {
                     Text = "The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping.",
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                backUp,
+                new TextBlock
+                {
+                    Text = "Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere.",
                     TextWrapping = TextWrapping.Wrap,
                 },
             },
@@ -889,7 +903,7 @@ public sealed partial class MainWindow : Window
 
         var tabs = new SelectorBar();
         var taggingTab = new SelectorBarItem { Text = "Tagging", Icon = new FontIcon { Glyph = "\uE8EC" }, IsSelected = true };
-        var croppingTab = new SelectorBarItem { Text = "Cropping", Icon = new FontIcon { Glyph = "\uE7A8" } };
+        var croppingTab = new SelectorBarItem { Text = "Editing", Icon = new FontIcon { Glyph = "\uE7A8" } };
         tabs.Items.Add(taggingTab);
         tabs.Items.Add(croppingTab);
         var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
@@ -939,6 +953,8 @@ public sealed partial class MainWindow : Window
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
         if (crop.SelectedIndex >= 0)
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
+        if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
+            ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
     }
 
     private void UpdateEditBar()

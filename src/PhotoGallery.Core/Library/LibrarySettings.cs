@@ -20,6 +20,9 @@ public sealed class LibrarySettings
     /// <summary>The colour palette (an <see cref="Appearance.ColorPalette"/> key).</summary>
     public string Palette { get; set; } = Appearance.ColorPalette.WindowsKey;
 
+    /// <summary>Whether a photo is copied to the hidden .originals folder before it is opened in another app.</summary>
+    public bool BackUpBeforeOpenWith { get; set; } = true;
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 

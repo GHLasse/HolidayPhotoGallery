@@ -322,6 +322,17 @@
                       KeyDown="PhotoGrid_KeyDown">
                 <GridView.ContextFlyout>
                     <MenuFlyout Opening="PhotoMenu_Opening">
+                        <MenuFlyoutItem x:Name="OpenWithItem" Text="Open with…" Click="OpenWith_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE7AC;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="ShowInFolderItem" Text="Show in folder" Click="ShowInFolderMenu_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE838;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
                         <MenuFlyoutItem x:Name="AlbumCoverItem" Text="Use as album cover" Click="UseAsAlbumCover_Click">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon Glyph="&#xE8B9;" />
@@ -526,6 +537,12 @@
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE81C;" FontSize="16" />
                             <TextBlock Text="Revert" />
+                        </StackPanel>
+                    </Button>
+                    <Button Click="ViewerOpenWith_Click" ToolTipService.ToolTip="Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Revert still works.">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE7AC;" FontSize="16" />
+                            <TextBlock Text="Open with…" />
                         </StackPanel>
                     </Button>
                     <AppBarSeparator />

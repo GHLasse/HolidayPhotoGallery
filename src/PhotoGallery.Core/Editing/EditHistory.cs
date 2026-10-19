@@ -36,6 +36,44 @@ public static class EditHistory
         Save(path, steps);
     }
 
+    /// <summary>
+    /// Backs the photo up unless the newest backup already matches it, e.g. before another app edits it.
+    /// Returns whether a backup was made.
+    /// </summary>
+    public static bool BackUpIfChanged(string path)
+    {
+        if (LastBackupMatches(path))
+            return false;
+        BackUp(path);
+        return true;
+    }
+
+    /// <summary>Drops the newest backup when the photo still matches it, so an edit that never happened can't be undone.</summary>
+    public static void ForgetUnchanged(string path)
+    {
+        if (!LastBackupMatches(path))
+            return;
+        var steps = Load(path);
+        var folder = Path.Combine(Path.GetDirectoryName(path)!, FolderName);
+        File.Delete(Path.Combine(folder, steps[^1].Backup));
+        steps.RemoveAt(steps.Count - 1);
+        Save(path, steps);
+        if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any())
+            Directory.Delete(folder);
+    }
+
+    private static bool LastBackupMatches(string path)
+    {
+        var steps = Load(path);
+        if (steps.Count == 0)
+            return false;
+        var backup = new FileInfo(Path.Combine(Path.GetDirectoryName(path)!, FolderName, steps[^1].Backup));
+        var current = new FileInfo(path);
+        if (!backup.Exists || !current.Exists || backup.Length != current.Length)
+            return false;
+        return File.ReadAllBytes(backup.FullName).AsSpan().SequenceEqual(File.ReadAllBytes(current.FullName));
+    }
+
     /// <summary>Moves the history along when an edit saved the photo under a new name (e.g. HEIC to JPEG).</summary>
     public static void Rename(string oldPath, string newPath)
     {
