@@ -198,6 +198,7 @@ public sealed partial class MainViewModel
     }
 
     private readonly Dictionary<string, byte[]?> _personPictures = [];
+    private readonly SemaphoreSlim _peopleWriting = new(1, 1);
 
     /// <summary>
     /// A picture of a person's face cut from the photo at the box in the file, for people named in another
@@ -290,6 +291,7 @@ public sealed partial class MainViewModel
     {
         if (_metadata is null || _indexer is null)
             return;
+        await _peopleWriting.WaitAsync();
         try
         {
             var current = await _metadata.ReadAsync(item.Path);
@@ -302,6 +304,10 @@ public sealed partial class MainViewModel
         {
             ErrorMessage = $"Could not change {item.FileName}: {ex.Message}";
         }
+        finally
+        {
+            _peopleWriting.Release();
+        }
         await AfterPeopleChangedAsync();
     }
 
@@ -310,6 +316,9 @@ public sealed partial class MainViewModel
         if (_metadata is null || _indexer is null || faces.Count == 0)
             return 0;
 
+        // Naming runs in the background while the user browses, so changes wait their turn instead of
+        // writing the same file at once.
+        await _peopleWriting.WaitAsync();
         var failures = new List<string>();
         var photos = faces.GroupBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
         var changed = 0;
@@ -342,6 +351,7 @@ public sealed partial class MainViewModel
         finally
         {
             IsBusy = false;
+            _peopleWriting.Release();
         }
 
         ErrorMessage = failures.Count == 0 ? null : "Some photos could not be changed. " + string.Join(" ", failures);

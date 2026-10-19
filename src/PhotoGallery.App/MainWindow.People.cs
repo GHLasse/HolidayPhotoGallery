@@ -248,8 +248,6 @@ public sealed partial class MainWindow
         var index = 0;
         var start = 0;
         string? lastName = null;
-        var busy = false;
-        var closeWhenDone = false;
         var heading = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var faces = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 68, ItemHeight = 68, MaximumRowsOrColumns = 8 };
         var nameBox = NameBox(_ => Task.CompletedTask);
@@ -330,7 +328,7 @@ public sealed partial class MainWindow
                 Show();
         }
 
-        dialog.PrimaryButtonClick += async (_, args) =>
+        dialog.PrimaryButtonClick += (_, args) =>
         {
             args.Cancel = true;
             var name = nameBox.Text.Trim();
@@ -340,42 +338,21 @@ public sealed partial class MainWindow
                 problem.Text = name.Length == 0 ? "Type a name first." : "Every face is left out.";
                 return;
             }
-            // No deferral: the dialog stays responsive, so Done can be pressed while the names are written.
-            busy = true;
-            dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = hide.IsEnabled = false;
-            try
-            {
-                await ViewModel.NameFacesAsync(chosen, name);
-            }
-            finally
-            {
-                busy = false;
-                dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = hide.IsEnabled = true;
-            }
-            if (closeWhenDone)
-                dialog.Hide();
-            else
-                Next(name);
-        };
-        // Done while names are still being written closes the dialog once they are.
-        dialog.Closing += (_, args) =>
-        {
-            if (!busy)
-                return;
-            args.Cancel = true;
-            closeWhenDone = true;
-            problem.Text = "Finishing writing the names, then closing…";
+            // The names are written in the background (the status bar shows how far it is), so the next
+            // faces come up at once and Done closes the dialog straight away.
+            _ = ViewModel.NameFacesAsync(chosen, name);
+            Next(name);
         };
         dialog.SecondaryButtonClick += (_, args) =>
         {
             args.Cancel = true;
             Next();
         };
-        hide.Click += async (_, _) =>
+        hide.Click += (_, _) =>
         {
             var chosen = Chosen();
             if (chosen.Count > 0)
-                await ViewModel.IgnoreFacesAsync(chosen);
+                _ = ViewModel.IgnoreFacesAsync(chosen);
             Next();
         };
 
