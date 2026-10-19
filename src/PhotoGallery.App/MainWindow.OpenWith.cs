@@ -226,9 +226,10 @@ public sealed partial class MainWindow
         {
             offered = (await AssocHandlers.ListAsync(".jpg")).Select(a => new FavouriteApp(a.Name, a.DisplayName)).ToList();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             offered = []; // Only "Other app…" then.
+            ViewModel.Warn($"Couldn't read the apps Windows offers for photos ({ex.Message}). \"Other app…\" still works.");
         }
 
         for (var i = 0; i < boxes.Length; i++)

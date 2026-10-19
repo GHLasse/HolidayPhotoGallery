@@ -21,7 +21,7 @@ internal static class AssocHandlers
     private interface IEnumAssocHandlers
     {
         [PreserveSig]
-        int Next(uint count, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.Interface, SizeParamIndex = 0)] IAssocHandler[] handlers, out uint fetched);
+        int Next(uint count, [Out, MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.Interface, SizeParamIndex = 0)] IAssocHandler[] handlers, out uint fetched);
     }
 
     [ComImport, Guid("F04061AC-1659-4a3f-A954-775AA57FC083"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -58,7 +58,7 @@ internal static class AssocHandlers
     private static extern object SHCreateItemFromParsingName(string path, nint bindContext, ref Guid riid);
 
     /// <summary>The apps Windows recommends for the file type (".jpg"), by name. Runs off the UI thread.</summary>
-    public static Task<List<AssocApp>> ListAsync(string extension) => Task.Run(() =>
+    public static Task<List<AssocApp>> ListAsync(string extension) => RunOnStaThread(() =>
     {
         var apps = new List<AssocApp>();
         foreach (var handler in Enumerate(extension))
@@ -70,7 +70,7 @@ internal static class AssocHandlers
                 if (app.DisplayName.Length > 0 && !apps.Any(a => a.Name.Equals(app.Name, StringComparison.OrdinalIgnoreCase)))
                     apps.Add(app);
             }
-            catch (COMException)
+            catch (Exception ex) when (ex is COMException or InvalidCastException)
             {
                 // A broken registration: leave it out.
             }
@@ -79,7 +79,7 @@ internal static class AssocHandlers
     });
 
     /// <summary>Opens the file in the app, the way Explorer's "Open with" does. False when Windows no longer offers that app.</summary>
-    public static Task<bool> OpenAsync(string appName, string path) => Task.Run(() =>
+    public static Task<bool> OpenAsync(string appName, string path) => RunOnStaThread(() =>
     {
         // The app was chosen from the JPEG list; a HEIC or PNG photo may not list it, so that list is the fallback.
         var handler = Enumerate(Path.GetExtension(path)).Concat(Enumerate(".jpg"))
@@ -105,7 +105,30 @@ internal static class AssocHandlers
             yield break;
         }
         var one = new IAssocHandler[1];
-        while (list.Next(1, one, out var fetched) == 0 && fetched == 1)
-            yield return one[0];
+        while (list.Next(1, one, out var fetched) == 0 && fetched == 1 && one[0] is { } handler)
+            yield return handler;
+    }
+
+    /// <summary>
+    /// Runs shell work on its own thread in a single-threaded apartment, as the shell expects, so it
+    /// neither blocks nor re-enters the UI thread.
+    /// </summary>
+    private static Task<T> RunOnStaThread<T>(Func<T> work)
+    {
+        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                done.SetResult(work());
+            }
+            catch (Exception ex)
+            {
+                done.SetException(ex);
+            }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return done.Task;
     }
 }
