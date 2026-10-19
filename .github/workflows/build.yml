@@ -113,7 +113,8 @@ jobs:
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64 "-p:GoogleClientId=$env:GOOGLE_CLIENT_ID" "-p:GoogleClientSecret=$env:GOOGLE_CLIENT_SECRET"
+          ONEDRIVE_CLIENT_ID: ${{ secrets.ONEDRIVE_CLIENT_ID }}
+        run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64 "-p:GoogleClientId=$env:GOOGLE_CLIENT_ID" "-p:GoogleClientSecret=$env:GOOGLE_CLIENT_SECRET" "-p:OneDriveClientId=$env:ONEDRIVE_CLIENT_ID"
       - name: Smoke test (start the app and check it stays up)
         shell: pwsh
         run: |

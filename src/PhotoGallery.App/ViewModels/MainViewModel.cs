@@ -309,13 +309,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
         (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) +
-        (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0);
+        (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
 
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
     public async Task InitializeAsync()
     {
         await SearchAsync();
-        _ = LoadGoogleUploadsAsync();
+        _ = LoadCloudUploadsAsync();
         if (IsExifToolMissing)
         {
             ErrorMessage = "ExifTool was not found, so photos cannot be indexed or edited. " +
@@ -435,8 +435,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
 
-        photos = FilterByGoogle(photos);
-        Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(p => new PhotoItemViewModel(p) { IsOnGoogle = _onGoogle.Contains(p.Path) }));
+        photos = FilterByCloud(photos);
+        Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
         UpdateTags(tags);
         UpdatePeople(people);
         UpdateCameras(cameras);
@@ -1149,6 +1149,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StopWatching();
         _upload?.Cancel();
         _googleAuth?.Dispose();
+        _microsoftAuth?.Dispose();
         _exifTool?.Dispose();
         _index.Dispose();
         _geocoder?.Dispose();

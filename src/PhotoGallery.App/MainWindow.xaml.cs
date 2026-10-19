@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Controls;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
+using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Tagging;
@@ -199,6 +200,8 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutLocation = false;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;
+        ViewModel.OnOneDriveOnly = false;
+        ViewModel.NotOnOneDriveOnly = false;
         ViewModel.TakenFrom = null;
         ViewModel.TakenTo = null;
         ViewModel.CameraIndex = 0;
@@ -834,7 +837,7 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
 
-    private async Task ShowSettingsAsync(bool googleTab = false)
+    private async Task ShowSettingsAsync(CloudService? cloudTab = null)
     {
         // Tagging tab
         var language = new ComboBox { Header = "Language of the tags", MinWidth = 160 };
@@ -944,6 +947,8 @@ public sealed partial class MainWindow : Window
         using var dialogClosed = new CancellationTokenSource();
         var google = GoogleTab(dialogClosed.Token);
         google.Visibility = Visibility.Collapsed;
+        var oneDrive = OneDriveTab(dialogClosed.Token);
+        oneDrive.Visibility = Visibility.Collapsed;
 
         // Keyboard tab
         var keyboard = new ScrollViewer { Content = ShortcutList(), MaxHeight = 480, Visibility = Visibility.Collapsed };
@@ -957,8 +962,10 @@ public sealed partial class MainWindow : Window
         tabs.Items.Add(croppingTab);
         var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
         tabs.Items.Add(appearanceTab);
-        var googleTabItem = new SelectorBarItem { Text = "Google Photos", Icon = new FontIcon { Glyph = "\uE753" } };
+        var googleTabItem = new SelectorBarItem { Text = "Google Photos", Icon = new FontIcon { Glyph = "\uEB9F" } };
         tabs.Items.Add(googleTabItem);
+        var oneDriveTabItem = new SelectorBarItem { Text = "OneDrive", Icon = new FontIcon { Glyph = "\uE753" } };
+        tabs.Items.Add(oneDriveTabItem);
         var keyboardTab = new SelectorBarItem { Text = "Keyboard", Icon = new FontIcon { Glyph = "\uE765" } };
         tabs.Items.Add(keyboardTab);
         tabs.SelectionChanged += (_, _) =>
@@ -968,10 +975,11 @@ public sealed partial class MainWindow : Window
             cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
             appearance.Visibility = tabs.SelectedItem == appearanceTab ? Visibility.Visible : Visibility.Collapsed;
             google.Visibility = tabs.SelectedItem == googleTabItem ? Visibility.Visible : Visibility.Collapsed;
+            oneDrive.Visibility = tabs.SelectedItem == oneDriveTabItem ? Visibility.Visible : Visibility.Collapsed;
             keyboard.Visibility = tabs.SelectedItem == keyboardTab ? Visibility.Visible : Visibility.Collapsed;
         };
-        if (googleTab)
-            tabs.SelectedItem = googleTabItem;
+        if (cloudTab is { } cloud)
+            tabs.SelectedItem = cloud == CloudService.GooglePhotos ? googleTabItem : oneDriveTabItem;
 
         var dialog = new ContentDialog
         {
@@ -985,7 +993,7 @@ public sealed partial class MainWindow : Window
                 {
                     tabs,
                     // The tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, google, keyboard } },
+                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, google, oneDrive, keyboard } },
                 },
             },
             PrimaryButtonText = "Save",

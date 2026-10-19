@@ -40,6 +40,12 @@ public sealed class LibrarySettings
     /// <summary>The Google account signed in, for display; the sign-in itself is kept in Windows' credential store.</summary>
     public string? GoogleAccount { get; set; }
 
+    /// <summary>The user's own Microsoft app registration, when they use one instead of the app's built-in one.</summary>
+    public string? OneDriveClientId { get; set; }
+
+    /// <summary>The Microsoft account signed in, for display.</summary>
+    public string? OneDriveAccount { get; set; }
+
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HolidayPhotoGallery");
 
