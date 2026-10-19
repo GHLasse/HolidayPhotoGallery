@@ -16,6 +16,9 @@ public sealed record PhotoMetadata
 
     public string? Caption { get; init; }
 
+    /// <summary>Flagged (picked), e.g. to print; kept apart from the rating.</summary>
+    public bool Flagged { get; init; }
+
     public DateTaken? DateTaken { get; init; }
 
     /// <summary>EXIF orientation, 1-8. 1 means "as stored".</summary>

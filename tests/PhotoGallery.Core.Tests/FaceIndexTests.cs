@@ -35,6 +35,27 @@ public sealed class FaceIndexTests : IAsyncLifetime
         return v.Select(x => x / length).ToArray();
     }
 
+    [Fact]
+    public void An_index_from_before_flags_keeps_its_faces()
+    {
+        var path = Path.Combine(_photos.Path, "a.jpg");
+        _index!.Upsert([new IndexedPhoto { Path = path, Folder = _photos.Path }]);
+        _index.SaveFaces(path, [new NewFace(new FaceBox(0.1, 0.1, 0.2, 0.2), 0.9f, Vector(1, 0), null)]);
+        _index.Dispose();
+        using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_data.Path, "index.db")};Pooling=False"))
+        {
+            db.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "ALTER TABLE photos DROP COLUMN flagged; PRAGMA user_version = 5;";
+            cmd.ExecuteNonQuery();
+        }
+
+        _index = new PhotoIndex(Path.Combine(_data.Path, "index.db"));
+
+        Assert.Single(_index.GetFaces(path));
+        Assert.False(Assert.Single(_index.Search(new PhotoQuery())).Flagged);
+    }
+
     [ExifToolFact]
     public async Task Found_faces_take_the_names_in_the_file_and_people_can_be_searched()
     {

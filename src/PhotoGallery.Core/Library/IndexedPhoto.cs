@@ -18,6 +18,8 @@ public sealed record IndexedPhoto
 
     public int Rating { get; init; }
 
+    public bool Flagged { get; init; }
+
     public string? Caption { get; init; }
 
     public IReadOnlyList<string> Tags { get; init; } = [];
@@ -47,6 +49,7 @@ public sealed record IndexedPhoto
         FileModifiedUtc = file.LastWriteTimeUtc,
         DateTaken = metadata.DateTaken,
         Rating = metadata.Rating,
+        Flagged = metadata.Flagged,
         Caption = metadata.Caption,
         Tags = metadata.Tags,
         Orientation = metadata.Orientation,

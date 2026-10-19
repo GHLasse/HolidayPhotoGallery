@@ -12,7 +12,7 @@ namespace PhotoGallery.Core.Library;
 /// </summary>
 public sealed partial class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 5;
+    private const int SchemaVersion = 6;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -37,7 +37,12 @@ public sealed partial class PhotoIndex : IDisposable
     private void EnsureSchema()
     {
         var version = Convert.ToInt32(Scalar("PRAGMA user_version;"), CultureInfo.InvariantCulture);
-        if (version != SchemaVersion)
+        if (version == 5)
+        {
+            // Flags came with version 6; adding the column keeps the faces already found.
+            Execute("ALTER TABLE photos ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;");
+        }
+        else if (version != SchemaVersion)
         {
             // The index is only a cache, so an outdated layout is simply rebuilt.
             Execute("""
@@ -62,6 +67,7 @@ public sealed partial class PhotoIndex : IDisposable
                 date_taken TEXT,
                 date_offset_minutes INTEGER,
                 rating INTEGER NOT NULL DEFAULT 0,
+                flagged INTEGER NOT NULL DEFAULT 0,
                 caption TEXT,
                 orientation INTEGER NOT NULL DEFAULT 1,
                 width INTEGER,
@@ -143,14 +149,14 @@ public sealed partial class PhotoIndex : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, caption, orientation, width, height, camera, latitude, longitude,
+            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
                                 country, country_code, state, city, sublocation)
-            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $caption, $orientation, $width, $height, $camera, $lat, $lon,
+            VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $flagged, $caption, $orientation, $width, $height, $camera, $lat, $lon,
                     $country, $countryCode, $state, $city, $sublocation)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
-                date_offset_minutes = excluded.date_offset_minutes, rating = excluded.rating,
+                date_offset_minutes = excluded.date_offset_minutes, rating = excluded.rating, flagged = excluded.flagged,
                 caption = excluded.caption, orientation = excluded.orientation,
                 width = excluded.width, height = excluded.height, camera = excluded.camera,
                 latitude = excluded.latitude, longitude = excluded.longitude,
@@ -166,6 +172,7 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$date", (object?)photo.DateTaken?.Local.ToString(DateFormat, CultureInfo.InvariantCulture) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$offset", (object?)(photo.DateTaken?.Offset is { } o ? (int)o.TotalMinutes : null) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$rating", photo.Rating);
+        cmd.Parameters.AddWithValue("$flagged", photo.Flagged ? 1 : 0);
         cmd.Parameters.AddWithValue("$caption", (object?)photo.Caption ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$orientation", photo.Orientation);
         cmd.Parameters.AddWithValue("$width", (object?)photo.Width ?? DBNull.Value);
@@ -289,6 +296,9 @@ public sealed partial class PhotoIndex : IDisposable
                 cmd.Parameters.AddWithValue("$minRating", query.MinRating);
             }
 
+            if (query.FlaggedOnly)
+                where.Add("p.flagged = 1");
+
             if (!string.IsNullOrEmpty(query.Camera))
             {
                 where.Add("p.camera = $camera");
@@ -346,7 +356,8 @@ public sealed partial class PhotoIndex : IDisposable
                        (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id) AS tags,
                        p.latitude, p.longitude, p.country, p.country_code, p.state, p.city, p.sublocation,
                        (SELECT group_concat(name || char(30) || x || char(30) || y || char(30) || w || char(30) || h, char(31))
-                        FROM photo_people pp WHERE pp.photo_id = p.id) AS people
+                        FROM photo_people pp WHERE pp.photo_id = p.id) AS people,
+                       p.flagged
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -420,6 +431,7 @@ public sealed partial class PhotoIndex : IDisposable
             Location = r.IsDBNull(14) || r.IsDBNull(15) ? null : new GeoPosition(r.GetDouble(14), r.GetDouble(15)),
             Place = ReadPlace(r, 16),
             People = r.IsDBNull(21) ? [] : ReadPeople(r.GetString(21)),
+            Flagged = r.GetInt32(22) != 0,
         };
     }
 

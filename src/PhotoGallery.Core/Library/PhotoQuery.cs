@@ -19,6 +19,8 @@ public sealed record PhotoQuery
 
     public int MinRating { get; init; }
 
+    public bool FlaggedOnly { get; init; }
+
     /// <summary>Only photos from this camera (as in <see cref="IndexedPhoto.Camera"/>).</summary>
     public string? Camera { get; init; }
 

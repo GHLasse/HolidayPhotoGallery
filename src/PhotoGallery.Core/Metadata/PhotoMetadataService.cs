@@ -15,7 +15,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     private static readonly string[] ReadTags =
     [
         "-XMP-dc:Subject", "-IPTC:Keywords", "-XMP-microsoft:LastKeywordXMP", "-IFD0:XPKeywords",
-        "-XMP-xmp:Rating", "-XMP-microsoft:RatingPercent", "-IFD0:Rating",
+        "-XMP-xmp:Rating", "-XMP-microsoft:RatingPercent", "-IFD0:Rating", "-XMP-digiKam:PickLabel",
         "-XMP-dc:Title", "-XMP-dc:Description", "-IFD0:XPTitle", "-IFD0:ImageDescription", "-IPTC:Caption-Abstract",
         "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal",
         "-XMP-photoshop:DateCreated", "-ExifIFD:CreateDate",
@@ -225,6 +225,11 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        // The flag is digiKam's pick label "accepted" (3), the nearest thing to Lightroom's pick flag that
+        // other programs can read. Unflagging only removes that value, so a reject mark from elsewhere stays.
+        if (changes.Flagged is { } flagged)
+            args.Add(flagged ? "-XMP-digiKam:PickLabel=3" : "-XMP-digiKam:PickLabel-=3");
+
         if (changes.Caption is { } caption)
         {
             caption = caption.Trim();
@@ -384,6 +389,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Path = path,
             Tags = TagList.Normalize(tags),
             Rating = Math.Clamp(rating, 0, 5),
+            Flagged = GetNumber(item, "XMP-digiKam:PickLabel") == 3,
             Caption = caption,
             DateTaken = ParseDateTaken(item),
             Orientation = Orientation.Normalize(orientation),
