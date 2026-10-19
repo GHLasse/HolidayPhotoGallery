@@ -28,6 +28,12 @@ public sealed record MetadataChanges
     /// </summary>
     public TimeSpan? ShiftCreateDateBy { get; init; }
 
+    /// <summary>
+    /// With a new date taken: sets the file's other dates to it too (digitized, modified, and the file's
+    /// own dates), the "Keep all dates in sync" setting.
+    /// </summary>
+    public bool SyncOtherDates { get; init; }
+
     /// <summary>EXIF orientation 1-8.</summary>
     public int? Orientation { get; init; }
 

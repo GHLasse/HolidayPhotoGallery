@@ -28,6 +28,30 @@ public static class TagList
     }
 
     /// <summary>
+    /// The file's tags with <paramref name="tag"/> and the tags under it ("tag/…") renamed to
+    /// <paramref name="newName"/>, or removed when it is null. A new name that is already there merges
+    /// with it. Null when the file has none of them.
+    /// </summary>
+    public static IReadOnlyList<string>? Rename(IEnumerable<string> fileTags, string tag, string? newName)
+    {
+        var changed = false;
+        var result = new List<string>();
+        foreach (var t in fileTags)
+        {
+            var exact = string.Equals(t, tag, StringComparison.OrdinalIgnoreCase);
+            if (!exact && !t.StartsWith(tag + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(t);
+                continue;
+            }
+            changed = true;
+            if (newName is not null)
+                result.Add(exact ? newName : newName + t[tag.Length..]);
+        }
+        return changed ? Normalize(result) : null;
+    }
+
+    /// <summary>
     /// Applies a batch tag edit to one file's tags: tags removed from the shared set are dropped,
     /// new ones are added, and tags only this file has are kept.
     /// </summary>

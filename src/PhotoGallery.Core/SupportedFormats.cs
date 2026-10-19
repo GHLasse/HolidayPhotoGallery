@@ -23,4 +23,10 @@ public static class SupportedFormats
     public static bool IsSupported(string path) => Extensions.Contains(Path.GetExtension(path));
 
     public static bool CanRotateLosslessly(string path) => OrientationRotatable.Contains(Path.GetExtension(path));
+
+    /// <summary>
+    /// Every format can be turned: JPEG and TIFF by their orientation tag, PNG, GIF and WebP by turning
+    /// their pixels (<see cref="Editing.PixelRotation"/>), and HEIC by saving it again with Windows' encoder.
+    /// </summary>
+    public static bool CanRotate(string path) => IsSupported(path);
 }

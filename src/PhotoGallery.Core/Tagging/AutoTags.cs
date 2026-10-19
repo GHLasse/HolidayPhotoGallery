@@ -3,18 +3,27 @@ using PhotoGallery.Core.Metadata;
 namespace PhotoGallery.Core.Tagging;
 
 /// <summary>
-/// Tags the app adds by itself are kept under "Auto/" (e.g. "Auto/Strand"), which Windows Live Photo
+/// Tags the app adds by itself are kept under "ai/" (e.g. "ai/Strand"), which Windows Live Photo
 /// Gallery shows as a tag group, so they can be told apart from the user's own tags and redone or
-/// removed together. The user's own tags are never touched.
+/// removed together. The user's own tags are never touched. Tags from before the rename are under
+/// "Auto/"; they still count as auto tags and become "ai/" tags when a photo is tagged again.
 /// </summary>
 public static class AutoTags
 {
-    public const string Parent = "Auto";
+    public const string Parent = "ai";
     private const string Prefix = Parent + "/";
+    private const string OldPrefix = "Auto/";
+
+    /// <summary>The tag groups auto tags are in: today's and the one used before.</summary>
+    public static IReadOnlyList<string> Prefixes { get; } = [Prefix, OldPrefix];
 
     public static string ToTag(string label) => Prefix + label;
 
-    public static bool IsAuto(string tag) => tag.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase);
+    public static bool IsAuto(string tag) =>
+        tag.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase) || tag.StartsWith(OldPrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The tag without its "ai/" group, for showing it.</summary>
+    public static string Label(string tag) => IsAuto(tag) ? tag[(tag.IndexOf('/') + 1)..] : tag;
 
     /// <summary>The file's tags with its earlier auto tags replaced by tags for <paramref name="labels"/>.</summary>
     public static IReadOnlyList<string> Replace(IEnumerable<string> fileTags, IEnumerable<string> labels) =>

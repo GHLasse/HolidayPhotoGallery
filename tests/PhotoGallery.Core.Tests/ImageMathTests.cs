@@ -44,4 +44,16 @@ public sealed class ImageMathTests
         var curve = ImageMath.AutoAdjustCurve(image);
         Assert.All(Enumerable.Range(0, 256), v => Assert.InRange(curve[v] - v, -6, 6));
     }
+
+    [Fact]
+    public void Rotate90_turns_a_quarter_either_way()
+    {
+        // 2 × 1: pixel A then pixel B (one byte each shown, 4 per pixel).
+        byte[] image = [1, 1, 1, 1, 2, 2, 2, 2];
+        Assert.Equal(new byte[] { 1, 1, 1, 1, 2, 2, 2, 2 }, ImageMath.Rotate90(image, 2, 1, clockwise: true));
+        Assert.Equal(new byte[] { 2, 2, 2, 2, 1, 1, 1, 1 }, ImageMath.Rotate90(image, 2, 1, clockwise: false));
+
+        // 1 × 2 (A above B) turned clockwise: B left of A.
+        Assert.Equal(new byte[] { 2, 2, 2, 2, 1, 1, 1, 1 }, ImageMath.Rotate90(image, 1, 2, clockwise: true));
+    }
 }

@@ -11,6 +11,9 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
 {
     public const uint ThumbnailSize = 256;
 
+    /// <summary>The smallest and largest tile size (the zoom slider in MainWindow.xaml offers the same); above the decoded size photos get a little soft.</summary>
+    public const int MinTileSize = 96, MaxTileSize = 320;
+
     private IndexedPhoto _photo = photo;
     private ImageSource? _thumbnail;
     private bool _thumbnailRequested;
@@ -49,7 +52,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
 
     public string FileName => Photo.FileName;
 
-    public bool CanRotate => SupportedFormats.CanRotateLosslessly(Path);
+    public bool CanRotate => SupportedFormats.CanRotate(Path);
 
     public string Stars => Photo.Rating > 0 ? new string('★', Photo.Rating) : "";
 

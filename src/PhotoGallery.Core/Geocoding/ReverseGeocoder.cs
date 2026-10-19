@@ -20,7 +20,10 @@ public sealed class ReverseGeocoder : IDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTime _lastRequest = DateTime.MinValue;
 
-    /// <param name="language">The language for the names, e.g. "de" or "en"; Nominatim falls back to local names.</param>
+    /// <param name="language">
+    /// The language for the names, e.g. "de" or "en"; Nominatim falls back to local names. Empty for the
+    /// local names (as people there write them).
+    /// </param>
     public ReverseGeocoder(string language, HttpMessageHandler? handler = null)
     {
         _language = language;
@@ -47,8 +50,8 @@ public sealed class ReverseGeocoder : IDisposable
             _lastRequest = DateTime.UtcNow;
 
             var url = string.Format(CultureInfo.InvariantCulture,
-                "reverse?format=jsonv2&addressdetails=1&zoom=18&lat={0}&lon={1}&accept-language={2}",
-                position.Latitude, position.Longitude, Uri.EscapeDataString(_language));
+                "reverse?format=jsonv2&addressdetails=1&zoom=18&lat={0}&lon={1}{2}",
+                position.Latitude, position.Longitude, _language.Length == 0 ? "" : "&accept-language=" + Uri.EscapeDataString(_language));
             using var doc = await _http.GetFromJsonAsync<JsonDocument>(url, cancellationToken).ConfigureAwait(false);
             var place = doc is null ? null : Parse(doc.RootElement);
             _cache[key] = place;

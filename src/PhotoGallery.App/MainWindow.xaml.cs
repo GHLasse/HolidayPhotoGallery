@@ -40,6 +40,7 @@ public sealed partial class MainWindow : Window
         RotateLeftButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)188 });
         RotateRightButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)190 });
 
+        SetUpZoom();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.CloseRequested += CloseCompare;
@@ -872,7 +873,7 @@ public sealed partial class MainWindow : Window
             {
                 new TextBlock
                 {
-                    Text = "Auto-tagging only uses tags from this list and writes them as Auto/…, so you can tell them apart from your own tags and remove them together. Your own tags are never changed.",
+                    Text = "Auto-tagging only uses tags from this list and writes them as ai/…, so you can tell them apart from your own tags and remove them together. Your own tags are never changed.",
                     TextWrapping = TextWrapping.Wrap,
                 },
                 language,
@@ -960,57 +961,94 @@ public sealed partial class MainWindow : Window
         // Keyboard tab
         var keyboard = new ScrollViewer { Content = ShortcutList(), MaxHeight = 480, Visibility = Visibility.Collapsed };
 
-        var tabs = new SelectorBar();
-        var taggingTab = new SelectorBarItem { Text = "Tagging", Icon = new FontIcon { Glyph = "\uE8EC" }, IsSelected = true };
-        var croppingTab = new SelectorBarItem { Text = "Editing", Icon = new FontIcon { Glyph = "\uE7A8" } };
-        var galleryTab = new SelectorBarItem { Text = "Gallery", Icon = new FontIcon { Glyph = "\uE8B9" } };
-        tabs.Items.Add(galleryTab);
-        tabs.Items.Add(taggingTab);
-        tabs.Items.Add(croppingTab);
-        var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
-        tabs.Items.Add(appearanceTab);
-        var linkedTab = new SelectorBarItem { Text = "Linked apps", Icon = new FontIcon { Glyph = "\uE753" } };
-        tabs.Items.Add(linkedTab);
-        var keyboardTab = new SelectorBarItem { Text = "Keyboard", Icon = new FontIcon { Glyph = "\uE765" } };
-        tabs.Items.Add(keyboardTab);
+        // Tags tab (tag management) and Dates and places tab
+        string? showTag = null;
+        ContentDialog? dialog = null;
+        var tags = TagManagementPage(tag =>
+        {
+            showTag = tag;
+            dialog?.Hide();
+        });
+        tags.Visibility = Visibility.Collapsed;
+        var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
+
+        // The tabs are listed down the left side; the pages share one cell so the dialog keeps its size.
+        (string Text, Func<FrameworkElement> Icon, FrameworkElement Page)[] pages =
+        [
+            ("Gallery", () => new FontIcon { Glyph = "\uE8B9" }, gallery),
+            ("AI tagging", () => new Controls.AiSparkle { Width = 16, Height = 16 }, tagging),
+            ("Tags", () => new FontIcon { Glyph = "\uE8EC" }, tags),
+            ("Dates and places", () => new FontIcon { Glyph = "\uE787" }, datesAndPlaces),
+            ("Editing", () => new FontIcon { Glyph = "\uE7A8" }, cropping),
+            ("Appearance", () => new FontIcon { Glyph = "\uE790" }, appearance),
+            ("Linked apps", () => new FontIcon { Glyph = "\uE753" }, linked),
+            ("Keyboard", () => new FontIcon { Glyph = "\uE765" }, keyboard),
+        ];
+        var tabs = new ListView { SelectionMode = ListViewSelectionMode.Single, Width = 200 };
+        foreach (var (text, icon, _) in pages)
+        {
+            var symbol = icon();
+            symbol.Width = 16;
+            symbol.Height = 16;
+            tabs.Items.Add(new ListViewItem
+            {
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 12,
+                    Children = { symbol, new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center } },
+                },
+            });
+        }
         tabs.SelectionChanged += (_, _) =>
         {
-            gallery.Visibility = tabs.SelectedItem == galleryTab ? Visibility.Visible : Visibility.Collapsed;
-            tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
-            cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
-            appearance.Visibility = tabs.SelectedItem == appearanceTab ? Visibility.Visible : Visibility.Collapsed;
-            linked.Visibility = tabs.SelectedItem == linkedTab ? Visibility.Visible : Visibility.Collapsed;
-            keyboard.Visibility = tabs.SelectedItem == keyboardTab ? Visibility.Visible : Visibility.Collapsed;
+            for (var i = 0; i < pages.Length; i++)
+                pages[i].Page.Visibility = i == tabs.SelectedIndex ? Visibility.Visible : Visibility.Collapsed;
         };
-        if (cloudTab is not null)
-            tabs.SelectedItem = linkedTab;
+        tabs.SelectedIndex = cloudTab is not null ? Array.FindIndex(pages, p => p.Page == linked) : 0;
 
-        var dialog = new ContentDialog
+        var pageArea = new Grid { MinHeight = 480, Width = 580 };
+        foreach (var page in pages)
+            pageArea.Children.Add(page.Page);
+        var layout = new Grid { ColumnSpacing = 16 };
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var divider = new Border { Background = ThemeBrush("DividerStrokeColorDefaultBrush") };
+        Grid.SetColumn(divider, 1);
+        Grid.SetColumn(pageArea, 2);
+        layout.Children.Add(tabs);
+        layout.Children.Add(divider);
+        layout.Children.Add(pageArea);
+
+        dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
             Title = "Settings",
-            Content = new StackPanel
-            {
-                Spacing = 12,
-                MinWidth = 400,
-                Children =
-                {
-                    tabs,
-                    // The tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, linked, keyboard } },
-                },
-            },
+            Content = layout,
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
         };
+        // Wide enough for the tab list next to the pages.
+        dialog.Resources["ContentDialogMaxWidth"] = 900.0;
         var answer = await dialog.ShowAsync();
         dialogClosed.Cancel();
+        if (showTag is not null)
+        {
+            // "Show these photos" in Settings › Tags: closes Settings without saving, and filters the grid.
+            revertAppearance();
+            ViewModel.FilterByTag(showTag);
+            return;
+        }
         if (answer != ContentDialogResult.Primary)
         {
             revertAppearance();
             return;
         }
+
+        var (keepDatesInSync, placeLanguage) = chosenDatesAndPlaces();
+        ViewModel.SaveDatesAndPlaces(keepDatesInSync, placeLanguage);
 
         var (theme, palette) = chosenAppearance();
         ViewModel.SaveAppearance(theme, palette);

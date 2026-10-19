@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Globalization;
 using PhotoGallery.App.Imaging;
+using PhotoGallery.Core;
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Faces;
@@ -536,7 +537,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = $"Saving {i + 1} of {edits.Count}…";
                 try
                 {
-                    await _metadata.WriteAsync(item.Path, changes);
+                    await _metadata.WriteAsync(item.Path, changes with { SyncOtherDates = changes.DateTaken is not null && _settings.KeepDatesInSync });
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
                 }
@@ -558,7 +559,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         return failures.Count == 0;
     }
 
-    /// <summary>Turns the photos a quarter turn by changing their orientation tag; the pixels are not re-encoded.</summary>
+    /// <summary>
+    /// Turns the photos a quarter turn. JPEG and TIFF only get a new orientation tag, so nothing is
+    /// re-encoded; other formats are turned pixel by pixel, keeping the version before in .originals.
+    /// </summary>
     public async Task RotateAsync(IReadOnlyList<PhotoItemViewModel> items, bool clockwise)
     {
         if (_metadata is null || _indexer is null || items.Count == 0)
@@ -566,36 +570,76 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var rotatable = items.Where(i => i.CanRotate).ToList();
         var skipped = items.Count - rotatable.Count;
+        var failed = 0;
 
         IsBusy = true;
         try
         {
-            foreach (var item in rotatable)
+            for (var i = 0; i < rotatable.Count; i++)
             {
-                var current = item.Photo.Orientation;
-                var next = clockwise ? Orientation.RotateClockwise(current) : Orientation.RotateCounterClockwise(current);
+                var item = rotatable[i];
+                if (rotatable.Count > 1)
+                    StatusText = $"Rotating {i + 1} of {rotatable.Count}…";
                 try
                 {
-                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Orientation = next });
-                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
-                        item.Photo = updated;
-                    await item.ReloadThumbnailAsync();
+                    if (SupportedFormats.CanRotateLosslessly(item.Path))
+                    {
+                        var current = item.Photo.Orientation;
+                        var next = clockwise ? Orientation.RotateClockwise(current) : Orientation.RotateCounterClockwise(current);
+                        await _metadata.WriteAsync(item.Path, new MetadataChanges { Orientation = next });
+                        if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                            item.Photo = updated;
+                        await item.ReloadThumbnailAsync();
+                    }
+                    else
+                    {
+                        await TurnPixelsAsync(item, clockwise);
+                    }
                 }
-                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException
+                                               or System.Runtime.InteropServices.COMException or SixLabors.ImageSharp.ImageFormatException)
                 {
-                    ErrorMessage = $"Could not rotate {item.FileName}: {ex.Message}";
+                    failed++;
+                    ErrorMessage = $"Could not rotate {item.FileName}: {ex.Message}" +
+                        (Path.GetExtension(item.Path).ToLowerInvariant() is ".heic" or ".heif"
+                            ? " Rotating HEIC needs the HEVC Video Extensions from the Microsoft Store." : "");
                 }
             }
         }
         finally
         {
             IsBusy = false;
+            StatusText = _countText;
         }
 
-        if (skipped == 0)
-            Inform($"Rotated {rotatable.Count} photo(s)");
+        var done = rotatable.Count - failed;
+        if (skipped == 0 && failed == 0)
+            Inform($"Rotated {done} photo(s)");
+        else if (skipped > 0)
+            Warn($"Rotated {done} photo(s). {skipped} skipped: their format can't be rotated.");
+    }
+
+    /// <summary>Turns a photo whose format has no orientation tag, by saving its turned pixels as an edit.</summary>
+    private async Task TurnPixelsAsync(PhotoItemViewModel item, bool clockwise)
+    {
+        var path = item.Path;
+        var turn = clockwise ? 6 : 8;
+        string newPath;
+        if (PixelRotation.Handles(path))
+        {
+            var (width, height) = await PixelRotation.TurnedSizeAsync(path);
+            newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), width, height,
+                                                        target => PixelRotation.TurnAsync(path, target, clockwise), turn: turn);
+        }
         else
-            Warn($"Rotated {rotatable.Count} photo(s). {skipped} skipped: rotating HEIC, PNG, WebP and GIF files is not supported yet.");
+        {
+            // HEIC: Windows decodes it upright, and its HEIF encoder (HEVC Video Extensions) saves it again.
+            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            var turned = await Task.Run(() => new DecodedImage(ImageMath.Rotate90(image.Pixels, image.Width, image.Height, clockwise), image.Height, image.Width));
+            newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), turned.Width, turned.Height,
+                                                        target => ImageEncoder.EncodeAsync(turned, target), turn: turn);
+        }
+        await AfterFileReplacedAsync(item, path, newPath);
     }
 
     /// <summary>Whether "Make editable" has anything to do in the selected folder (or the whole library).</summary>
@@ -713,6 +757,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     {
                         DateTaken = date.Shifted(delta, newZone?.OffsetFor(date.Local + delta)),
                         ShiftCreateDateBy = delta,
+                        SyncOtherDates = _settings.KeepDatesInSync,
                     });
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
@@ -796,7 +841,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _geocoder ??= new ReverseGeocoder(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName);
+        _geocoder ??= new ReverseGeocoder(PlaceNameLanguageCode);
         var failures = new List<string>();
         var unknown = 0;
         IsBusy = true;
@@ -912,7 +957,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Recognises what is in each photo with the local model and writes the tags from the user's list
-    /// that fit well enough, as "Auto/…". Earlier auto tags are replaced; the user's own tags stay.
+    /// that fit well enough, as "ai/…". Earlier auto tags are replaced; the user's own tags stay.
     /// </summary>
     public async Task AutoTagAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
@@ -999,7 +1044,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await RefreshTagsAsync();
     }
 
-    /// <summary>Removes the "Auto/…" tags from the photos; the user's own tags stay.</summary>
+    /// <summary>Removes the "ai/…" tags from the photos; the user's own tags stay.</summary>
     public async Task RemoveAutoTagsAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
         if (_metadata is null || _indexer is null)

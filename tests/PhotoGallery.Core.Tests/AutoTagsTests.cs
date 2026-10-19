@@ -7,8 +7,10 @@ public sealed class AutoTagsTests
     [Fact]
     public void Replaces_earlier_auto_tags_and_keeps_the_users_own()
     {
-        var tags = AutoTags.Replace(["Strand", "Auto/Berge", "Familie", "auto/Schnee"], ["Strand", "Meer"]);
-        Assert.Equal(["Strand", "Familie", "Auto/Strand", "Auto/Meer"], tags);
+        var tags = AutoTags.Replace(["Strand", "Auto/Berge", "Familie", "auto/Schnee", "ai/Wald"], ["Strand", "Meer"]);
+        Assert.Equal(["Strand", "Familie", "ai/Strand", "ai/Meer"], tags);
+        Assert.Equal("Meer", AutoTags.Label("ai/Meer"));
+        Assert.Equal("Berge", AutoTags.Label("Auto/Berge"));
     }
 
     [Fact]

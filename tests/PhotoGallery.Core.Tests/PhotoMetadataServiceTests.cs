@@ -53,6 +53,25 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task Keeping_dates_in_sync_sets_the_other_dates_and_the_file_date_too()
+    {
+        var path = _temp.CopySample(".jpg");
+        DateTaken.TryParse("2019-05-04 13:14:15+02:00", out var date);
+
+        await Service.WriteAsync(path, new MetadataChanges { DateTaken = date, SyncOtherDates = true });
+
+        var dates = (await _exifTool!.RunAsync(["-s3", "-ExifIFD:CreateDate", "-IFD0:ModifyDate", "-XMP-xmp:CreateDate", path])).Output;
+        Assert.Equal(["2019:05:04 13:14:15", "2019:05:04 13:14:15", "2019:05:04 13:14:15+02:00"],
+                     dates.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        Assert.Equal(new DateTimeOffset(2019, 5, 4, 11, 14, 15, TimeSpan.Zero), new DateTimeOffset(File.GetLastWriteTimeUtc(path)));
+
+        // Without it, only the date taken changes.
+        DateTaken.TryParse("2020-01-01 10:00:00", out var other);
+        await Service.WriteAsync(path, new MetadataChanges { DateTaken = other });
+        Assert.Equal("2019:05:04 13:14:15", (await _exifTool.RunAsync(["-s3", "-ExifIFD:CreateDate", path])).Output.Trim());
+    }
+
+    [ExifToolFact]
     public async Task Unflagging_removes_the_flag_but_keeps_a_reject_mark_from_elsewhere()
     {
         var path = _temp.CopySample(".jpg");

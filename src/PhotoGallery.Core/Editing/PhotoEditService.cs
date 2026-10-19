@@ -17,10 +17,13 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// pixels (without metadata) to the path it is given, in the format of <paramref name="extension"/>.
     /// Returns the photo's path, which changes when the format does (e.g. HEIC saved as JPEG).
     /// <paramref name="crop"/> is the part of the upright photo that was kept, if it was cropped; the people
-    /// named in the photo are moved with it, and dropped when they were cut off.
+    /// named in the photo are moved with it, and dropped when they were cut off. <paramref name="turn"/> is the
+    /// EXIF orientation of a quarter turn applied to the upright photo (6 clockwise, 8 the other way), so
+    /// the people turn with it.
     /// </summary>
     public async Task<string> SaveEditAsync(string path, string extension, int width, int height,
-                                            Func<string, Task> writeImage, FaceBox? crop = null, CancellationToken cancellationToken = default)
+                                            Func<string, Task> writeImage, FaceBox? crop = null, int turn = 1,
+                                            CancellationToken cancellationToken = default)
     {
         if (File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.");
@@ -37,7 +40,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         {
             await writeImage(temp).ConfigureAwait(false);
             await metadata.CopyMetadataAsync(path, temp, width, height, cancellationToken).ConfigureAwait(false);
-            await MovePeopleAsync(path, temp, crop, cancellationToken).ConfigureAwait(false);
+            await MovePeopleAsync(path, temp, crop, turn, cancellationToken).ConfigureAwait(false);
 
             EditHistory.BackUp(path);
             File.Move(temp, newPath, overwrite: true);
@@ -59,7 +62,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// The edited photo is upright (orientation 1) and maybe cropped, so the people's boxes are turned and
     /// cropped to match. Other programs' regions are not copied (see CopyMetadataAsync): they describe the old pixels.
     /// </summary>
-    private async Task MovePeopleAsync(string source, string target, FaceBox? crop, CancellationToken cancellationToken)
+    private async Task MovePeopleAsync(string source, string target, FaceBox? crop, int turn, CancellationToken cancellationToken)
     {
         var before = await metadata.ReadAsync(source, cancellationToken).ConfigureAwait(false);
         if (before.People.Count == 0)
@@ -74,7 +77,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
                     continue;
                 box = moved;
             }
-            people.Add(person with { Box = box });
+            people.Add(person with { Box = box.ToUpright(turn) });
         }
         await metadata.WriteAsync(target, new MetadataChanges { People = people }, cancellationToken).ConfigureAwait(false);
     }

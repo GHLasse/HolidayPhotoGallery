@@ -29,6 +29,15 @@ public sealed class LibrarySettings
     /// <summary>The order the photo grid starts in for every folder (a <see cref="PhotoSort"/> key).</summary>
     public string PhotoSort { get; set; } = Library.PhotoSort.Oldest;
 
+    /// <summary>Editing or shifting the date taken also sets the file's other dates (see MetadataChanges.SyncOtherDates).</summary>
+    public bool KeepDatesInSync { get; set; } = true;
+
+    /// <summary>The language of place names: "de", "en", "local" (as written there), or null for the app's language.</summary>
+    public string? PlaceLanguage { get; set; }
+
+    /// <summary>The size of the photo tiles in the grid, in pixels (the zoom slider in the status bar).</summary>
+    public int ThumbnailSize { get; set; } = 180;
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 

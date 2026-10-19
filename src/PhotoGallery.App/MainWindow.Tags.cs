@@ -250,9 +250,11 @@ public sealed partial class MainWindow
                                 string removeTooltip, Action remove, bool person = false)
     {
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        if (isAuto || person)
-            content.Children.Add(new FontIcon { Glyph = person ? "\uE77B" : "\uE945", FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
-        content.Children.Add(new TextBlock { Text = isAuto ? label.Replace("Auto/", "", StringComparison.OrdinalIgnoreCase) : label, VerticalAlignment = VerticalAlignment.Center });
+        if (person)
+            content.Children.Add(new FontIcon { Glyph = "\uE77B", FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        else if (isAuto)
+            content.Children.Add(new Controls.AiSparkle { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center });
+        content.Children.Add(new TextBlock { Text = isAuto ? Core.Tagging.AutoTags.Label(label) : label, VerticalAlignment = VerticalAlignment.Center });
 
         UIElement body = content;
         if (click is not null)
