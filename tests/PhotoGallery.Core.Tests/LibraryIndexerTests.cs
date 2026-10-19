@@ -80,7 +80,7 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Equal([beach], _index.Search(new PhotoQuery { Text = "sun" }).Select(p => p.Path));
         Assert.Equal([home], _index.Search(new PhotoQuery { Folder = Path.Combine(_photos.Path, "Home") }).Select(p => p.Path));
         Assert.Empty(_index.Search(new PhotoQuery { Folder = _photos.Path, IncludeSubfolders = false }));
-        Assert.Equal(("Italy", 2), _index.GetTagCounts()[0]);
+        Assert.Equal([("Beach", 1), ("City", 1), ("Garden", 1), ("Italy", 2)], _index.GetTagCounts());
 
         await _exifTool!.RunAsync(["-overwrite_original", "-IFD0:Make=Canon", "-IFD0:Model=Canon EOS R6", rome]);
         await indexer.RefreshFileAsync(rome);

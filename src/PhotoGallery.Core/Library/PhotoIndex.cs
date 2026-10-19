@@ -387,13 +387,13 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
-    /// <summary>All tags in the library with how many photos carry each, most used first.</summary>
+    /// <summary>All tags in the library with how many photos carry each, by name.</summary>
     public IReadOnlyList<(string Tag, int Count)> GetTagCounts()
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags GROUP BY tag COLLATE NOCASE ORDER BY COUNT(*) DESC, tag;";
+            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags GROUP BY tag COLLATE NOCASE ORDER BY tag COLLATE NOCASE;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())

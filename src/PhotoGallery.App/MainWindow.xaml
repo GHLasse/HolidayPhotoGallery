@@ -21,8 +21,8 @@
             <ColumnDefinition Width="320" />
         </Grid.ColumnDefinitions>
 
-        <!-- Toolbar: commands, search and filters. Drawn above the grid, so a face enlarged on hover shows over it. -->
-        <Grid Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4" Canvas.ZIndex="1">
+        <!-- Toolbar: commands, search and filters -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -146,34 +146,42 @@
                         </Flyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
-                <!-- The five people on the most photos, with their latest face; filled from code. -->
-                <StackPanel x:Name="TopPeople" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" />
-                <DropDownButton VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasPeople, Mode=OneWay}"
-                                ToolTipService.ToolTip="Everyone named, by name. Only photos with all the ticked people are shown.">
+                <!-- People as one group: the faces of the five people on the most photos, then everyone by name
+                     under "More". Pointing at the group grows the bar and all faces together. Faces filled from code. -->
+                <Border x:Name="PeopleGroup" VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasPeople, Mode=OneWay}"
+                        Padding="8,3,3,3" CornerRadius="18" BorderThickness="1"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        PointerEntered="PeopleGroup_PointerEntered" PointerExited="PeopleGroup_PointerExited">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE77B;" FontSize="14" />
-                        <TextBlock Text="More people" />
+                        <FontIcon Glyph="&#xE77B;" FontSize="14" VerticalAlignment="Center"
+                                  ToolTipService.ToolTip="People: click a face to show only photos with them" />
+                        <StackPanel x:Name="TopPeople" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" />
+                        <DropDownButton VerticalAlignment="Center" Content="More" Padding="8,2"
+                                        Background="Transparent" BorderThickness="0" CornerRadius="14"
+                                        ToolTipService.ToolTip="Everyone named, by name. Only photos with all the ticked people are shown.">
+                            <DropDownButton.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ListView Width="300" MaxHeight="480" SelectionMode="None" ItemsSource="{x:Bind ViewModel.PeopleByName, Mode=OneWay}">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:TagFilterViewModel">
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
+                                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
+                                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </Flyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
                     </StackPanel>
-                    <DropDownButton.Flyout>
-                        <Flyout Placement="BottomEdgeAlignedLeft">
-                            <ListView Width="300" MaxHeight="480" SelectionMode="None" ItemsSource="{x:Bind ViewModel.PeopleByName, Mode=OneWay}">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:TagFilterViewModel">
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
-                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                        </Flyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
+                </Border>
                 <ComboBox VerticalAlignment="Center" MinWidth="120"
                           PlaceholderText="Rating"
                           SelectedIndex="{x:Bind ViewModel.MinRating, Mode=TwoWay}"
