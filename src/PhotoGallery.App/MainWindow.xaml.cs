@@ -61,14 +61,20 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MetadataEditorViewModel.TimeZones) or nameof(MetadataEditorViewModel.TimeZoneIndex))
                 SyncTimeZoneCombo();
+            else if (e.PropertyName is nameof(MetadataEditorViewModel.Tags))
+                ShowTagBadges();
         };
         SyncTimeZoneCombo();
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
-            else if (e.PropertyName is nameof(MainViewModel.Photos) && IsMapOpen)
-                RefreshMap(fit: false);
+            else if (e.PropertyName is nameof(MainViewModel.Photos))
+            {
+                ShowFilterBadges();
+                if (IsMapOpen)
+                    RefreshMap(fit: false);
+            }
         };
         SyncCameraCombo();
         ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();

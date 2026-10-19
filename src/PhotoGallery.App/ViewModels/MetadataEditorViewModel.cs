@@ -10,11 +10,11 @@ namespace PhotoGallery.App.ViewModels;
 public sealed class MetadataEditorViewModel : ObservableObject
 {
     private IReadOnlyList<PhotoItemViewModel> _items = [];
-    private IReadOnlyList<string> _originalCommonTags = [];
+    private IReadOnlyList<string> _originalTags = [];
+    private List<TagBadge> _tags = [];
     private bool _loading;
 
     private string _caption = "";
-    private string _tagsText = "";
     private double _rating = -1;
     private string _dateText = "";
     private List<TimeZoneChoice> _timeZones = TimeZoneChoice.List(TimeZoneChoice.Unknown());
@@ -51,15 +51,51 @@ public sealed class MetadataEditorViewModel : ObservableObject
         }
     }
 
-    /// <summary>Tags separated by commas. With several photos selected: the tags they all share.</summary>
-    public string TagsText
+    /// <summary>
+    /// The tags of the selected photos as badges: those all of them have, then those only some have
+    /// (with how many). Replaced as a whole on every change.
+    /// </summary>
+    public IReadOnlyList<TagBadge> Tags
     {
-        get => _tagsText;
-        set
+        get => _tags;
+        private set => SetProperty(ref _tags, [.. value]);
+    }
+
+    /// <summary>Adds tags to all selected photos (or gives a tag only some have to all of them).</summary>
+    public void AddTags(IEnumerable<string> tags)
+    {
+        var list = _tags.ToList();
+        var changed = false;
+        foreach (var tag in TagList.Normalize(tags))
         {
-            if (SetProperty(ref _tagsText, value) && !_loading)
-                MarkChanged(ref _tagsChanged);
+            var at = list.FindIndex(b => b.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase));
+            if (at >= 0 && list[at].IsOnAll)
+                continue;
+            // A tag some photos already have keeps its spelling.
+            var name = tag;
+            if (at >= 0)
+            {
+                name = list[at].Tag;
+                list.RemoveAt(at);
+            }
+            // Tags on all photos come first, so the new one goes after the last of them.
+            list.Insert(list.FindLastIndex(b => b.IsOnAll) + 1, new TagBadge(name, _items.Count, _items.Count));
+            changed = true;
         }
+        if (!changed)
+            return;
+        Tags = list;
+        MarkChanged(ref _tagsChanged);
+    }
+
+    /// <summary>Removes a tag from all selected photos.</summary>
+    public void RemoveTag(string tag)
+    {
+        var list = _tags.Where(b => !b.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (list.Count == _tags.Count)
+            return;
+        Tags = list;
+        MarkChanged(ref _tagsChanged);
     }
 
     /// <summary>RatingControl value: -1 is "not rated / mixed", otherwise 1-5.</summary>
@@ -116,8 +152,11 @@ public sealed class MetadataEditorViewModel : ObservableObject
             ValidationError = null;
 
             var photos = items.Select(i => i.Photo).ToList();
-            _originalCommonTags = TagList.Common(photos.Select(p => p.Tags).ToList());
-            TagsText = TagList.Format(_originalCommonTags);
+            var counts = TagList.Counts(photos.Select(p => p.Tags).ToList());
+            _originalTags = counts.Select(c => c.Tag).ToList();
+            // Tags on every photo first, then the rest, each in the order they appear.
+            Tags = counts.Where(c => c.Count == items.Count).Concat(counts.Where(c => c.Count < items.Count))
+                         .Select(c => new TagBadge(c.Tag, c.Count, items.Count)).ToList();
 
             var captions = photos.Select(p => p.Caption ?? "").Distinct().ToList();
             Caption = captions.Count == 1 ? captions[0] : "";
@@ -188,7 +227,11 @@ public sealed class MetadataEditorViewModel : ObservableObject
         {
             Caption = _captionChanged ? Caption : null,
             Rating = _ratingChanged ? (Rating < 1 ? 0 : (int)Math.Round(Rating)) : null,
-            Tags = _tagsChanged ? TagList.ApplyEdit(item.Photo.Tags, _originalCommonTags, TagList.Parse(TagsText)) : null,
+            Tags = _tagsChanged
+                ? TagList.ApplyBadges(item.Photo.Tags,
+                                      removed: _originalTags.Except(_tags.Select(b => b.Tag), StringComparer.OrdinalIgnoreCase),
+                                      addToAll: _tags.Where(b => b.IsOnAll).Select(b => b.Tag))
+                : null,
             DateTaken = date,
         };
         return true;

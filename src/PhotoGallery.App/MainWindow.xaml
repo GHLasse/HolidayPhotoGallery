@@ -154,6 +154,8 @@
                 <CalendarDatePicker VerticalAlignment="Center" PlaceholderText="Taken until"
                                     Date="{x:Bind ViewModel.TakenTo, Mode=TwoWay}" />
                 <Button VerticalAlignment="Center" Content="Clear filters" Click="ClearFilters_Click" />
+                <!-- The ticked tags and people as badges, each with × to drop it from the filter. -->
+                <StackPanel x:Name="FilterBadges" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 
@@ -310,10 +312,15 @@
                     <TextBox Header="Caption" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60"
                              PlaceholderText="{x:Bind ViewModel.Editor.CaptionPlaceholder, Mode=OneWay}"
                              Text="{x:Bind ViewModel.Editor.Caption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBox Header="Tags" TextWrapping="Wrap" PlaceholderText="Beach, Italy, Family"
-                             Text="{x:Bind ViewModel.Editor.TagsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Text="Separate tags with commas. With several photos selected, only the tags they all share are shown; tags you add or remove apply to all of them."
-                               TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <!-- Badges filled from code (MainWindow.Tags.cs) whenever Editor.Tags changes. -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Tags" />
+                        <controls:WrapPanel x:Name="TagBadges" />
+                        <AutoSuggestBox x:Name="TagBox" PlaceholderText="Add a tag" QueryIcon="Add"
+                                        TextChanged="TagBox_TextChanged" SuggestionChosen="TagBox_SuggestionChosen"
+                                        QuerySubmitted="TagBox_QuerySubmitted" />
+                        <TextBlock x:Name="TagHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
                     <!-- Filled from code with one row per face (MainWindow.People.cs); only for a single photo. -->
                     <StackPanel x:Name="PeopleSection" Spacing="6" Visibility="Collapsed">
                         <TextBlock Text="People" />
