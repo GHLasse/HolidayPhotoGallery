@@ -96,17 +96,12 @@
                         </MenuFlyout>
                     </AppBarButton.Flyout>
                 </AppBarButton>
-                <AppBarButton Label="Settings" Click="Settings_Click" ToolTipService.ToolTip="Settings for tagging and cropping">
+                <AppBarButton Label="Settings" Click="Settings_Click" ToolTipService.ToolTip="Settings for tagging and cropping, and the keyboard shortcuts">
                     <AppBarButton.Icon>
                         <FontIcon Glyph="&#xE713;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
                 <CommandBar.SecondaryCommands>
-                    <AppBarButton Label="Keyboard shortcuts" Click="Shortcuts_Click" ToolTipService.ToolTip="List the keyboard shortcuts (? or F1)">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE765;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
                     <AppBarButton Label="Remove auto tags" Click="RemoveAutoTags_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
                                   ToolTipService.ToolTip="Remove the Auto/… tags from the selected photos; your own tags stay">
                         <AppBarButton.Icon>
