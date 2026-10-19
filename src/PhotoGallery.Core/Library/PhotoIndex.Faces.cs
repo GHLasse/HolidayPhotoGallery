@@ -161,6 +161,30 @@ public sealed partial class PhotoIndex
         }
     }
 
+    /// <summary>
+    /// Matches every found face with the people in its file again, so a change in how they are matched
+    /// applies to photos looked at before. It is quick: only the boxes are compared.
+    /// </summary>
+    private void RelinkFaces()
+    {
+        lock (_lock)
+        {
+            using var tx = _connection.BeginTransaction();
+            var photos = new List<long>();
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SELECT DISTINCT photo_id FROM faces;";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    photos.Add(r.GetInt64(0));
+            }
+            foreach (var id in photos)
+                LinkFaces(id, ReadPeople(id, tx), tx);
+            tx.Commit();
+        }
+    }
+
     private List<PersonTag> ReadPeople(long photoId, SqliteTransaction tx)
     {
         using var cmd = _connection.CreateCommand();

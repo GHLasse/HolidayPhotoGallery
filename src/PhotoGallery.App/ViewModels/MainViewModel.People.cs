@@ -197,6 +197,35 @@ public sealed partial class MainViewModel
         return new DecodedImage(ImageMath.Crop(image.Pixels, image.Width, image.Height, new PixelRect(x, y, side, side)), side, side);
     }
 
+    private readonly Dictionary<string, byte[]?> _personPictures = [];
+
+    /// <summary>
+    /// A picture of a person's face cut from the photo at the box in the file, for people named in another
+    /// program (e.g. Windows Live Photo Gallery) whose face has not been found here. Null without a real box.
+    /// </summary>
+    public async Task<byte[]?> GetPersonPictureAsync(PhotoItemViewModel item, PersonTag person)
+    {
+        if (person.Box.Area > 0.9)
+            return null;
+        var key = $"{item.Path}|{item.Photo.FileModifiedUtc.Ticks}|{person.Box}";
+        if (_personPictures.TryGetValue(key, out var cached))
+            return cached;
+        byte[]? picture = null;
+        try
+        {
+            // The decoded pixels are upright, the box in the file is on the stored pixels.
+            var image = await ImageLoader.DecodePixelsAsync(item.Path, FaceAnalyzer.ImageSize);
+            picture = await ImageEncoder.EncodeJpegAsync(FaceCrop(image, person.Box.ToUpright(item.Photo.Orientation)), FaceThumbnailSize, FaceThumbnailSize);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+        {
+        }
+        if (_personPictures.Count > 200)
+            _personPictures.Clear();
+        _personPictures[key] = picture;
+        return picture;
+    }
+
     public Task<IReadOnlyList<FoundFace>> GetFacesAsync(string path) => Task.Run(() => _index.GetFaces(path));
 
     public Task<bool> IsFaceScannedAsync(string path) => Task.Run(() => _index.GetFaceScanned([path]).Count > 0);

@@ -31,6 +31,7 @@ public sealed partial class PhotoIndex : IDisposable
         }.ToString());
         _connection.Open();
         EnsureSchema();
+        RelinkFaces();
     }
 
     private void EnsureSchema()

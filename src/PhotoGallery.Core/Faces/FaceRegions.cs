@@ -109,6 +109,9 @@ public static class FaceRegions
     internal static FaceBox? ParseRectangle(string? rectangle)
     {
         var parts = rectangle?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        // Written with decimal commas on some systems: "0,25, 0,5, 0,1, 0,2".
+        if (parts is { Length: 8 } && !rectangle!.Contains('.'))
+            parts = Enumerable.Range(0, 4).Select(i => parts[2 * i] + "." + parts[2 * i + 1]).ToArray();
         if (parts is not { Length: 4 })
             return null;
         var values = new double[4];

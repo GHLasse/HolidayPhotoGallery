@@ -65,6 +65,13 @@ public sealed partial class MainWindow
             .OrderBy(f => f.Box.ToUpright(orientation).X)
             .ToList();
         var looked = faces.Count > 0 || await ViewModel.IsFaceScannedAsync(item.Path);
+        // People named in the file whose face was not found (e.g. tagged in Windows Live Photo Gallery).
+        var withoutFace = item.Photo.People
+            .Where(p => !faces.Any(f => f.Person is not null && FaceLinks.PersonFor(f.Box, [p]) is not null))
+            .ToList();
+        var pictures = new List<byte[]?>();
+        foreach (var person in withoutFace)
+            pictures.Add(await ViewModel.GetPersonPictureAsync(item, person));
         var suggestions = new Dictionary<long, NameSuggestion?>();
         foreach (var face in faces.Where(f => f.Person is null))
             suggestions[face.Id] = await ViewModel.SuggestAsync(face);
@@ -75,12 +82,8 @@ public sealed partial class MainWindow
         foreach (var face in faces)
             PeopleList.Children.Add(FaceRow(face, suggestions.GetValueOrDefault(face.Id)));
 
-        // People named in the file whose face was not found (e.g. tagged in Windows Live Photo Gallery).
-        var withoutFace = item.Photo.People
-            .Where(p => !faces.Any(f => f.Person is not null && FaceLinks.PersonFor(f.Box, [p]) is not null))
-            .ToList();
-        foreach (var person in withoutFace)
-            PeopleList.Children.Add(PersonRow(item, person));
+        for (var i = 0; i < withoutFace.Count; i++)
+            PeopleList.Children.Add(PersonRow(item, withoutFace[i], pictures[i]));
 
         PeopleHint.Text = !looked
             ? "Use People → Find people in the selected photos to look for faces in this photo."
@@ -117,8 +120,8 @@ public sealed partial class MainWindow
         return Row(FacePicture(face.Thumbnail, FaceSize), content, action);
     }
 
-    private UIElement PersonRow(PhotoItemViewModel item, PersonTag person) =>
-        Row(FacePicture(null, FaceSize), Label(person.Name),
+    private UIElement PersonRow(PhotoItemViewModel item, PersonTag person, byte[]? picture) =>
+        Row(FacePicture(picture, FaceSize), Label(person.Name),
             IconButton("", $"Remove {person.Name} from this photo", async () => await ViewModel.RemovePersonAsync(item, person)));
 
     private static Grid Row(UIElement picture, UIElement content, UIElement? action)

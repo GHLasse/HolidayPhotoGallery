@@ -61,6 +61,27 @@ public sealed class FaceRegionsTests : IAsyncLifetime
     [InlineData(" lead", "| lead")]
     public void Escapes_values_for_exiftool(string value, string expected) => Assert.Equal(expected, FaceRegions.Escape(value));
 
+    [Theory]
+    [InlineData("0.25, 0.5, 0.1, 0.2")]
+    [InlineData("0,25, 0,5, 0,1, 0,2")]
+    public void Reads_rectangles_with_decimal_points_or_commas(string rectangle)
+    {
+        var box = FaceRegions.ParseRectangle(rectangle)!.Value;
+        Assert.Equal([0.25, 0.5, 0.1, 0.2], new[] { box.X, box.Y, box.Width, box.Height }.Select(v => Math.Round(v, 6)));
+    }
+
+    [Fact]
+    public void A_loose_box_around_a_face_is_that_persons_face()
+    {
+        // Windows Live Photo Gallery draws its boxes with room for hair and chin.
+        var face = new FaceBox(0.42, 0.32, 0.08, 0.1);
+        PersonTag[] people = [new("Oma", new FaceBox(0.38, 0.26, 0.17, 0.2)), new("Opa", new FaceBox(0.7, 0.3, 0.1, 0.1))];
+
+        Assert.Equal("Oma", FaceLinks.PersonFor(face, people));
+        Assert.Equal(["Opa", "Oma"], FaceLinks.Name(people, face, "Oma").Select(p => p.Name));
+        Assert.Null(FaceLinks.PersonFor(face, [new("Group", new FaceBox(0.1, 0.1, 0.8, 0.8))]));
+    }
+
     [ExifToolTheory]
     [InlineData(".jpg")]
     [InlineData(".heic")]
