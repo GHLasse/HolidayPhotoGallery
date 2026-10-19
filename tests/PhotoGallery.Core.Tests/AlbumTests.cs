@@ -24,7 +24,7 @@ public sealed class AlbumTests : IDisposable
 
     private string AddPhoto(string relative, DateTime? taken)
     {
-        var path = Path.Combine(_photos.Path, relative);
+        var path = Path.GetFullPath(Path.Combine(_photos.Path, relative)); // "/" becomes "\\" on Windows
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllBytes(path, [0]);
         _index.Upsert([new IndexedPhoto
