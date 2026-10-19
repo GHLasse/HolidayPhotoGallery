@@ -328,7 +328,7 @@ public sealed partial class MainWindow
                 Show();
         }
 
-        dialog.PrimaryButtonClick += (_, args) =>
+        dialog.PrimaryButtonClick += (sender, args) =>
         {
             args.Cancel = true;
             var name = nameBox.Text.Trim();
