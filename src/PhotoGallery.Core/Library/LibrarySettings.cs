@@ -20,6 +20,15 @@ public sealed class LibrarySettings
     /// <summary>The colour palette (an <see cref="Appearance.ColorPalette"/> key).</summary>
     public string Palette { get; set; } = Appearance.ColorPalette.WindowsKey;
 
+    /// <summary>Up to two apps that get their own "Edit in …" button, e.g. Affinity Photo or GIMP.</summary>
+    public List<FavouriteApp> FavouriteApps { get; set; } = [];
+
+    /// <summary>Whether a photo is copied to the hidden .originals folder before it is opened in another app.</summary>
+    public bool BackUpBeforeOpenWith { get; set; } = true;
+
+    /// <summary>The order the photo grid starts in for every folder (a <see cref="PhotoSort"/> key).</summary>
+    public string PhotoSort { get; set; } = Library.PhotoSort.Oldest;
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 
@@ -48,6 +57,9 @@ public sealed class LibrarySettings
         File.Move(temp, path, overwrite: true);
     }
 }
+
+/// <summary>An app photos can be sent to with one click: its .exe and the name shown on its button.</summary>
+public sealed record FavouriteApp(string Path, string Name);
 
 /// <summary>What auto-tagging may use (see <see cref="Tagging.AutoTags"/>).</summary>
 public sealed class AutoTagSettings

@@ -67,6 +67,9 @@
                         <FontIcon Glyph="&#xEC92;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+                <!-- "Edit in …" buttons for the favourite apps from Settings › Editing; filled from code. -->
+                <AppBarButton x:Name="FavouriteApp1Button" Tag="0" Visibility="Collapsed" Click="FavouriteApp_Click" />
+                <AppBarButton x:Name="FavouriteApp2Button" Tag="1" Visibility="Collapsed" Click="FavouriteApp_Click" />
                 <AppBarToggleButton x:Name="MapToggle" Icon="Map" Label="Map" Click="Map_Click"
                                     ToolTipService.ToolTip="Show where the photos were taken, and place the selected photos on the map (M)" />
                 <AppBarButton Label="Add place names" Click="AddPlaceNames_Click"
@@ -224,6 +227,10 @@
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
+                <!-- Not a filter, so Clear filters leaves it alone. Filled from code (list before index). -->
+                <ComboBox x:Name="SortCombo" VerticalAlignment="Center" MinWidth="200"
+                          ToolTipService.ToolTip="Order of the photos in this folder. The default is set in Settings."
+                          SelectionChanged="SortCombo_SelectionChanged" />
                 <Button x:Name="ClearFiltersButton" VerticalAlignment="Center" Content="Clear filters" Click="ClearFilters_Click" />
                 <!-- The ticked tags and people as badges, each with × to drop it from the filter. -->
                 <controls:WrapPanel x:Name="FilterBadges" VerticalAlignment="Center" />
@@ -322,6 +329,17 @@
                       KeyDown="PhotoGrid_KeyDown">
                 <GridView.ContextFlyout>
                     <MenuFlyout Opening="PhotoMenu_Opening">
+                        <MenuFlyoutItem x:Name="OpenWithItem" Text="Open with…" Click="OpenWith_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE7AC;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="ShowInFolderItem" Text="Show in folder" Click="ShowInFolderMenu_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE838;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
                         <MenuFlyoutItem x:Name="AlbumCoverItem" Text="Use as album cover" Click="UseAsAlbumCover_Click">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon Glyph="&#xE8B9;" />
@@ -526,6 +544,14 @@
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE81C;" FontSize="16" />
                             <TextBlock Text="Revert" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ViewerFavourite1Button" Tag="0" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
+                    <Button x:Name="ViewerFavourite2Button" Tag="1" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
+                    <Button Click="ViewerOpenWith_Click" ToolTipService.ToolTip="Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Revert still works.">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE7AC;" FontSize="16" />
+                            <TextBlock Text="Open with…" />
                         </StackPanel>
                     </Button>
                     <AppBarSeparator />

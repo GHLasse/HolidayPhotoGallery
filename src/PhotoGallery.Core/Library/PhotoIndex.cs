@@ -375,8 +375,7 @@ public sealed partial class PhotoIndex : IDisposable
                 """);
             if (where.Count > 0)
                 sql.Append(" WHERE ").Append(string.Join(" AND ", where));
-            // Undated photos go last, then everything by date and name.
-            sql.Append(" ORDER BY p.date_taken IS NULL, p.date_taken, p.path;");
+            sql.Append(" ORDER BY ").Append(PhotoSort.OrderBy(query.Sort)).Append(';');
             cmd.CommandText = sql.ToString();
 
             var results = new List<IndexedPhoto>();

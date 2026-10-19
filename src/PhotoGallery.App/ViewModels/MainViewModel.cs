@@ -28,6 +28,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private FolderNodeViewModel? _selectedFolder;
     private IReadOnlyList<string> _selectedTags = [];
     private string _searchText = "";
+    private string? _sort;
     private int _minRating;
     private bool _flaggedOnly;
     private bool _withoutTags;
@@ -153,11 +154,44 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedFolder, value))
             {
+                // A sort picked for one folder doesn't carry over: each folder starts in the default order.
+                _sort = null;
+                OnPropertyChanged(nameof(SortIndex));
                 OnPropertyChanged(nameof(HeaderText));
                 _ = SearchAsync();
                 _ = CheckReadOnlyAsync();
             }
         }
+    }
+
+    /// <summary>The order of the grid (an index into <see cref="PhotoSort.All"/>), for this folder only.</summary>
+    public int SortIndex
+    {
+        get => PhotoSort.IndexOf(_sort ?? _settings.PhotoSort);
+        set
+        {
+            var key = PhotoSort.All[Math.Clamp(value, 0, PhotoSort.All.Count - 1)].Key;
+            if (key == (_sort ?? _settings.PhotoSort))
+                return;
+            _sort = key;
+            OnPropertyChanged();
+            _ = SearchAsync();
+        }
+    }
+
+    /// <summary>The order every folder starts in.</summary>
+    public int DefaultSortIndex => PhotoSort.IndexOf(_settings.PhotoSort);
+
+    public void SaveDefaultSort(int index)
+    {
+        var key = PhotoSort.All[Math.Clamp(index, 0, PhotoSort.All.Count - 1)].Key;
+        if (key == _settings.PhotoSort)
+            return;
+        _settings.PhotoSort = key;
+        _settings.Save(SettingsPath);
+        _sort = null;
+        OnPropertyChanged(nameof(SortIndex));
+        _ = SearchAsync();
     }
 
     /// <summary>Photos must carry all of these tags.</summary>
@@ -380,6 +414,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var query = new PhotoQuery
         {
             Folder = SelectedFolder?.FullPath,
+            Sort = _sort ?? _settings.PhotoSort,
             Text = SearchText,
             Tags = SelectedTags,
             People = SelectedPeople,
@@ -1108,6 +1143,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Synchronous on purpose: the app exits as soon as the window's Closed handler returns.</summary>
     public void Dispose()
     {
+        StopWatching();
         _exifTool?.Dispose();
         _index.Dispose();
         _geocoder?.Dispose();

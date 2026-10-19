@@ -16,6 +16,26 @@ public class LibrarySettingsTests
     }
 
     [Fact]
+    public void Saves_and_loads_favourite_apps_photo_order_and_the_backup_choice()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "settings.json");
+
+        new LibrarySettings
+        {
+            FavouriteApps = [new(@"C:\Program Files\Affinity\Photo 2\Photo.exe", "Affinity Photo 2")],
+            PhotoSort = PhotoSort.Newest,
+            BackUpBeforeOpenWith = false,
+        }.Save(path);
+
+        var loaded = LibrarySettings.Load(path);
+        Assert.Equal([new FavouriteApp(@"C:\Program Files\Affinity\Photo 2\Photo.exe", "Affinity Photo 2")], loaded.FavouriteApps);
+        Assert.Equal(PhotoSort.Newest, loaded.PhotoSort);
+        Assert.False(loaded.BackUpBeforeOpenWith);
+        Assert.True(new LibrarySettings().BackUpBeforeOpenWith);
+    }
+
+    [Fact]
     public void Saves_and_loads_the_auto_tag_list_and_crop_shape()
     {
         using var temp = new TempFolder();
