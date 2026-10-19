@@ -14,6 +14,9 @@ public sealed record PhotoQuery
     /// <summary>Every one of these tags must be present.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 
+    /// <summary>Every one of these people must be named in the photo.</summary>
+    public IReadOnlyList<string> People { get; init; } = [];
+
     public int MinRating { get; init; }
 
     /// <summary>Only photos from this camera (as in <see cref="IndexedPhoto.Camera"/>).</summary>

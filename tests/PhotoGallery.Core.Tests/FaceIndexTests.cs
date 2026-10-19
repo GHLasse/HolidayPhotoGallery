@@ -55,6 +55,8 @@ public sealed class FaceIndexTests : IAsyncLifetime
         Assert.Contains(path, _index.GetFaceScanned([path, "other.jpg"]));
         Assert.Equal("Anna", Assert.Single(Assert.Single(_index.Search(new PhotoQuery { Text = "ann" })).People).Name);
         Assert.Equal([("Anna", 1)], _index.GetPeopleCounts());
+        Assert.Single(_index.Search(new PhotoQuery { People = ["anna"] }));
+        Assert.Empty(_index.Search(new PhotoQuery { People = ["Anna", "Ben"] }));
 
         // Naming the second face in the file names it in the index once the file is read again.
         var photo = Assert.Single(_index.Search(new PhotoQuery()));

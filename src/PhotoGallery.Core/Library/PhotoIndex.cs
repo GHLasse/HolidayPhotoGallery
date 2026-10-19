@@ -316,6 +316,13 @@ public sealed partial class PhotoIndex : IDisposable
                 cmd.Parameters.AddWithValue(name, tag);
             }
 
+            foreach (var person in query.People.Distinct(StringComparer.CurrentCultureIgnoreCase))
+            {
+                var name = $"$person{i++}";
+                where.Add($"EXISTS (SELECT 1 FROM photo_people pp WHERE pp.photo_id = p.id AND pp.name = {name})");
+                cmd.Parameters.AddWithValue(name, person);
+            }
+
             if (!string.IsNullOrWhiteSpace(query.Text))
             {
                 foreach (var word in query.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))

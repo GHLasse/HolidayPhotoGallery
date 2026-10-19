@@ -4,6 +4,7 @@ using System.Globalization;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Geocoding;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
@@ -11,7 +12,7 @@ using PhotoGallery.Core.Tagging;
 
 namespace PhotoGallery.App.ViewModels;
 
-public sealed class MainViewModel : ObservableObject, IDisposable
+public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly string DataFolder = LibrarySettings.DefaultDataFolder;
     private static readonly string SettingsPath = Path.Combine(DataFolder, "settings.json");
@@ -283,18 +284,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Folder = SelectedFolder?.FullPath,
             Text = SearchText,
             Tags = SelectedTags,
+            People = SelectedPeople,
             MinRating = MinRating,
             Camera = _selectedCamera,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,
         };
 
-        var (photos, tags, cameras) = await Task.Run(() => (_index.Search(query), _index.GetTagCounts(), _index.GetCameraCounts(query.Folder)));
+        var (photos, tags, cameras, people) = await Task.Run(() =>
+            (_index.Search(query), _index.GetTagCounts(), _index.GetCameraCounts(query.Folder), _index.GetPeopleCounts()));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
 
         Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(p => new PhotoItemViewModel(p)));
         UpdateTags(tags);
+        UpdatePeople(people);
         UpdateCameras(cameras);
         if (!IsBusy)
             StatusText = photos.Count == 1 ? "1 photo" : $"{photos.Count:N0} photos";
@@ -841,6 +845,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            FaceBox? kept = null;
             image = await Task.Run(() =>
             {
                 var result = image;
@@ -851,6 +856,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     var w = Math.Clamp((int)Math.Round(c.Width * image.Width), 1, image.Width - x);
                     var h = Math.Clamp((int)Math.Round(c.Height * image.Height), 1, image.Height - y);
                     result = new DecodedImage(ImageMath.Crop(image.Pixels, image.Width, image.Height, new PixelRect(x, y, w, h)), w, h);
+                    // The part that was kept, so the people named in the photo move with it.
+                    kept = new FaceBox((double)x / image.Width, (double)y / image.Height, (double)w / image.Width, (double)h / image.Height);
                 }
                 if (curve is not null)
                     ImageMath.ApplyCurve(result.Pixels, curve);
@@ -858,7 +865,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             });
 
             var newPath = await _photoEditor.SaveEditAsync(path, extension, image.Width, image.Height,
-                                                           target => ImageEncoder.EncodeAsync(image, target));
+                                                           target => ImageEncoder.EncodeAsync(image, target), kept);
             await AfterFileReplacedAsync(item, path, newPath);
             StatusText = newPath == path
                 ? $"Saved the edit of {item.FileName}. The original is in the hidden .originals folder."
@@ -912,6 +919,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             await Task.Run(() => _index.Remove([oldPath]));
         if (await _indexer!.RefreshFileAsync(newPath) is { } updated)
             item.Photo = updated;
+        // The pixels changed, so the faces found before are looked for again.
+        await Task.Run(() => _index.ForgetFaces(newPath));
+        ForgetMatcher();
         await item.ReloadThumbnailAsync();
     }
 
@@ -924,5 +934,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _index.Dispose();
         _geocoder?.Dispose();
         _tagger?.Dispose();
+        _faceAnalyzer?.Dispose();
     }
 }

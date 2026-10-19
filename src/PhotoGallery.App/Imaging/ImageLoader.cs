@@ -59,6 +59,20 @@ public static class ImageLoader
         return new DecodedImage(pixels, bitmap.PixelWidth, bitmap.PixelHeight);
     });
 
+    /// <summary>Shows a small encoded image such as a face thumbnail; call on the UI thread.</summary>
+    public static async Task<ImageSource> FromEncodedAsync(byte[] encoded)
+    {
+        var bitmap = await Task.Run(async () =>
+        {
+            using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(encoded.AsBuffer());
+            stream.Seek(0);
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            return await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        });
+        return await ToImageSourceAsync(bitmap);
+    }
+
     /// <summary>Shows decoded (possibly edited) pixels; call on the UI thread.</summary>
     public static async Task<ImageSource> ToImageSourceAsync(DecodedImage image)
     {

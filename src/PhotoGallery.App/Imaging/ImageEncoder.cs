@@ -38,4 +38,22 @@ public static class ImageEncoder
         await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
         await memory.AsStreamForRead().CopyToAsync(file);
     });
+
+    /// <summary>A small JPEG of the pixels, scaled to <paramref name="width"/> × <paramref name="height"/>, e.g. a face thumbnail.</summary>
+    public static Task<byte[]> EncodeJpegAsync(DecodedImage image, uint width, uint height) => Task.Run(async () =>
+    {
+        using var memory = new InMemoryRandomAccessStream();
+        var options = new BitmapPropertySet { { "ImageQuality", new BitmapTypedValue(0.85f, Windows.Foundation.PropertyType.Single) } };
+        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, memory, options);
+        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, (uint)image.Width, (uint)image.Height, 96, 96, image.Pixels);
+        encoder.BitmapTransform.ScaledWidth = width;
+        encoder.BitmapTransform.ScaledHeight = height;
+        encoder.BitmapTransform.InterpolationMode = BitmapInterpolationMode.Fant;
+        await encoder.FlushAsync();
+
+        var bytes = new byte[memory.Size];
+        memory.Seek(0);
+        await memory.AsStreamForRead().ReadExactlyAsync(bytes);
+        return bytes;
+    });
 }

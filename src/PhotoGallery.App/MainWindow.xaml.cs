@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
                 RefreshMap(fit: false);
         };
         SyncCameraCombo();
+        ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();
         _ = ViewModel.InitializeAsync();
     }
 
@@ -160,6 +161,7 @@ public sealed partial class MainWindow : Window
         ViewModel.CameraIndex = 0;
         foreach (var tag in ViewModel.Tags)
             tag.IsSelected = false;
+        ViewModel.ClearPeopleFilter();
     }
 
     private void ErrorBar_CloseButtonClick(InfoBar sender, object args) => ViewModel.ErrorMessage = null;
@@ -193,6 +195,7 @@ public sealed partial class MainWindow : Window
             if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
                 return; // Leave the panel showing the edit that needs fixing.
             ViewModel.Editor.Load(SelectedPhotos);
+            _ = RefreshPeoplePanelAsync();
             if (IsMapOpen)
                 MapView.ShowSelection(SelectedPhotos, fit: !_selectingFromMap); // don't jump away from a clicked marker
         }
