@@ -8,6 +8,7 @@
     <RootNamespace>PhotoGallery.App</RootNamespace>
     <AssemblyName>HolidayPhotoGallery</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -41,6 +42,13 @@
     <None Remove="Assets\map.html" />
     <Content Remove="Assets\map.html" />
     <Content Include="Assets\map.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The app icon: built into the .exe (ApplicationIcon) and loaded for the title bar and taskbar. -->
+  <ItemGroup>
+    <None Remove="Assets\AppIcon.ico" />
+    <Content Remove="Assets\AppIcon.ico" />
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Ship ExifTool next to the app when scripts/Get-ExifTool.ps1 has downloaded it. -->
