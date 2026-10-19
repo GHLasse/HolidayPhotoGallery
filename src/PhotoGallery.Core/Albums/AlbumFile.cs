@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using PhotoGallery.Core.Cloud;
 
 namespace PhotoGallery.Core.Albums;
 
@@ -13,18 +14,26 @@ public sealed record AlbumInfo
     public string? Cover { get; init; }
 
     /// <summary>The album's copy in Google Photos, once it has been uploaded.</summary>
-    public GoogleAlbumLink? Google { get; init; }
+    public CloudAlbumLink? Google { get; init; }
+
+    /// <summary>The album's copy in OneDrive, once it has been uploaded.</summary>
+    public CloudAlbumLink? OneDrive { get; init; }
+
+    public CloudAlbumLink? Link(CloudService service) => service == CloudService.GooglePhotos ? Google : OneDrive;
+
+    public AlbumInfo WithLink(CloudService service, CloudAlbumLink? link) =>
+        service == CloudService.GooglePhotos ? this with { Google = link } : this with { OneDrive = link };
 }
 
-/// <summary>The Google Photos album an album was uploaded to, and which of its photos are up there.</summary>
-public sealed record GoogleAlbumLink
+/// <summary>The album in a cloud service an album was uploaded to, and which of its photos are up there.</summary>
+public sealed record CloudAlbumLink
 {
     public required string AlbumId { get; init; }
 
-    /// <summary>The album's page in Google Photos.</summary>
+    /// <summary>The album's page in the service.</summary>
     public string? Url { get; init; }
 
-    /// <summary>Photo path relative to the album folder (with "/") → Google's id for it.</summary>
+    /// <summary>Photo path relative to the album folder (with "/") → the service's id for it.</summary>
     public Dictionary<string, string> Items { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

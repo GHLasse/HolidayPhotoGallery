@@ -2,14 +2,13 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using PhotoGallery.Core.Albums;
+using PhotoGallery.Core.Cloud;
 
 namespace PhotoGallery.Core.GooglePhotos;
 
 /// <summary>An album in Google Photos that this app created.</summary>
 public sealed record GoogleAlbum(string Id, string Title, string? ProductUrl, int MediaItemCount, string? CoverBaseUrl);
-
-/// <summary>What Google answered for one photo in a batch: its new id, or why it was refused.</summary>
-public sealed record CreatedItem(string? MediaItemId, string? Error);
 
 /// <summary>Google Photos refused a request; the message is Google's, made readable.</summary>
 public sealed class GooglePhotosException(string message) : Exception(message);
@@ -19,9 +18,13 @@ public sealed class GooglePhotosException(string message) : Exception(message);
 /// list the albums the app made. Uploads go in two steps: the bytes first (giving an upload token),
 /// then a batch of up to 50 tokens becomes photos in the library.
 /// </summary>
-public sealed class GooglePhotosClient : IDisposable
+public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
 {
     public const int MaxBatch = 50;
+
+    public CloudService Service => CloudService.GooglePhotos;
+
+    public int BatchSize => 20;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -37,6 +40,40 @@ public sealed class GooglePhotosClient : IDisposable
         _http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
         _http.BaseAddress = new Uri("https://photoslibrary.googleapis.com/v1/");
         _http.Timeout = TimeSpan.FromMinutes(5); // big HEIC or TIFF files on a slow line
+    }
+
+    public async Task<CloudBatch> UploadBatchAsync(IReadOnlyList<UploadPhoto> photos, CloudAlbumLink? album, string? albumName,
+        CancellationToken cancellationToken)
+    {
+        // The Google album is made the first time; the photos then go straight into it.
+        if (album is null && albumName is not null)
+        {
+            var created = await CreateAlbumAsync(albumName, cancellationToken).ConfigureAwait(false);
+            album = new CloudAlbumLink { AlbumId = created.Id, Url = created.ProductUrl };
+        }
+
+        var results = new CreatedItem?[photos.Count];
+        var tokens = new List<(int Index, string Token)>();
+        for (var i = 0; i < photos.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                tokens.Add((i, await UploadAsync(photos[i].Path, cancellationToken).ConfigureAwait(false)));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or GooglePhotosException)
+            {
+                results[i] = new CreatedItem(null, ex.Message);
+            }
+        }
+        if (tokens.Count > 0)
+        {
+            var created = await CreateItemsAsync(album?.AlbumId,
+                tokens.Select(t => (t.Token, Path.GetFileName(photos[t.Index].Path), photos[t.Index].Caption)).ToList(), cancellationToken).ConfigureAwait(false);
+            for (var i = 0; i < tokens.Count; i++)
+                results[tokens[i].Index] = created[i];
+        }
+        return new CloudBatch(results.Select(r => r ?? new CreatedItem(null, "no answer")).ToList(), album);
     }
 
     /// <summary>Sends the file's bytes and returns the upload token for <see cref="CreateItemsAsync"/>.</summary>

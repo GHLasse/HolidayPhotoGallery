@@ -18,6 +18,11 @@ public sealed record Album
     /// <summary>How many of its photos are in Google Photos.</summary>
     public int GooglePhotoCount { get; init; }
 
+    /// <summary>The album's page in OneDrive, once it has been uploaded there.</summary>
+    public string? OneDriveUrl { get; init; }
+
+    public int OneDrivePhotoCount { get; init; }
+
     /// <summary>Photos in the album, its subfolders included.</summary>
     public int PhotoCount { get; init; }
 
@@ -60,6 +65,8 @@ public sealed record Album
             To = summary.To,
             GoogleUrl = info.Google?.Url,
             GooglePhotoCount = info.Google?.Items.Count ?? 0,
+            OneDriveUrl = info.OneDrive?.Url,
+            OneDrivePhotoCount = info.OneDrive?.Items.Count ?? 0,
         };
     }
 
