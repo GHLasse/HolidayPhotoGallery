@@ -37,6 +37,13 @@
     <ProjectReference Include="..\PhotoGallery.Core\PhotoGallery.Core.csproj" />
   </ItemGroup>
 
+  <!-- The app's Google Photos key, passed in by the build server (-p:GoogleClientId=… -p:GoogleClientSecret=…)
+       and never kept in the code. Builds without it ask users to set up their own key. -->
+  <ItemGroup Condition="'$(GoogleClientId)' != '' and '$(GoogleClientSecret)' != ''">
+    <AssemblyMetadata Include="GoogleClientId" Value="$(GoogleClientId)" />
+    <AssemblyMetadata Include="GoogleClientSecret" Value="$(GoogleClientSecret)" />
+  </ItemGroup>
+
   <!-- The map page, served to WebView2 from the app folder. -->
   <ItemGroup>
     <None Remove="Assets\map.html" />

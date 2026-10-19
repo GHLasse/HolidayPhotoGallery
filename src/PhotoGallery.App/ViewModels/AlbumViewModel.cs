@@ -27,6 +27,12 @@ public sealed class AlbumViewModel(Album album) : ObservableObject
         }
     }
 
+    public bool IsOnGoogle => Album.GoogleUrl is not null;
+
+    public string GoogleToolTip => Album.GooglePhotoCount == 1
+        ? "In Google Photos (1 photo uploaded)"
+        : $"In Google Photos ({Album.GooglePhotoCount:N0} photos uploaded)";
+
     public ImageSource? Cover
     {
         get => _cover;

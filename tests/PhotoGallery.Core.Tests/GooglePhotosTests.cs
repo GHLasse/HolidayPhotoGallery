@@ -112,6 +112,11 @@ public class GooglePhotosTests
         Assert.Equal("album1", link.AlbumId);
         Assert.Equal(["a.jpg", "b.heic"], link.Items.Keys.Order());
         Assert.Equal("Norway 2024", AlbumFile.Read(temp.Path)!.Name);
+        using (var index = new PhotoGallery.Core.Library.PhotoIndex(Path.Combine(temp.Path, "index.db")))
+        {
+            var album = Album.Load(temp.Path, index);
+            Assert.Equal(("https://photos.google.com/album1", 2), (album.GoogleUrl, album.GooglePhotoCount));
+        }
 
         var c = AddPhoto(temp, "c.jpg");
         google.Requests.Clear();
@@ -137,6 +142,17 @@ public class GooglePhotosTests
         Assert.Equal((1, 1), (result.Uploaded, result.Failed));
         Assert.Equal("b.jpg: Unsupported file", result.FirstError);
         Assert.Equal(["a.jpg"], AlbumFile.Read(temp.Path)!.Google!.Items.Keys);
+    }
+
+    [Fact]
+    public void Reads_the_account_from_the_id_token()
+    {
+        static string Part(string json) => Convert.ToBase64String(Encoding.UTF8.GetBytes(json)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var token = $"{Part("""{"alg":"RS256"}""")}.{Part("""{"email":"lasse@example.com","sub":"1"}""")}.sig";
+
+        Assert.Equal("lasse@example.com", GoogleAuth.EmailFromIdToken(token));
+        Assert.Null(GoogleAuth.EmailFromIdToken("not-a-token"));
+        Assert.Null(GoogleAuth.EmailFromIdToken(null));
     }
 
     [Fact]

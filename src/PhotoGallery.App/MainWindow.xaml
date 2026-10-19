@@ -283,6 +283,12 @@
                                                         Visibility="{x:Bind IsAlbum, Mode=OneWay}" />
                                         <MenuFlyoutItem Text="Stop being an album" Tag="{x:Bind}" Click="UnmakeAlbum_Click"
                                                         Visibility="{x:Bind IsAlbum, Mode=OneWay}" />
+                                        <MenuFlyoutItem Text="Upload to Google Photos" Tag="{x:Bind}" Click="UploadAlbumToGoogle_Click"
+                                                        Visibility="{x:Bind IsAlbum, Mode=OneWay}">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE898;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
                                         <MenuFlyoutItem Text="Make each subfolder an album" Tag="{x:Bind}" Click="MakeSubfolderAlbums_Click" />
                                     </MenuFlyout>
@@ -345,6 +351,11 @@
                                 <FontIcon Glyph="&#xE8B9;" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="UploadPhotosItem" Text="Upload to Google Photos" Click="UploadPhotosToGoogle_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE898;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </GridView.ContextFlyout>
                 <GridView.ItemTemplate>
@@ -395,10 +406,28 @@
                                 <MenuFlyout>
                                     <MenuFlyoutItem Text="Rename album…" Tag="{x:Bind}" Click="RenameAlbumTile_Click" />
                                     <MenuFlyoutItem Text="Stop being an album" Tag="{x:Bind}" Click="UnmakeAlbumTile_Click" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Text="Upload to Google Photos" Tag="{x:Bind}" Click="UploadAlbumToGoogle_Click">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE898;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="Open in Google Photos" Tag="{x:Bind}" Click="OpenAlbumInGoogle_Click"
+                                                    Visibility="{x:Bind IsOnGoogle}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE8A7;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                 </MenuFlyout>
                             </Grid.ContextFlyout>
                             <FontIcon Glyph="&#xE8B9;" FontSize="40" Opacity="0.3" />
                             <Image Source="{x:Bind Cover, Mode=OneWay}" Stretch="UniformToFill" />
+                            <!-- Uploaded to Google Photos -->
+                            <Border Visibility="{x:Bind IsOnGoogle}" ToolTipService.ToolTip="{x:Bind GoogleToolTip}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="6" CornerRadius="12"
+                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+                                <FontIcon Glyph="&#xE753;" FontSize="14" />
+                            </Border>
                             <StackPanel Grid.Row="1" Padding="10,6,10,8">
                                 <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{x:Bind Details}" FontSize="12" TextTrimming="CharacterEllipsis"
@@ -492,10 +521,17 @@
         <Grid x:Name="StatusBar" Grid.Row="3" Grid.ColumnSpan="3" Padding="12,4" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="200" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            <ProgressBar Grid.Column="1" IsIndeterminate="True" VerticalAlignment="Center"
+            <!-- A running Google Photos upload; it doesn't block anything else. -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ViewModel.IsUploading, Mode=OneWay}">
+                <ProgressRing IsActive="{x:Bind ViewModel.IsUploading, Mode=OneWay}" Width="16" Height="16" />
+                <TextBlock Text="{x:Bind ViewModel.UploadText, Mode=OneWay}" VerticalAlignment="Center" />
+                <HyperlinkButton Content="Stop" Padding="4,0" Click="CancelUpload_Click" />
+            </StackPanel>
+            <ProgressBar Grid.Column="2" IsIndeterminate="True" VerticalAlignment="Center"
                          Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
         </Grid>
 

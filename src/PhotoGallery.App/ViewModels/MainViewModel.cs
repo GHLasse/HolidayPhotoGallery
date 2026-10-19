@@ -1144,6 +1144,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         StopWatching();
+        _upload?.Cancel();
+        _googleAuth?.Dispose();
         _exifTool?.Dispose();
         _index.Dispose();
         _geocoder?.Dispose();

@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace PhotoGallery.Core.GooglePhotos;
 
-/// <summary>The user's own Google Cloud "Desktop app" client, entered in Settings.</summary>
+/// <summary>A Google Cloud "Desktop app" client: built into the app, or the user's own entered in Settings.</summary>
 public sealed record GoogleClient(string ClientId, string ClientSecret);
 
 /// <summary>Google needs the user to sign in again (the saved sign-in expired or was withdrawn).</summary>
@@ -28,6 +28,9 @@ public sealed class GoogleAuth : IDisposable
         "https://www.googleapis.com/auth/photoslibrary.appendonly",
         "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata",
         "https://www.googleapis.com/auth/photoslibrary.edit.appcreateddata",
+        // Only to show which account is signed in.
+        "openid",
+        "email",
     ];
 
     private const string AuthEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -51,6 +54,9 @@ public sealed class GoogleAuth : IDisposable
     public string? RefreshToken { get; private set; }
 
     public bool IsSignedIn => RefreshToken is not null;
+
+    /// <summary>The signed-in account's e-mail address, known right after <see cref="SignInAsync"/>.</summary>
+    public string? Email { get; private set; }
 
     /// <summary>
     /// Lets the user sign in in their browser and returns the refresh token to keep.
@@ -89,6 +95,7 @@ public sealed class GoogleAuth : IDisposable
             [("code", code), ("code_verifier", verifier), ("redirect_uri", redirect), ("grant_type", "authorization_code")],
             cancellationToken).ConfigureAwait(false);
         RememberAccessToken(json.RootElement);
+        Email = json.RootElement.TryGetProperty("id_token", out var id) ? EmailFromIdToken(id.GetString()) : null;
         RefreshToken = json.RootElement.TryGetProperty("refresh_token", out var refresh) ? refresh.GetString() : null;
         return RefreshToken ?? throw new GoogleSignInRequiredException("Google didn't send a lasting sign-in. Please try again.");
     }
@@ -181,6 +188,28 @@ public sealed class GoogleAuth : IDisposable
         var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
         await stream.WriteAsync(head, cancellationToken).ConfigureAwait(false);
         await stream.WriteAsync(body, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads the e-mail address from the ID token Google sends with the sign-in. The token came straight
+    /// from Google over HTTPS and is only used for display, so its signature isn't checked.
+    /// </summary>
+    internal static string? EmailFromIdToken(string? token)
+    {
+        var parts = token?.Split('.');
+        if (parts is not { Length: 3 })
+            return null;
+        try
+        {
+            var payload = parts[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+            using var json = JsonDocument.Parse(Convert.FromBase64String(payload));
+            return json.RootElement.TryGetProperty("email", out var email) ? email.GetString() : null;
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException)
+        {
+            return null;
+        }
     }
 
     internal static Dictionary<string, string> ParseQuery(string query)
