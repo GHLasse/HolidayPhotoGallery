@@ -1,4 +1,5 @@
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 
@@ -29,6 +30,32 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task Finds_photos_without_tags_people_or_location()
+    {
+        var service = new PhotoMetadataService(_exifTool!);
+        var indexer = new LibraryIndexer(_index!, service);
+
+        var tagged = _photos.CopySample(".jpg", "tagged");
+        var autoOnly = _photos.CopySample(".jpg", "auto-only");
+        var bare = _photos.CopySample(".jpg", "bare");
+        await service.WriteAsync(tagged, new MetadataChanges
+        {
+            Tags = ["Italy", "Auto/Beach"],
+            Location = new GeoPosition(41.9, 12.5),
+            People = [new PersonTag("Anna", new FaceBox(0, 0, 1, 1))],
+        });
+        await service.WriteAsync(autoOnly, new MetadataChanges { Tags = ["Auto/Beach"] });
+
+        await indexer.SyncFolderAsync(_photos.Path);
+
+        string[] Find(PhotoQuery query) => _index!.Search(query).Select(p => p.Path).Order().ToArray();
+        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutTags = true }));
+        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutPeople = true }));
+        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutLocation = true }));
+        Assert.Empty(Find(new PhotoQuery { WithoutTags = true, Tags = ["Italy"] }));
+    }
+
+    [ExifToolFact]
     public async Task Indexes_folders_and_searches_by_tag_rating_date_and_text()
     {
         var service = new PhotoMetadataService(_exifTool!);
@@ -53,7 +80,7 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Equal([beach], _index.Search(new PhotoQuery { Text = "sun" }).Select(p => p.Path));
         Assert.Equal([home], _index.Search(new PhotoQuery { Folder = Path.Combine(_photos.Path, "Home") }).Select(p => p.Path));
         Assert.Empty(_index.Search(new PhotoQuery { Folder = _photos.Path, IncludeSubfolders = false }));
-        Assert.Equal(("Italy", 2), _index.GetTagCounts()[0]);
+        Assert.Equal([("Beach", 1), ("City", 1), ("Garden", 1), ("Italy", 2)], _index.GetTagCounts());
 
         await _exifTool!.RunAsync(["-overwrite_original", "-IFD0:Make=Canon", "-IFD0:Model=Canon EOS R6", rome]);
         await indexer.RefreshFileAsync(rome);

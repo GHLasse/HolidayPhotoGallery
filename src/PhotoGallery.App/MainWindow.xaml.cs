@@ -70,15 +70,19 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
+            else if (e.PropertyName is nameof(MainViewModel.PeopleByName))
+                _ = ShowTopPeopleAsync();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
                 ShowFilterBadges();
+                _ = ShowTopPeopleAsync();
                 if (IsMapOpen)
                     RefreshMap(fit: false);
             }
         };
         SyncCameraCombo();
         ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();
+        ViewModel.FacesChanged += ForgetLatestFaces;
         ViewModel.Notices.CollectionChanged += (_, _) => ShowNotices();
         ViewModel.FlagsChanged += SyncFlagButton;
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
@@ -170,6 +174,9 @@ public sealed partial class MainWindow : Window
         ViewModel.SearchText = "";
         ViewModel.MinRating = 0;
         ViewModel.FlaggedOnly = false;
+        ViewModel.WithoutTags = false;
+        ViewModel.WithoutPeople = false;
+        ViewModel.WithoutLocation = false;
         ViewModel.TakenFrom = null;
         ViewModel.TakenTo = null;
         ViewModel.CameraIndex = 0;
@@ -291,12 +298,9 @@ public sealed partial class MainWindow : Window
 
     private bool _showingShortcuts;
 
-    private async void Shortcuts_Click(object sender, RoutedEventArgs e) => await ShowShortcutsAsync();
-
-    private async Task ShowShortcutsAsync()
+    /// <summary>The keyboard shortcuts as a two-column list, for the ? dialog and the Settings tab.</summary>
+    private static Grid ShortcutList()
     {
-        if (_showingShortcuts)
-            return;
         (string Keys, string What)[] shortcuts =
         [
             ("G", "Back to the grid"),
@@ -327,6 +331,14 @@ public sealed partial class MainWindow : Window
             grid.Children.Add(keys);
             grid.Children.Add(what);
         }
+        return grid;
+    }
+
+    private async Task ShowShortcutsAsync()
+    {
+        if (_showingShortcuts)
+            return;
+        var grid = ShortcutList();
         _showingShortcuts = true;
         try
         {
@@ -861,15 +873,21 @@ public sealed partial class MainWindow : Window
             },
         };
 
+        // Keyboard tab
+        var keyboard = new ScrollViewer { Content = ShortcutList(), MaxHeight = 480, Visibility = Visibility.Collapsed };
+
         var tabs = new SelectorBar();
         var taggingTab = new SelectorBarItem { Text = "Tagging", Icon = new FontIcon { Glyph = "\uE8EC" }, IsSelected = true };
         var croppingTab = new SelectorBarItem { Text = "Cropping", Icon = new FontIcon { Glyph = "\uE7A8" } };
         tabs.Items.Add(taggingTab);
         tabs.Items.Add(croppingTab);
+        var keyboardTab = new SelectorBarItem { Text = "Keyboard", Icon = new FontIcon { Glyph = "\uE765" } };
+        tabs.Items.Add(keyboardTab);
         tabs.SelectionChanged += (_, _) =>
         {
             tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
             cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
+            keyboard.Visibility = tabs.SelectedItem == keyboardTab ? Visibility.Visible : Visibility.Collapsed;
         };
 
         var dialog = new ContentDialog
@@ -884,7 +902,7 @@ public sealed partial class MainWindow : Window
                 {
                     tabs,
                     // Both tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { tagging, cropping } },
+                    new Grid { MinHeight = 480, Children = { tagging, cropping, keyboard } },
                 },
             },
             PrimaryButtonText = "Save",

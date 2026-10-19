@@ -21,6 +21,15 @@ public sealed record PhotoQuery
 
     public bool FlaggedOnly { get; init; }
 
+    /// <summary>Only photos with none of the user's own tags (auto tags don't count, they still need checking).</summary>
+    public bool WithoutTags { get; init; }
+
+    /// <summary>Only photos with nobody named in them.</summary>
+    public bool WithoutPeople { get; init; }
+
+    /// <summary>Only photos without a GPS position, to place on the map.</summary>
+    public bool WithoutLocation { get; init; }
+
     /// <summary>Only photos from this camera (as in <see cref="IndexedPhoto.Camera"/>).</summary>
     public string? Camera { get; init; }
 

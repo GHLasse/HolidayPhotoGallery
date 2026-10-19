@@ -1,7 +1,11 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Shapes;
 using PhotoGallery.App.Controls;
+using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Metadata;
 using PhotoGallery.Core.Tagging;
@@ -9,7 +13,7 @@ using Orientation = Microsoft.UI.Xaml.Controls.Orientation;
 
 namespace PhotoGallery.App;
 
-/// <summary>Tags as badges: in the info pane for the selected photos, and in the filter bar for the ticked tags.</summary>
+/// <summary>Tags as badges: in the info pane for the selected photos, and in the filter bar for the active filters.</summary>
 public sealed partial class MainWindow
 {
     private static readonly char[] TagSeparators = [',', ';'];
@@ -52,7 +56,7 @@ public sealed partial class MainWindow
         var shown = new HashSet<string>(ViewModel.Editor.Tags.Where(b => b.IsOnAll).Select(b => b.Tag), StringComparer.OrdinalIgnoreCase);
         sender.ItemsSource = typed.Length == 0
             ? null
-            : ViewModel.Tags.Select(t => t.Tag)
+            : ViewModel.Tags.OrderByDescending(t => t.Count).Select(t => t.Tag) // most used first
                 .Where(t => t.Contains(typed, StringComparison.CurrentCultureIgnoreCase) && !shown.Contains(t))
                 .Take(8)
                 .ToList();
@@ -73,7 +77,21 @@ public sealed partial class MainWindow
 
     private void ShowFilterBadges()
     {
+        // The count on "Clear filters" points at filters set somewhere easy to overlook.
+        var active = ViewModel.ActiveFilterCount;
+        ClearFiltersButton.Content = active == 0 ? "Clear filters" : $"Clear filters ({active})";
+        ClearFiltersButton.IsEnabled = active > 0;
+
         FilterBadges.Children.Clear();
+        if (ViewModel.WithoutTags)
+            FilterBadges.Children.Add(Badge("No tags", false, outlined: false, "Showing photos without your own tags (auto tags don't count)",
+                                            null, "Stop filtering by no tags", () => ViewModel.WithoutTags = false));
+        if (ViewModel.WithoutPeople)
+            FilterBadges.Children.Add(Badge("No people", false, outlined: false, "Showing photos with nobody named",
+                                            null, "Stop filtering by no people", () => ViewModel.WithoutPeople = false));
+        if (ViewModel.WithoutLocation)
+            FilterBadges.Children.Add(Badge("No location", false, outlined: false, "Showing photos without a GPS position",
+                                            null, "Stop filtering by no location", () => ViewModel.WithoutLocation = false));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
             FilterBadges.Children.Add(Badge(tag.Tag, AutoTags.IsAuto(tag.Tag), outlined: false, $"Showing photos tagged {tag.Tag}",
@@ -84,6 +102,130 @@ public sealed partial class MainWindow
             FilterBadges.Children.Add(Badge(person.Tag, false, outlined: false, $"Showing photos of {person.Tag}",
                                             null, $"Stop filtering by {person.Tag}", () => person.IsSelected = false, person: true));
         }
+    }
+
+    // ---- People in the filter bar: the five on the most photos as faces, everyone else under "More" ----
+
+    private const int TopPeopleCount = 5;
+    private const double SmallFace = 28;
+    private const double LargeFace = 72;
+    private readonly Dictionary<string, byte[]?> _latestFaces = new(StringComparer.CurrentCultureIgnoreCase);
+    private readonly List<Ellipse> _topFaces = [];
+    private Storyboard? _faceZoom;
+    private bool _isPointerOnPeople;
+    private int _topPeopleVersion;
+
+    /// <summary>Forgets the faces shown, e.g. after faces were named, so the newest ones are loaded.</summary>
+    private void ForgetLatestFaces()
+    {
+        _latestFaces.Clear();
+        _ = ShowTopPeopleAsync();
+    }
+
+    private async Task ShowTopPeopleAsync()
+    {
+        var version = ++_topPeopleVersion;
+        var top = ViewModel.People.Take(TopPeopleCount).ToList(); // People is sorted by photo count.
+        foreach (var person in top.Where(p => !_latestFaces.ContainsKey(p.Tag)))
+            _latestFaces[person.Tag] = await ViewModel.GetLatestFaceAsync(person.Tag);
+        if (version != _topPeopleVersion)
+            return; // A newer refresh started while the faces were loading.
+
+        _faceZoom?.Stop();
+        TopPeople.Children.Clear();
+        _topFaces.Clear();
+        var size = _isPointerOnPeople ? LargeFace : SmallFace;
+        foreach (var person in top)
+        {
+            // An ellipse filled with the face, so it stays round at any size while it grows.
+            var face = new Ellipse
+            {
+                Width = size,
+                Height = size,
+                StrokeThickness = person.IsSelected ? 3 : 0,
+                Stroke = ThemeBrush("AccentFillColorDefaultBrush"),
+                Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
+            };
+            if (_latestFaces[person.Tag] is { } thumbnail)
+                LoadFaceFill(face, thumbnail);
+            _topFaces.Add(face);
+
+            var button = new Button
+            {
+                Content = face,
+                Padding = new Thickness(0),
+                MinWidth = 0,
+                MinHeight = 0,
+                Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(LargeFace / 2),
+            };
+            var tip = $"{person.Tag} ({person.CountText} photos). Click to " + (person.IsSelected ? "stop filtering by them." : "show only photos with them.");
+            ToolTipService.SetToolTip(button, tip);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, person.Tag);
+            button.Click += (_, _) => person.IsSelected = !person.IsSelected;
+            TopPeople.Children.Add(button);
+        }
+    }
+
+    private static async void LoadFaceFill(Ellipse face, byte[] thumbnail)
+    {
+        try
+        {
+            face.Fill = new ImageBrush { ImageSource = await ImageLoader.FromEncodedAsync(thumbnail), Stretch = Stretch.UniformToFill };
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or ArgumentException)
+        {
+            // A damaged thumbnail keeps the plain circle.
+        }
+    }
+
+    // Pointing at the people grows the whole bar: all faces get bigger together, and shrink again on leaving.
+    private void PeopleGroup_PointerEntered(object sender, PointerRoutedEventArgs e) => ZoomFaces(true);
+
+    // Moving between faces also raises "exited" (from the face), so only shrink once the pointer is outside the group.
+    private void PeopleGroup_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(PeopleGroup).Position;
+        if (point.X > 0 && point.Y > 0 && point.X < PeopleGroup.ActualWidth && point.Y < PeopleGroup.ActualHeight)
+            return;
+        ZoomFaces(false);
+    }
+
+    private void ZoomFaces(bool large)
+    {
+        if (large == _isPointerOnPeople)
+            return;
+        _isPointerOnPeople = large;
+        _faceZoom?.Stop();
+        var size = large ? LargeFace : SmallFace;
+        var zoom = new Storyboard();
+        foreach (var face in _topFaces)
+        {
+            foreach (var property in new[] { "Width", "Height" })
+            {
+                // Width and Height change the layout, so they need a dependent (UI thread) animation.
+                var animation = new DoubleAnimation
+                {
+                    From = face.ActualWidth > 0 ? face.ActualWidth : face.Width,
+                    To = size,
+                    Duration = TimeSpan.FromMilliseconds(150),
+                    EnableDependentAnimation = true,
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                Storyboard.SetTarget(animation, face);
+                Storyboard.SetTargetProperty(animation, property);
+                zoom.Children.Add(animation);
+            }
+        }
+        // The animation holds its end value; set it too, so the size stays when the storyboard is stopped.
+        zoom.Completed += (_, _) =>
+        {
+            foreach (var face in _topFaces)
+                face.Width = face.Height = size;
+        };
+        _faceZoom = zoom;
+        zoom.Begin();
     }
 
     // ---- The badge itself ----

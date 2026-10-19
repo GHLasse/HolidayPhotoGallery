@@ -30,6 +30,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string _searchText = "";
     private int _minRating;
     private bool _flaggedOnly;
+    private bool _withoutTags;
+    private bool _withoutPeople;
+    private bool _withoutLocation;
+    private bool _hasReadOnlyPhotos;
     private DateTimeOffset? _takenFrom;
     private DateTimeOffset? _takenTo;
     private string _statusText = "";
@@ -148,7 +152,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         set
         {
             if (SetProperty(ref _selectedFolder, value))
+            {
                 _ = SearchAsync();
+                _ = CheckReadOnlyAsync();
+            }
         }
     }
 
@@ -195,6 +202,39 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Shows only photos without any of the user's own tags.</summary>
+    public bool WithoutTags
+    {
+        get => _withoutTags;
+        set
+        {
+            if (SetProperty(ref _withoutTags, value))
+                _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Shows only photos with nobody named in them.</summary>
+    public bool WithoutPeople
+    {
+        get => _withoutPeople;
+        set
+        {
+            if (SetProperty(ref _withoutPeople, value))
+                _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Shows only photos without a GPS position.</summary>
+    public bool WithoutLocation
+    {
+        get => _withoutLocation;
+        set
+        {
+            if (SetProperty(ref _withoutLocation, value))
+                _ = SearchAsync();
+        }
+    }
+
     /// <summary>Index into <see cref="Cameras"/>; 0 shows every camera.</summary>
     public int CameraIndex
     {
@@ -227,6 +267,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 _ = SearchAsync();
         }
     }
+
+    /// <summary>How many filters "Clear filters" would reset: the search text, each tag and person, and every other filter set.</summary>
+    public int ActiveFilterCount =>
+        (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
+        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
+        (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
+        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0);
 
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
     public async Task InitializeAsync()
@@ -306,6 +353,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
         await SearchAsync();
+        await CheckReadOnlyAsync();
     }
 
     private async Task SearchSoonAsync()
@@ -334,6 +382,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             People = SelectedPeople,
             MinRating = MinRating,
             FlaggedOnly = FlaggedOnly,
+            WithoutTags = WithoutTags,
+            WithoutPeople = WithoutPeople,
+            WithoutLocation = WithoutLocation,
             Camera = _selectedCamera,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,
@@ -506,13 +557,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Warn($"Rotated {rotatable.Count} photo(s). {skipped} skipped: rotating HEIC, PNG, WebP and GIF files is not supported yet.");
     }
 
+    /// <summary>Whether "Make editable" has anything to do in the selected folder (or the whole library).</summary>
+    public bool HasReadOnlyPhotos
+    {
+        get => _hasReadOnlyPhotos;
+        private set => SetProperty(ref _hasReadOnlyPhotos, value);
+    }
+
+    private List<string> ShownFolders() => SelectedFolder is { } folder ? [folder.FullPath] : [.. _settings.Folders];
+
+    private async Task CheckReadOnlyAsync()
+    {
+        var folders = ShownFolders();
+        var any = await Task.Run(() => folders.Any(ReadOnlyPhotos.HasAny));
+        // Another folder may have been picked while this one was checked.
+        if (folders.SequenceEqual(ShownFolders()))
+            HasReadOnlyPhotos = any;
+    }
+
     /// <summary>
     /// Clears the read-only mark from the photos in the selected folder, or in the whole library when
     /// no folder is selected, so ratings, tags and rotation can be saved into them.
     /// </summary>
     public async Task MakeEditableAsync()
     {
-        List<string> folders = SelectedFolder is { } folder ? [folder.FullPath] : [.. _settings.Folders];
+        var folders = ShownFolders();
         var changed = await Task.Run(() => folders.Sum(f => ReadOnlyPhotos.MakeWritable(f)));
         Inform(changed switch
         {
@@ -520,6 +589,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             1 => "1 photo is now editable.",
             _ => $"{changed:N0} photos are now editable.",
         });
+        await CheckReadOnlyAsync();
     }
 
     /// <summary>Sets one photo's star rating straight away, as the compare view does.</summary>

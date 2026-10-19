@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Data.Sqlite;
 using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Metadata;
+using PhotoGallery.Core.Tagging;
 
 namespace PhotoGallery.Core.Library;
 
@@ -299,6 +300,18 @@ public sealed partial class PhotoIndex : IDisposable
             if (query.FlaggedOnly)
                 where.Add("p.flagged = 1");
 
+            if (query.WithoutTags)
+            {
+                where.Add("NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag NOT LIKE $autoTags ESCAPE '\\')");
+                cmd.Parameters.AddWithValue("$autoTags", EscapeLike(AutoTags.Parent + "/") + "%");
+            }
+
+            if (query.WithoutPeople)
+                where.Add("NOT EXISTS (SELECT 1 FROM photo_people pp WHERE pp.photo_id = p.id)");
+
+            if (query.WithoutLocation)
+                where.Add("(p.latitude IS NULL OR p.longitude IS NULL)");
+
             if (!string.IsNullOrEmpty(query.Camera))
             {
                 where.Add("p.camera = $camera");
@@ -374,13 +387,13 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
-    /// <summary>All tags in the library with how many photos carry each, most used first.</summary>
+    /// <summary>All tags in the library with how many photos carry each, by name.</summary>
     public IReadOnlyList<(string Tag, int Count)> GetTagCounts()
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags GROUP BY tag COLLATE NOCASE ORDER BY COUNT(*) DESC, tag;";
+            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags GROUP BY tag COLLATE NOCASE ORDER BY tag COLLATE NOCASE;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -389,14 +402,14 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
-    /// <summary>Every camera in the library (or one folder of it) with how many photos it took, most used first.</summary>
+    /// <summary>Every camera in the library (or one folder of it) with how many photos it took, by name.</summary>
     public IReadOnlyList<(string Camera, int Count)> GetCameraCounts(string? folder = null)
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
             var where = string.IsNullOrWhiteSpace(folder) ? "" : $"AND {FolderCondition(cmd, folder, true)}";
-            cmd.CommandText = $"SELECT camera, COUNT(*) FROM photos WHERE camera IS NOT NULL {where} GROUP BY camera ORDER BY COUNT(*) DESC, camera;";
+            cmd.CommandText = $"SELECT camera, COUNT(*) FROM photos WHERE camera IS NOT NULL {where} GROUP BY camera ORDER BY camera COLLATE NOCASE;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())

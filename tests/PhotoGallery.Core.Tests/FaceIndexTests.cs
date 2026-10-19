@@ -97,6 +97,30 @@ public sealed class FaceIndexTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_latest_face_of_a_person_comes_from_their_newest_photo()
+    {
+        IndexedPhoto Photo(string name, string date, params PersonTag[] people)
+        {
+            DateTaken.TryParse(date, out var taken);
+            return new IndexedPhoto { Path = Path.Combine(_photos.Path, name), Folder = _photos.Path, DateTaken = taken, People = people };
+        }
+        var face = new FaceBox(0.1, 0.1, 0.2, 0.2);
+        _index!.Upsert([
+            Photo("old.jpg", "2020-01-01 10:00:00", new PersonTag("Anna", face)),
+            Photo("new.jpg", "2024-01-01 10:00:00", new PersonTag("Anna", face)),
+            Photo("newest-whole-photo.jpg", "2025-01-01 10:00:00", new PersonTag("Anna", new FaceBox(0, 0, 1, 1))),
+        ]);
+
+        var latest = _index.GetLatestFace("anna");
+        Assert.Equal(Path.Combine(_photos.Path, "new.jpg"), latest?.Path);
+        Assert.Null(latest?.Thumbnail);
+
+        _index.SaveFaces(latest!.Path, [new NewFace(face, 0.9f, Vector(1, 0), [7, 8])]);
+        Assert.Equal([7, 8], _index.GetLatestFace("Anna")?.Thumbnail);
+        Assert.Null(_index.GetLatestFace("Ben"));
+    }
+
+    [Fact]
     public void Suggests_the_most_alike_person_unless_they_were_rejected()
     {
         var matcher = new FaceMatcher([("Anna", Vector(1, 0.1f, 0)), ("Anna", Vector(1, -0.1f, 0)), ("Ben", Vector(0, 1, 0))]);
