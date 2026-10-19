@@ -377,6 +377,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             SelectedTags = stillTicked;
     }
 
+    /// <summary>Shows only photos with this tag (on top of the tags already ticked).</summary>
+    public void FilterByTag(string tag)
+    {
+        if (Tags.FirstOrDefault(t => t.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase)) is { } item)
+            item.IsSelected = true;
+    }
+
     private void UpdateCameras(IReadOnlyList<(string Camera, int Count)> cameras)
     {
         var wanted = cameras.Select(c => new CameraFilterViewModel(c.Camera, $"{c.Camera} ({c.Count:N0})")).ToList();

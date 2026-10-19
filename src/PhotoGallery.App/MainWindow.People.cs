@@ -256,6 +256,38 @@ public sealed partial class MainWindow
             _ = ViewModel.AddPersonAsync(photos, name);
     }
 
+    /// <summary>
+    /// A tooltip showing the whole photo a face comes from, which helps to tell who it is.
+    /// The photo is only decoded when the tooltip opens.
+    /// </summary>
+    private static ToolTip PhotoToolTip(string path)
+    {
+        var image = new Image { MaxWidth = 360, MaxHeight = 360, Stretch = Stretch.Uniform };
+        var tip = new ToolTip
+        {
+            MaxWidth = 400,
+            Content = new StackPanel
+            {
+                Spacing = 4,
+                Children = { image, new TextBlock { Text = Path.GetFileName(path), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis } },
+            },
+        };
+        tip.Opened += async (_, _) =>
+        {
+            if (image.Source is not null)
+                return;
+            try
+            {
+                image.Source = await ImageLoader.DecodeAsync(path, 360);
+            }
+            catch (Exception)
+            {
+                // Unreadable photo: the tooltip shows just the file name.
+            }
+        };
+        return tip;
+    }
+
     /// <summary>A round picture of a face; a person symbol when there is none.</summary>
     private static Border FacePicture(byte[]? thumbnail, double size)
     {
@@ -363,7 +395,7 @@ public sealed partial class MainWindow
                 var toggle = new ToggleButton { IsChecked = true, Padding = new Thickness(2), Content = FacePicture(face.Thumbnail, 56) };
                 toggle.Checked += (_, _) => toggle.Opacity = 1;
                 toggle.Unchecked += (_, _) => toggle.Opacity = 0.35;
-                ToolTipService.SetToolTip(toggle, Path.GetFileName(face.Path));
+                ToolTipService.SetToolTip(toggle, PhotoToolTip(face.Path));
                 faces.Children.Add(toggle);
                 toggles.Add((toggle, face));
             }

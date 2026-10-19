@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new SizeInt32(1500, 950));
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
 
         // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
         RotateLeftButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)188 });
@@ -61,14 +62,20 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MetadataEditorViewModel.TimeZones) or nameof(MetadataEditorViewModel.TimeZoneIndex))
                 SyncTimeZoneCombo();
+            else if (e.PropertyName is nameof(MetadataEditorViewModel.Tags))
+                ShowTagBadges();
         };
         SyncTimeZoneCombo();
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
-            else if (e.PropertyName is nameof(MainViewModel.Photos) && IsMapOpen)
-                RefreshMap(fit: false);
+            else if (e.PropertyName is nameof(MainViewModel.Photos))
+            {
+                ShowFilterBadges();
+                if (IsMapOpen)
+                    RefreshMap(fit: false);
+            }
         };
         SyncCameraCombo();
         ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();
@@ -796,24 +803,15 @@ public sealed partial class MainWindow : Window
         language.Items.Add("Deutsch");
         language.SelectedIndex = ViewModel.AutoTagLanguage == "de" ? 1 : 0;
 
-        // AcceptsReturn has to be on before the text is set, or the box keeps only the first line.
-        var list = new TextBox
-        {
-            Header = "Tags the photos may get, one per line",
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.NoWrap,
-            Height = 240,
-        };
-        list.Text = string.Join("\r", ViewModel.AutoTagLabels);
-        ScrollViewer.SetVerticalScrollBarVisibility(list, ScrollBarVisibility.Auto);
+        var list = new TagListEditor("Tags the photos may get", ViewModel.AutoTagLabels);
 
         // Switching the language swaps in the starter list for it, unless the user has made their own list.
         var shownLanguage = ViewModel.AutoTagLanguage;
         language.SelectionChanged += (_, _) =>
         {
             var picked = language.SelectedIndex == 1 ? "de" : "en";
-            if (AutoTags.ParseList(list.Text).SequenceEqual(AutoTags.StarterList(shownLanguage)))
-                list.Text = string.Join("\r", AutoTags.StarterList(picked));
+            if (list.Tags.SequenceEqual(AutoTags.StarterList(shownLanguage)))
+                list.Tags = AutoTags.StarterList(picked);
             shownLanguage = picked;
         };
 
@@ -823,7 +821,7 @@ public sealed partial class MainWindow : Window
         threshold.ValueChanged += (_, _) => ShowThreshold();
 
         var reset = new HyperlinkButton { Content = "Use the starter list", Padding = new Thickness(0) };
-        reset.Click += (_, _) => list.Text = string.Join("\r", AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en"));
+        reset.Click += (_, _) => list.Tags = AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en");
 
         var tagging = new StackPanel
         {
@@ -836,7 +834,7 @@ public sealed partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                 },
                 language,
-                list,
+                list.View,
                 reset,
                 threshold,
             },
@@ -897,7 +895,8 @@ public sealed partial class MainWindow : Window
             return;
 
         var code = language.SelectedIndex == 1 ? "de" : "en";
-        var labels = AutoTags.ParseList(list.Text);
+        list.AddTyped();
+        var labels = list.Tags;
         // Kept as "the starter list" while unchanged, so it follows the language.
         var isStarter = labels.SequenceEqual(AutoTags.StarterList(code));
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
