@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using PhotoGallery.Core.Albums;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -11,12 +12,14 @@ namespace PhotoGallery.App.ViewModels;
 public sealed class FolderNodeViewModel : ObservableObject
 {
     private bool _childrenLoaded;
+    private bool _isAlbum;
 
     public FolderNodeViewModel(string fullPath, bool isRoot)
     {
         FullPath = fullPath;
         IsRoot = isRoot;
         Name = isRoot ? fullPath : System.IO.Path.GetFileName(fullPath);
+        _isAlbum = AlbumFile.IsAlbum(fullPath);
         if (isRoot)
             LoadChildren();
     }
@@ -26,6 +29,20 @@ public sealed class FolderNodeViewModel : ObservableObject
     public string Name { get; }
 
     public bool IsRoot { get; }
+
+    /// <summary>Whether the folder is marked as an album (it holds an album file).</summary>
+    public bool IsAlbum
+    {
+        get => _isAlbum;
+        set
+        {
+            if (SetProperty(ref _isAlbum, value))
+                OnPropertyChanged(nameof(Glyph));
+        }
+    }
+
+    /// <summary>A photo album icon for albums, a folder icon otherwise.</summary>
+    public string Glyph => IsAlbum ? "\uE8B9" : "\uE8B7";
 
     public ObservableCollection<FolderNodeViewModel> Children { get; } = [];
 

@@ -1,0 +1,95 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace PhotoGallery.Core.Albums;
+
+/// <summary>What the album file in a folder says: its own name and cover, when the user changed them.</summary>
+public sealed record AlbumInfo
+{
+    /// <summary>The album's name; null means the folder's name.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>The cover photo, relative to the album folder; null means the album's first photo.</summary>
+    public string? Cover { get; init; }
+}
+
+/// <summary>
+/// Marks a folder as an album with a small hidden file inside it. Files are the source of truth, so the
+/// album, its name and its cover travel with the folder and survive a reinstall or an index rebuild.
+/// </summary>
+public static class AlbumFile
+{
+    public const string FileName = ".album.json";
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    public static string PathIn(string folder) => Path.Combine(folder, FileName);
+
+    public static bool IsAlbum(string folder) => File.Exists(PathIn(folder));
+
+    /// <summary>The album's settings, or null when the folder is not an album.</summary>
+    public static AlbumInfo? Read(string folder)
+    {
+        var path = PathIn(folder);
+        try
+        {
+            if (!File.Exists(path))
+                return null;
+            return JsonSerializer.Deserialize<AlbumInfo>(File.ReadAllText(path), JsonOptions) ?? new();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // A damaged or unreadable file still marks the folder as an album.
+            return new();
+        }
+    }
+
+    /// <summary>Makes the folder an album, or saves its new name or cover. Throws when the folder can't be written.</summary>
+    public static void Write(string folder, AlbumInfo info)
+    {
+        var path = PathIn(folder);
+        // Windows refuses to overwrite a hidden file, so unhide it first.
+        if (File.Exists(path))
+            File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.Hidden);
+        File.WriteAllText(path, JsonSerializer.Serialize(info, JsonOptions));
+        File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden);
+    }
+
+    /// <summary>Stops the folder being an album. Its photos are not touched.</summary>
+    public static void Remove(string folder)
+    {
+        var path = PathIn(folder);
+        if (!File.Exists(path))
+            return;
+        File.SetAttributes(path, FileAttributes.Normal);
+        File.Delete(path);
+    }
+
+    /// <summary>Every album folder in and below <paramref name="root"/>, the root included, skipping hidden folders.</summary>
+    public static IEnumerable<string> FindAlbums(string root)
+    {
+        if (!Directory.Exists(root))
+            return [];
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
+        };
+        IEnumerable<string> folders = [root];
+        try
+        {
+            folders = folders.Concat(Directory.EnumerateDirectories(root, "*", options).ToList());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Only the root then.
+        }
+        return folders.Where(IsAlbum);
+    }
+}

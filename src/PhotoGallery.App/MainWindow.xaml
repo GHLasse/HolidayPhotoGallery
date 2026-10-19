@@ -111,7 +111,7 @@
                 </CommandBar.SecondaryCommands>
             </CommandBar>
             <!-- One filter bar: everything that narrows the grid, wrapping onto a second line when the window is narrow. -->
-            <controls:WrapPanel Grid.Row="1" Grid.ColumnSpan="2">
+            <controls:WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
                 <AutoSuggestBox Width="260" VerticalAlignment="Center"
                                 PlaceholderText="Search names, captions and tags"
                                 QueryIcon="Find"
@@ -240,12 +240,21 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Button Grid.Row="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="AllPhotos_Click">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <FontIcon Glyph="&#xE91B;" FontSize="16" />
-                    <TextBlock Text="All photos" />
-                </StackPanel>
-            </Button>
+            <StackPanel Grid.Row="0" Spacing="4">
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="AllPhotos_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE91B;" FontSize="16" />
+                        <TextBlock Text="All photos" />
+                    </StackPanel>
+                </Button>
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="Albums_Click"
+                        ToolTipService.ToolTip="Your trips and events as albums. Right-click a folder to make it an album.">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE8B9;" FontSize="16" />
+                        <TextBlock Text="Albums" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
             <Grid Grid.Row="1">
                 <TextBlock Margin="8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Visibility="{x:Bind ViewModel.HasNoFolders, Mode=OneWay}"
@@ -259,8 +268,20 @@
                             <TreeViewItem ItemsSource="{x:Bind Children}"
                                           AutomationProperties.Name="{x:Bind Name}"
                                           ToolTipService.ToolTip="{x:Bind FullPath}">
+                                <TreeViewItem.ContextFlyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="Make this an album" Tag="{x:Bind}" Click="MakeAlbum_Click"
+                                                        Visibility="{x:Bind local:Ui.Collapsed(IsAlbum), Mode=OneWay}" />
+                                        <MenuFlyoutItem Text="Rename album…" Tag="{x:Bind}" Click="RenameFolderAlbum_Click"
+                                                        Visibility="{x:Bind IsAlbum, Mode=OneWay}" />
+                                        <MenuFlyoutItem Text="Stop being an album" Tag="{x:Bind}" Click="UnmakeAlbum_Click"
+                                                        Visibility="{x:Bind IsAlbum, Mode=OneWay}" />
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Text="Make each subfolder an album" Tag="{x:Bind}" Click="MakeSubfolderAlbums_Click" />
+                                    </MenuFlyout>
+                                </TreeViewItem.ContextFlyout>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE8B7;" FontSize="16" />
+                                    <FontIcon Glyph="{x:Bind Glyph, Mode=OneWay}" FontSize="16" />
                                     <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </TreeViewItem>
@@ -285,15 +306,29 @@
                 <!-- The map, next to the grid like in Geosetter; opened with the Map button. -->
                 <ColumnDefinition x:Name="MapColumn" Width="0" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.ColumnSpan="2" Margin="4,0" Text="{x:Bind local:Ui.FolderHeader(ViewModel.SelectedFolder), Mode=OneWay}"
+            <TextBlock Grid.ColumnSpan="2" Margin="4,0" Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}"
                        Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+            <!-- Filled from code (list before index). -->
+            <ComboBox x:Name="AlbumSortCombo" HorizontalAlignment="Right" MinWidth="150"
+                      Visibility="{x:Bind ViewModel.IsAlbumView, Mode=OneWay}"
+                      SelectionChanged="AlbumSortCombo_SelectionChanged" />
             <GridView x:Name="PhotoGrid" Grid.Row="1"
+                      Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
                       ItemsSource="{x:Bind ViewModel.Photos, Mode=OneWay}"
                       SelectionMode="Extended"
                       SelectionChanged="PhotoGrid_SelectionChanged"
                       ContainerContentChanging="PhotoGrid_ContainerContentChanging"
                       DoubleTapped="PhotoGrid_DoubleTapped"
                       KeyDown="PhotoGrid_KeyDown">
+                <GridView.ContextFlyout>
+                    <MenuFlyout Opening="PhotoMenu_Opening">
+                        <MenuFlyoutItem x:Name="AlbumCoverItem" Text="Use as album cover" Click="UseAsAlbumCover_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8B9;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyout>
+                </GridView.ContextFlyout>
                 <GridView.ItemTemplate>
                     <DataTemplate x:DataType="vm:PhotoItemViewModel">
                         <Grid Width="180" Height="180" CornerRadius="4"
@@ -315,6 +350,42 @@
                                 <TextBlock Grid.Column="1" Text="{x:Bind Stars, Mode=OneWay}" FontSize="12" VerticalAlignment="Center"
                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                             </Grid>
+                        </Grid>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+            </GridView>
+            <!-- Album view: one tile per album, opened with a click. -->
+            <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Visibility="{x:Bind ViewModel.HasNoAlbums, Mode=OneWay}"
+                       Text="No albums yet. Right-click a folder on the left and choose &quot;Make this an album&quot;, or &quot;Make each subfolder an album&quot; for a folder with one subfolder per trip." />
+            <GridView x:Name="AlbumGrid" Grid.Row="1"
+                      ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
+                      Visibility="{x:Bind ViewModel.IsAlbumView, Mode=OneWay}"
+                      SelectionMode="None" IsItemClickEnabled="True"
+                      ItemClick="AlbumGrid_ItemClick"
+                      ContainerContentChanging="AlbumGrid_ContainerContentChanging">
+                <GridView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AlbumViewModel">
+                        <Grid Width="220" Height="210" CornerRadius="6"
+                              Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                              ToolTipService.ToolTip="{x:Bind Folder}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="Rename album…" Tag="{x:Bind}" Click="RenameAlbumTile_Click" />
+                                    <MenuFlyoutItem Text="Stop being an album" Tag="{x:Bind}" Click="UnmakeAlbumTile_Click" />
+                                </MenuFlyout>
+                            </Grid.ContextFlyout>
+                            <FontIcon Glyph="&#xE8B9;" FontSize="40" Opacity="0.3" />
+                            <Image Source="{x:Bind Cover, Mode=OneWay}" Stretch="UniformToFill" />
+                            <StackPanel Grid.Row="1" Padding="10,6,10,8">
+                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind Details}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </GridView.ItemTemplate>
