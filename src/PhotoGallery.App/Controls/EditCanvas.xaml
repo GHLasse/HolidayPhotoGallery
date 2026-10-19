@@ -15,6 +15,11 @@
                 <Rectangle x:Name="ShadeBottom" Fill="#99000000" />
                 <Rectangle x:Name="ShadeLeft" Fill="#99000000" />
                 <Rectangle x:Name="ShadeRight" Fill="#99000000" />
+                <!-- Golden ratio lines (at 38.2 % and 61.8 %) to place the subject on. -->
+                <Rectangle x:Name="GoldenLeft" Fill="#B3FFFFFF" IsHitTestVisible="False" />
+                <Rectangle x:Name="GoldenRight" Fill="#B3FFFFFF" IsHitTestVisible="False" />
+                <Rectangle x:Name="GoldenTop" Fill="#B3FFFFFF" IsHitTestVisible="False" />
+                <Rectangle x:Name="GoldenBottom" Fill="#B3FFFFFF" IsHitTestVisible="False" />
                 <Rectangle x:Name="CropFrame" Stroke="White" StrokeThickness="2" />
                 <Rectangle x:Name="HandleTopLeft" Width="14" Height="14" Fill="White" Stroke="#99000000" />
                 <Rectangle x:Name="HandleTopRight" Width="14" Height="14" Fill="White" Stroke="#99000000" />

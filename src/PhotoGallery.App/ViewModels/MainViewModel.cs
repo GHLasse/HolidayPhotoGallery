@@ -637,6 +637,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         StatusText = $"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : "");
     }
 
+    /// <summary>The crop shape the crop tool starts with (a CropRatios key).</summary>
+    public string CropRatio => _settings.CropRatio;
+
+    public void SaveCropRatio(string key)
+    {
+        _settings.CropRatio = key;
+        _settings.Save(SettingsPath);
+    }
+
     public static bool IsTagModelInstalled => TagModel.IsInstalled(TagModelFolder);
 
     /// <summary>The language the tag list is written in ("de" or "en"); Windows' language until the user picks one.</summary>
@@ -658,7 +667,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _labelVectors = null;
     }
 
-    /// <summary>Downloads the tagging model once (about 660 MB), showing progress in the status bar.</summary>
+    /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the status bar.</summary>
     public async Task<bool> DownloadTagModelAsync()
     {
         IsBusy = true;
