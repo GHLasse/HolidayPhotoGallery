@@ -169,7 +169,7 @@ public sealed partial class MainWindow
         var box = new AutoSuggestBox { PlaceholderText = "Who is this?", HorizontalAlignment = HorizontalAlignment.Stretch };
         box.TextChanged += (sender, args) =>
         {
-            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInputChange)
+            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
                 return;
             var text = sender.Text.Trim();
             sender.ItemsSource = text.Length == 0
