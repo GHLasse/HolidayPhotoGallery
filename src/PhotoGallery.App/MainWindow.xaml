@@ -67,6 +67,9 @@
                         <FontIcon Glyph="&#xEC92;" />
                     </AppBarButton.Icon>
                 </AppBarButton>
+                <!-- "Edit in …" buttons for the favourite apps from Settings › Editing; filled from code. -->
+                <AppBarButton x:Name="FavouriteApp1Button" Tag="0" Visibility="Collapsed" Click="FavouriteApp_Click" />
+                <AppBarButton x:Name="FavouriteApp2Button" Tag="1" Visibility="Collapsed" Click="FavouriteApp_Click" />
                 <AppBarToggleButton x:Name="MapToggle" Icon="Map" Label="Map" Click="Map_Click"
                                     ToolTipService.ToolTip="Show where the photos were taken, and place the selected photos on the map (M)" />
                 <AppBarButton Label="Add place names" Click="AddPlaceNames_Click"
@@ -543,6 +546,8 @@
                             <TextBlock Text="Revert" />
                         </StackPanel>
                     </Button>
+                    <Button x:Name="ViewerFavourite1Button" Tag="0" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
+                    <Button x:Name="ViewerFavourite2Button" Tag="1" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
                     <Button Click="ViewerOpenWith_Click" ToolTipService.ToolTip="Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Revert still works.">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE7AC;" FontSize="16" />

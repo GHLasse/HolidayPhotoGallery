@@ -72,12 +72,15 @@ public sealed partial class MainWindow : Window
             SortCombo.Items.Add(label);
         SortCombo.SelectedIndex = ViewModel.SortIndex;
         ViewModel.PhotoChangedOutside += OnPhotoChangedOutside;
+        _ = ShowFavouriteAppsAsync();
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
             else if (e.PropertyName is nameof(MainViewModel.SortIndex))
                 SortCombo.SelectedIndex = ViewModel.SortIndex;
+            else if (e.PropertyName is nameof(MainViewModel.FavouriteApps))
+                _ = ShowFavouriteAppsAsync();
             else if (e.PropertyName is nameof(MainViewModel.PeopleByName))
                 _ = ShowTopPeopleAsync();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
@@ -905,6 +908,8 @@ public sealed partial class MainWindow : Window
             Margin = new Thickness(0, 12, 0, 0),
         };
 
+        var favourites = FavouriteAppsSettings(out var chosenApps);
+
         var cropping = new StackPanel
         {
             Spacing = 12,
@@ -917,6 +922,7 @@ public sealed partial class MainWindow : Window
                     Text = "The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping.",
                     TextWrapping = TextWrapping.Wrap,
                 },
+                favourites,
                 backUp,
                 new TextBlock
                 {
@@ -990,6 +996,7 @@ public sealed partial class MainWindow : Window
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
+        ViewModel.SaveFavouriteApps(chosenApps());
         if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
     }

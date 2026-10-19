@@ -1,5 +1,6 @@
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Library;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -19,6 +20,15 @@ public sealed partial class MainViewModel
     {
         _settings.BackUpBeforeOpenWith = backUp;
         _settings.Save(SettingsPath);
+    }
+
+    public IReadOnlyList<FavouriteApp> FavouriteApps => _settings.FavouriteApps;
+
+    public void SaveFavouriteApps(IEnumerable<FavouriteApp> apps)
+    {
+        _settings.FavouriteApps = apps.Take(2).ToList();
+        _settings.Save(SettingsPath);
+        OnPropertyChanged(nameof(FavouriteApps));
     }
 
     /// <summary>
