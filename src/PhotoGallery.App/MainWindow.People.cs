@@ -304,10 +304,6 @@ public sealed partial class MainWindow
         return border;
     }
 
-    // Theme brushes live in the theme dictionaries; looked up carefully, so a missing one only loses its colour.
-    private static Brush? ThemeBrush(string key) =>
-        Application.Current.Resources.TryGetValue(key, out var value) ? value as Brush : null;
-
     private static async void LoadFace(Border border, byte[] thumbnail, double size)
     {
         try

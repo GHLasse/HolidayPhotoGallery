@@ -14,6 +14,12 @@ public sealed class LibrarySettings
     /// <summary>The crop shape the crop tool starts with (a <see cref="Editing.CropRatios"/> key).</summary>
     public string CropRatio { get; set; } = Editing.CropRatios.Original;
 
+    /// <summary>"system" (follow Windows), "light" or "dark".</summary>
+    public string Theme { get; set; } = "system";
+
+    /// <summary>The colour palette (an <see cref="Appearance.ColorPalette"/> key).</summary>
+    public string Palette { get; set; } = Appearance.ColorPalette.WindowsKey;
+
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HolidayPhotoGallery");
 
