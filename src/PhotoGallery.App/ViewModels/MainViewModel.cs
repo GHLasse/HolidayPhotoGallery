@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Globalization;
+using PhotoGallery.App.Imaging;
+using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Geocoding;
 using PhotoGallery.Core.Library;
@@ -37,6 +39,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isUpdatingCameras;
     private List<CameraFilterViewModel> _cameras = [AllCameras];
     private ReverseGeocoder? _geocoder;
+    private readonly PhotoEditService? _photoEditor;
 
     public MainViewModel()
     {
@@ -48,6 +51,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _metadata = new PhotoMetadataService(_exifTool);
             _indexer = new LibraryIndexer(_index, _metadata);
+            _photoEditor = new PhotoEditService(_metadata);
         }
 
         foreach (var folder in _settings.Folders)
@@ -627,6 +631,109 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (unknown > 0)
             notes.Add($"{unknown} with no place found");
         StatusText = $"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : "");
+    }
+
+    /// <summary>The crop shape the crop tool starts with (a CropRatios key).</summary>
+    public string CropRatio => _settings.CropRatio;
+
+    public void SaveCropRatio(string key)
+    {
+        _settings.CropRatio = key;
+        _settings.Save(SettingsPath);
+    }
+
+    /// <summary>
+    /// Writes a crop (fractions of the photo's width and height) and/or a brightness curve into the photo
+    /// at full resolution. The version before is kept in the hidden .originals folder.
+    /// </summary>
+    public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve, bool asJpeg)
+    {
+        if (_photoEditor is null || _indexer is null)
+            return false;
+
+        var path = item.Path;
+        var extension = Path.GetExtension(path);
+        var isJpeg = extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".jpe";
+        if ((asJpeg && !isJpeg) || !ImageEncoder.CanEncode(extension))
+            extension = ".jpg";
+
+        IsBusy = true;
+        StatusText = $"Saving the edit of {item.FileName}…";
+        try
+        {
+            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            image = await Task.Run(() =>
+            {
+                var result = image;
+                if (crop is { } c)
+                {
+                    var x = (int)Math.Floor(c.X * image.Width);
+                    var y = (int)Math.Floor(c.Y * image.Height);
+                    var w = Math.Clamp((int)Math.Round(c.Width * image.Width), 1, image.Width - x);
+                    var h = Math.Clamp((int)Math.Round(c.Height * image.Height), 1, image.Height - y);
+                    result = new DecodedImage(ImageMath.Crop(image.Pixels, image.Width, image.Height, new PixelRect(x, y, w, h)), w, h);
+                }
+                if (curve is not null)
+                    ImageMath.ApplyCurve(result.Pixels, curve);
+                return result;
+            });
+
+            var newPath = await _photoEditor.SaveEditAsync(path, extension, image.Width, image.Height,
+                                                           target => ImageEncoder.EncodeAsync(image, target));
+            await AfterFileReplacedAsync(item, path, newPath);
+            StatusText = newPath == path
+                ? $"Saved the edit of {item.FileName}. The original is in the hidden .originals folder."
+                : $"Saved the edit as {Path.GetFileName(newPath)}. The original is in the hidden .originals folder.";
+            return true;
+        }
+        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.COMException)
+        {
+            ErrorMessage = $"Could not save the edit of {item.FileName}: {ex.Message}" +
+                (extension is ".heic" or ".heif" ? " Saving HEIC needs the HEVC Video Extensions from the Microsoft Store; you can save as JPEG instead." : "");
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public Task UndoEditAsync(PhotoItemViewModel item) =>
+        RestoreAsync(item, _photoEditor is null ? null : _photoEditor.UndoAsync, "Undid the last edit of");
+
+    public Task RevertEditAsync(PhotoItemViewModel item) =>
+        RestoreAsync(item, _photoEditor is null ? null : _photoEditor.RevertAsync, "Reverted to the original of");
+
+    private async Task RestoreAsync(PhotoItemViewModel item, Func<string, CancellationToken, Task<string>>? restore, string done)
+    {
+        if (restore is null)
+            return;
+        var path = item.Path;
+        IsBusy = true;
+        try
+        {
+            var restored = await restore(path, CancellationToken.None);
+            await AfterFileReplacedAsync(item, path, restored);
+            StatusText = $"{done} {item.FileName}";
+        }
+        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ErrorMessage = $"Could not restore {item.FileName}: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    // The file may have a new name (e.g. a HEIC saved as JPEG, or reverted back), so the index follows it.
+    private async Task AfterFileReplacedAsync(PhotoItemViewModel item, string oldPath, string newPath)
+    {
+        if (!string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+            await Task.Run(() => _index.Remove([oldPath]));
+        if (await _indexer!.RefreshFileAsync(newPath) is { } updated)
+            item.Photo = updated;
+        await item.ReloadThumbnailAsync();
     }
 
     private async Task RefreshTagsAsync() => UpdateTags(await Task.Run(_index.GetTagCounts));

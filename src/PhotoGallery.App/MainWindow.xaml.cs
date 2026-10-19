@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Controls;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
+using PhotoGallery.Core.Editing;
+using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
 using Windows.System;
@@ -21,6 +23,8 @@ public sealed partial class MainWindow : Window
     private int _viewerLoadVersion;
     private bool _handlingSelection;
     private bool _selectingFromMap;
+    private DecodedImage? _viewerPixels;
+    private byte[]? _autoCurve;
 
     public MainWindow()
     {
@@ -357,8 +361,10 @@ public sealed partial class MainWindow : Window
 
     private void CloseViewer()
     {
+        EndEdit();
         ViewerLayer.Visibility = Visibility.Collapsed;
-        ViewerImage.Source = null;
+        ViewerCanvas.Source = null;
+        _viewerPixels = null;
         if (_viewerIndex < _viewerItems.Count)
         {
             var current = _viewerItems[_viewerIndex];
@@ -373,26 +379,34 @@ public sealed partial class MainWindow : Window
         if (_viewerItems.Count == 0)
             return;
 
+        EndEdit();
         var version = ++_viewerLoadVersion;
         var item = _viewerItems[_viewerIndex];
         ViewerTitle.Text = $"{item.FileName}   ({_viewerIndex + 1} of {_viewerItems.Count})";
         ViewerError.Text = "";
         ViewerProgress.IsActive = true;
+        UpdateUndoButtons();
 
         try
         {
             // Decode at screen resolution, not at the camera's full size.
             var scale = Root.XamlRoot?.RasterizationScale ?? 1.0;
             var maxSize = (uint)Math.Clamp(Math.Max(Root.ActualWidth, Root.ActualHeight) * scale, 800, 4096);
-            var source = await ImageLoader.DecodeAsync(item.Path, maxSize);
+            var pixels = await ImageLoader.DecodePixelsAsync(item.Path, maxSize);
+            var source = await ImageLoader.ToImageSourceAsync(pixels);
             if (version == _viewerLoadVersion)
-                ViewerImage.Source = source;
+            {
+                _viewerPixels = pixels;
+                ViewerCanvas.SetPixelSize(pixels.Width, pixels.Height);
+                ViewerCanvas.Source = source;
+            }
         }
         catch (Exception ex)
         {
             if (version == _viewerLoadVersion)
             {
-                ViewerImage.Source = null;
+                _viewerPixels = null;
+                ViewerCanvas.Source = null;
                 ViewerError.Text = $"This photo cannot be shown. {ex.Message}" +
                     (item.Path.EndsWith(".heic", StringComparison.OrdinalIgnoreCase) || item.Path.EndsWith(".heif", StringComparison.OrdinalIgnoreCase)
                         ? " For HEIC photos, install \"HEIF Image Extensions\" from the Microsoft Store."
@@ -406,7 +420,14 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ViewerClose_Click(object sender, RoutedEventArgs e) => CloseViewer();
+    // Esc first leaves an edit, then the viewer.
+    private void ViewerClose_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsEditing)
+            CancelEdit();
+        else
+            CloseViewer();
+    }
 
     private void ViewerPrevious_Click(object sender, RoutedEventArgs e)
     {
@@ -435,6 +456,212 @@ public sealed partial class MainWindow : Window
         if (_viewerIndex >= _viewerItems.Count)
             return;
         await ViewModel.RotateAsync([_viewerItems[_viewerIndex]], clockwise);
+        await ShowViewerImageAsync();
+    }
+
+    // ---- Editing in the viewer: crop and auto adjust, previewed until Save ----
+
+    private bool IsEditing => ViewerCropButton.IsChecked == true || ViewerAutoButton.IsChecked == true;
+
+    private PhotoItemViewModel? ViewerItem => _viewerIndex < _viewerItems.Count ? _viewerItems[_viewerIndex] : null;
+
+    private void ViewerCrop_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewerPixels is null)
+        {
+            ViewerCropButton.IsChecked = false;
+            return;
+        }
+        if (ViewerCropButton.IsChecked == true)
+            ResetCropRatio();
+        ViewerCanvas.Ratio = SelectedCropRatio();
+        ViewerCanvas.IsCropping = ViewerCropButton.IsChecked == true;
+        UpdateEditBar();
+    }
+
+    private async void ViewerAuto_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewerPixels is not { } pixels)
+        {
+            ViewerAutoButton.IsChecked = false;
+            return;
+        }
+        UpdateEditBar();
+        if (ViewerAutoButton.IsChecked == true)
+        {
+            var preview = await Task.Run(() =>
+            {
+                _autoCurve = ImageMath.AutoAdjustCurve(pixels.Pixels);
+                var copy = (byte[])pixels.Pixels.Clone();
+                ImageMath.ApplyCurve(copy, _autoCurve);
+                return pixels with { Pixels = copy };
+            });
+            if (ViewerAutoButton.IsChecked == true && ReferenceEquals(pixels, _viewerPixels))
+                ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(preview);
+        }
+        else
+        {
+            _autoCurve = null;
+            ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(pixels);
+        }
+    }
+
+    private void CropRatio_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ViewerCanvas is not null && ViewerCropButton.IsChecked == true)
+            ViewerCanvas.Ratio = SelectedCropRatio();
+    }
+
+    private void CropTurn_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewerCropButton.IsChecked == true)
+            ViewerCanvas.Ratio = SelectedCropRatio();
+    }
+
+    private double SelectedCropRatio() =>
+        _viewerPixels is { } p && CropRatioCombo.SelectedIndex >= 0
+            ? CropRatios.Resolve(CropRatios.All[CropRatioCombo.SelectedIndex], p.Width, p.Height, CropTurnButton.IsChecked == true)
+            : 0;
+
+    // Each crop starts with the shape chosen in Settings, upright like the photo.
+    private void ResetCropRatio()
+    {
+        if (CropRatioCombo.Items.Count == 0)
+        {
+            foreach (var ratio in CropRatios.All)
+                CropRatioCombo.Items.Add(ratio.Name);
+        }
+        CropRatioCombo.SelectedIndex = CropRatios.All.ToList().IndexOf(CropRatios.Find(ViewModel.CropRatio));
+        CropTurnButton.IsChecked = false;
+    }
+
+    private async void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var crop = new ComboBox { Header = "Crop shape to start with", MinWidth = 320 };
+        foreach (var ratio in CropRatios.All)
+            crop.Items.Add(ratio.Name);
+        crop.SelectedIndex = CropRatios.All.ToList().IndexOf(CropRatios.Find(ViewModel.CropRatio));
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "Settings",
+            Content = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    crop,
+                    new TextBlock
+                    {
+                        Text = "The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping.",
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                },
+            },
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && crop.SelectedIndex >= 0)
+            ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
+    }
+
+    private void UpdateEditBar()
+    {
+        ViewerEditBar.Visibility = IsEditing ? Visibility.Visible : Visibility.Collapsed;
+        CropShapePanel.Visibility = ViewerCropButton.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (ViewerItem is not { } item)
+            return;
+
+        // WebP and GIF can be read but not written by Windows, so those are saved as JPEG.
+        var canKeepFormat = ImageEncoder.CanEncode(Path.GetExtension(item.Path));
+        SaveFormatCombo.IsEnabled = canKeepFormat;
+        if (!canKeepFormat)
+            SaveFormatCombo.SelectedIndex = 1;
+        ViewerEditHint.Text = ViewerCropButton.IsChecked == true
+            ? "Drag the frame to move it and its corners to resize it."
+            : "Showing the adjusted photo. Save keeps the original in a hidden .originals folder.";
+    }
+
+    private void UpdateUndoButtons()
+    {
+        var edits = ViewerItem is { } item ? EditHistory.EditCount(item.Path) : 0;
+        ViewerUndoButton.IsEnabled = edits > 0;
+        ViewerRevertButton.IsEnabled = edits > 0;
+    }
+
+    private void ViewerCancelEdit_Click(object sender, RoutedEventArgs e) => CancelEdit();
+
+    private void CancelEdit()
+    {
+        var wasAdjusted = ViewerAutoButton.IsChecked == true;
+        EndEdit();
+        if (wasAdjusted && _viewerPixels is { } pixels)
+            _ = ShowPixelsAsync(pixels);
+    }
+
+    private async Task ShowPixelsAsync(DecodedImage pixels) => ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(pixels);
+
+    private void EndEdit()
+    {
+        ViewerCropButton.IsChecked = false;
+        ViewerAutoButton.IsChecked = false;
+        ViewerCanvas.IsCropping = false;
+        _autoCurve = null;
+        UpdateEditBar();
+    }
+
+    private async void ViewerSaveEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewerItem is not { } item)
+            return;
+
+        // A crop that still covers (nearly) the whole photo is no crop.
+        Rect? crop = ViewerCropButton.IsChecked == true ? ViewerCanvas.Crop : null;
+        if (crop is { Width: > 0.999, Height: > 0.999 })
+            crop = null;
+        var curve = ViewerAutoButton.IsChecked == true ? _autoCurve : null;
+        if (crop is null && curve is null)
+        {
+            CancelEdit();
+            return;
+        }
+
+        ViewerProgress.IsActive = true;
+        var saved = await ViewModel.SaveEditAsync(item, crop, curve, asJpeg: SaveFormatCombo.SelectedIndex == 1);
+        ViewerProgress.IsActive = false;
+        if (saved)
+            await ShowViewerImageAsync();
+    }
+
+    private async void ViewerUndo_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewerItem is not { } item)
+            return;
+        await ViewModel.UndoEditAsync(item);
+        await ShowViewerImageAsync();
+    }
+
+    private async void ViewerRevert_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewerItem is not { } item)
+            return;
+        var edits = EditHistory.EditCount(item.Path);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "Revert to the original?",
+            Content = edits == 1
+                ? "The photo goes back to how it was before it was edited. Tags, rating and other details you changed are kept."
+                : $"The photo goes back to how it was before all {edits} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.",
+            PrimaryButtonText = "Revert",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+        await ViewModel.RevertEditAsync(item);
         await ShowViewerImageAsync();
     }
 

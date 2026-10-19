@@ -9,6 +9,9 @@ public sealed class LibrarySettings
 
     public List<string> Folders { get; set; } = [];
 
+    /// <summary>The crop shape the crop tool starts with (a <see cref="Editing.CropRatios"/> key).</summary>
+    public string CropRatio { get; set; } = Editing.CropRatios.Original;
+
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HolidayPhotoGallery");
 
