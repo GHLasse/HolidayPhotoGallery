@@ -11,7 +11,7 @@ namespace PhotoGallery.App;
 
 /// <summary>
 /// Light or dark mode, and the colour palette. The palette's colours replace the accent colours WinUI's
-/// controls use, as theme dictionaries on the window's root, so they apply straight away.
+/// controls use, as theme dictionaries on the window's root, so they apply straight away, and tint the window.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -58,8 +58,12 @@ public sealed partial class MainWindow
         var shades = dark ? _darkShades : _lightShades;
         s_paletteBrushes = shades is null ? [] : Brushes(shades);
 
-        // Cloud Dancer tints the window; the other palettes keep the Mica background.
-        Root.Background = shades?.WindowBackground is { } tint ? new SolidColorBrush(ToColor(tint)) : null;
+        // A palette washes the window with its colour and the toolbar and status bar a little more;
+        // the Windows accent colour keeps the Mica background. The viewer keeps its neutral background.
+        Root.Background = shades is null ? null : new SolidColorBrush(ToColor(shades.WindowBackground));
+        var bars = shades is null ? null : new SolidColorBrush(ToColor(shades.BarBackground));
+        TopBar.Background = bars;
+        StatusBar.Background = bars;
 
         // Badges and faces are built in code, with the brushes of the moment.
         ShowTagBadges();
@@ -202,7 +206,7 @@ public sealed partial class MainWindow
                 palette,
                 new TextBlock
                 {
-                    Text = "The area around your photos stays neutral in every palette, so colours don't change how the photos look.",
+                    Text = "The photo viewer keeps a neutral background in every palette, so colours don't change how a photo looks.",
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                 },

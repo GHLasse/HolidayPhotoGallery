@@ -37,6 +37,13 @@ public readonly record struct Rgb(byte R, byte G, byte B)
         return (light + 0.05) / (dark + 0.05);
     }
 
+    /// <summary>This colour blended with <paramref name="other"/>; <paramref name="amount"/> 0 keeps this one, 1 gives the other.</summary>
+    public Rgb Mix(Rgb other, double amount)
+    {
+        byte Blend(byte a, byte b) => ToByte((a + (b - a) * amount) / 255.0);
+        return new Rgb(Blend(R, other.R), Blend(G, other.G), Blend(B, other.B));
+    }
+
     /// <summary>The same hue with its lightness (HSL) moved by <paramref name="delta"/>, from -1 to 1.</summary>
     public Rgb Lighten(double delta)
     {
@@ -108,15 +115,18 @@ public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBa
     {
         if (Color is not { } color)
             return null;
-        var background = dark ? DarkBackground : LightBackground;
+        var neutral = dark ? DarkBackground : LightBackground;
 
-        // Cloud Dancer is almost white: it tints the window, and a warm grey from the same hue is the accent.
+        // Cloud Dancer is almost white: it is the window colour, and a warm grey from the same hue is the accent.
+        // The other palettes wash the window with their colour, and the bars above and below a little more.
         var accentBase = IsBackground ? color.Lighten(-0.45) : color;
-        var windowTint = IsBackground ? (dark ? color.Lighten(-0.78) : color) : (Rgb?)null;
-        if (windowTint is { } tint)
-            background = tint;
+        var window = IsBackground ? (dark ? color.Lighten(-0.78) : color) : Tint(neutral, color, dark ? 0.12 : 0.10, dark);
+        var chrome = IsBackground ? Tint(window, accentBase, 0.12, dark) : Tint(neutral, color, dark ? 0.24 : 0.20, dark);
 
-        // Fills (selection, buttons) need 3:1 against the window, text 4.5:1 (WCAG AA).
+        // Highlights and accent text sit on the window and the bars; the bars are the harder of the two.
+        var background = chrome;
+
+        // Fills (selection, buttons) need 3:1 against the background, text 4.5:1 (WCAG AA).
         var fill = Readable(dark ? accentBase.Lighten(0.1) : accentBase.Lighten(-0.05), background, 3, dark);
         var text = Readable(fill, background, 4.5, dark);
         var onFill = Rgb.Contrast(fill, Rgb.Black) >= Rgb.Contrast(fill, Rgb.White) ? Rgb.Black : Rgb.White;
@@ -124,7 +134,21 @@ public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBa
             Accent: accentBase,
             Light1: accentBase.Lighten(0.1), Light2: accentBase.Lighten(0.2), Light3: accentBase.Lighten(0.3),
             Dark1: accentBase.Lighten(-0.1), Dark2: accentBase.Lighten(-0.2), Dark3: accentBase.Lighten(-0.3),
-            Fill: fill, Text: text, TextOnFill: onFill, WindowBackground: windowTint);
+            Fill: fill, Text: text, TextOnFill: onFill, WindowBackground: window, BarBackground: chrome);
+    }
+
+    // Windows' secondary text colours, the faintest text the app shows on the window and the bars.
+    private static readonly Rgb LightSecondaryText = Rgb.Parse("#5D5D5D");
+    private static readonly Rgb DarkSecondaryText = Rgb.Parse("#C5C5C5");
+
+    /// <summary>The background washed with the colour, as much as <paramref name="amount"/> allows while secondary text stays readable.</summary>
+    private static Rgb Tint(Rgb background, Rgb color, double amount, bool dark)
+    {
+        var text = dark ? DarkSecondaryText : LightSecondaryText;
+        var tinted = background.Mix(color, amount);
+        for (; amount > 0 && Rgb.Contrast(text, tinted) < 4.5; amount -= 0.01)
+            tinted = background.Mix(color, amount);
+        return tinted;
     }
 
     /// <summary>The colour made lighter (on dark) or darker (on light) until it stands out enough.</summary>
@@ -141,4 +165,4 @@ public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBa
 /// <summary>One palette's colours for light or dark mode.</summary>
 public sealed record PaletteShades(
     Rgb Accent, Rgb Light1, Rgb Light2, Rgb Light3, Rgb Dark1, Rgb Dark2, Rgb Dark3,
-    Rgb Fill, Rgb Text, Rgb TextOnFill, Rgb? WindowBackground);
+    Rgb Fill, Rgb Text, Rgb TextOnFill, Rgb WindowBackground, Rgb BarBackground);
