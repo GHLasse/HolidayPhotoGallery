@@ -89,10 +89,26 @@ public sealed partial class MainWindow
             return;
         try
         {
-            var start = new ProcessStartInfo(app.Path) { UseShellExecute = false };
-            foreach (var path in ready)
-                start.ArgumentList.Add(path);
-            await Task.Run(() => Process.Start(start));
+            if (IsProgram(app.Path))
+            {
+                // A desktop program gets all photos at once, so it opens them together.
+                var start = new ProcessStartInfo(app.Path) { UseShellExecute = false };
+                foreach (var path in ready)
+                    start.ArgumentList.Add(path);
+                await Task.Run(() => Process.Start(start));
+            }
+            else
+            {
+                // A Store app (such as Photos) is opened the way Explorer's "Open with" does, one photo at a time.
+                foreach (var path in ready)
+                {
+                    if (!await AssocHandlers.OpenAsync(app.Path, path))
+                    {
+                        ViewModel.ErrorMessage = $"Windows no longer offers {app.Name} for {Path.GetExtension(path)} files. Choose the app again in Settings › Editing.";
+                        return;
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -166,73 +182,102 @@ public sealed partial class MainWindow
         return Path.GetFileNameWithoutExtension(exe);
     }
 
-    /// <summary>The two favourite-app slots in Settings › Editing; <paramref name="chosen"/> gives the result on Save.</summary>
+    private static bool IsProgram(string path) =>
+        path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(path);
+
+    /// <summary>
+    /// The two favourite-app slots in Settings › Editing: a list of the apps Windows offers for JPEG
+    /// photos, plus "Other app…" for a program that isn't listed. <paramref name="chosen"/> gives the result on Save.
+    /// </summary>
     private StackPanel FavouriteAppsSettings(out Func<List<FavouriteApp>> chosen)
     {
-        var apps = ViewModel.FavouriteApps.ToList();
-        var rows = new StackPanel { Spacing = 8 };
+        var picked = new FavouriteApp?[] { ViewModel.FavouriteApps.ElementAtOrDefault(0), ViewModel.FavouriteApps.ElementAtOrDefault(1) };
+        ComboBox[] boxes =
+        [
+            new() { Header = "Favourite app 1", MinWidth = 320, PlaceholderText = "Loading the apps…" },
+            new() { Header = "Favourite app 2", MinWidth = 320, PlaceholderText = "Loading the apps…" },
+        ];
         var panel = new StackPanel
         {
             Spacing = 8,
             Margin = new Thickness(0, 12, 0, 0),
             Children =
             {
-                new TextBlock { Text = "Favourite apps", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
                 new TextBlock
                 {
-                    Text = "Up to two apps, such as Affinity Photo or GIMP, get an \u201cEdit in \u2026\u201d button in the toolbar and the viewer.",
+                    Text = "Up to two apps get an \u201cEdit in \u2026\u201d button in the toolbar and the viewer. The list shows the apps Windows offers for photos.",
                     TextWrapping = TextWrapping.Wrap,
                 },
-                rows,
+                boxes[0],
+                boxes[1],
             },
         };
-
-        void Show()
-        {
-            rows.Children.Clear();
-            for (var i = 0; i < 2; i++)
-            {
-                var slot = i;
-                var name = new TextBlock
-                {
-                    Text = slot < apps.Count ? apps[slot].Name : "Not set",
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Width = 180,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                };
-                if (slot < apps.Count)
-                    ToolTipService.SetToolTip(name, apps[slot].Path);
-                var choose = new Button { Content = slot < apps.Count ? "Change…" : "Choose app…" };
-                choose.Click += async (_, _) =>
-                {
-                    if (await PickAppAsync() is not { } exe)
-                        return;
-                    var app = new FavouriteApp(exe, AppName(exe));
-                    if (slot < apps.Count)
-                        apps[slot] = app;
-                    else
-                        apps.Add(app);
-                    Show();
-                };
-                var row = new StackPanel { Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 8, Children = { name, choose } };
-                if (slot < apps.Count)
-                {
-                    var remove = new Button { Content = "Remove" };
-                    remove.Click += (_, _) =>
-                    {
-                        apps.RemoveAt(slot);
-                        Show();
-                    };
-                    row.Children.Add(remove);
-                }
-                rows.Children.Add(row);
-                if (slot >= apps.Count)
-                    break; // One empty slot at a time.
-            }
-        }
-        Show();
-        chosen = () => apps;
+        _ = FillFavouriteBoxesAsync(boxes, picked);
+        chosen = () => picked.OfType<FavouriteApp>().ToList();
         return panel;
+    }
+
+    private async Task FillFavouriteBoxesAsync(ComboBox[] boxes, FavouriteApp?[] picked)
+    {
+        const string None = "None";
+        const string Other = "Other app…";
+        List<FavouriteApp> offered;
+        try
+        {
+            offered = (await AssocHandlers.ListAsync(".jpg")).Select(a => new FavouriteApp(a.Name, a.DisplayName)).ToList();
+        }
+        catch (Exception)
+        {
+            offered = []; // Only "Other app…" then.
+        }
+
+        for (var i = 0; i < boxes.Length; i++)
+        {
+            var slot = i;
+            var box = boxes[slot];
+            var apps = offered.ToList();
+            // A program chosen earlier with "Other app…" stays in the list.
+            foreach (var app in picked.OfType<FavouriteApp>())
+            {
+                if (!apps.Any(a => a.Path.Equals(app.Path, StringComparison.OrdinalIgnoreCase)))
+                    apps.Add(app);
+            }
+
+            void Fill()
+            {
+                box.Items.Clear();
+                box.Items.Add(None);
+                foreach (var app in apps)
+                    box.Items.Add(app.Name);
+                box.Items.Add(Other);
+                var index = picked[slot] is { } current ? apps.FindIndex(a => a.Path.Equals(current.Path, StringComparison.OrdinalIgnoreCase)) : -1;
+                box.SelectedIndex = index + 1;
+            }
+
+            Fill();
+            box.SelectionChanged += async (_, _) =>
+            {
+                var index = box.SelectedIndex;
+                if (index < 0)
+                    return;
+                if (index == 0)
+                    picked[slot] = null;
+                else if (index <= apps.Count)
+                    picked[slot] = apps[index - 1];
+                else
+                {
+                    // "Other app…": pick a program; cancelling keeps the earlier choice.
+                    if (await PickAppAsync() is { } exe)
+                    {
+                        var app = new FavouriteApp(exe, AppName(exe));
+                        if (!apps.Any(a => a.Path.Equals(exe, StringComparison.OrdinalIgnoreCase)))
+                            apps.Add(app);
+                        picked[slot] = app;
+                    }
+                    Fill();
+                }
+            };
+        }
     }
 
     private async Task<string?> PickAppAsync()
