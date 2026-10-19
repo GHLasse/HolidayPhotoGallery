@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window
                 ShowTagBadges();
         };
         SyncTimeZoneCombo();
+        FillAlbumSortCombo();
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
@@ -168,6 +169,7 @@ public sealed partial class MainWindow : Window
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
     {
         FolderTree.SelectedItem = null;
+        ViewModel.IsAlbumView = false;
         ViewModel.SelectedFolder = null;
     }
 
@@ -398,7 +400,10 @@ public sealed partial class MainWindow : Window
     private void FolderTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
         if (args.InvokedItem is FolderNodeViewModel folder)
+        {
+            ViewModel.IsAlbumView = false;
             ViewModel.SelectedFolder = folder;
+        }
     }
 
     private void FolderTree_Expanding(TreeView sender, TreeViewExpandingEventArgs args)

@@ -402,6 +402,33 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>How many photos a folder holds (subfolders included), when they were taken, and the first of them.</summary>
+    public FolderSummary GetFolderSummary(string folder)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            var where = FolderCondition(cmd, folder, true);
+            cmd.CommandText = $"""
+                SELECT COUNT(*), MIN(date_taken), MAX(date_taken) FROM photos WHERE {where};
+                SELECT path FROM photos WHERE {where} ORDER BY date_taken IS NULL, date_taken, path COLLATE NOCASE LIMIT 1;
+                """;
+            using var reader = cmd.ExecuteReader();
+            reader.Read();
+            var count = reader.GetInt32(0);
+            var from = ParseDate(reader, 1);
+            var to = ParseDate(reader, 2);
+            string? first = null;
+            if (reader.NextResult() && reader.Read())
+                first = reader.GetString(0);
+            return new FolderSummary(count, from, to, first);
+        }
+
+        static DateTime? ParseDate(SqliteDataReader r, int i) =>
+            !r.IsDBNull(i) && DateTime.TryParseExact(r.GetString(i), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+                ? d : null;
+    }
+
     /// <summary>Every camera in the library (or one folder of it) with how many photos it took, by name.</summary>
     public IReadOnlyList<(string Camera, int Count)> GetCameraCounts(string? folder = null)
     {
@@ -509,3 +536,6 @@ public sealed partial class PhotoIndex : IDisposable
 
     public void Dispose() => _connection.Dispose();
 }
+
+/// <summary>A folder's photos at a glance: how many, the dates they span, and the first one.</summary>
+public sealed record FolderSummary(int Count, DateTime? From, DateTime? To, string? FirstPhoto);

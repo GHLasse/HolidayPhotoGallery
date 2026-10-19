@@ -10,6 +10,4 @@ public static class Ui
     public static bool Not(bool value) => !value;
 
     public static bool IsRootFolder(ViewModels.FolderNodeViewModel? folder) => folder?.IsRoot == true;
-
-    public static string FolderHeader(ViewModels.FolderNodeViewModel? folder) => folder?.FullPath ?? "All photos";
 }

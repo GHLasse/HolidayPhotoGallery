@@ -153,6 +153,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedFolder, value))
             {
+                OnPropertyChanged(nameof(HeaderText));
                 _ = SearchAsync();
                 _ = CheckReadOnlyAsync();
             }
@@ -354,6 +355,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         await SearchAsync();
         await CheckReadOnlyAsync();
+        if (IsAlbumView)
+            await LoadAlbumsAsync();
     }
 
     private async Task SearchSoonAsync()
