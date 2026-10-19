@@ -149,11 +149,12 @@ public sealed partial class MainWindow
     {
         public StackPanel View { get; } = new() { Spacing = 8 };
         private readonly WrapPanel _badges = new();
+        private readonly TextBox _box = new() { PlaceholderText = "Add a tag" };
         private IReadOnlyList<string> _tags = [];
 
         public TagListEditor(string header, IReadOnlyList<string> tags)
         {
-            var box = new TextBox { PlaceholderText = "Add a tag" };
+            var box = _box;
             // Preview, so Enter adds the tag instead of pressing the dialog's Save button.
             box.PreviewKeyDown += (_, e) =>
             {
@@ -191,6 +192,13 @@ public sealed partial class MainWindow
                                                $"Remove {tag}", () => Tags = _tags.Where(t => t != tag).ToList()));
                 }
             }
+        }
+
+        /// <summary>Adds what is still typed in the box, so it isn't lost when saving.</summary>
+        public void AddTyped()
+        {
+            Add(_box.Text);
+            _box.Text = "";
         }
 
         private void Add(string text) =>

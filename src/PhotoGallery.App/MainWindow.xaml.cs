@@ -894,6 +894,7 @@ public sealed partial class MainWindow : Window
             return;
 
         var code = language.SelectedIndex == 1 ? "de" : "en";
+        list.AddTyped();
         var labels = list.Tags;
         // Kept as "the starter list" while unchanged, so it follows the language.
         var isStarter = labels.SequenceEqual(AutoTags.StarterList(code));
