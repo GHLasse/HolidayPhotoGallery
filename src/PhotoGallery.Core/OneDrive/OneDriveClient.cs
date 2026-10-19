@@ -10,6 +10,12 @@ namespace PhotoGallery.Core.OneDrive;
 /// <summary>OneDrive refused a request; the message is Microsoft's, made readable.</summary>
 public sealed class OneDriveException(string message) : Exception(message);
 
+/// <summary>An album in the user's OneDrive, made by any app or on the website.</summary>
+public sealed record OneDriveAlbum(string Id, string Name, string? Url, int PhotoCount)
+{
+    public CloudAlbumLink Link() => new() { AlbumId = Id, Url = Url };
+}
+
 /// <summary>
 /// Uploads photos to OneDrive through Microsoft Graph. Photos go into Pictures › Holiday Photo Gallery ›
 /// album name, and an album's photos also become a OneDrive Photos album. Photos that are already in
@@ -78,6 +84,32 @@ public sealed class OneDriveClient : ICloudPhotos, IDisposable
                 await AddToAlbumAsync(album.AlbumId, id, cancellationToken).ConfigureAwait(false);
         }
         return new CloudBatch(results, album);
+    }
+
+    /// <summary>All the user's OneDrive albums, by name.</summary>
+    public async Task<IReadOnlyList<OneDriveAlbum>> ListAlbumsAsync(CancellationToken cancellationToken = default)
+    {
+        var albums = new List<OneDriveAlbum>();
+        string? next = "me/drive/bundles?filter=" + Uri.EscapeDataString("bundle/album ne null") + "&$select=id,name,webUrl,bundle&$top=200";
+        while (next is not null)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, next);
+            using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            foreach (var item in json.RootElement.GetProperty("value").EnumerateArray())
+            {
+                // Plain bundles are other kinds of collections, not albums.
+                if (!item.TryGetProperty("bundle", out var bundle) || !bundle.TryGetProperty("album", out _))
+                    continue;
+                albums.Add(new OneDriveAlbum(
+                    item.GetProperty("id").GetString()!,
+                    item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+                    item.TryGetProperty("webUrl", out var url) ? url.GetString() : null,
+                    bundle.TryGetProperty("childCount", out var count) && count.TryGetInt32(out var n) ? n : 0));
+            }
+            next = json.RootElement.TryGetProperty("@odata.nextLink", out var link) ? link.GetString() : null;
+        }
+        return albums.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     /// <summary>The id of a file already in OneDrive, by its path there.</summary>
@@ -214,7 +246,7 @@ public sealed class OneDriveClient : ICloudPhotos, IDisposable
         }
         return status switch
         {
-            401 => "Microsoft didn't accept the sign-in. Sign in again in Settings › OneDrive.",
+            401 => "Microsoft didn't accept the sign-in. Sign in again in Settings › Linked apps.",
             (int)HttpStatusCode.InsufficientStorage => "OneDrive is full.",
             429 => "OneDrive asks to slow down. Try again in a few minutes.",
             _ => $"OneDrive refused the request ({status}){(microsoft is null ? "." : ": " + microsoft)}",

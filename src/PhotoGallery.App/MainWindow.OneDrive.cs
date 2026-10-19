@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Cloud;
+using PhotoGallery.Core.OneDrive;
 
 namespace PhotoGallery.App;
 
@@ -38,10 +39,56 @@ public sealed partial class MainWindow
 
     private async void UploadPhotosToOneDrive_Click(object sender, RoutedEventArgs e) => await UploadPhotosAsync(CloudService.OneDrive);
 
+    /// <summary>What the user picked in <see cref="ChooseOneDriveAlbumAsync"/>: an album they have, or null for the first choice.</summary>
+    private sealed record OneDriveAlbumChoice(OneDriveAlbum? Album);
+
+    /// <summary>
+    /// Asks which of the user's OneDrive albums the photos go into. The first choice is
+    /// <paramref name="firstChoice"/> (a new album, or each photo's own); an album named
+    /// <paramref name="preselect"/> is picked to start with. Null when cancelled or the albums can't be read.
+    /// </summary>
+    private async Task<OneDriveAlbumChoice?> ChooseOneDriveAlbumAsync(string title, string firstChoice, string? preselect)
+    {
+        if (await ViewModel.ListOneDriveAlbumsAsync() is not { } albums)
+            return null;
+        var list = new ComboBox { Header = "OneDrive album", HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 320 };
+        list.Items.Add(firstChoice);
+        foreach (var album in albums)
+            list.Items.Add(album.PhotoCount == 1 ? $"{album.Name} (1 photo)" : $"{album.Name} ({album.PhotoCount:N0} photos)");
+        var same = preselect is null ? -1 : albums.ToList().FindIndex(a => string.Equals(a.Name, preselect, StringComparison.CurrentCultureIgnoreCase));
+        list.SelectedIndex = same + 1;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = title,
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    list,
+                    new TextBlock
+                    {
+                        Text = $"The photos are stored in Pictures › {OneDriveClient.AppFolder} in your OneDrive and shown in the album you pick. " +
+                            "Albums made on your phone or on the OneDrive website are listed too.",
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+                    },
+                },
+            },
+            PrimaryButtonText = "Upload",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return null;
+        return new OneDriveAlbumChoice(list.SelectedIndex > 0 ? albums[list.SelectedIndex - 1] : null);
+    }
+
     private void OpenAlbumInOneDrive_Click(object sender, RoutedEventArgs e) => OpenInBrowser(TagOf<AlbumViewModel>(sender)?.Album.OneDriveUrl);
 
-    /// <summary>The OneDrive tab. Signing in takes effect at once, not on Save; closing the dialog cancels a sign-in.</summary>
-    private FrameworkElement OneDriveTab(CancellationToken closed)
+    /// <summary>The OneDrive part of the Linked apps tab. Signing in takes effect at once, not on Save; closing the dialog cancels a sign-in.</summary>
+    private FrameworkElement OneDriveSection(CancellationToken closed)
     {
         var panel = new StackPanel { Spacing = 12 };
         CancellationTokenSource? signingIn = null;
@@ -99,7 +146,7 @@ public sealed partial class MainWindow
                 },
             });
             panel.Children.Add(Text($"Upload albums and photos to your OneDrive. They go into Pictures › {Core.OneDrive.OneDriveClient.AppFolder} › album name, " +
-                "and each album also becomes a OneDrive album. Uploading again later only sends the new photos. Photos already in your " +
+                "and each album goes into a OneDrive album: one you already have, or a new one. Uploading again later only sends the new photos. Photos already in your " +
                 "OneDrive folder on this PC aren't uploaded twice: the app puts the copy OneDrive has into the album."));
 
             if (ViewModel.IsOneDriveSignedIn)
@@ -207,6 +254,6 @@ public sealed partial class MainWindow
         }
 
         ShowStatus();
-        return new ScrollViewer { Content = panel, MaxHeight = 480, Padding = new Thickness(0, 0, 12, 0) };
+        return panel;
     }
 }

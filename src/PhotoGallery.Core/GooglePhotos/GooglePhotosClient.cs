@@ -189,7 +189,7 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
         }
         return status switch
         {
-            401 => "Google didn't accept the sign-in. Sign in again in Settings › Google Photos.",
+            401 => "Google didn't accept the sign-in. Sign in again in Settings › Linked apps.",
             403 when google?.Contains("not been used", StringComparison.OrdinalIgnoreCase) == true || google?.Contains("disabled", StringComparison.OrdinalIgnoreCase) == true =>
                 "The Photos Library API is not turned on in your Google Cloud project. Turn it on (step 2 of Connect to Google Photos) and try again.",
             429 => "Google Photos says the daily limit is reached. Try again tomorrow.",

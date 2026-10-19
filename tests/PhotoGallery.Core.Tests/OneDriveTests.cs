@@ -42,6 +42,16 @@ public class OneDriveTests
                 var path = url["/v1.0/me/drive/root:/".Length..].Split('?')[0];
                 return MissingPaths.Contains(path) ? Answer("""{"error":{"message":"not found"}}""", HttpStatusCode.NotFound) : Answer("""{"id":"synced1"}""");
             }
+            if (url.StartsWith("/v1.0/me/drive/bundles?filter=bundle/album ne null"))
+                return Answer("""
+                    {"value":[{"id":"b2","name":"zoo","webUrl":"https://onedrive.live.com/b2","bundle":{"childCount":4,"album":{}}},
+                              {"id":"b3","name":"Not an album","bundle":{"childCount":1}}],
+                     "@odata.nextLink":"https://graph.microsoft.com/v1.0/me/drive/bundles?page=2"}
+                    """);
+            if (url == "/v1.0/me/drive/bundles?page=2")
+                return Answer("""{"value":[{"id":"b1","name":"Amsterdam","bundle":{"album":{}}}]}""");
+            if (url.StartsWith("/v1.0/me/drive/bundles/b2/children"))
+                return Answer("{}");
             if (url == "/v1.0/me/drive/bundles")
                 return Answer("""{"id":"album1","webUrl":"https://onedrive.live.com/album1"}""");
             if (url.StartsWith("/v1.0/me/drive/bundles/album1/children"))
@@ -116,6 +126,31 @@ public class OneDriveTests
         Assert.Contains("not in OneDrive yet", result.FirstError);
         Assert.DoesNotContain(graph.Requests, r => r.Contains(":/content") || r.Contains("createUploadSession"));
         Assert.Equal("synced1", AlbumFile.Read(temp.Path)!.OneDrive!.Items["old.jpg"]);
+    }
+
+    [Fact]
+    public async Task Lists_the_users_albums_and_adds_photos_to_one()
+    {
+        using var temp = new TempFolder();
+        var graph = new FakeGraph();
+        using var auth = new MicrosoftAuth("client", "refresh", graph);
+        using var client = new OneDriveClient(auth, handler: graph);
+
+        var albums = await client.ListAlbumsAsync();
+
+        Assert.Equal(["Amsterdam", "zoo"], albums.Select(a => a.Name));
+        Assert.Equal(("b2", "https://onedrive.live.com/b2", 4), (albums[1].Id, albums[1].Url, albums[1].PhotoCount));
+
+        var photo = Path.Combine(temp.Path, "a.jpg");
+        File.WriteAllBytes(photo, [1]);
+        var loose = new Dictionary<string, string>();
+        var result = await CloudUpload.UploadAsync(client, null, [new(photo, null)], looseUploads: loose, intoAlbum: (albums[1].Link(), "zoo"));
+
+        Assert.Equal(1, result.Uploaded);
+        Assert.Equal("https://onedrive.live.com/b2", result.AlbumUrl);
+        Assert.Contains("POST /v1.0/me/drive/bundles/b2/children", graph.Requests);
+        Assert.DoesNotContain("POST /v1.0/me/drive/bundles", graph.Requests);
+        Assert.Equal([photo], loose.Keys);
     }
 
     [Fact]

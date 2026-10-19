@@ -11,7 +11,7 @@ public sealed class GoogleAuth(GoogleClient client, string? refreshToken, HttpMe
 {
     protected override string ServiceName => "Google";
 
-    protected override string SettingsPlace => "Settings › Google Photos";
+    protected override string SettingsPlace => "Settings › Linked apps";
 
     protected override string AuthEndpoint => "https://accounts.google.com/o/oauth2/v2/auth";
 

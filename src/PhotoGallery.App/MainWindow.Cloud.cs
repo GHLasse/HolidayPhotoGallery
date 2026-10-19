@@ -10,15 +10,34 @@ public sealed partial class MainWindow
     private async Task UploadAlbumAsync(CloudService service, object sender)
     {
         var folder = TagOf<AlbumViewModel>(sender)?.Folder ?? TagOf<FolderNodeViewModel>(sender)?.FullPath;
-        if (folder is not null && await EnsureSignedInAsync(service))
-            await ViewModel.UploadAlbumAsync(service, folder);
+        if (folder is null || !await EnsureSignedInAsync(service))
+            return;
+        // The first OneDrive upload asks which OneDrive album the album goes into; later ones go there too.
+        if (service == CloudService.OneDrive && !MainViewModel.HasOneDriveAlbum(folder))
+        {
+            var name = ViewModel.CurrentAlbumName(folder);
+            if (await ChooseOneDriveAlbumAsync($"Upload “{name}” to OneDrive", $"New album “{name}”", name) is not { } choice)
+                return;
+            if (choice.Album is { } album && !ViewModel.LinkToOneDriveAlbum(folder, album))
+                return;
+        }
+        await ViewModel.UploadAlbumAsync(service, folder);
     }
 
     private async Task UploadPhotosAsync(CloudService service)
     {
         var photos = SelectedPhotos;
-        if (photos.Count > 0 && await EnsureSignedInAsync(service))
+        if (photos.Count == 0 || !await EnsureSignedInAsync(service))
+            return;
+        if (service != CloudService.OneDrive)
+        {
             await ViewModel.UploadPhotosAsync(service, photos);
+            return;
+        }
+        var title = photos.Count == 1 ? "Upload the photo to OneDrive" : $"Upload {photos.Count} photos to OneDrive";
+        if (await ChooseOneDriveAlbumAsync(title, "The album each photo is in here (or none)", null) is not { } choice)
+            return;
+        await ViewModel.UploadPhotosAsync(service, photos, choice.Album is { } album ? (album.Link(), album.Name) : null);
     }
 
     private static void OpenInBrowser(string? url)

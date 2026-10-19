@@ -14,12 +14,13 @@ public static class CloudUpload
     /// Without an album: full path → id of photos uploaded without an album. Read to skip photos already
     /// up there, and added to; the caller keeps it.
     /// </param>
+    /// <param name="intoAlbum">Without an album: an album already on the service to put the photos in, and its name.</param>
     public static async Task<UploadResult> UploadAsync(ICloudPhotos cloud, string? albumFolder, IReadOnlyList<UploadPhoto> photos,
         IProgress<UploadProgress>? progress = null, CancellationToken cancellationToken = default,
-        IDictionary<string, string>? looseUploads = null)
+        IDictionary<string, string>? looseUploads = null, (CloudAlbumLink Link, string Name)? intoAlbum = null)
     {
         var info = albumFolder is null ? null : AlbumFile.Read(albumFolder) ?? new AlbumInfo();
-        var link = info?.Link(cloud.Service);
+        var link = albumFolder is null ? intoAlbum?.Link : info!.Link(cloud.Service);
         var uploadedBefore = albumFolder is null
             ? looseUploads ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : link?.Items ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -30,7 +31,7 @@ public static class CloudUpload
         if (todo.Count == 0)
             return new UploadResult(0, already, 0, null, link?.Url);
 
-        var albumName = albumFolder is null ? null
+        var albumName = albumFolder is null ? intoAlbum?.Name
             : string.IsNullOrWhiteSpace(info!.Name) ? Album.DefaultName(albumFolder) : info.Name;
         int uploaded = 0, failed = 0;
         string? firstError = null;

@@ -31,7 +31,7 @@ public abstract class OAuthSession : IDisposable
     /// <summary>"Google" or "Microsoft", for messages.</summary>
     protected abstract string ServiceName { get; }
 
-    /// <summary>Where the user signs in again, for messages: "Settings › Google Photos".</summary>
+    /// <summary>Where the user signs in again, for messages: "Settings › Linked apps".</summary>
     protected abstract string SettingsPlace { get; }
 
     protected abstract string AuthEndpoint { get; }

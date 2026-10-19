@@ -943,12 +943,19 @@ public sealed partial class MainWindow : Window
         var appearance = AppearanceTab(out var chosenAppearance, out var revertAppearance);
         appearance.Visibility = Visibility.Collapsed;
 
-        // Google Photos tab
+        // Linked apps tab: Google Photos and OneDrive
         using var dialogClosed = new CancellationTokenSource();
-        var google = GoogleTab(dialogClosed.Token);
-        google.Visibility = Visibility.Collapsed;
-        var oneDrive = OneDriveTab(dialogClosed.Token);
-        oneDrive.Visibility = Visibility.Collapsed;
+        var linked = new ScrollViewer
+        {
+            MaxHeight = 480,
+            Padding = new Thickness(0, 0, 12, 0),
+            Visibility = Visibility.Collapsed,
+            Content = new StackPanel
+            {
+                Spacing = 24,
+                Children = { GoogleSection(dialogClosed.Token), new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, OneDriveSection(dialogClosed.Token) },
+            },
+        };
 
         // Keyboard tab
         var keyboard = new ScrollViewer { Content = ShortcutList(), MaxHeight = 480, Visibility = Visibility.Collapsed };
@@ -962,10 +969,8 @@ public sealed partial class MainWindow : Window
         tabs.Items.Add(croppingTab);
         var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
         tabs.Items.Add(appearanceTab);
-        var googleTabItem = new SelectorBarItem { Text = "Google Photos", Icon = new FontIcon { Glyph = "\uEB9F" } };
-        tabs.Items.Add(googleTabItem);
-        var oneDriveTabItem = new SelectorBarItem { Text = "OneDrive", Icon = new FontIcon { Glyph = "\uE753" } };
-        tabs.Items.Add(oneDriveTabItem);
+        var linkedTab = new SelectorBarItem { Text = "Linked apps", Icon = new FontIcon { Glyph = "\uE753" } };
+        tabs.Items.Add(linkedTab);
         var keyboardTab = new SelectorBarItem { Text = "Keyboard", Icon = new FontIcon { Glyph = "\uE765" } };
         tabs.Items.Add(keyboardTab);
         tabs.SelectionChanged += (_, _) =>
@@ -974,12 +979,11 @@ public sealed partial class MainWindow : Window
             tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
             cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
             appearance.Visibility = tabs.SelectedItem == appearanceTab ? Visibility.Visible : Visibility.Collapsed;
-            google.Visibility = tabs.SelectedItem == googleTabItem ? Visibility.Visible : Visibility.Collapsed;
-            oneDrive.Visibility = tabs.SelectedItem == oneDriveTabItem ? Visibility.Visible : Visibility.Collapsed;
+            linked.Visibility = tabs.SelectedItem == linkedTab ? Visibility.Visible : Visibility.Collapsed;
             keyboard.Visibility = tabs.SelectedItem == keyboardTab ? Visibility.Visible : Visibility.Collapsed;
         };
-        if (cloudTab is { } cloud)
-            tabs.SelectedItem = cloud == CloudService.GooglePhotos ? googleTabItem : oneDriveTabItem;
+        if (cloudTab is not null)
+            tabs.SelectedItem = linkedTab;
 
         var dialog = new ContentDialog
         {
@@ -993,7 +997,7 @@ public sealed partial class MainWindow : Window
                 {
                     tabs,
                     // The tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, google, oneDrive, keyboard } },
+                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, linked, keyboard } },
                 },
             },
             PrimaryButtonText = "Save",

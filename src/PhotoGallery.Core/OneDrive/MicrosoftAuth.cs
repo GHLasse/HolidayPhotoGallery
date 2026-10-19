@@ -14,7 +14,7 @@ public sealed class MicrosoftAuth(string clientId, string? refreshToken, HttpMes
 
     protected override string ServiceName => "Microsoft";
 
-    protected override string SettingsPlace => "Settings › OneDrive";
+    protected override string SettingsPlace => "Settings › Linked apps";
 
     protected override string AuthEndpoint => Authority + "authorize";
 

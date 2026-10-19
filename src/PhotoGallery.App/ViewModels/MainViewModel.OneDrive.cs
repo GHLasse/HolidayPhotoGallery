@@ -1,4 +1,5 @@
 using PhotoGallery.App.Native;
+using PhotoGallery.Core.Albums;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.OneDrive;
 
@@ -80,5 +81,45 @@ public sealed partial class MainViewModel
             _microsoftAuth.RefreshTokenChanged += token => CloudCredentials.Save(CloudService.OneDrive, token);
         }
         return new OneDriveClient(_microsoftAuth, OneDrivePathFor);
+    }
+
+    /// <summary>The user's OneDrive albums; null, with a message, when they can't be read.</summary>
+    public async Task<IReadOnlyList<OneDriveAlbum>?> ListOneDriveAlbumsAsync()
+    {
+        if (CreateOneDrive() is not { } client)
+            return null;
+        try
+        {
+            using (client)
+                return await Task.Run(() => client.ListAlbumsAsync());
+        }
+        catch (CloudSignInRequiredException ex)
+        {
+            CloudSignInExpired(CloudService.OneDrive);
+            ErrorMessage = ex.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OneDriveException)
+        {
+            ErrorMessage = $"Couldn't read your OneDrive albums: {ex.Message}";
+        }
+        return null;
+    }
+
+    /// <summary>Whether the album already went to a OneDrive album, which its next uploads then go to as well.</summary>
+    public static bool HasOneDriveAlbum(string folder) => AlbumFile.Read(folder)?.OneDrive is not null;
+
+    /// <summary>Makes the album's uploads go into an album the user already has in OneDrive. False, with a message, when the album file can't be written.</summary>
+    public bool LinkToOneDriveAlbum(string folder, OneDriveAlbum album)
+    {
+        try
+        {
+            AlbumFile.Write(folder, (AlbumFile.Read(folder) ?? new AlbumInfo()).WithLink(CloudService.OneDrive, album.Link()));
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ErrorMessage = $"Couldn't save the album's OneDrive album: {ex.Message}";
+            return false;
+        }
     }
 }

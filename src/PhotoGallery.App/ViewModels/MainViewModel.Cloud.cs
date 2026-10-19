@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using PhotoGallery.App.Native;
+using PhotoGallery.Core.Albums;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.Library;
 
@@ -150,17 +151,23 @@ public sealed partial class MainViewModel
         await UploadAsync(service, [(folder, photos)]);
     }
 
-    /// <summary>Uploads the photos, each into the album there of the album it belongs to.</summary>
-    public Task UploadPhotosAsync(CloudService service, IReadOnlyList<PhotoItemViewModel> items) =>
-        UploadAsync(service, items
-            .GroupBy(i => FindAlbumFor(i.Path), StringComparer.OrdinalIgnoreCase)
-            .Select(g => (g.Key, g.Select(i => new UploadPhoto(i.Path, i.Photo.Caption)).ToList()))
-            .ToList());
+    /// <summary>
+    /// Uploads the photos, each into the album there of the album it belongs to; or all of them into
+    /// <paramref name="into"/>, an album already on the service.
+    /// </summary>
+    public Task UploadPhotosAsync(CloudService service, IReadOnlyList<PhotoItemViewModel> items, (CloudAlbumLink Link, string Name)? into = null) =>
+        into is not null
+            ? UploadAsync(service, [(null, items.Select(i => new UploadPhoto(i.Path, i.Photo.Caption)).ToList())], into)
+            : UploadAsync(service, items
+                .GroupBy(i => FindAlbumFor(i.Path), StringComparer.OrdinalIgnoreCase)
+                .Select(g => (g.Key, g.Select(i => new UploadPhoto(i.Path, i.Photo.Caption)).ToList()))
+                .ToList());
 
     public bool IsSignedIn(CloudService service) => service == CloudService.GooglePhotos ? IsGoogleSignedIn : IsOneDriveSignedIn;
 
     /// <summary>Runs in the background: the app stays usable, and the status bar shows how far it got.</summary>
-    private async Task UploadAsync(CloudService service, IReadOnlyList<(string? Album, List<UploadPhoto> Photos)> groups)
+    private async Task UploadAsync(CloudService service, IReadOnlyList<(string? Album, List<UploadPhoto> Photos)> groups,
+        (CloudAlbumLink Link, string Name)? into = null)
     {
         var name = DisplayName(service);
         if (IsUploading)
@@ -170,7 +177,7 @@ public sealed partial class MainViewModel
         }
         if (CreateCloud(service) is not { } cloud)
         {
-            Warn($"Connect to {name} first: Settings › {name}.");
+            Warn($"Connect to {name} first: Settings › Linked apps.");
             return;
         }
 
@@ -193,7 +200,7 @@ public sealed partial class MainViewModel
                         UploadText = $"Uploading to {name}: {before + list.Count - p.Total + p.Done} of {total}…");
                     state.LooseUploads ??= CloudUpload.LoadLooseUploads(state.LooseUploadsFile);
                     var loose = state.LooseUploads;
-                    var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose));
+                    var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose, into));
                     if (album is null && result.Uploaded > 0)
                         SaveLooseUploads(state);
                     done += list.Count;

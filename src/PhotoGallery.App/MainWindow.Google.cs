@@ -57,8 +57,8 @@ public sealed partial class MainWindow
 
     private void OpenAlbumInGoogle_Click(object sender, RoutedEventArgs e) => OpenInBrowser(TagOf<AlbumViewModel>(sender)?.Album.GoogleUrl);
 
-    /// <summary>The Google Photos tab. Signing in takes effect at once, not on Save; closing the dialog cancels a sign-in.</summary>
-    private FrameworkElement GoogleTab(CancellationToken closed)
+    /// <summary>The Google Photos part of the Linked apps tab. Signing in takes effect at once, not on Save; closing the dialog cancels a sign-in.</summary>
+    private FrameworkElement GoogleSection(CancellationToken closed)
     {
         var panel = new StackPanel { Spacing = 12 };
         CancellationTokenSource? signingIn = null;
@@ -246,7 +246,7 @@ public sealed partial class MainWindow
         }
 
         ShowStatus();
-        return new ScrollViewer { Content = panel, MaxHeight = 480, Padding = new Thickness(0, 0, 12, 0) };
+        return panel;
     }
 
     /// <summary>Catches the usual copy-and-paste slips before Google gives a vaguer error.</summary>
