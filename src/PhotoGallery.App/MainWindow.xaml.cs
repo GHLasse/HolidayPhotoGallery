@@ -70,15 +70,19 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
+            else if (e.PropertyName is nameof(MainViewModel.PeopleByName))
+                _ = ShowTopPeopleAsync();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
                 ShowFilterBadges();
+                _ = ShowTopPeopleAsync();
                 if (IsMapOpen)
                     RefreshMap(fit: false);
             }
         };
         SyncCameraCombo();
         ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();
+        ViewModel.FacesChanged += ForgetLatestFaces;
         ViewModel.Notices.CollectionChanged += (_, _) => ShowNotices();
         ViewModel.FlagsChanged += SyncFlagButton;
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.

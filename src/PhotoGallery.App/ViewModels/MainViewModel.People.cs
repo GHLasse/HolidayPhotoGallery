@@ -32,6 +32,10 @@ public sealed partial class MainViewModel
 
     public bool HasPeople => People.Count > 0;
 
+    /// <summary>Everyone named, by name, for the "More" list in the filter bar.</summary>
+    public IReadOnlyList<TagFilterViewModel> PeopleByName =>
+        People.OrderBy(p => p.Tag, StringComparer.CurrentCultureIgnoreCase).ToList();
+
     /// <summary>Photos must show all of these people.</summary>
     public IReadOnlyList<string> SelectedPeople
     {
@@ -63,6 +67,7 @@ public sealed partial class MainViewModel
         }
         _isUpdatingPeople = false;
         OnPropertyChanged(nameof(HasPeople));
+        OnPropertyChanged(nameof(PeopleByName));
 
         var stillTicked = People.Where(t => t.IsSelected).Select(t => t.Tag).ToList();
         if (stillTicked.Count != _selectedPeople.Count)
@@ -204,19 +209,31 @@ public sealed partial class MainViewModel
     /// A picture of a person's face cut from the photo at the box in the file, for people named in another
     /// program (e.g. Windows Live Photo Gallery) whose face has not been found here. Null without a real box.
     /// </summary>
-    public async Task<byte[]?> GetPersonPictureAsync(PhotoItemViewModel item, PersonTag person)
+    public Task<byte[]?> GetPersonPictureAsync(PhotoItemViewModel item, PersonTag person) =>
+        CutFaceAsync(item.Path, item.Photo.FileModifiedUtc, item.Photo.Orientation, person);
+
+    /// <summary>The person's face on their newest photo, for the filter bar. Null when no photo marks their face.</summary>
+    public async Task<byte[]?> GetLatestFaceAsync(string name)
+    {
+        var face = await Task.Run(() => _index.GetLatestFace(name));
+        if (face is null)
+            return null;
+        return face.Thumbnail ?? await CutFaceAsync(face.Path, face.FileModifiedUtc, face.Orientation, face.Person);
+    }
+
+    private async Task<byte[]?> CutFaceAsync(string path, DateTime fileModifiedUtc, int orientation, PersonTag person)
     {
         if (person.Box.Area > 0.9)
             return null;
-        var key = $"{item.Path}|{item.Photo.FileModifiedUtc.Ticks}|{person.Box}";
+        var key = $"{path}|{fileModifiedUtc.Ticks}|{person.Box}";
         if (_personPictures.TryGetValue(key, out var cached))
             return cached;
         byte[]? picture = null;
         try
         {
             // The decoded pixels are upright, the box in the file is on the stored pixels.
-            var image = await ImageLoader.DecodePixelsAsync(item.Path, FaceAnalyzer.ImageSize);
-            picture = await ImageEncoder.EncodeJpegAsync(FaceCrop(image, person.Box.ToUpright(item.Photo.Orientation)), FaceThumbnailSize, FaceThumbnailSize);
+            var image = await ImageLoader.DecodePixelsAsync(path, FaceAnalyzer.ImageSize);
+            picture = await ImageEncoder.EncodeJpegAsync(FaceCrop(image, person.Box.ToUpright(orientation)), FaceThumbnailSize, FaceThumbnailSize);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
         {

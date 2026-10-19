@@ -21,8 +21,8 @@
             <ColumnDefinition Width="320" />
         </Grid.ColumnDefinitions>
 
-        <!-- Toolbar: commands, search and filters -->
-        <Grid Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4">
+        <!-- Toolbar: commands, search and filters. Drawn above the grid, so a face enlarged on hover shows over it. -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4" Canvas.ZIndex="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -146,15 +146,17 @@
                         </Flyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
+                <!-- The five people on the most photos, with their latest face; filled from code. -->
+                <StackPanel x:Name="TopPeople" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" />
                 <DropDownButton VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasPeople, Mode=OneWay}"
-                                ToolTipService.ToolTip="Only photos with all the ticked people">
+                                ToolTipService.ToolTip="Everyone named, by name. Only photos with all the ticked people are shown.">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE77B;" FontSize="14" />
-                        <TextBlock Text="People" />
+                        <TextBlock Text="More people" />
                     </StackPanel>
                     <DropDownButton.Flyout>
                         <Flyout Placement="BottomEdgeAlignedLeft">
-                            <ListView Width="300" MaxHeight="480" SelectionMode="None" ItemsSource="{x:Bind ViewModel.People}">
+                            <ListView Width="300" MaxHeight="480" SelectionMode="None" ItemsSource="{x:Bind ViewModel.PeopleByName, Mode=OneWay}">
                                 <ListView.ItemTemplate>
                                     <DataTemplate x:DataType="vm:TagFilterViewModel">
                                         <Grid ColumnSpacing="8">

@@ -402,14 +402,14 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
-    /// <summary>Every camera in the library (or one folder of it) with how many photos it took, most used first.</summary>
+    /// <summary>Every camera in the library (or one folder of it) with how many photos it took, by name.</summary>
     public IReadOnlyList<(string Camera, int Count)> GetCameraCounts(string? folder = null)
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
             var where = string.IsNullOrWhiteSpace(folder) ? "" : $"AND {FolderCondition(cmd, folder, true)}";
-            cmd.CommandText = $"SELECT camera, COUNT(*) FROM photos WHERE camera IS NOT NULL {where} GROUP BY camera ORDER BY COUNT(*) DESC, camera;";
+            cmd.CommandText = $"SELECT camera, COUNT(*) FROM photos WHERE camera IS NOT NULL {where} GROUP BY camera ORDER BY camera COLLATE NOCASE;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())

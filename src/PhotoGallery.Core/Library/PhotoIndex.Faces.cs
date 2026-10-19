@@ -14,6 +14,9 @@ public sealed record FoundFace(long Id, string Path, FaceBox Box, float Score, f
                                IReadOnlyList<string> Rejected, bool Ignored, byte[]? Thumbnail);
 
 /// <summary>A face to save for a photo; see <see cref="FoundFace"/>.</summary>
+/// <summary>Where to find a picture of a person's face: a ready thumbnail, or the photo and the box to cut.</summary>
+public sealed record PersonFace(string Path, DateTime FileModifiedUtc, int Orientation, PersonTag Person, byte[]? Thumbnail);
+
 public sealed record NewFace(FaceBox Box, float Score, float[] Embedding, byte[]? Thumbnail);
 
 public sealed partial class PhotoIndex
@@ -126,6 +129,34 @@ public sealed partial class PhotoIndex
             while (reader.Read())
                 result.Add((reader.GetString(0), reader.GetInt32(1)));
             return result;
+        }
+    }
+
+    /// <summary>
+    /// The person's face on their most recent photo (by date taken) that marks the face, not the whole photo:
+    /// the face finder's thumbnail when it has one, otherwise the box to cut the face from the photo.
+    /// </summary>
+    public PersonFace? GetLatestFace(string name)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT p.path, p.file_mtime, p.orientation, pp.x, pp.y, pp.w, pp.h,
+                       (SELECT f.thumbnail FROM faces f
+                        WHERE f.photo_id = p.id AND f.person = pp.name AND f.thumbnail IS NOT NULL LIMIT 1)
+                FROM photo_people pp JOIN photos p ON p.id = pp.photo_id
+                WHERE pp.name = $name AND pp.w * pp.h <= 0.9
+                ORDER BY p.date_taken IS NULL, p.date_taken DESC, p.file_mtime DESC
+                LIMIT 1;
+                """;
+            cmd.Parameters.AddWithValue("$name", name);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read())
+                return null;
+            return new PersonFace(r.GetString(0), new DateTime(r.GetInt64(1), DateTimeKind.Utc), r.GetInt32(2),
+                                  new PersonTag(name, new FaceBox(r.GetDouble(3), r.GetDouble(4), r.GetDouble(5), r.GetDouble(6))),
+                                  r.IsDBNull(7) ? null : (byte[])r.GetValue(7));
         }
     }
 

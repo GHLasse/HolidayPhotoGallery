@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Controls;
 using PhotoGallery.App.ViewModels;
@@ -92,6 +93,65 @@ public sealed partial class MainWindow
         {
             FilterBadges.Children.Add(Badge(person.Tag, false, outlined: false, $"Showing photos of {person.Tag}",
                                             null, $"Stop filtering by {person.Tag}", () => person.IsSelected = false, person: true));
+        }
+    }
+
+    // ---- The five people on the most photos, with their latest face ----
+
+    private const int TopPeopleCount = 5;
+    private const double TopFaceSize = 24;
+    private readonly Dictionary<string, byte[]?> _latestFaces = new(StringComparer.CurrentCultureIgnoreCase);
+    private int _topPeopleVersion;
+
+    /// <summary>Forgets the faces shown, e.g. after faces were named, so the newest ones are loaded.</summary>
+    private void ForgetLatestFaces()
+    {
+        _latestFaces.Clear();
+        _ = ShowTopPeopleAsync();
+    }
+
+    private async Task ShowTopPeopleAsync()
+    {
+        var version = ++_topPeopleVersion;
+        var top = ViewModel.People.Take(TopPeopleCount).ToList(); // People is sorted by photo count.
+        foreach (var person in top.Where(p => !_latestFaces.ContainsKey(p.Tag)))
+            _latestFaces[person.Tag] = await ViewModel.GetLatestFaceAsync(person.Tag);
+        if (version != _topPeopleVersion)
+            return; // A newer refresh started while the faces were loading.
+
+        TopPeople.Children.Clear();
+        foreach (var person in top)
+        {
+            var face = FacePicture(_latestFaces[person.Tag], TopFaceSize);
+            // Hovering enlarges the face over the grid instead of growing the bar, so the grid doesn't jump.
+            face.CenterPoint = new System.Numerics.Vector3((float)TopFaceSize / 2, 0, 0);
+            face.ScaleTransition = new Microsoft.UI.Xaml.Vector3Transition();
+
+            var chip = new ToggleButton
+            {
+                IsChecked = person.IsSelected,
+                Padding = new Thickness(4, 2, 10, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children = { face, new TextBlock { Text = person.Tag, VerticalAlignment = VerticalAlignment.Center } },
+                },
+            };
+            ToolTipService.SetToolTip(chip, $"Only photos of {person.Tag} ({person.CountText} photos)");
+            chip.Click += (_, _) => person.IsSelected = chip.IsChecked == true;
+            chip.PointerEntered += (_, _) =>
+            {
+                Canvas.SetZIndex(chip, 1);
+                face.Scale = new System.Numerics.Vector3(3, 3, 1);
+            };
+            chip.PointerExited += (_, _) =>
+            {
+                Canvas.SetZIndex(chip, 0);
+                face.Scale = System.Numerics.Vector3.One;
+            };
+            TopPeople.Children.Add(chip);
         }
     }
 
