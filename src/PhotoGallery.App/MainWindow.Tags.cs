@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Metadata;
+using Orientation = Microsoft.UI.Xaml.Controls.Orientation;
 
 namespace PhotoGallery.App;
 
