@@ -1,4 +1,5 @@
 using System.Globalization;
+using PhotoGallery.Core.Localization;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -8,9 +9,9 @@ public sealed partial class MainViewModel
     /// <summary>The place-name languages offered: the key saved in the settings, and its name.</summary>
     public static readonly (string Key, string Name)[] PlaceLanguages =
     [
-        ("de", "German"),
-        ("en", "English"),
-        ("local", "Local (as written there)"),
+        ("de", Strings.Tr("German")),
+        ("en", Strings.Tr("English")),
+        ("local", Strings.Tr("Local (as written there)")),
     ];
 
     public bool KeepDatesInSync => _settings.KeepDatesInSync;
@@ -21,6 +22,14 @@ public sealed partial class MainViewModel
 
     /// <summary>What Nominatim is asked for: a language code, or nothing for the local names.</summary>
     private string PlaceNameLanguageCode => PlaceLanguage == "local" ? "" : PlaceLanguage;
+
+    /// <summary>Keeps the app's language for the next start, when the window is built in it.</summary>
+    public void SaveUiLanguage(string code)
+    {
+        _settings.UiLanguage = code;
+        _settings.Save(SettingsPath);
+        Inform(Strings.Tr("Restart the app to see it in the new language."));
+    }
 
     public void SaveDatesAndPlaces(bool keepDatesInSync, string placeLanguage)
     {

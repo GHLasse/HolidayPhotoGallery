@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.Cloud;
 
@@ -84,22 +85,22 @@ public abstract class OAuthSession : IDisposable
 
         var answer = await loopback.WaitAsync(cancellationToken).ConfigureAwait(false);
         if (answer.GetValueOrDefault("state") != state)
-            throw new CloudSignInRequiredException($"The answer from {ServiceName} didn't match this sign-in. Please try again.");
+            throw new CloudSignInRequiredException(Tr("The answer from {0} didn't match this sign-in. Please try again.", ServiceName));
         if (answer.GetValueOrDefault("error") is { } error)
         {
             throw new CloudSignInRequiredException(error == "access_denied"
-                ? "Access was not allowed."
-                : $"{ServiceName} refused the sign-in: {answer.GetValueOrDefault("error_description") ?? error}");
+                ? Tr("Access was not allowed.")
+                : Tr("{0} refused the sign-in: {1}", ServiceName, answer.GetValueOrDefault("error_description") ?? error));
         }
         if (answer.GetValueOrDefault("code") is not { } code)
-            throw new CloudSignInRequiredException($"{ServiceName} didn't send a sign-in code. Please try again.");
+            throw new CloudSignInRequiredException(Tr("{0} didn't send a sign-in code. Please try again.", ServiceName));
 
         using var json = await PostTokenAsync(
             [("code", code), ("code_verifier", verifier), ("redirect_uri", redirect), ("grant_type", "authorization_code")],
             cancellationToken).ConfigureAwait(false);
         Remember(json.RootElement);
         Email = json.RootElement.TryGetProperty("id_token", out var id) ? EmailFromIdToken(id.GetString()) : null;
-        return RefreshToken ?? throw new CloudSignInRequiredException($"{ServiceName} didn't send a lasting sign-in. Please try again.");
+        return RefreshToken ?? throw new CloudSignInRequiredException(Tr("{0} didn't send a lasting sign-in. Please try again.", ServiceName));
     }
 
     /// <summary>A valid access token, fetched with the refresh token when the last one is about to expire.</summary>
@@ -111,7 +112,7 @@ public abstract class OAuthSession : IDisposable
             if (_accessToken is not null && DateTime.UtcNow < _expiresUtc)
                 return _accessToken;
             if (RefreshToken is null)
-                throw new CloudSignInRequiredException($"Sign in first: {SettingsPlace}.");
+                throw new CloudSignInRequiredException(Tr("Sign in first: {0}.", SettingsPlace));
             using var json = await PostTokenAsync([("refresh_token", RefreshToken), ("grant_type", "refresh_token")], cancellationToken).ConfigureAwait(false);
             Remember(json.RootElement);
             return _accessToken!;
@@ -154,11 +155,11 @@ public abstract class OAuthSession : IDisposable
         if (body.Contains("invalid_grant", StringComparison.Ordinal))
         {
             SignOut();
-            throw new CloudSignInRequiredException($"The {ServiceName} sign-in has expired. Sign in again in {SettingsPlace}.");
+            throw new CloudSignInRequiredException(Tr("The {0} sign-in has expired. Sign in again in {1}.", ServiceName, SettingsPlace));
         }
         if (body.Contains("invalid_client", StringComparison.Ordinal) || body.Contains("unauthorized_client", StringComparison.Ordinal))
-            throw new CloudSignInRequiredException($"{ServiceName} doesn't recognise the app's key. Check it in {SettingsPlace}.");
-        throw new HttpRequestException($"{ServiceName} sign-in failed ({(int)response.StatusCode}).");
+            throw new CloudSignInRequiredException(Tr("{0} doesn't recognise the app's key. Check it in {1}.", ServiceName, SettingsPlace));
+        throw new HttpRequestException(Tr("{0} sign-in failed ({1}).", ServiceName, (int)response.StatusCode));
     }
 
     /// <summary>
@@ -268,8 +269,8 @@ public abstract class OAuthSession : IDisposable
                 }
                 var answer = ParseQuery(target[(question + 1)..]);
                 var page = answer.ContainsKey("code")
-                    ? "<h2>Signed in</h2><p>You can close this tab and go back to HolidayPhotoGallery.</p>"
-                    : "<h2>Not signed in</h2><p>You can close this tab and try again in HolidayPhotoGallery.</p>";
+                    ? $"<h2>{Tr("Signed in")}</h2><p>{Tr("You can close this tab and go back to HolidayPhotoGallery.")}</p>"
+                    : $"<h2>{Tr("Not signed in")}</h2><p>{Tr("You can close this tab and try again in HolidayPhotoGallery.")}</p>";
                 await WriteAsync(stream, "200 OK", $"<!doctype html><meta charset=utf-8><title>HolidayPhotoGallery</title><body style=\"font-family:Segoe UI,sans-serif;margin:3em\">{page}</body>", cancellationToken).ConfigureAwait(false);
                 return answer;
             }

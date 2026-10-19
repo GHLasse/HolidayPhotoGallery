@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using Windows.System;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.Controls;
 
@@ -65,8 +66,8 @@ public sealed partial class CompareView : UserControl
         }
 
         HintText.Text = items.Count == 1
-            ? "Keys 1–5 rate this photo, 0 clears the rating. Left and Right go to the previous or next photo. Ctrl + mouse wheel zooms."
-            : "Click a photo to highlight it. Keys 1–5 rate it, 0 clears the rating, Tab moves to the next photo. Ctrl + mouse wheel zooms.";
+            ? Tr("Keys 1–5 rate this photo, 0 clears the rating. Left and Right go to the previous or next photo. Ctrl + mouse wheel zooms.")
+            : Tr("Click a photo to highlight it. Keys 1–5 rate it, 0 clears the rating, Tab moves to the next photo. Ctrl + mouse wheel zooms.");
         SetActive(0, FocusState.Programmatic);
         _ = LoadImagesAsync();
     }
@@ -119,7 +120,7 @@ public sealed partial class CompareView : UserControl
             Foreground = ThemeBrush("AccentTextFillColorPrimaryBrush", Colors.DodgerBlue),
             Visibility = item.Photo.Flagged ? Visibility.Visible : Visibility.Collapsed,
         };
-        ToolTipService.SetToolTip(flag, "Flagged (P)");
+        ToolTipService.SetToolTip(flag, Tr("Flagged (P)"));
         var footer = new Grid { ColumnSpacing = 8, Padding = new Thickness(8, 4, 8, 4) };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -195,7 +196,7 @@ public sealed partial class CompareView : UserControl
             }
             catch (Exception ex)
             {
-                pane.Status.Text = $"This photo cannot be shown. {ex.Message}";
+                pane.Status.Text = Tr("This photo cannot be shown. {0}", ex.Message);
             }
         }
     }

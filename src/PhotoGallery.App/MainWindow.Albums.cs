@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.App.ViewModels;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -87,7 +88,7 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = "Rename album",
+            Title = Tr("Rename album"),
             Content = new StackPanel
             {
                 Spacing = 8,
@@ -96,17 +97,17 @@ public sealed partial class MainWindow
                     box,
                     new TextBlock
                     {
-                        Text = "The folder keeps its name. Leave the box empty to use the folder's name.",
+                        Text = Tr("The folder keeps its name. Leave the box empty to use the folder's name."),
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                     },
                 },
             },
-            PrimaryButtonText = "Rename",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = Tr("Rename"),
+            CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
             await ViewModel.RenameAlbumAsync(folder, box.Text);
     }
 
@@ -118,12 +119,12 @@ public sealed partial class MainWindow
         var album = photos.Count == 1 ? ViewModel.FindAlbumFor(photos[0].Path) : null;
         AlbumCoverItem.IsEnabled = album is not null;
         AlbumCoverItem.Text = album is null
-            ? "Use as album cover (select one photo in an album)"
-            : $"Use as cover of “{ViewModel.CurrentAlbumName(album)}”";
+            ? Tr("Use as album cover (select one photo in an album)")
+            : Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album));
         UploadPhotosItem.IsEnabled = photos.Count > 0;
-        UploadPhotosItem.Text = photos.Count > 1 ? $"Upload {photos.Count} photos to Google Photos" : "Upload to Google Photos";
+        UploadPhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to Google Photos", photos.Count) : Tr("Upload to Google Photos");
         UploadOneDrivePhotosItem.IsEnabled = photos.Count > 0;
-        UploadOneDrivePhotosItem.Text = photos.Count > 1 ? $"Upload {photos.Count} photos to OneDrive" : "Upload to OneDrive";
+        UploadOneDrivePhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to OneDrive", photos.Count) : Tr("Upload to OneDrive");
     }
 
     private async void UseAsAlbumCover_Click(object sender, RoutedEventArgs e)

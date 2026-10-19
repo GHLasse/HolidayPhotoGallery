@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using PhotoGallery.Core.Albums;
 using PhotoGallery.Core.Cloud;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.GooglePhotos;
 
@@ -118,11 +119,11 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
             {
                 var ok = r.TryGetProperty("mediaItem", out var item) && item.TryGetProperty("id", out _);
                 var message = r.TryGetProperty("status", out var status) && status.TryGetProperty("message", out var m) ? m.GetString() : null;
-                results.Add(ok ? new CreatedItem(item.GetProperty("id").GetString(), null) : new CreatedItem(null, message ?? "refused"));
+                results.Add(ok ? new CreatedItem(item.GetProperty("id").GetString(), null) : new CreatedItem(null, message ?? Tr("refused")));
             }
         }
         while (results.Count < items.Count)
-            results.Add(new CreatedItem(null, "no answer"));
+            results.Add(new CreatedItem(null, Tr("no answer")));
         return results;
     }
 
@@ -189,11 +190,11 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
         }
         return status switch
         {
-            401 => "Google didn't accept the sign-in. Sign in again in Settings › Linked apps.",
+            401 => Tr("Google didn't accept the sign-in. Sign in again in Settings › Linked apps."),
             403 when google?.Contains("not been used", StringComparison.OrdinalIgnoreCase) == true || google?.Contains("disabled", StringComparison.OrdinalIgnoreCase) == true =>
-                "The Photos Library API is not turned on in your Google Cloud project. Turn it on (step 2 of Connect to Google Photos) and try again.",
-            429 => "Google Photos says the daily limit is reached. Try again tomorrow.",
-            _ => $"Google Photos refused the request ({status}){(google is null ? "." : ": " + google)}",
+                Tr("The Photos Library API is not turned on in your Google Cloud project. Turn it on (step 2 of Connect to Google Photos) and try again."),
+            429 => Tr("Google Photos says the daily limit is reached. Try again tomorrow."),
+            _ => google is null ? Tr("Google Photos refused the request ({0}).", status) : Tr("Google Photos refused the request ({0}): {1}", status, google),
         };
     }
 

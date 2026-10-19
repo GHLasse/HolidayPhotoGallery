@@ -1,6 +1,7 @@
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -19,7 +20,7 @@ public sealed partial class MainViewModel
             return;
         if (IsBusy)
         {
-            Warn("The app is still busy. Try again when it has finished.");
+            Warn(Tr("The app is still busy. Try again when it has finished."));
             return;
         }
         newName = newName?.Trim().Trim('/');
@@ -36,8 +37,8 @@ public sealed partial class MainViewModel
             {
                 var path = paths[i];
                 StatusText = newName is null
-                    ? $"Removing “{tag}” from {i + 1:N0} of {paths.Count:N0} photos…"
-                    : $"Renaming “{tag}” in {i + 1:N0} of {paths.Count:N0} photos…";
+                    ? Tr("Removing “{0}” from {1:N0} of {2:N0} photos…", tag, i + 1, paths.Count)
+                    : Tr("Renaming “{0}” in {1:N0} of {2:N0} photos…", tag, i + 1, paths.Count);
                 try
                 {
                     var current = (await _metadata.ReadAsync(path)).Tags;
@@ -62,10 +63,10 @@ public sealed partial class MainViewModel
         }
 
         if (failures.Count > 0)
-            ErrorMessage = $"{failures.Count:N0} photo(s) could not be changed (for example read-only ones). " + string.Join(" ", failures.Take(3));
+            ErrorMessage = Tr("{0:N0} photo(s) could not be changed (for example read-only ones).", failures.Count) + " " + string.Join(" ", failures.Take(3));
         Inform(newName is null
-            ? $"Removed “{tag}” from {changed:N0} photo(s)"
-            : $"Renamed “{tag}” to “{newName}” in {changed:N0} photo(s)");
+            ? Tr("Removed “{0}” from {1:N0} photo(s)", tag, changed)
+            : Tr("Renamed “{0}” to “{1}” in {2:N0} photo(s)", tag, newName, changed));
         await RefreshTagsAsync();
     }
 }

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using PhotoGallery.Core.Albums;
 using PhotoGallery.Core.Cloud;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.OneDrive;
 
@@ -123,7 +124,7 @@ public sealed class OneDriveClient : ICloudPhotos, IDisposable
         }
         catch (OneDriveException ex) when (ex.Data["status"] is 404)
         {
-            throw new OneDriveException("it is in the OneDrive folder but not in OneDrive yet. Let OneDrive finish syncing and try again.");
+            throw new OneDriveException(Tr("it is in the OneDrive folder but not in OneDrive yet. Let OneDrive finish syncing and try again."));
         }
     }
 
@@ -170,7 +171,7 @@ public sealed class OneDriveClient : ICloudPhotos, IDisposable
             if (offset >= file.Length)
                 return await ReadIdAsync(response, cancellationToken).ConfigureAwait(false);
         }
-        throw new OneDriveException("the file is empty.");
+        throw new OneDriveException(Tr("the file is empty."));
     }
 
     private async Task<CloudAlbumLink> CreateAlbumAsync(string name, IReadOnlyList<string> ids, CancellationToken cancellationToken)
@@ -246,10 +247,10 @@ public sealed class OneDriveClient : ICloudPhotos, IDisposable
         }
         return status switch
         {
-            401 => "Microsoft didn't accept the sign-in. Sign in again in Settings › Linked apps.",
-            (int)HttpStatusCode.InsufficientStorage => "OneDrive is full.",
-            429 => "OneDrive asks to slow down. Try again in a few minutes.",
-            _ => $"OneDrive refused the request ({status}){(microsoft is null ? "." : ": " + microsoft)}",
+            401 => Tr("Microsoft didn't accept the sign-in. Sign in again in Settings › Linked apps."),
+            (int)HttpStatusCode.InsufficientStorage => Tr("OneDrive is full."),
+            429 => Tr("OneDrive asks to slow down. Try again in a few minutes."),
+            _ => microsoft is null ? Tr("OneDrive refused the request ({0}).", status) : Tr("OneDrive refused the request ({0}): {1}", status, microsoft),
         };
     }
 

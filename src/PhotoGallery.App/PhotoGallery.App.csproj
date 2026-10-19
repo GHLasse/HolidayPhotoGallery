@@ -60,6 +60,9 @@
     <None Remove="Assets\AppIcon.ico" />
     <Content Remove="Assets\AppIcon.ico" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The built-in languages (see PhotoGallery.Core.Localization.Strings); template.json lists every text. -->
+    <None Remove="Languages\*.json" />
+    <Content Include="Languages\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Ship ExifTool next to the app when scripts/Get-ExifTool.ps1 has downloaded it. -->

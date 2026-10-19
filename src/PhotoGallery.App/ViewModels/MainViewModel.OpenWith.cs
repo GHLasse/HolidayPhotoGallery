@@ -1,6 +1,7 @@
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Library;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -46,7 +47,7 @@ public sealed partial class MainViewModel
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                ErrorMessage = $"Could not back up {item.FileName} before opening it, so it was not opened: {ex.Message}";
+                ErrorMessage = Tr("Could not back up {0} before opening it, so it was not opened: {1}", item.FileName, ex.Message);
                 return false;
             }
         }
@@ -118,7 +119,7 @@ public sealed partial class MainViewModel
             item.Photo = updated;
             await item.ReloadThumbnailAsync();
             PhotoChangedOutside?.Invoke(item);
-            Inform($"{item.FileName} was changed in another app and has been updated here.");
+            Inform(Tr("{0} was changed in another app and has been updated here.", item.FileName));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ExifToolException)
         {

@@ -5,6 +5,7 @@ using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Metadata.Profiles.Exif;
 using SixLabors.ImageSharp.Processing;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.Editing;
 
@@ -38,7 +39,7 @@ public static class PixelRotation
             ".png" => new PngEncoder(),
             ".gif" => new GifEncoder(),
             ".webp" => new WebpEncoder { FileFormat = image.Metadata.GetWebpMetadata().FileFormat, Quality = 92 },
-            var other => throw new NotSupportedException($"Turning {other} files is not supported."),
+            var other => throw new NotSupportedException(Tr("Turning {0} files is not supported.", other)),
         };
         await image.SaveAsync(target, encoder, cancellationToken).ConfigureAwait(false);
     }

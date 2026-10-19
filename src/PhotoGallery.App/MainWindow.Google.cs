@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.GooglePhotos;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -17,38 +18,38 @@ public sealed partial class MainWindow
 
     private sealed record WizardStep(string Title, string Text, (string Label, string Url)[] Links);
 
-    private static readonly WizardStep[] GoogleSteps =
+    private static WizardStep[] GoogleSteps =>
     [
-        new("Create a Google Cloud project",
-            "Google lets apps upload photos only through a \"project\" in Google Cloud. It is free and needs no payment details.\n\n" +
-            "Open Google Cloud, sign in with the Google account whose Google Photos should get the photos, give the project a name such as \"Holiday Photo Gallery\", and click Create. " +
-            "Wait until it is ready, and make sure it is selected at the top of the page.",
-            [("Open Google Cloud: new project", GoogleConsole + "projectcreate")]),
-        new("Turn on the Photos Library API",
-            "This lets the project talk to Google Photos.\n\nOpen the page below, check that your new project is selected at the top, and click Enable.",
-            [("Open the Photos Library API", GoogleConsole + "apis/library/photoslibrary.googleapis.com")]),
-        new("Set up the sign-in screen",
-            "This is the page Google shows when you sign in from this app.\n\n" +
-            "Google Cloud may show German names; they are in brackets.\n\n" +
-            "1. Open the sign-in setup and click Get started (Erste Schritte).\n" +
-            "2. App information (App-Informationen): app name \"Holiday Photo Gallery\" and your e-mail address. Click Next (Weiter).\n" +
-            "3. Audience (Zielgruppe): choose External (Extern). Internal (Intern) only works for company accounts. Click Next.\n" +
-            "4. Contact information (Kontaktdaten): your e-mail address. Agree to the policy, click Continue, then Create (Erstellen).\n" +
-            "5. Open Audience (Zielgruppe). Under Test users (Testnutzer) click Add users and add your own Google address, and that of anyone else who will use your key. Save.\n\n" +
-            "If Google shows no Get started button, the sign-in screen exists already: just do step 5.",
-            [("Open the sign-in setup", GoogleConsole + "auth/overview"), ("Open Audience (test users)", GoogleConsole + "auth/audience")]),
-        new("Create the app key",
-            "1. Open the page below.\n" +
-            "2. Application type (Anwendungstyp): Desktop app (Desktop-App). Name: anything, such as \"Holiday Photo Gallery\". Click Create.\n" +
-            "3. Google shows a Client ID and a Client secret. Copy both into the boxes below. (Missed them? Click the key in the Clients list to see them again.)",
-            [("Open Google Cloud: create a key", GoogleConsole + "auth/clients/create")]),
-        new("Sign in",
-            "Click Sign in with Google. Your browser opens Google's sign-in page.\n\n" +
-            "• Google warns \"Google hasn't verified this app\" (\"Google hat diese App nicht überprüft\"). That's expected for your own key: click Continue (Weiter).\n" +
-            "• Allow access to Google Photos, then come back here.\n\n" +
-            "Tip: while the project is in testing, Google asks you to sign in again every 7 days. To avoid that, open Audience (Zielgruppe) and click Publish app (App veröffentlichen). " +
-            "It stays unverified, which is fine for your own use.",
-            [("Open Audience", GoogleConsole + "auth/audience")]),
+        new(Tr("Create a Google Cloud project"),
+            Tr("Google lets apps upload photos only through a \"project\" in Google Cloud. It is free and needs no payment details.") + "\n\n" +
+            Tr("Open Google Cloud, sign in with the Google account whose Google Photos should get the photos, give the project a name such as \"Holiday Photo Gallery\", and click Create.") + " " +
+            Tr("Wait until it is ready, and make sure it is selected at the top of the page."),
+            [(Tr("Open Google Cloud: new project"), GoogleConsole + "projectcreate")]),
+        new(Tr("Turn on the Photos Library API"),
+            Tr("This lets the project talk to Google Photos.") + "\n\n" + Tr("Open the page below, check that your new project is selected at the top, and click Enable."),
+            [(Tr("Open the Photos Library API"), GoogleConsole + "apis/library/photoslibrary.googleapis.com")]),
+        new(Tr("Set up the sign-in screen"),
+            Tr("This is the page Google shows when you sign in from this app.") + "\n\n" +
+            Tr("Google Cloud may show German names; they are in brackets.") + "\n\n" +
+            Tr("1. Open the sign-in setup and click Get started (Erste Schritte).") + "\n" +
+            Tr("2. App information (App-Informationen): app name \"Holiday Photo Gallery\" and your e-mail address. Click Next (Weiter).") + "\n" +
+            Tr("3. Audience (Zielgruppe): choose External (Extern). Internal (Intern) only works for company accounts. Click Next.") + "\n" +
+            Tr("4. Contact information (Kontaktdaten): your e-mail address. Agree to the policy, click Continue, then Create (Erstellen).") + "\n" +
+            Tr("5. Open Audience (Zielgruppe). Under Test users (Testnutzer) click Add users and add your own Google address, and that of anyone else who will use your key. Save.") + "\n\n" +
+            Tr("If Google shows no Get started button, the sign-in screen exists already: just do step 5."),
+            [(Tr("Open the sign-in setup"), GoogleConsole + "auth/overview"), (Tr("Open Audience (test users)"), GoogleConsole + "auth/audience")]),
+        new(Tr("Create the app key"),
+            Tr("1. Open the page below.") + "\n" +
+            Tr("2. Application type (Anwendungstyp): Desktop app (Desktop-App). Name: anything, such as \"Holiday Photo Gallery\". Click Create.") + "\n" +
+            Tr("3. Google shows a Client ID and a Client secret. Copy both into the boxes below. (Missed them? Click the key in the Clients list to see them again.)"),
+            [(Tr("Open Google Cloud: create a key"), GoogleConsole + "auth/clients/create")]),
+        new(Tr("Sign in"),
+            Tr("Click Sign in with Google. Your browser opens Google's sign-in page.") + "\n\n" +
+            Tr("• Google warns \"Google hasn't verified this app\" (\"Google hat diese App nicht überprüft\"). That's expected for your own key: click Continue (Weiter).") + "\n" +
+            Tr("• Allow access to Google Photos, then come back here.") + "\n\n" +
+            Tr("Tip: while the project is in testing, Google asks you to sign in again every 7 days. To avoid that, open Audience (Zielgruppe) and click Publish app (App veröffentlichen).") + " " +
+            Tr("It stays unverified, which is fine for your own use."),
+            [(Tr("Open Audience"), GoogleConsole + "auth/audience")]),
     ];
 
     private async void UploadAlbumToGoogle_Click(object sender, RoutedEventArgs e) => await UploadAlbumAsync(CloudService.GooglePhotos, sender);
@@ -85,7 +86,7 @@ public sealed partial class MainWindow
             signingIn = new CancellationTokenSource();
             foreach (var control in disable)
                 control.IsEnabled = false;
-            message.Text = "Finish signing in in your browser, then come back here…";
+            message.Text = Tr("Finish signing in in your browser, then come back here…");
             message.Foreground = ThemeBrush("TextFillColorSecondaryBrush");
             var error = await ViewModel.SignInToGoogleAsync(client, signingIn.Token);
             signingIn = null;
@@ -113,8 +114,7 @@ public sealed partial class MainWindow
                     new TextBlock { Text = "Google Photos", Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] },
                 },
             });
-            panel.Children.Add(Text("Upload albums and photos to your Google Photos. Each album becomes a Google Photos album of the same name, " +
-                "and uploading it again later only sends the new photos. Only you see the uploaded albums, until you share them in Google Photos."));
+            panel.Children.Add(Text(Tr("Upload albums and photos to your Google Photos. Each album becomes a Google Photos album of the same name, and uploading it again later only sends the new photos. Only you see the uploaded albums, until you share them in Google Photos.")));
 
             if (ViewModel.IsGoogleSignedIn)
             {
@@ -123,24 +123,22 @@ public sealed partial class MainWindow
                     IsOpen = true,
                     IsClosable = false,
                     Severity = InfoBarSeverity.Success,
-                    Title = "Connected",
-                    Message = ViewModel.GoogleAccount is { } account ? $"Signed in as {account}." : "Signed in to Google Photos.",
+                    Title = Tr("Connected"),
+                    Message = ViewModel.GoogleAccount is { } account ? Tr("Signed in as {0}.", account) : Tr("Signed in to Google Photos."),
                 });
-                var signOut = new Button { Content = "Sign out" };
+                var signOut = new Button { Content = Tr("Sign out") };
                 signOut.Click += (_, _) =>
                 {
                     ViewModel.SignOutOfGoogle();
                     ShowStatus();
                 };
                 panel.Children.Add(signOut);
-                panel.Children.Add(Text("Right-click an album or photos and choose Upload to Google Photos. Uploaded photos and albums show the " +
-                    "Google Photos mark, and the Cloud filter finds what isn't uploaded yet. Google keeps the uploaded photos " +
-                    "if you sign out; to remove them, delete them in Google Photos.", secondary: true));
+                panel.Children.Add(Text(Tr("Right-click an album or photos and choose Upload to Google Photos. Uploaded photos and albums show the Google Photos mark, and the Cloud filter finds what isn't uploaded yet. Google keeps the uploaded photos if you sign out; to remove them, delete them in Google Photos."), secondary: true));
             }
             else if (MainViewModel.BuiltInGoogleClient is { } builtIn && ViewModel.OwnGoogleClient is null)
             {
                 var message = Text("", secondary: true);
-                var signIn = new Button { Content = "Sign in with Google", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+                var signIn = new Button { Content = Tr("Sign in with Google"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
                 signIn.Click += async (_, _) => await SignInAsync(builtIn, message, signIn);
                 panel.Children.Add(signIn);
                 panel.Children.Add(message);
@@ -149,43 +147,42 @@ public sealed partial class MainWindow
             {
                 // Signed out (or the sign-in expired) with the user's own key already set up.
                 var message = Text("", secondary: true);
-                var signIn = new Button { Content = "Sign in with Google", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+                var signIn = new Button { Content = Tr("Sign in with Google"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
                 signIn.Click += async (_, _) => await SignInAsync(own, message, signIn);
-                panel.Children.Add(Text("This app uses your own Google Cloud key.", secondary: true));
+                panel.Children.Add(Text(Tr("This app uses your own Google Cloud key."), secondary: true));
                 panel.Children.Add(signIn);
                 panel.Children.Add(message);
             }
             else
             {
-                var start = new Button { Content = "Connect to Google Photos…", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+                var start = new Button { Content = Tr("Connect to Google Photos…"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
                 start.Click += (_, _) => ShowWizard(0);
-                panel.Children.Add(Text("This copy of the app has no Google key built in, so it needs a free key of your own from Google. " +
-                    "The steps take about 10 minutes, once.", secondary: true));
+                panel.Children.Add(Text(Tr("This copy of the app has no Google key built in, so it needs a free key of your own from Google. The steps take about 10 minutes, once."), secondary: true));
                 panel.Children.Add(start);
             }
 
             // The key: set up an own one, change it, or go back to the app's.
             if (ViewModel.OwnGoogleClient is { } current)
             {
-                panel.Children.Add(Link("Change the Google Cloud key…", () => ShowWizard(3)));
+                panel.Children.Add(Link(Tr("Change the Google Cloud key…"), () => ShowWizard(3)));
                 if (MainViewModel.BuiltInGoogleClient is not null)
                 {
-                    panel.Children.Add(Link("Use the app's built-in key instead", () =>
+                    panel.Children.Add(Link(Tr("Use the app's built-in key instead"), () =>
                     {
                         ViewModel.SignOutOfGoogle(forgetOwnKey: true);
                         ShowStatus();
                     }));
                 }
-                panel.Children.Add(Text($"Client ID: {current.ClientId}", secondary: true));
+                panel.Children.Add(Text(Tr("Client ID: {0}", current.ClientId), secondary: true));
             }
             else if (MainViewModel.BuiltInGoogleClient is not null && !ViewModel.IsGoogleSignedIn)
             {
-                panel.Children.Add(Link("Use your own Google Cloud key instead (advanced)…", () => ShowWizard(0)));
+                panel.Children.Add(Link(Tr("Use your own Google Cloud key instead (advanced)…"), () => ShowWizard(0)));
             }
         }
 
-        var clientId = new TextBox { Header = "Client ID", PlaceholderText = "…apps.googleusercontent.com", Text = ViewModel.OwnGoogleClient?.ClientId ?? "" };
-        var clientSecret = new PasswordBox { Header = "Client secret", PlaceholderText = "GOCSPX-…", Password = ViewModel.OwnGoogleClient?.ClientSecret ?? "" };
+        var clientId = new TextBox { Header = Tr("Client ID"), PlaceholderText = "…apps.googleusercontent.com", Text = ViewModel.OwnGoogleClient?.ClientId ?? "" };
+        var clientSecret = new PasswordBox { Header = Tr("Client secret"), PlaceholderText = "GOCSPX-…", Password = ViewModel.OwnGoogleClient?.ClientSecret ?? "" };
 
         void ShowWizard(int index)
         {
@@ -193,7 +190,7 @@ public sealed partial class MainWindow
             panel.Children.Clear();
             panel.Children.Add(new TextBlock
             {
-                Text = $"Step {index + 1} of {GoogleSteps.Length}",
+                Text = Tr("Step {0} of {1}", index + 1, GoogleSteps.Length),
                 Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
             });
             panel.Children.Add(new TextBlock { Text = step.Title, Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] });
@@ -204,7 +201,7 @@ public sealed partial class MainWindow
             }
 
             var message = Text("", secondary: true);
-            var back = new Button { Content = index == 0 ? "Cancel" : "Back" };
+            var back = new Button { Content = index == 0 ? Tr("Cancel") : Tr("Back") };
             back.Click += (_, _) =>
             {
                 if (index == 0)
@@ -221,7 +218,7 @@ public sealed partial class MainWindow
             }
             if (index < GoogleSteps.Length - 1)
             {
-                var next = new Button { Content = "Next", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+                var next = new Button { Content = Tr("Next"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
                 next.Click += (_, _) =>
                 {
                     if (index == 3 && KeyProblem(clientId.Text, clientSecret.Password) is { } problem)
@@ -236,7 +233,7 @@ public sealed partial class MainWindow
             }
             else
             {
-                var signIn = new Button { Content = "Sign in with Google", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+                var signIn = new Button { Content = Tr("Sign in with Google"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
                 var client = new GoogleClient(clientId.Text.Trim(), clientSecret.Password.Trim());
                 signIn.Click += async (_, _) => await SignInAsync(client, message, signIn, back);
                 buttons.Children.Add(signIn);
@@ -255,11 +252,11 @@ public sealed partial class MainWindow
         id = id.Trim();
         secret = secret.Trim();
         if (id.Length == 0 || secret.Length == 0)
-            return "Paste both the Client ID and the Client secret.";
+            return Tr("Paste both the Client ID and the Client secret.");
         if (!id.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal))
-            return "The Client ID ends with .apps.googleusercontent.com. Check that all of it was copied.";
+            return Tr("The Client ID ends with .apps.googleusercontent.com. Check that all of it was copied.");
         if (id == secret || secret.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal))
-            return "The Client secret is the other value (it usually starts with GOCSPX-).";
+            return Tr("The Client secret is the other value (it usually starts with GOCSPX-).");
         return null;
     }
 }

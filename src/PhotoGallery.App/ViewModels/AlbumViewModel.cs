@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.Core.Albums;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -22,7 +23,7 @@ public sealed class AlbumViewModel(Album album) : ObservableObject
     {
         get
         {
-            var count = Album.PhotoCount == 1 ? "1 photo" : $"{Album.PhotoCount:N0} photos";
+            var count = Album.PhotoCount == 1 ? Tr("1 photo") : Tr("{0:N0} photos", Album.PhotoCount);
             return Dates(Album.From, Album.To) is { } dates ? $"{count} · {dates}" : count;
         }
     }
@@ -30,14 +31,14 @@ public sealed class AlbumViewModel(Album album) : ObservableObject
     public bool IsOnGoogle => Album.GoogleUrl is not null;
 
     public string GoogleToolTip => Album.GooglePhotoCount == 1
-        ? "In Google Photos (1 photo uploaded)"
-        : $"In Google Photos ({Album.GooglePhotoCount:N0} photos uploaded)";
+        ? Tr("In Google Photos (1 photo uploaded)")
+        : Tr("In Google Photos ({0:N0} photos uploaded)", Album.GooglePhotoCount);
 
     public bool IsOnOneDrive => Album.OneDriveUrl is not null;
 
     public string OneDriveToolTip => Album.OneDrivePhotoCount == 1
-        ? "In OneDrive (1 photo uploaded)"
-        : $"In OneDrive ({Album.OneDrivePhotoCount:N0} photos uploaded)";
+        ? Tr("In OneDrive (1 photo uploaded)")
+        : Tr("In OneDrive ({0:N0} photos uploaded)", Album.OneDrivePhotoCount);
 
     public ImageSource? Cover
     {

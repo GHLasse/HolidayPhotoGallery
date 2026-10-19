@@ -3,6 +3,7 @@
     x:Class="PhotoGallery.App.Controls.CompareView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PhotoGallery.App"
     PreviewKeyDown="Root_PreviewKeyDown">
 
     <Grid Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
@@ -18,9 +19,9 @@
             <TextBlock x:Name="HintText" VerticalAlignment="Center" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                <ToggleButton x:Name="SyncToggle" IsChecked="True" Content="Zoom together"
-                              ToolTipService.ToolTip="Zoom and pan all photos at once" />
-                <Button x:Name="CloseButton" Click="Close_Click" ToolTipService.ToolTip="Back to the gallery (Esc)">
+                <ToggleButton x:Name="SyncToggle" IsChecked="True" Content="{local:Loc Text='Zoom together'}"
+                              ToolTipService.ToolTip="{local:Loc Text='Zoom and pan all photos at once'}" />
+                <Button x:Name="CloseButton" Click="Close_Click" ToolTipService.ToolTip="{local:Loc Text='Back to the gallery (Esc)'}">
                     <SymbolIcon Symbol="Cancel" />
                 </Button>
             </StackPanel>

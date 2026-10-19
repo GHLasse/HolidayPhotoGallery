@@ -6,6 +6,7 @@ using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -23,7 +24,7 @@ public sealed partial class MainWindow
     {
         if (photos.Count == 0)
         {
-            ViewModel.Warn("Select the photos to find people in.");
+            ViewModel.Warn(Tr("Select the photos to find people in."));
             return;
         }
         if (!MainViewModel.IsFaceModelInstalled)
@@ -31,15 +32,14 @@ public sealed partial class MainWindow
             var dialog = new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
-                Title = "Download the face models?",
-                Content = "Finding and recognising people happens on this PC, so no photo is sent anywhere. " +
-                          $"It needs two small face models (YuNet and SFace from OpenCV) of about {FaceModel.DownloadSize / 1_000_000:N0} MB together, " +
-                          "which are downloaded once from GitHub and kept in the app's data folder.",
-                PrimaryButtonText = "Download",
-                CloseButtonText = "Cancel",
+                Title = Tr("Download the face models?"),
+                Content = Tr("Finding and recognising people happens on this PC, so no photo is sent anywhere. ") +
+                          Tr("It needs two small face models (YuNet and SFace from OpenCV) of about {0:N0} MB together, which are downloaded once from GitHub and kept in the app's data folder.", FaceModel.DownloadSize / 1_000_000),
+                PrimaryButtonText = Tr("Download"),
+                CloseButtonText = Tr("Cancel"),
                 DefaultButton = ContentDialogButton.Primary,
             };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadFaceModelAsync())
+            if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadFaceModelAsync())
                 return;
         }
         await ViewModel.FindFacesAsync(photos);
@@ -61,7 +61,7 @@ public sealed partial class MainWindow
         {
             PeopleList.Children.Clear();
             PeopleList.Children.Add(AddPersonBox(photos));
-            PeopleHint.Text = $"Adds the person to all {photos.Count} selected photos, without marking a face.";
+            PeopleHint.Text = Tr("Adds the person to all {0} selected photos, without marking a face.", photos.Count);
             PeopleHint.Visibility = Visibility.Visible;
             PeopleSection.Visibility = Visibility.Visible;
             return;
@@ -96,8 +96,8 @@ public sealed partial class MainWindow
         PeopleList.Children.Add(AddPersonBox([item]));
 
         PeopleHint.Text = !looked
-            ? "Use People → Find people in the selected photos to look for faces in this photo."
-            : faces.Count == 0 && withoutFace.Count == 0 ? "No faces were found in this photo." : "";
+            ? Tr("Use People → Find people in the selected photos to look for faces in this photo.")
+            : faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
         PeopleHint.Visibility = PeopleHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         PeopleSection.Visibility = Visibility.Visible;
     }
@@ -109,30 +109,30 @@ public sealed partial class MainWindow
         if (face.Person is { } name)
         {
             content = Label(name);
-            action = IconButton("", "Remove the name from this face", async () => await ViewModel.UnnameFaceAsync(face));
+            action = IconButton("", Tr("Remove the name from this face"), async () => await ViewModel.UnnameFaceAsync(face));
         }
         else if (suggestion is not null)
         {
-            var yes = IconButton("", $"Yes, this is {suggestion.Name}", async () => await ViewModel.NameFacesAsync([face], suggestion.Name));
-            var no = IconButton("", $"No, this is not {suggestion.Name}", async () => await ViewModel.RejectSuggestionAsync(face, suggestion.Name));
+            var yes = IconButton("", Tr("Yes, this is {0}", suggestion.Name), async () => await ViewModel.NameFacesAsync([face], suggestion.Name));
+            var no = IconButton("", Tr("No, this is not {0}", suggestion.Name), async () => await ViewModel.RejectSuggestionAsync(face, suggestion.Name));
             content = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 4,
-                Children = { Label($"{suggestion.Name}?"), yes, no },
+                Children = { Label(Tr("{0}?", suggestion.Name)), yes, no },
             };
         }
         else
         {
             content = NameBox(async name => await ViewModel.NameFacesAsync([face], name));
-            action = IconButton("", "Not someone to name: hide this face", async () => await ViewModel.IgnoreFacesAsync([face]));
+            action = IconButton("", Tr("Not someone to name: hide this face"), async () => await ViewModel.IgnoreFacesAsync([face]));
         }
         return Row(FacePicture(face.Thumbnail, FaceSize), content, action);
     }
 
     private UIElement PersonRow(PhotoItemViewModel item, PersonTag person, byte[]? picture) =>
         Row(FacePicture(picture, FaceSize), Label(person.Name),
-            IconButton("", $"Remove {person.Name} from this photo", async () => await ViewModel.RemovePersonAsync(item, person)));
+            IconButton("", Tr("Remove {0} from this photo", person.Name), async () => await ViewModel.RemovePersonAsync(item, person)));
 
     private static Grid Row(UIElement picture, UIElement content, UIElement? action)
     {
@@ -179,7 +179,7 @@ public sealed partial class MainWindow
     /// <summary>A box to type a name in, offering the names already used in the library.</summary>
     private AutoSuggestBox NameBox(Func<string, Task> submit)
     {
-        var box = new AutoSuggestBox { PlaceholderText = "Who is this?", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var box = new AutoSuggestBox { PlaceholderText = Tr("Who is this?"), HorizontalAlignment = HorizontalAlignment.Stretch };
         box.TextChanged += (sender, args) =>
         {
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
@@ -213,7 +213,7 @@ public sealed partial class MainWindow
             _ = ViewModel.AddPersonAsync(photos, name);
             return Task.CompletedTask;
         });
-        box.PlaceholderText = photos.Count == 1 ? "Add someone not found…" : "Add a person…";
+        box.PlaceholderText = photos.Count == 1 ? Tr("Add someone not found…") : Tr("Add a person…");
         box.QueryIcon = new SymbolIcon(Symbol.AddFriend);
         return box;
     }
@@ -223,16 +223,16 @@ public sealed partial class MainWindow
         var photos = SelectedPhotos;
         if (photos.Count == 0)
         {
-            ViewModel.Warn("Select the photos to add a person to.");
+            ViewModel.Warn(Tr("Select the photos to add a person to."));
             return;
         }
         var nameBox = NameBox(_ => Task.CompletedTask);
-        nameBox.Header = "Who is in these photos?";
-        nameBox.PlaceholderText = "Name";
+        nameBox.Header = Tr("Who is in these photos?");
+        nameBox.PlaceholderText = Tr("Name");
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = photos.Count == 1 ? "Add a person to the photo" : $"Add a person to {photos.Count} photos",
+            Title = photos.Count == 1 ? Tr("Add a person to the photo") : Tr("Add a person to {0} photos", photos.Count),
             Content = new StackPanel
             {
                 Spacing = 8,
@@ -241,18 +241,18 @@ public sealed partial class MainWindow
                     nameBox,
                     new TextBlock
                     {
-                        Text = "For someone whose face was not found, e.g. seen from behind. No face is marked.",
+                        Text = Tr("For someone whose face was not found, e.g. seen from behind. No face is marked."),
                         TextWrapping = TextWrapping.Wrap,
                         FontSize = 12,
                         Opacity = 0.7,
                     },
                 },
             },
-            PrimaryButtonText = "Add",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = Tr("Add"),
+            CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && nameBox.Text.Trim() is { Length: > 0 } name)
+        if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary && nameBox.Text.Trim() is { Length: > 0 } name)
             _ = ViewModel.AddPersonAsync(photos, name);
     }
 
@@ -328,10 +328,10 @@ public sealed partial class MainWindow
             await new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
-                Title = "Name the people found",
-                Content = "There are no unnamed faces. Use People → Find people to look for faces in your photos first.",
-                CloseButtonText = "OK",
-            }.ShowAsync();
+                Title = Tr("Name the people found"),
+                Content = Tr("There are no unnamed faces. Use People → Find people to look for faces in your photos first."),
+                CloseButtonText = Tr("OK"),
+            }.ShowThemedAsync();
             return;
         }
 
@@ -343,16 +343,16 @@ public sealed partial class MainWindow
         var heading = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var faces = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 68, ItemHeight = 68, MaximumRowsOrColumns = 8 };
         var nameBox = NameBox(_ => Task.CompletedTask);
-        nameBox.Header = "Who is this?";
-        nameBox.PlaceholderText = "Name";
+        nameBox.Header = Tr("Who is this?");
+        nameBox.PlaceholderText = Tr("Name");
         var problem = new TextBlock { Foreground = ThemeBrush("SystemFillColorCriticalBrush") ?? new SolidColorBrush(Microsoft.UI.Colors.Firebrick), TextWrapping = TextWrapping.Wrap };
-        var hide = new HyperlinkButton { Content = "Not people to name: hide these faces", Padding = new Thickness(0) };
+        var hide = new HyperlinkButton { Content = Tr("Not people to name: hide these faces"), Padding = new Thickness(0) };
         var toggles = new List<(ToggleButton Toggle, FoundFace Face)>();
 
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = "Name the people found",
+            Title = Tr("Name the people found"),
             Content = new ScrollViewer
             {
                 MaxHeight = 560,
@@ -369,9 +369,9 @@ public sealed partial class MainWindow
                     },
                 },
             },
-            PrimaryButtonText = "Name them",
-            SecondaryButtonText = "Skip",
-            CloseButtonText = "Done",
+            PrimaryButtonText = Tr("Name them"),
+            SecondaryButtonText = Tr("Skip"),
+            CloseButtonText = Tr("Done"),
             DefaultButton = ContentDialogButton.Primary,
         };
         dialog.Resources["ContentDialogMaxWidth"] = 720.0;
@@ -380,10 +380,10 @@ public sealed partial class MainWindow
         {
             var group = groups[index];
             var page = group.Faces.Count > Shown
-                ? $" (showing {start + 1} to {Math.Min(start + Shown, group.Faces.Count)})"
+                ? Tr(" (showing {0} to {1})", start + 1, Math.Min(start + Shown, group.Faces.Count))
                 : "";
-            heading.Text = $"Group {index + 1} of {groups.Count}: {group.Faces.Count} face(s) that look like the same person{page}. " +
-                           "Click a face that doesn't belong to leave it out.";
+            heading.Text = Tr("Group {0} of {1}: {2} face(s) that look like the same person{3}. ", index + 1, groups.Count, group.Faces.Count, page) +
+                           Tr("Click a face that doesn't belong to leave it out.");
             faces.Children.Clear();
             toggles.Clear();
             foreach (var face in group.Faces.Skip(start).Take(Shown))
@@ -427,7 +427,7 @@ public sealed partial class MainWindow
             var chosen = Chosen();
             if (name.Length == 0 || chosen.Count == 0)
             {
-                problem.Text = name.Length == 0 ? "Type a name first." : "Every face is left out.";
+                problem.Text = name.Length == 0 ? Tr("Type a name first.") : Tr("Every face is left out.");
                 return;
             }
             // The names are written in the background (the status bar shows how far it is), so the next
@@ -449,6 +449,6 @@ public sealed partial class MainWindow
         };
 
         Show();
-        await dialog.ShowAsync();
+        await dialog.ShowThemedAsync();
     }
 }

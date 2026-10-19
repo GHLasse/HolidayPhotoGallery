@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml;
@@ -7,6 +6,7 @@ using Microsoft.Web.WebView2.Core;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.Controls;
 
@@ -62,8 +62,7 @@ public sealed partial class MapPanel : UserControl
         }
         catch (Exception ex)
         {
-            PinText.Text = "The map could not start: " + ex.Message +
-                           " It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.";
+            PinText.Text = Tr("The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.", ex.Message);
         }
     }
 
@@ -104,8 +103,8 @@ public sealed partial class MapPanel : UserControl
                 : new JsonObject { ["type"] = "pin", ["lat"] = null, ["lon"] = null });
         }
         PinText.Text = position is { } at
-            ? string.Format(CultureInfo.CurrentCulture, "Pin: {0:0.00000}, {1:0.00000}", at.Latitude, at.Longitude)
-            : "Click the map or search for a place to set a pin.";
+            ? Tr("Pin: {0:0.00000}, {1:0.00000}", at.Latitude, at.Longitude)
+            : Tr("Click the map or search for a place to set a pin.");
         UpdateButtons();
     }
 
@@ -115,9 +114,9 @@ public sealed partial class MapPanel : UserControl
         AssignButton.IsEnabled = _pin is not null && count > 0;
         AssignText.Text = count switch
         {
-            0 => "Assign to selected",
-            1 => "Assign to 1 photo",
-            _ => $"Assign to {count:N0} photos",
+            0 => Tr("Assign to selected"),
+            1 => Tr("Assign to 1 photo"),
+            _ => Tr("Assign to {0:N0} photos", count),
         };
         RemoveButton.IsEnabled = _selection.Any(p => p.Photo.Location is not null);
     }

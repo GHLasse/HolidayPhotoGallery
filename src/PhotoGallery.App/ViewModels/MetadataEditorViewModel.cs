@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using PhotoGallery.Core.Metadata;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -20,9 +21,9 @@ public sealed class MetadataEditorViewModel : ObservableObject
     private List<TimeZoneChoice> _timeZones = TimeZoneChoice.List(TimeZoneChoice.Unknown());
     private int _timeZoneIndex;
     private bool _captionChanged, _tagsChanged, _ratingChanged, _dateChanged;
-    private string _summary = "No photo selected";
+    private string _summary = Tr("No photo selected");
     private string _details = "";
-    private string _captionPlaceholder = "Add a caption";
+    private string _captionPlaceholder = Tr("Add a caption");
     private string? _validationError;
 
     public IReadOnlyList<PhotoItemViewModel> Items => _items;
@@ -160,7 +161,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
             var captions = photos.Select(p => p.Caption ?? "").Distinct().ToList();
             Caption = captions.Count == 1 ? captions[0] : "";
-            CaptionPlaceholder = captions.Count > 1 ? "(different captions)" : "Add a caption";
+            CaptionPlaceholder = captions.Count > 1 ? Tr("(different captions)") : Tr("Add a caption");
 
             var ratings = photos.Select(p => p.Rating).Distinct().ToList();
             Rating = ratings.Count == 1 && ratings[0] > 0 ? ratings[0] : -1;
@@ -169,7 +170,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
             DateText = date?.ToDisplayDate() ?? "";
             // Photos only store an offset, not a place, so the saved offset is offered as its own entry.
             TimeZones = date?.Offset is { } saved
-                ? TimeZoneChoice.List(TimeZoneChoice.Unknown(), TimeZoneChoice.Fixed(saved, "as saved in the photo"))
+                ? TimeZoneChoice.List(TimeZoneChoice.Unknown(), TimeZoneChoice.Fixed(saved, Tr("as saved in the photo")))
                 : TimeZoneChoice.List(TimeZoneChoice.Unknown());
             // Reset first: replacing the list clears the combo box, so the index must be raised again even if unchanged.
             _timeZoneIndex = -1;
@@ -177,9 +178,9 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
             Summary = items.Count switch
             {
-                0 => "No photo selected",
+                0 => Tr("No photo selected"),
                 1 => photos[0].FileName,
-                _ => $"{items.Count} photos selected",
+                _ => Tr("{0} photos selected", items.Count),
             };
             Details = items.Count == 1 ? DescribeSingle(photos[0]) : "";
         }
@@ -209,12 +210,12 @@ public sealed class MetadataEditorViewModel : ObservableObject
         {
             if (string.IsNullOrWhiteSpace(DateText))
             {
-                ValidationError = "Enter a date such as 2024-07-01 14:30:00.";
+                ValidationError = Tr("Enter a date such as 2024-07-01 14:30:00.");
                 return false;
             }
             if (!DateTaken.TryParse(DateText, out var parsed))
             {
-                ValidationError = $"\"{DateText}\" is not a date. Use the form 2024-07-01 14:30:00.";
+                ValidationError = Tr("\"{0}\" is not a date. Use the form 2024-07-01 14:30:00.", DateText);
                 return false;
             }
             var zone = TimeZoneIndex >= 0 && TimeZoneIndex < TimeZones.Count ? TimeZones[TimeZoneIndex] : null;
@@ -261,7 +262,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
         if (photo.Width is { } w && photo.Height is { } h)
         {
             var (dw, dh) = Orientation.SwapsDimensions(photo.Orientation) ? (h, w) : (w, h);
-            lines.Add($"{dw} × {dh} pixels");
+            lines.Add(Tr("{0} × {1} pixels", dw, dh));
         }
         lines.Add(FormatSize(photo.FileSize));
         if (photo.Place is { } place)
@@ -274,8 +275,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
     private static string FormatSize(long bytes) => bytes switch
     {
-        >= 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.0} MB",
-        >= 1024 => $"{bytes / 1024.0:0} KB",
-        _ => $"{bytes} bytes",
+        >= 1024 * 1024 => Tr("{0:0.0} MB", bytes / (1024.0 * 1024)),
+        >= 1024 => Tr("{0:0} KB", bytes / 1024.0),
+        _ => Tr("{0} bytes", bytes),
     };
 }

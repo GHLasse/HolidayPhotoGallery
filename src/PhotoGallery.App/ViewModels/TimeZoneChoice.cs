@@ -1,4 +1,5 @@
 using PhotoGallery.Core.Metadata;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -29,7 +30,7 @@ public sealed class TimeZoneChoice
 
     public override string ToString() => Display;
 
-    public static TimeZoneChoice Unknown(string display = "Unknown") => new(display, null, null);
+    public static TimeZoneChoice Unknown(string? display = null) => new(display ?? Tr("Unknown"), null, null);
 
     public static TimeZoneChoice Fixed(TimeSpan offset, string note) =>
         new($"UTC{DateTaken.FormatOffset(offset)} ({note})", null, offset);

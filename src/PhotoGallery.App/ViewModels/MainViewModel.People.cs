@@ -5,6 +5,7 @@ using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -97,14 +98,14 @@ public sealed partial class MainViewModel
         IsBusy = true;
         try
         {
-            var progress = new Progress<double>(p => StatusText = $"Downloading the face models… {p:P0}");
+            var progress = new Progress<double>(p => StatusText = Tr("Downloading the face models… {0:P0}", p));
             await FaceModel.DownloadAsync(FaceModelFolder, progress);
-            Inform("The face models are ready.");
+            Inform(Tr("The face models are ready."));
             return true;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
         {
-            ErrorMessage = $"The face models could not be downloaded ({ex.Message}). Check the internet connection and try again.";
+            ErrorMessage = Tr("The face models could not be downloaded ({0}). Check the internet connection and try again.", ex.Message);
             StatusText = "";
             return false;
         }
@@ -122,7 +123,7 @@ public sealed partial class MainViewModel
     {
         if (items.Count == 0)
         {
-            Warn("Select the photos to find people in.");
+            Warn(Tr("Select the photos to find people in."));
             return 0;
         }
 
@@ -141,14 +142,14 @@ public sealed partial class MainViewModel
 
             if (todo.Count > 0 && _faceAnalyzer is null)
             {
-                StatusText = "Loading the face models…";
+                StatusText = Tr("Loading the face models…");
                 _faceAnalyzer = await Task.Run(() => FaceAnalyzer.Load(FaceModelFolder));
             }
 
             for (var i = 0; i < todo.Count; i++)
             {
                 var item = todo[i];
-                StatusText = $"Looking for people in {i + 1} of {todo.Count}…";
+                StatusText = Tr("Looking for people in {0} of {1}…", i + 1, todo.Count);
                 try
                 {
                     var image = await ImageLoader.DecodePixelsAsync(item.Path, FaceAnalyzer.ImageSize);
@@ -175,7 +176,7 @@ public sealed partial class MainViewModel
         {
             _faceAnalyzer?.Dispose();
             _faceAnalyzer = null;
-            failures.Add($"The face models could not be loaded ({ex.Message}).");
+            failures.Add(Tr("The face models could not be loaded ({0}).", ex.Message));
         }
         finally
         {
@@ -184,10 +185,10 @@ public sealed partial class MainViewModel
 
         ForgetMatcher();
         var unnamed = await Task.Run(() => _index.GetAllFaces().Count(f => f.Person is null));
-        ErrorMessage = failures.Count == 0 ? null : "Some photos could not be looked at. " + string.Join(" ", failures);
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be looked at.") + " " + string.Join(" ", failures);
         Inform(looked == 0 && failures.Count == 0
-            ? "These photos were already looked at."
-            : $"Found {found} face(s) in {looked} photo(s). {unnamed} face(s) in the library have no name yet.");
+            ? Tr("These photos were already looked at.")
+            : Tr("Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.", found, looked, unnamed));
         FacesChanged?.Invoke();
         return unnamed;
     }
@@ -296,12 +297,14 @@ public sealed partial class MainViewModel
         name = name.Trim();
         if (string.IsNullOrEmpty(name))
             return 0;
-        return await ChangePeopleAsync(faces, (people, face) => FaceLinks.Name(people, face.Box, name), $"Naming {name} in");
+        return await ChangePeopleAsync(faces, (people, face) => FaceLinks.Name(people, face.Box, name),
+            (n, total) => Tr("Naming {0} in {1} of {2} photo(s)…", name, n, total));
     }
 
     /// <summary>Takes the name off a face, in the file too.</summary>
     public Task<int> UnnameFaceAsync(FoundFace face) =>
-        ChangePeopleAsync([face], (people, f) => FaceLinks.Unname(people, f.Box), "Removing the name from");
+        ChangePeopleAsync([face], (people, f) => FaceLinks.Unname(people, f.Box),
+            (n, total) => Tr("Removing the name from {0} of {1} photo(s)…", n, total));
 
     /// <summary>Removes a person named in the file of a photo, e.g. one tagged without a found face.</summary>
     public async Task RemovePersonAsync(PhotoItemViewModel item, PersonTag person)
@@ -319,7 +322,7 @@ public sealed partial class MainViewModel
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
         {
-            ErrorMessage = $"Could not change {item.FileName}: {ex.Message}";
+            ErrorMessage = Tr("Could not change {0}: {1}", item.FileName, ex.Message);
         }
         finally
         {
@@ -328,7 +331,7 @@ public sealed partial class MainViewModel
         await AfterPeopleChangedAsync();
     }
 
-    private async Task<int> ChangePeopleAsync(IReadOnlyList<FoundFace> faces, Func<IReadOnlyList<PersonTag>, FoundFace, IReadOnlyList<PersonTag>> change, string doing)
+    private async Task<int> ChangePeopleAsync(IReadOnlyList<FoundFace> faces, Func<IReadOnlyList<PersonTag>, FoundFace, IReadOnlyList<PersonTag>> change, Func<int, int, string> doing)
     {
         if (_metadata is null || _indexer is null || faces.Count == 0)
             return 0;
@@ -345,7 +348,7 @@ public sealed partial class MainViewModel
             for (var i = 0; i < photos.Count; i++)
             {
                 var path = photos[i].Key;
-                StatusText = $"{doing} {i + 1} of {photos.Count} photo(s)…";
+                StatusText = doing(i + 1, photos.Count);
                 try
                 {
                     // The file is the source of truth, so its people are read fresh before changing them.
@@ -371,8 +374,8 @@ public sealed partial class MainViewModel
             _peopleWriting.Release();
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some photos could not be changed. " + string.Join(" ", failures);
-        Inform($"Changed the people in {changed} photo(s)");
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
+        Inform(Tr("Changed the people in {0} photo(s)", changed));
         await AfterPeopleChangedAsync();
         return changed;
     }
@@ -396,7 +399,7 @@ public sealed partial class MainViewModel
             for (var i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                StatusText = $"Adding {name} to {i + 1} of {items.Count} photo(s)…";
+                StatusText = Tr("Adding {0} to {1} of {2} photo(s)…", name, i + 1, items.Count);
                 try
                 {
                     var current = await _metadata.ReadAsync(item.Path);
@@ -419,8 +422,8 @@ public sealed partial class MainViewModel
             _peopleWriting.Release();
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some photos could not be changed. " + string.Join(" ", failures);
-        Inform($"Added {name} to {changed} photo(s)");
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
+        Inform(Tr("Added {0} to {1} photo(s)", name, changed));
         await AfterPeopleChangedAsync();
         return changed;
     }
