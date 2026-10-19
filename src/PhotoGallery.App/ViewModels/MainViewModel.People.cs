@@ -94,7 +94,7 @@ public sealed partial class MainViewModel
         {
             var progress = new Progress<double>(p => StatusText = $"Downloading the face models… {p:P0}");
             await FaceModel.DownloadAsync(FaceModelFolder, progress);
-            StatusText = "The face models are ready.";
+            Inform("The face models are ready.");
             return true;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
@@ -117,7 +117,7 @@ public sealed partial class MainViewModel
     {
         if (items.Count == 0)
         {
-            ErrorMessage = "Select the photos to find people in.";
+            Warn("Select the photos to find people in.");
             return 0;
         }
 
@@ -180,9 +180,9 @@ public sealed partial class MainViewModel
         ForgetMatcher();
         var unnamed = await Task.Run(() => _index.GetAllFaces().Count(f => f.Person is null));
         ErrorMessage = failures.Count == 0 ? null : "Some photos could not be looked at. " + string.Join(" ", failures);
-        StatusText = looked == 0 && failures.Count == 0
+        Inform(looked == 0 && failures.Count == 0
             ? "These photos were already looked at."
-            : $"Found {found} face(s) in {looked} photo(s). {unnamed} face(s) in the library have no name yet.";
+            : $"Found {found} face(s) in {looked} photo(s). {unnamed} face(s) in the library have no name yet.");
         FacesChanged?.Invoke();
         return unnamed;
     }
@@ -355,7 +355,7 @@ public sealed partial class MainViewModel
         }
 
         ErrorMessage = failures.Count == 0 ? null : "Some photos could not be changed. " + string.Join(" ", failures);
-        StatusText = $"Changed the people in {changed} photo(s)";
+        Inform($"Changed the people in {changed} photo(s)");
         await AfterPeopleChangedAsync();
         return changed;
     }
@@ -403,7 +403,7 @@ public sealed partial class MainViewModel
         }
 
         ErrorMessage = failures.Count == 0 ? null : "Some photos could not be changed. " + string.Join(" ", failures);
-        StatusText = $"Added {name} to {changed} photo(s)";
+        Inform($"Added {name} to {changed} photo(s)");
         await AfterPeopleChangedAsync();
         return changed;
     }

@@ -29,11 +29,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private IReadOnlyList<string> _selectedTags = [];
     private string _searchText = "";
     private int _minRating;
+    private bool _flaggedOnly;
     private DateTimeOffset? _takenFrom;
     private DateTimeOffset? _takenTo;
     private string _statusText = "";
     private bool _isBusy;
-    private string? _errorMessage;
+    private string _countText = "";
     private CancellationTokenSource? _searchDelay;
     private int _searchVersion;
     private bool _isUpdatingTags;
@@ -93,17 +94,52 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public bool IsBusy { get => _isBusy; private set => SetProperty(ref _isBusy, value); }
 
+    /// <summary>
+    /// Setting a message shows it as a red banner; null does nothing, since banners close by themselves.
+    /// Kept as a property so the many "error or null" results read naturally.
+    /// </summary>
     public string? ErrorMessage
     {
-        get => _errorMessage;
+        get => null;
         set
         {
-            if (SetProperty(ref _errorMessage, value))
-                OnPropertyChanged(nameof(HasError));
+            if (!string.IsNullOrEmpty(value))
+                Notify(value, NoticeSeverity.Error);
         }
     }
 
-    public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+    /// <summary>The messages shown as banners at the top of the window, newest first.</summary>
+    public ObservableCollection<Notice> Notices { get; } = [];
+
+    /// <summary>A result for the user, shown as a blue banner; the status bar goes back to the photo count.</summary>
+    public void Inform(string message) => Notify(message, NoticeSeverity.Info);
+
+    /// <summary>Something the user should do differently, shown as a yellow banner.</summary>
+    public void Warn(string message) => Notify(message, NoticeSeverity.Warning);
+
+    private const int MaxNotices = 3;
+
+    private void Notify(string message, NoticeSeverity severity)
+    {
+        if (!IsBusy)
+            StatusText = _countText;
+        // The same message again moves to the top instead of showing twice.
+        if (Notices.FirstOrDefault(n => n.Message == message) is { } same)
+            Notices.Remove(same);
+        var notice = new Notice(message, severity);
+        Notices.Insert(0, notice);
+        while (Notices.Count > MaxNotices)
+            Notices.RemoveAt(Notices.Count - 1);
+        _ = CloseLaterAsync(notice);
+    }
+
+    private async Task CloseLaterAsync(Notice notice)
+    {
+        await Task.Delay(Notice.ShowFor);
+        Notices.Remove(notice);
+    }
+
+    public void CloseNotice(Notice notice) => Notices.Remove(notice);
 
     /// <summary>The folder whose photos (including subfolders) are shown, or null for the whole library.</summary>
     public FolderNodeViewModel? SelectedFolder
@@ -144,6 +180,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         set
         {
             if (SetProperty(ref _minRating, Math.Max(0, value)))
+                _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Shows only flagged photos.</summary>
+    public bool FlaggedOnly
+    {
+        get => _flaggedOnly;
+        set
+        {
+            if (SetProperty(ref _flaggedOnly, value))
                 _ = SearchAsync();
         }
     }
@@ -286,6 +333,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Tags = SelectedTags,
             People = SelectedPeople,
             MinRating = MinRating,
+            FlaggedOnly = FlaggedOnly,
             Camera = _selectedCamera,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,
@@ -300,8 +348,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UpdateTags(tags);
         UpdatePeople(people);
         UpdateCameras(cameras);
+        _countText = photos.Count == 1 ? "1 photo" : $"{photos.Count:N0} photos";
         if (!IsBusy)
-            StatusText = photos.Count == 1 ? "1 photo" : $"{photos.Count:N0} photos";
+            StatusText = _countText;
     }
 
     private void UpdateTags(IReadOnlyList<(string Tag, int Count)> tags)
@@ -404,7 +453,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         ErrorMessage = failures.Count == 0 ? null : "Some photos could not be saved. " + string.Join(" ", failures);
-        StatusText = failures.Count == 0 ? $"Saved {edits.Count} photo(s)" : $"Saved {edits.Count - failures.Count} of {edits.Count} photos";
+        Inform(failures.Count == 0 ? $"Saved {edits.Count} photo(s)" : $"Saved {edits.Count - failures.Count} of {edits.Count} photos");
         Editor.Load(items);
         await RefreshTagsAsync();
         return failures.Count == 0;
@@ -444,9 +493,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
 
-        StatusText = skipped == 0
-            ? $"Rotated {rotatable.Count} photo(s)"
-            : $"Rotated {rotatable.Count} photo(s). {skipped} skipped: rotating HEIC, PNG, WebP and GIF files is not supported yet.";
+        if (skipped == 0)
+            Inform($"Rotated {rotatable.Count} photo(s)");
+        else
+            Warn($"Rotated {rotatable.Count} photo(s). {skipped} skipped: rotating HEIC, PNG, WebP and GIF files is not supported yet.");
     }
 
     /// <summary>
@@ -457,12 +507,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         List<string> folders = SelectedFolder is { } folder ? [folder.FullPath] : [.. _settings.Folders];
         var changed = await Task.Run(() => folders.Sum(f => ReadOnlyPhotos.MakeWritable(f)));
-        StatusText = changed switch
+        Inform(changed switch
         {
             0 => "No read-only photos found.",
             1 => "1 photo is now editable.",
             _ => $"{changed:N0} photos are now editable.",
-        };
+        });
     }
 
     /// <summary>Sets one photo's star rating straight away, as the compare view does.</summary>
@@ -475,13 +525,49 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             await _metadata.WriteAsync(item.Path, new MetadataChanges { Rating = stars });
             if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                 item.Photo = updated;
-            StatusText = stars == 0 ? $"Removed the rating of {item.FileName}" : $"Rated {item.FileName} {new string('★', stars)}";
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
         {
             ErrorMessage = $"Could not rate {item.FileName}: {ex.Message}";
         }
     }
+
+    /// <summary>Rates several photos at once, e.g. with the number keys in the grid.</summary>
+    public async Task SetRatingAsync(IReadOnlyList<PhotoItemViewModel> items, int stars)
+    {
+        foreach (var item in items)
+            await SetRatingAsync(item, stars);
+    }
+
+    /// <summary>
+    /// Flags the photos, or unflags them when all of them are flagged already (the P key, like Lightroom).
+    /// The flag shows on the thumbnails straight away, so no banner is needed.
+    /// </summary>
+    public async Task ToggleFlagAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        if (_metadata is null || _indexer is null || items.Count == 0)
+            return;
+        var flag = items.Any(i => !i.Photo.Flagged);
+        var failures = new List<string>();
+        foreach (var item in items.Where(i => i.Photo.Flagged != flag))
+        {
+            try
+            {
+                await _metadata.WriteAsync(item.Path, new MetadataChanges { Flagged = flag });
+                if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                    item.Photo = updated;
+            }
+            catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+            {
+                failures.Add($"{item.FileName}: {ex.Message}");
+            }
+        }
+        ErrorMessage = failures.Count == 0 ? null : (flag ? "Some photos could not be flagged. " : "Some flags could not be removed. ") + string.Join(" ", failures);
+        FlagsChanged?.Invoke();
+    }
+
+    /// <summary>Raised after flags were written, so the info pane can show them.</summary>
+    public event Action? FlagsChanged;
 
     /// <summary>
     /// Moves the date taken of the photos by <paramref name="delta"/> and optionally puts them in a new time zone
@@ -527,8 +613,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ErrorMessage = failures.Count == 0 ? null : "Some dates could not be changed. " + string.Join(" ", failures);
         // Re-sort, since the photos' dates have moved.
         await SearchAsync();
-        StatusText = $"Changed the date of {dated.Count - failures.Count} photo(s)" +
-                     (items.Count > dated.Count ? $"; {items.Count - dated.Count} without a date were left alone" : "");
+        Inform($"Changed the date of {dated.Count - failures.Count} photo(s)" +
+                     (items.Count > dated.Count ? $"; {items.Count - dated.Count} without a date were left alone" : ""));
     }
 
     /// <summary>Writes a GPS position into the photos, or with null removes their GPS information.</summary>
@@ -565,9 +651,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         ErrorMessage = failures.Count == 0 ? null : "Some locations could not be saved. " + string.Join(" ", failures);
         var done = items.Count - failures.Count;
-        StatusText = position is null
+        Inform(position is null
             ? $"Removed the location from {done} photo(s)"
-            : $"Placed {done} photo(s) on the map";
+            : $"Placed {done} photo(s) on the map");
     }
 
     /// <summary>
@@ -580,7 +666,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         if (items.Count == 0)
         {
-            ErrorMessage = "Select the photos to add place names to.";
+            Warn("Select the photos to add place names to.");
             return;
         }
 
@@ -588,7 +674,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var skipped = items.Count - located.Count;
         if (located.Count == 0)
         {
-            ErrorMessage = "None of the selected photos has a GPS position. Place them on the map first.";
+            Warn("None of the selected photos has a GPS position. Place them on the map first.");
             return;
         }
 
@@ -638,7 +724,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             notes.Add($"{skipped} without GPS skipped");
         if (unknown > 0)
             notes.Add($"{unknown} with no place found");
-        StatusText = $"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : "");
+        Inform($"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : ""));
     }
 
     /// <summary>The crop shape the crop tool starts with (a CropRatios key).</summary>
@@ -679,7 +765,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             var progress = new Progress<double>(p => StatusText = $"Downloading the tagging model… {p:P0}");
             await TagModel.DownloadAsync(TagModelFolder, progress);
-            StatusText = "The tagging model is ready.";
+            Inform("The tagging model is ready.");
             return true;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
@@ -704,13 +790,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         if (items.Count == 0)
         {
-            ErrorMessage = "Select the photos to tag.";
+            Warn("Select the photos to tag.");
             return;
         }
         var labels = AutoTagLabels;
         if (labels.Count == 0)
         {
-            ErrorMessage = "The auto-tag list is empty. Add tags to it in Auto-tag settings.";
+            Warn("The auto-tag list is empty. Add tags to it in Settings.");
             return;
         }
 
@@ -779,7 +865,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         ErrorMessage = failures.Count == 0 ? null : "Some photos could not be tagged. " + string.Join(" ", failures);
-        StatusText = $"Auto-tagged {tagged} photo(s) with {added} tag(s)";
+        Inform($"Auto-tagged {tagged} photo(s) with {added} tag(s)");
         await RefreshTagsAsync();
     }
 
@@ -791,7 +877,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var tagged = items.Where(i => i.Photo.Tags.Any(AutoTags.IsAuto)).ToList();
         if (tagged.Count == 0)
         {
-            StatusText = items.Count == 0 ? "Select the photos to remove auto tags from." : "None of the selected photos has auto tags.";
+            Warn(items.Count == 0 ? "Select the photos to remove auto tags from." : "None of the selected photos has auto tags.");
             return;
         }
 
@@ -821,7 +907,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         ErrorMessage = failures.Count == 0 ? null : "Some auto tags could not be removed. " + string.Join(" ", failures);
-        StatusText = $"Removed auto tags from {tagged.Count - failures.Count} photo(s)";
+        Inform($"Removed auto tags from {tagged.Count - failures.Count} photo(s)");
         await RefreshTagsAsync();
     }
 
@@ -867,9 +953,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var newPath = await _photoEditor.SaveEditAsync(path, extension, image.Width, image.Height,
                                                            target => ImageEncoder.EncodeAsync(image, target), kept);
             await AfterFileReplacedAsync(item, path, newPath);
-            StatusText = newPath == path
+            Inform(newPath == path
                 ? $"Saved the edit of {item.FileName}. The original is in the hidden .originals folder."
-                : $"Saved the edit as {Path.GetFileName(newPath)}. The original is in the hidden .originals folder.";
+                : $"Saved the edit as {Path.GetFileName(newPath)}. The original is in the hidden .originals folder.");
             return true;
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.COMException)
@@ -900,7 +986,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             var restored = await restore(path, CancellationToken.None);
             await AfterFileReplacedAsync(item, path, restored);
-            StatusText = $"{done} {item.FileName}";
+            Inform($"{done} {item.FileName}");
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {

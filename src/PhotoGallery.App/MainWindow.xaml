@@ -51,7 +51,7 @@
                     </AppBarButton.Icon>
                 </AppBarButton>
                 <AppBarSeparator />
-                <AppBarButton Label="Compare" Click="Compare_Click" ToolTipService.ToolTip="Show 1 to 4 selected photos side by side to rate them (Enter)">
+                <AppBarButton Label="Compare" Click="Compare_Click" ToolTipService.ToolTip="Show 1 to 4 selected photos side by side to rate them (C)">
                     <AppBarButton.Icon>
                         <FontIcon Glyph="&#xE89F;" />
                     </AppBarButton.Icon>
@@ -68,7 +68,7 @@
                     </AppBarButton.Icon>
                 </AppBarButton>
                 <AppBarToggleButton x:Name="MapToggle" Icon="Map" Label="Map" Click="Map_Click"
-                                    ToolTipService.ToolTip="Show where the photos were taken, and place the selected photos on the map" />
+                                    ToolTipService.ToolTip="Show where the photos were taken, and place the selected photos on the map (M)" />
                 <AppBarButton Label="Add place names" Click="AddPlaceNames_Click"
                               ToolTipService.ToolTip="Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files">
                     <AppBarButton.Icon>
@@ -102,6 +102,11 @@
                     </AppBarButton.Icon>
                 </AppBarButton>
                 <CommandBar.SecondaryCommands>
+                    <AppBarButton Label="Keyboard shortcuts" Click="Shortcuts_Click" ToolTipService.ToolTip="List the keyboard shortcuts (? or F1)">
+                        <AppBarButton.Icon>
+                            <FontIcon Glyph="&#xE765;" />
+                        </AppBarButton.Icon>
+                    </AppBarButton>
                     <AppBarButton Label="Remove auto tags" Click="RemoveAutoTags_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
                                   ToolTipService.ToolTip="Remove the Auto/… tags from the selected photos; your own tags stay">
                         <AppBarButton.Icon>
@@ -126,6 +131,13 @@
                     <ComboBoxItem Content="★★★★ and up" />
                     <ComboBoxItem Content="★★★★★" />
                 </ComboBox>
+                <ToggleButton VerticalAlignment="Center" IsChecked="{x:Bind ViewModel.FlaggedOnly, Mode=TwoWay}"
+                              ToolTipService.ToolTip="Only flagged photos">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE7C1;" FontSize="14" />
+                        <TextBlock Text="Flagged" />
+                    </StackPanel>
+                </ToggleButton>
                 <!-- Filled from code, like the time zone list: editing a bound list while x:Bind also sets
                      the index crashed the app inside WinUI. -->
                 <ComboBox x:Name="CameraCombo" VerticalAlignment="Center" MinWidth="150" MaxWidth="260"
@@ -145,10 +157,8 @@
             </StackPanel>
         </Grid>
 
-        <InfoBar Grid.Row="1" Grid.ColumnSpan="3" Margin="12,0,12,8" Severity="Error"
-                 IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                 CloseButtonClick="ErrorBar_CloseButtonClick" />
+        <!-- Messages as banners, newest first; filled from code when ViewModel.Notices changes. -->
+        <StackPanel x:Name="NoticePanel" Grid.Row="1" Grid.ColumnSpan="3" Margin="12,0,12,0" Spacing="4" />
 
         <!-- Navigation: folders and tags -->
         <Grid Grid.Row="2" Grid.Column="0" Padding="8,0,0,8" RowSpacing="4">
@@ -255,6 +265,11 @@
                               ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
                             <FontIcon Glyph="&#xEB9F;" FontSize="32" Opacity="0.3" />
                             <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4,4,4,24" />
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind FlagVisibility, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Flagged">
+                                <FontIcon Glyph="&#xE7C1;" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
                             <Grid VerticalAlignment="Bottom" Height="22" Padding="6,0" ColumnSpacing="4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -280,8 +295,17 @@
                 <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.Editor.HasSelection, Mode=OneWay}">
                     <StackPanel Spacing="4">
                         <TextBlock Text="Rating" />
-                        <RatingControl HorizontalAlignment="Left" IsClearEnabled="True"
-                                       Value="{x:Bind ViewModel.Editor.Rating, Mode=TwoWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <RatingControl VerticalAlignment="Center" IsClearEnabled="True"
+                                           Value="{x:Bind ViewModel.Editor.Rating, Mode=TwoWay}" />
+                            <!-- Written straight away, like the P key; filled from the selection in code. -->
+                            <ToggleButton x:Name="FlagButton" VerticalAlignment="Center" Click="Flag_Click" ToolTipService.ToolTip="Flag or unflag the selected photos (P)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE7C1;" FontSize="14" />
+                                    <TextBlock Text="Flag" />
+                                </StackPanel>
+                            </ToggleButton>
+                        </StackPanel>
                     </StackPanel>
                     <TextBox Header="Caption" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60"
                              PlaceholderText="{x:Bind ViewModel.Editor.CaptionPlaceholder, Mode=OneWay}"

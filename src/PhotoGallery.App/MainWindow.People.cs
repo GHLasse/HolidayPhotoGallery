@@ -23,7 +23,7 @@ public sealed partial class MainWindow
     {
         if (photos.Count == 0)
         {
-            ViewModel.ErrorMessage = "Select the photos to find people in.";
+            ViewModel.Warn("Select the photos to find people in.");
             return;
         }
         if (!MainViewModel.IsFaceModelInstalled)
@@ -223,7 +223,7 @@ public sealed partial class MainWindow
         var photos = SelectedPhotos;
         if (photos.Count == 0)
         {
-            ViewModel.ErrorMessage = "Select the photos to add a person to.";
+            ViewModel.Warn("Select the photos to add a person to.");
             return;
         }
         var nameBox = NameBox(_ => Task.CompletedTask);
