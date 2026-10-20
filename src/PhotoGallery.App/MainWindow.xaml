@@ -706,10 +706,9 @@
                     Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
                     Opacity="0" IsHitTestVisible="False" Translation="0,24,0">
-                <Border.Shadow>
-                    <ThemeShadow />
-                </Border.Shadow>
-                <CommandBar x:Name="SelectionCommands" Background="Transparent" IsOpen="False" DefaultLabelPosition="Right"
+                <!-- MaxWidth: centred, the bar would otherwise be measured with no width limit, which the
+                     command bar's overflow can't handle. -->
+                <CommandBar x:Name="SelectionCommands" Background="Transparent" IsOpen="False" DefaultLabelPosition="Right" MaxWidth="1100"
                             OverflowButtonVisibility="Auto">
                     <CommandBar.Content>
                         <TextBlock x:Name="SelectionCountText" VerticalAlignment="Center" Margin="0,0,8,0"
