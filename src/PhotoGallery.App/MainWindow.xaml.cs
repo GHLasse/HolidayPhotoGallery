@@ -486,7 +486,11 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Close,
         };
         if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
+        {
+            App.Trace($"recycle bin: {rejected.Count} rejected photos");
             await ViewModel.RecycleRejectedAsync();
+            App.Trace("recycle bin: done");
+        }
     }
 
     // ---- Banners ----
@@ -495,6 +499,7 @@ public sealed partial class MainWindow : Window
     {
         // Bars already shown stay, so only a new one slides in and the others move up when one goes.
         var notices = ViewModel.Notices.ToList();
+        App.Trace($"banners: {notices.Count}");
         foreach (var old in NoticePanel.Children.OfType<InfoBar>().Where(b => b.Tag is not Notice n || !notices.Contains(n)).ToList())
             NoticePanel.Children.Remove(old);
         for (var i = 0; i < notices.Count; i++)
@@ -757,6 +762,7 @@ public sealed partial class MainWindow : Window
 
     private void OpenViewer(PhotoItemViewModel item)
     {
+        App.Trace("viewer: open");
         var tile = TileImageBounds(item); // before the viewer covers it
         _viewerItems = ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
@@ -770,6 +776,7 @@ public sealed partial class MainWindow : Window
 
     private void CloseViewer()
     {
+        App.Trace("viewer: close");
         EndEdit();
         StartCloseMotion();
         _viewerPixels = null;

@@ -37,7 +37,7 @@ public sealed partial class MainWindow
             column.Width = new GridLength(from + (to - from) * eased);
             if (t < 1)
                 return;
-            App.TraceStartup($"column slid to {to:0}");
+            App.Trace($"column slid to {to:0}");
             CompositionTarget.Rendering -= step;
             _columnAnimations.Remove(column);
             done?.Invoke();
