@@ -240,6 +240,7 @@
     "Google Photos refused the request ({0}): {1}": "Google Photos rechazó la solicitud ({0}): {1}",
     "Google Photos says the daily limit is reached. Try again tomorrow.": "Google Photos indica que se alcanzó el límite diario. Inténtalo de nuevo mañana.",
     "Group {0} of {1}: {2} face(s) that look like the same person{3}. ": "Grupo {0} de {1}: {2} cara(s) que parecen de la misma persona{3}. ",
+    "Grouping the faces that have no name…": "Agrupando las caras sin nombre…",
     "Hide or show the side panes": "Ocultar o mostrar los paneles laterales",
     "Hide or show the side panes and the filter bar": "Ocultar o mostrar los paneles laterales y la barra de filtros",
     "Hide these faces": "Ocultar estas caras",

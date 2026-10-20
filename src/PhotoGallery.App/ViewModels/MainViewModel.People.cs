@@ -10,7 +10,15 @@ using static PhotoGallery.Core.Localization.Strings;
 namespace PhotoGallery.App.ViewModels;
 
 /// <summary>Unnamed faces that look like the same person, and who they may be.</summary>
-public sealed record FaceGroup(IReadOnlyList<FoundFace> Faces, NameSuggestion? Suggestion);
+public sealed class FaceGroup(IReadOnlyList<FoundFace> faces, Func<NameSuggestion?> suggest)
+{
+    private readonly Lazy<NameSuggestion?> _suggestion = new(suggest);
+
+    public IReadOnlyList<FoundFace> Faces { get; } = faces;
+
+    /// <summary>Worked out when the group is shown: for thousands of groups at once it took many seconds.</summary>
+    public NameSuggestion? Suggestion => _suggestion.Value;
+}
 
 /// <summary>Finding, recognising and naming the people in the photos.</summary>
 public sealed partial class MainViewModel
@@ -369,11 +377,29 @@ public sealed partial class MainViewModel
 
     private void ForgetMatcher() => _matcher = null;
 
+    private static IEnumerable<T> Sample<T>(IReadOnlyList<T> items, int count) =>
+        items.Count <= count ? items : Enumerable.Range(0, count).Select(i => items[i * items.Count / count]);
+
     /// <summary>
     /// The unnamed faces of the library in groups that look like the same person, biggest group first,
     /// each with a suggested name when it looks like someone already named.
     /// </summary>
     public async Task<IReadOnlyList<FaceGroup>> GroupUnnamedFacesAsync()
+    {
+        IsBusy = true;
+        StatusText = Tr("Grouping the faces that have no name…");
+        try
+        {
+            return await GroupUnnamedFacesCoreAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+            StatusText = _countText;
+        }
+    }
+
+    private async Task<IReadOnlyList<FaceGroup>> GroupUnnamedFacesCoreAsync()
     {
         var matcher = await GetMatcherAsync();
         return await Task.Run(() =>
@@ -383,15 +409,14 @@ public sealed partial class MainViewModel
             foreach (var members in FaceMatcher.Group(unnamed.Select(f => f.Embedding).ToList()))
             {
                 var faces = members.Select(i => unnamed[i]).ToList();
-                // The name most of the group's faces point to.
-                var suggestion = faces
+                // The name most of the group's faces point to; a sample of the group is enough.
+                groups.Add(new FaceGroup(faces, () => Sample(faces, 12)
                     .Select(f => matcher.Suggest(f.Embedding, f.Rejected))
                     .OfType<NameSuggestion>()
                     .GroupBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase)
                     .OrderByDescending(g => g.Count()).ThenByDescending(g => g.Max(s => s.Similarity))
                     .Select(g => g.OrderByDescending(s => s.Similarity).First())
-                    .FirstOrDefault();
-                groups.Add(new FaceGroup(faces, suggestion));
+                    .FirstOrDefault()));
             }
             return (IReadOnlyList<FaceGroup>)groups;
         });

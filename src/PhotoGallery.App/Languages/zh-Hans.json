@@ -240,6 +240,7 @@
     "Google Photos refused the request ({0}): {1}": "Google Photos 拒绝了请求 ({0})：{1}",
     "Google Photos says the daily limit is reached. Try again tomorrow.": "Google Photos 表示已达到每日限制。请明天再试。",
     "Group {0} of {1}: {2} face(s) that look like the same person{3}. ": "第 {0} 组，共 {1} 组：{2} 张看起来像同一人的面部{3}。 ",
+    "Grouping the faces that have no name…": "正在对未命名的面孔分组…",
     "Hide or show the side panes": "隐藏或显示侧边窗格",
     "Hide or show the side panes and the filter bar": "隐藏或显示侧边窗格和筛选栏",
     "Hide these faces": "隐藏这些面孔",
