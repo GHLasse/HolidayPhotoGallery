@@ -530,13 +530,6 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <!-- The grid; empty in the Map workspace, where the map takes the whole width. -->
-                <ColumnDefinition x:Name="GridColumn" Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <!-- The map, next to the grid like in Geosetter; opened with the Map button, resized with the splitter. -->
-                <ColumnDefinition x:Name="MapColumn" Width="0" />
-            </Grid.ColumnDefinitions>
             <!-- What is shown, then the ticked tags, people and places as badges, each with × to drop it from the filter. -->
             <Grid Grid.ColumnSpan="3" ColumnSpacing="12" Margin="4,0">
                 <Grid.ColumnDefinitions>
@@ -770,8 +763,6 @@
                     BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1">
                 <TextBlock x:Name="TimelineBubbleText" Style="{ThemeResource BodyStrongTextBlockStyle}" />
             </Border>
-            <controls:PaneSplitter x:Name="MapSplitter" Grid.Row="1" Grid.Column="1" Visibility="Collapsed" />
-            <controls:MapPanel x:Name="MapView" Grid.Row="1" Grid.Column="2" Visibility="Collapsed" />
 
             <!-- What can be done with the selected photos; rises from the bottom while any are selected. -->
             <Border x:Name="SelectionBar" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Bottom"
@@ -1010,6 +1001,11 @@
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
+
+        <!-- The map, next to the grid like in Geosetter, in the info pane's place (it takes its column); opened
+             with the Map button and resized with its splitter. In the Map workspace it spans the photo area too. -->
+        <controls:PaneSplitter x:Name="MapSplitter" Grid.Row="3" Grid.Column="3" Visibility="Collapsed" />
+        <controls:MapPanel x:Name="MapView" Grid.Row="3" Grid.Column="4" Margin="0,0,12,12" Visibility="Collapsed" />
 
         <!-- Full-size viewer, shown over everything but the title bar -->
         <!-- The photo viewer. The controls fade away while the mouse rests (MainWindow.Viewer.cs); L dims the room. -->

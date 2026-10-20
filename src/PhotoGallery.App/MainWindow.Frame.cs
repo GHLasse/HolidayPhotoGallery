@@ -48,7 +48,7 @@ public sealed partial class MainWindow
 
         NavSplitter.Attach(NavColumn, paneBefore: true, min: 180, max: 520, MainViewModel.DefaultNavPaneWidth, _ => SavePaneWidths());
         InfoSplitter.Attach(InfoColumn, paneBefore: false, min: 260, max: 600, MainViewModel.DefaultInfoPaneWidth, _ => SavePaneWidths());
-        MapSplitter.Attach(MapColumn, paneBefore: false, min: 280, max: 1600, MainViewModel.DefaultMapPaneWidth, ViewModel.SaveMapPaneWidth);
+        MapSplitter.Attach(InfoColumn, paneBefore: false, min: 280, max: 1600, MainViewModel.DefaultMapPaneWidth, ViewModel.SaveMapPaneWidth);
         _navFolded = ViewModel.NavPaneFolded;
         ApplyChrome(animate: false);
 
@@ -102,6 +102,8 @@ public sealed partial class MainWindow
     private bool InfoShown => _workspace is Workspace.Library or Workspace.Map &&
                               (_infoForced ?? (PhotoGrid.SelectedItems.Count > 0 && !IsMapShown));
 
+    private bool MapBeside => _workspace == Workspace.Library && MapToggle.IsChecked == true;
+
     private bool IsMapShown => _workspace == Workspace.Map || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
 
     /// <summary>
@@ -120,13 +122,23 @@ public sealed partial class MainWindow
         NavRail.Visibility = rail ? Visibility.Visible : Visibility.Collapsed;
         AnimateColumn(NavColumn, nav ? ViewModel.NavPaneWidth : rail ? RailWidth : 0, animate);
 
+        // The map beside the grid and the info pane share the right-hand column: one or the other.
+        var map = MapBeside && !_chromeHidden;
+        var full = _workspace == Workspace.Map;
+        info &= !map;
         InfoSplitter.Visibility = info ? Visibility.Visible : Visibility.Collapsed;
+        MapSplitter.Visibility = map ? Visibility.Visible : Visibility.Collapsed;
         if (info)
             InfoPane.Visibility = Visibility.Visible;
-        AnimateColumn(InfoColumn, info ? ViewModel.InfoPaneWidth : 0, animate, done: () =>
+        else if (map)
+            InfoPane.Visibility = Visibility.Collapsed;
+        MapView.Visibility = map || full ? Visibility.Visible : Visibility.Collapsed;
+        var width = map ? Math.Min(ViewModel.MapPaneWidth, Math.Max(280, (PhotoArea.ActualWidth + InfoColumn.ActualWidth) * 0.7))
+                  : info ? ViewModel.InfoPaneWidth : 0;
+        AnimateColumn(InfoColumn, width, animate, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
-            if (!(!_panesHidden && !_chromeHidden && InfoShown))
+            if (!(!_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
                 InfoPane.Visibility = Visibility.Collapsed;
         });
         TopBar.Visibility = _chromeHidden || _workspace == Workspace.People ? Visibility.Collapsed : Visibility.Visible;

@@ -94,13 +94,16 @@ public sealed partial class MainWindow
     {
         var full = _workspace == Workspace.Map;
         var open = full || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
-        var beside = open && !full;
-        GridColumn.Width = full ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        MapColumn.Width = full ? new GridLength(1, GridUnitType.Star) : new GridLength(beside ? Math.Min(ViewModel.MapPaneWidth, Math.Max(280, PhotoArea.ActualWidth * 0.7)) : 0);
-        MapSplitter.Visibility = beside ? Visibility.Visible : Visibility.Collapsed;
-        MapView.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        // Beside the grid the map sits in the info pane's column (ApplyChrome); in the Map workspace it
+        // takes the photo area's place as well.
+        Grid.SetColumn(MapView, full ? 2 : 4);
+        Grid.SetColumnSpan(MapView, full ? 3 : 1);
+        if (full)
+            PhotoArea.Visibility = Visibility.Collapsed;
+        else if (_workspace != Workspace.People)
+            PhotoArea.Visibility = Visibility.Visible;
         _infoForced = null;
-        ApplyChrome(); // the info pane makes room for the map
+        ApplyChrome(); // the map takes the info pane's place
         // The selection bar sits over the grid; in the Map workspace there is no grid to sit on.
         _selectionBarAllowed = !full && _workspace != Workspace.Albums;
         ShowSelectionBar(PhotoGrid.SelectedItems.Count > 0);
