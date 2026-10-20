@@ -44,6 +44,7 @@ public sealed partial class MainWindow
         AppTitleBar.Loaded += (_, _) => StyleTitleBar();
         foreach (var tab in ModeBar.Items)
             tab.SizeChanged += (_, _) => WidenTabMark(tab);
+        ModeBar.SelectionChanged += (_, _) => RecolourTabMarks();
 
         // Selected here rather than in XAML, where it would switch workspaces before the window is built.
         _syncingWorkspace = true;
@@ -329,10 +330,20 @@ public sealed partial class MainWindow
 
     // The line under the chosen workspace is a short 16 px dash by default; like Outlook's it runs under
     // most of the word. The template's dash is its only thin rectangle.
-    private static void WidenTabMark(SelectorBarItem tab)
+    // It is also filled with the design colour here: the selector bar ignored the palette's brush.
+    private void WidenTabMark(SelectorBarItem tab)
     {
         foreach (var mark in Descendants(tab).OfType<Microsoft.UI.Xaml.Shapes.Rectangle>().Where(r => (double.IsNaN(r.Height) ? r.ActualHeight : r.Height) is > 0 and <= 4))
+        {
             mark.Width = Math.Max(16, tab.ActualWidth - 28);
+            mark.Fill = ThemeBrush("AccentFillColorDefaultBrush") ?? mark.Fill;
+        }
+    }
+
+    private void RecolourTabMarks()
+    {
+        foreach (var tab in ModeBar.Items)
+            WidenTabMark(tab);
     }
 
     private void SetUpRatingRow()

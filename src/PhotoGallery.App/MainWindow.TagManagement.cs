@@ -237,6 +237,9 @@ public sealed partial class MainWindow
     {
         var sync = new ToggleSwitch
         {
+            // In the app's language; WinUI's own "On"/"Off" follow Windows.
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
             Header = Tr("Keep all dates in sync"),
             IsOn = ViewModel.KeepDatesInSync,
         };

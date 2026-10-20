@@ -1081,6 +1081,9 @@ public sealed partial class MainWindow : Window
         defaultSort.SelectedIndex = ViewModel.DefaultSortIndex;
         var autoAdvance = new ToggleSwitch
         {
+            // In the app's language; WinUI's own "On"/"Off" follow Windows.
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
             Header = Tr("Move to the next photo after rating it in the viewer (also after P and X)"),
             IsOn = ViewModel.AutoAdvance,
         };
@@ -1108,6 +1111,9 @@ public sealed partial class MainWindow : Window
 
         var backUp = new ToggleSwitch
         {
+            // In the app's language; WinUI's own "On"/"Off" follow Windows.
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
             Header = Tr("Keep a copy of a photo before opening it in another app"),
             IsOn = ViewModel.BackUpBeforeOpenWith,
             Margin = new Thickness(0, 12, 0, 0),
@@ -1170,25 +1176,63 @@ public sealed partial class MainWindow : Window
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
         var languagePage = LanguagePage(out var chosenLanguage);
 
+        // App tab: how the gallery behaves, and the language.
+        gallery.Visibility = languagePage.Visibility = Visibility.Visible;
+        var appPage = new ScrollViewer
+        {
+            MaxHeight = 480,
+            Padding = new Thickness(0, 0, 12, 0),
+            Visibility = Visibility.Collapsed,
+            Content = new StackPanel
+            {
+                Spacing = 16,
+                Children =
+                {
+                    gallery,
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    new TextBlock { Text = Tr("Language"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
+                    languagePage,
+                },
+            },
+        };
+
+        // Tags tab: your tags, and the list auto-tagging picks from, one at a time.
+        var ownTagsTab = new SelectorBarItem { Text = Tr("Your tags"), IsSelected = true };
+        var aiTagsTab = new SelectorBarItem { Text = Tr("AI tagging") };
+        var tagsBar = new SelectorBar { Items = { ownTagsTab, aiTagsTab }, Margin = new Thickness(-12, -8, 0, 4) };
+        tags.Visibility = Visibility.Visible;
+        var taggingScroller = new ScrollViewer { Content = tagging, Padding = new Thickness(0, 0, 12, 0), Visibility = Visibility.Collapsed };
+        tagsBar.SelectionChanged += (_, _) =>
+        {
+            var ai = tagsBar.SelectedItem == aiTagsTab;
+            tags.Visibility = ai ? Visibility.Collapsed : Visibility.Visible;
+            taggingScroller.Visibility = ai ? Visibility.Visible : Visibility.Collapsed;
+        };
+        var tagsPage = new Grid { Visibility = Visibility.Collapsed, MaxHeight = 520 };
+        tagsPage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        tagsPage.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(tags, 1);
+        Grid.SetRow(taggingScroller, 1);
+        tagsPage.Children.Add(tagsBar);
+        tagsPage.Children.Add(tags);
+        tagsPage.Children.Add(taggingScroller);
+
         // The tabs are listed down the left side; the pages share one cell so the dialog keeps its size.
-        (string Text, Func<FrameworkElement> Icon, FrameworkElement Page)[] pages =
+        (string Text, string Glyph, FrameworkElement Page)[] pages =
         [
-            (Tr("Gallery"), () => new FontIcon { Glyph = "\uE8B9" }, gallery),
-            (Tr("Language"), () => new FontIcon { Glyph = "\uE774" }, languagePage),
-            (Tr("AI tagging"), () => new Controls.AiSparkle { Width = 16, Height = 16 }, tagging),
-            (Tr("Tags"), () => new FontIcon { Glyph = "\uE8EC" }, tags),
-            (Tr("Dates and places"), () => new FontIcon { Glyph = "\uE787" }, datesAndPlaces),
-            (Tr("Editing"), () => new FontIcon { Glyph = "\uE7A8" }, cropping),
-            (Tr("Appearance"), () => new FontIcon { Glyph = "\uE790" }, appearance),
-            (Tr("Linked apps"), () => new FontIcon { Glyph = "\uE753" }, linked),
-            (Tr("Keyboard"), () => new FontIcon { Glyph = "\uE765" }, keyboard),
+            (Tr("App"), "\uE8B9", appPage),
+            (Tr("Appearance"), "\uE790", appearance),
+            (Tr("Tags"), "\uE8EC", tagsPage),
+            (Tr("Dates and places"), "\uE787", datesAndPlaces),
+            (Tr("Editing"), "\uE7A8", cropping),
+            (Tr("Linked apps"), "\uE753", linked),
+            (Tr("Keyboard"), "\uE765", keyboard),
         ];
         var tabs = new ListView { SelectionMode = ListViewSelectionMode.Single, Width = 200 };
-        foreach (var (text, icon, _) in pages)
+        foreach (var (text, glyph, _) in pages)
         {
-            var symbol = icon();
-            symbol.Width = 16;
-            symbol.Height = 16;
+            // Sized by the font, not squeezed into a box, which cut the glyphs off at the right.
+            var symbol = new FontIcon { Glyph = glyph, FontSize = 16 };
             tabs.Items.Add(new ListViewItem
             {
                 Content = new StackPanel

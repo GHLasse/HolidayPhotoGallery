@@ -63,6 +63,7 @@ public sealed partial class MainWindow
         ShowTagBadges();
         ShowFilterBadges();
         _ = ShowTopPeopleAsync();
+        RecolourTabMarks();
     }
 
     // Dialogs and their popups are not inside Root, so each dialog gets the palette and mode as it opens.
@@ -123,6 +124,10 @@ public sealed partial class MainWindow
             ["SystemControlHighlightListAccentMediumBrush"] = Solid(s.Fill, 0.8),
             ["SystemControlHighlightListAccentHighBrush"] = Solid(s.Fill, 0.9),
             ["SelectorBarItemPillFill"] = Solid(s.Fill),
+            // The line beside the chosen entry of a list, such as the tabs in Settings.
+            ["ListViewItemSelectionIndicatorBrush"] = Solid(s.Fill),
+            ["ListViewItemSelectionIndicatorPointerOverBrush"] = Solid(s.Fill),
+            ["ListViewItemSelectionIndicatorPressedBrush"] = Solid(s.Fill),
 
             // WinUI's controls read these, set once from the Windows accent colour, so they are replaced too.
             ["AccentButtonBackground"] = Solid(s.Fill),
