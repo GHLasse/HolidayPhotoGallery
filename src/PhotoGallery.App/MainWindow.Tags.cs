@@ -111,6 +111,49 @@ public sealed partial class MainWindow
 
     private void RestorePeopleCorners(object? sender, object e) => PeopleGroup.CornerRadius = new CornerRadius(ControlCorner);
 
+    // Typing in the list of everyone jumps to the names starting with what was typed, like File Explorer:
+    // quick letters add up ("ma" finds Maria), the same letter again goes on to the next name.
+    private string _peopleTyped = "";
+    private long _peopleTypedAt;
+
+    private void SetUpPeopleTyping()
+    {
+        MorePeopleList.CharacterReceived += (_, e) =>
+        {
+            if (char.IsControl(e.Character) || char.IsWhiteSpace(e.Character))
+                return;
+            e.Handled = true;
+            var now = Environment.TickCount64;
+            var typed = now - _peopleTypedAt < 1000 ? _peopleTyped + e.Character : e.Character.ToString();
+            _peopleTypedAt = now;
+            var people = ViewModel.PeopleByName;
+            if (people.Count == 0)
+                return;
+            // One letter pressed again moves on from the name already reached.
+            var again = typed.Length == 2 && char.ToUpperInvariant(typed[0]) == char.ToUpperInvariant(typed[1]);
+            if (again)
+                typed = typed[..1];
+            _peopleTyped = typed;
+            var current = FocusedPerson() is { } focused && MorePeopleList.ContainerFromItem(focused) is { } c ? MorePeopleList.IndexFromContainer(c) : -1;
+            var start = again || typed.Length == 1 ? current + 1 : Math.Max(0, current);
+            for (var i = 0; i < people.Count; i++)
+            {
+                var person = people[(start + i) % people.Count];
+                if (!person.Tag.StartsWith(typed, StringComparison.CurrentCultureIgnoreCase))
+                    continue;
+                MorePeopleList.ScrollIntoView(person, ScrollIntoViewAlignment.Leading);
+                MorePeopleList.UpdateLayout();
+                if (MorePeopleList.ContainerFromItem(person) is ListViewItem item &&
+                    Descendants(item).OfType<CheckBox>().FirstOrDefault() is { } box)
+                    box.Focus(FocusState.Keyboard);
+                return;
+            }
+        };
+    }
+
+    private object? FocusedPerson() =>
+        FocusManager.GetFocusedElement(MorePeopleList.XamlRoot) is FrameworkElement { DataContext: TagFilterViewModel person } ? person : null;
+
     private const double ControlCorner = 4; // WinUI's ControlCornerRadius, as the other filters have
 
     private void ShowFilterBadges()

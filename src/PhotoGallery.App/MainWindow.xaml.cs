@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window
         SetUpTimeline();
         SetUpClickToDeselect();
         SetUpRatingRow();
+        SetUpPeopleTyping();
         SetUpMoreDetails();
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
