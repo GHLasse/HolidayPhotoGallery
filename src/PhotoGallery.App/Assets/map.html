@@ -6,6 +6,9 @@
 <title>Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.20/leaflet-maplibre-gl.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
   body { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
@@ -40,22 +43,48 @@ if (!window.L) {
   start();
 }
 
+function addBaseMap(map, osm) {
+  const plain = () => L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }).addTo(map);
+  if (!L.maplibreGL || !window.maplibregl) { plain(); return; }
+  try {
+    const layer = L.maplibreGL({
+      style: "https://tiles.openfreemap.org/styles/liberty",
+      attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> ' + osm,
+    }).addTo(map);
+    const gl = layer.getMaplibreMap();
+    // The app's language first, then the name in Latin letters, then as written there.
+    const code = lang.split("-")[0];
+    const label = ["coalesce", ["get", "name:" + code], ["get", "name:latin"], ["get", "name"]];
+    gl.on("style.load", () => {
+      for (const l of gl.getStyle().layers) {
+        if (l.type !== "symbol") continue;
+        const field = gl.getLayoutProperty(l.id, "text-field");
+        if (field && JSON.stringify(field).includes("name")) gl.setLayoutProperty(l.id, "text-field", label);
+      }
+    });
+    // If the map's style hasn't loaded after a while (offline or blocked), use the plain map instead.
+    let loaded = false;
+    gl.once("style.load", () => loaded = true);
+    setTimeout(() => {
+      if (loaded) return;
+      map.removeLayer(layer);
+      plain();
+    }, 10000);
+  } catch (e) {
+    plain();
+  }
+}
+
 function start() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem("view")); } catch (e) { }
   const map = L.map("map", { zoomControl: true, worldCopyJump: true, preferCanvas: true })
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
-  // Labels in the app's language where a free map has them: German from the German OpenStreetMap
-  // map (German names, else the local name written in Latin letters), Chinese from the standard map
-  // (names as written locally), everything else from CARTO's map, which labels places in English or
-  // Latin letters, so a city in China reads "Chengdu", not 成都.
+  // Labels in the app's language: OpenFreeMap's free map (no key) carries every place's name in many
+  // languages, so a city in China reads "Chengdu" rather than 成都. Without WebGL or that map, the
+  // standard OpenStreetMap map shows the names as written locally.
   const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-  const tiles =
-    lang === "de" ? ["https://tile.openstreetmap.de/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }]
-    : lang.startsWith("zh") ? ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }]
-    : ["https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-       { maxZoom: 19, subdomains: "abcd", attribution: osm + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' }];
-  L.tileLayer(tiles[0], tiles[1]).addTo(map);
+  addBaseMap(map, osm);
   map.on("moveend", () => {
     const c = map.getCenter();
     try { localStorage.setItem("view", JSON.stringify({ lat: c.lat, lon: c.lng, zoom: map.getZoom() })); } catch (e) { }
