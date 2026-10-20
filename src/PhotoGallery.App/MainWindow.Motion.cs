@@ -62,7 +62,7 @@ public sealed partial class MainWindow
     // How far a pane's content travels as it slides in or out; a hint of movement, as in Fluent.
     private const float SlideOffset = 40;
 
-    private static Microsoft.UI.Composition.CompositionScopedBatch Slide(IReadOnlyList<UIElement> elements, float fromX, float toX,
+    private Microsoft.UI.Composition.CompositionScopedBatch Slide(IReadOnlyList<UIElement> elements, float fromX, float toX,
                                                                           float fromOpacity, float toOpacity, int ms)
     {
         var compositor = ElementCompositionPreview.GetElementVisual(elements[0]).Compositor;
@@ -74,6 +74,7 @@ public sealed partial class MainWindow
         foreach (var element in elements)
         {
             ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+            _slid.Add(element);
             var visual = ElementCompositionPreview.GetElementVisual(element);
             var move = compositor.CreateVector3KeyFrameAnimation();
             move.InsertKeyFrame(0, new Vector3(fromX, 0, 0));
@@ -90,9 +91,15 @@ public sealed partial class MainWindow
         return batch;
     }
 
+    // Elements that have been slid: only their visuals have a Translation to stop. Stopping it on any other
+    // element throws (it crashed the app at start).
+    private readonly HashSet<UIElement> _slid = [];
+
     // Back in place and fully visible, for the next time the pane shows.
-    private static void ResetSlide(UIElement element)
+    private void ResetSlide(UIElement element)
     {
+        if (!_slid.Contains(element))
+            return;
         var visual = ElementCompositionPreview.GetElementVisual(element);
         visual.StopAnimation("Translation");
         visual.StopAnimation("Opacity");
