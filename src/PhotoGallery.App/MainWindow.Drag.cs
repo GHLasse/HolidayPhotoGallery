@@ -33,18 +33,23 @@ public sealed partial class MainWindow
             var deferral = request.GetDeferral();
             try
             {
-                var files = new List<IStorageItem>();
-                foreach (var path in paths)
+                // Off the UI thread: Windows storage calls can re-enter WinUI there and crash it.
+                var files = await Task.Run(async () =>
                 {
-                    try
+                    var found = new List<IStorageItem>();
+                    foreach (var path in paths)
                     {
-                        files.Add(await StorageFile.GetFileFromPathAsync(path));
+                        try
+                        {
+                            found.Add(await StorageFile.GetFileFromPathAsync(path));
+                        }
+                        catch (Exception ex) when (ex is FileNotFoundException or UnauthorizedAccessException or ArgumentException)
+                        {
+                            // A photo gone meanwhile is left out.
+                        }
                     }
-                    catch (Exception ex) when (ex is FileNotFoundException or UnauthorizedAccessException or ArgumentException)
-                    {
-                        // A photo gone meanwhile is left out.
-                    }
-                }
+                    return found;
+                });
                 request.SetData(files);
             }
             finally
