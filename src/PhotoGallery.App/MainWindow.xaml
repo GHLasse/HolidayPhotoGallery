@@ -600,6 +600,7 @@
                       SelectionChanged="PhotoGrid_SelectionChanged"
                       ContainerContentChanging="PhotoGrid_ContainerContentChanging"
                       DoubleTapped="PhotoGrid_DoubleTapped"
+                      ContextRequested="PhotoGrid_ContextRequested"
                       KeyDown="PhotoGrid_KeyDown">
                 <GridView.ContextFlyout>
                     <MenuFlyout Opening="PhotoMenu_Opening">

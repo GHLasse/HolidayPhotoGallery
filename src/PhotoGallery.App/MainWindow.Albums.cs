@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using PhotoGallery.App.ViewModels;
 using static PhotoGallery.Core.Localization.Strings;
 
@@ -103,6 +104,14 @@ public sealed partial class MainWindow
         };
         if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
             await ViewModel.RenameAlbumAsync(folder, box.Text);
+    }
+
+    // A right-click with nothing selected selects the photo under it, so the menu has something to act on.
+    // Raised before the menu opens.
+    private void PhotoGrid_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
+    {
+        if (PhotoGrid.SelectedItems.Count == 0 && ClickedPhoto(e.OriginalSource) is { } photo)
+            PhotoGrid.SelectedItem = photo;
     }
 
     private void PhotoMenu_Opening(object sender, object e)
