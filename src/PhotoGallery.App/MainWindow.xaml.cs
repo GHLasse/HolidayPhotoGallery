@@ -515,7 +515,13 @@ public sealed partial class MainWindow : Window
                 NoticePanel.Children.RemoveAt(at);
             NoticePanel.Children.Insert(i, NoticeBar(notices[i]));
         }
-        NoticePanel.Margin = new Thickness(12, 0, 12, notices.Count > 0 ? 8 : 0);
+    }
+
+    private static Windows.UI.Color Blend(Windows.UI.Color top, Windows.UI.Color under)
+    {
+        var a = top.A / 255.0;
+        byte Mix(byte t, byte u) => (byte)Math.Round(t * a + u * (1 - a));
+        return Windows.UI.Color.FromArgb(255, Mix(top.R, under.R), Mix(top.G, under.G), Mix(top.B, under.B));
     }
 
     private InfoBar NoticeBar(Notice notice)
@@ -532,9 +538,18 @@ public sealed partial class MainWindow : Window
                 _ => InfoBarSeverity.Informational,
             },
         };
-        // Informational bars are grey by default; Lasse asked for blue ones.
-        if (notice.Severity == NoticeSeverity.Info && ThemeBrush("SystemFillColorAttentionBackgroundBrush") is { } blue)
-            bar.Background = blue;
+        // Informational bars are grey by default; Lasse asked for blue ones. The tints are see-through, and
+        // the bars float over the photos, so each is laid on the window's solid background colour.
+        var tint = ThemeBrush(notice.Severity switch
+        {
+            NoticeSeverity.Error => "SystemFillColorCriticalBackgroundBrush",
+            NoticeSeverity.Warning => "SystemFillColorCautionBackgroundBrush",
+            _ => "SystemFillColorAttentionBackgroundBrush",
+        });
+        if (tint is SolidColorBrush { Color: var top } && ThemeBrush("SolidBackgroundFillColorBaseBrush") is SolidColorBrush { Color: var under })
+            bar.Background = new SolidColorBrush(Blend(top, under));
+        bar.Shadow = new ThemeShadow();
+        bar.Translation = new System.Numerics.Vector3(0, 0, 16);
         bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
         if (notice.Undo is { } undo)
         {

@@ -311,7 +311,7 @@
         </Grid>
 
         <!-- Photos copied from a phone are often read-only; this offers to fix it while it matters. -->
-        <StackPanel Grid.Row="2" Grid.ColumnSpan="5" Spacing="4">
+        <StackPanel Grid.Row="2" Grid.ColumnSpan="5">
             <InfoBar x:Name="ReadOnlyBar" Margin="12,0,12,8" Severity="Warning" IsClosable="False"
                      IsOpen="{x:Bind ViewModel.HasReadOnlyPhotos, Mode=OneWay}" Visibility="{x:Bind ViewModel.HasReadOnlyPhotos, Mode=OneWay}"
                      Message="{local:Loc Text='Some photos here are read-only, for example after copying them from a phone, so changes can’t be saved into them.'}">
@@ -320,15 +320,6 @@
                             ToolTipService.ToolTip="{local:Loc Text='Remove the read-only mark from all photos in the selected folder (or the whole library), e.g. after copying them from a phone'}" />
                 </InfoBar.ActionButton>
             </InfoBar>
-            <!-- Messages as banners, newest first; filled from code when ViewModel.Notices changes. -->
-            <StackPanel x:Name="NoticePanel" Margin="12,0,12,0" Spacing="4">
-                <StackPanel.ChildrenTransitions>
-                    <TransitionCollection>
-                        <EntranceThemeTransition FromVerticalOffset="-24" IsStaggeringEnabled="False" />
-                        <RepositionThemeTransition />
-                    </TransitionCollection>
-                </StackPanel.ChildrenTransitions>
-            </StackPanel>
         </StackPanel>
 
         <!-- Navigation: folders (tags and people are in the filter bar) -->
@@ -1010,6 +1001,18 @@
 
         <!-- Full-size viewer, shown over everything but the title bar -->
         <!-- The photo viewer. The controls fade away while the mouse rests (MainWindow.Viewer.cs); L dims the room. -->
+        <!-- Messages as banners, newest first, floating over the top of the photos so nothing moves; filled
+             from code when ViewModel.Notices changes. Above the viewer too, so a message is seen there. -->
+        <StackPanel x:Name="NoticePanel" Grid.Row="3" Grid.ColumnSpan="5" Canvas.ZIndex="10"
+                    VerticalAlignment="Top" HorizontalAlignment="Center" MaxWidth="760" Margin="12,8,12,0" Spacing="4">
+            <StackPanel.ChildrenTransitions>
+                <TransitionCollection>
+                    <EntranceThemeTransition FromVerticalOffset="-24" IsStaggeringEnabled="False" />
+                    <RepositionThemeTransition />
+                </TransitionCollection>
+            </StackPanel.ChildrenTransitions>
+        </StackPanel>
+
         <Grid x:Name="ViewerLayer" Grid.Row="1" Grid.RowSpan="3" Grid.ColumnSpan="5" Visibility="Collapsed"
               Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
             <Grid.RowDefinitions>
