@@ -24,6 +24,8 @@ public sealed partial class MainViewModel
         {
             for (var i = 0; i < todo.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var photo = todo[i];
                 StatusText = copy ? Tr("Copying {0:N0} of {1:N0} photos…", i + 1, todo.Count) : Tr("Moving {0:N0} of {1:N0} photos…", i + 1, todo.Count);
                 try

@@ -161,6 +161,8 @@ public sealed partial class MainViewModel
 
             for (var i = 0; i < todo.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = todo[i];
                 StatusText = Tr("Looking for people in {0} of {1}…", i + 1, todo.Count);
                 try
@@ -451,6 +453,8 @@ public sealed partial class MainViewModel
         {
             for (var i = 0; i < photos.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var path = photos[i].Key;
                 StatusText = doing(i + 1, photos.Count);
                 try
@@ -502,6 +506,8 @@ public sealed partial class MainViewModel
         {
             for (var i = 0; i < items.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = items[i];
                 StatusText = Tr("Adding {0} to {1} of {2} photo(s)…", name, i + 1, items.Count);
                 try

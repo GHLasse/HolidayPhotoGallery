@@ -99,7 +99,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
 
-    public bool IsBusy { get => _isBusy; private set => SetProperty(ref _isBusy, value); }
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (value)
+                _stopRequested = false;
+            SetProperty(ref _isBusy, value);
+        }
+    }
+
+    private bool _stopRequested;
+
+    /// <summary>Stops the long job that is running after the photo it is on; what is done stays done.</summary>
+    public void StopBusyWork()
+    {
+        if (!IsBusy)
+            return;
+        _stopRequested = true;
+        StatusText = Tr("Stopping…");
+    }
 
     /// <summary>
     /// Setting a message shows it as a red banner; null does nothing, since banners close by themselves.
@@ -379,6 +399,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
             foreach (var folder in folders)
             {
+                if (_stopRequested)
+                    break;
                 try
                 {
                     await _indexer.SyncFolderAsync(folder, progress);
@@ -590,6 +612,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < rotatable.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = rotatable[i];
                 if (rotatable.Count > 1)
                     StatusText = Tr("Rotating {0} of {1}…", i + 1, rotatable.Count);
@@ -761,6 +785,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < dated.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = dated[i];
                 StatusText = Tr("Shifting {0} of {1}…", i + 1, dated.Count);
                 try
@@ -807,6 +833,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < items.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = items[i];
                 StatusText = Tr("Saving the location of {0} of {1}…", i + 1, items.Count);
                 try
@@ -863,6 +891,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < located.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = located[i];
                 StatusText = Tr("Looking up the place of {0} of {1}…", i + 1, located.Count);
                 try
@@ -1015,6 +1045,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
             for (var i = 0; i < items.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = items[i];
                 StatusText = Tr("Tagging {0} of {1}…", i + 1, items.Count);
                 try
@@ -1079,6 +1111,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < tagged.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = tagged[i];
                 StatusText = Tr("Removing auto tags from {0} of {1}…", i + 1, tagged.Count);
                 try

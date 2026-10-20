@@ -76,6 +76,8 @@ public sealed partial class MainViewModel
         {
             for (var i = 0; i < items.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = items[i];
                 StatusText = Tr("Moving {0:N0} of {1:N0} rejected photos to the Recycle Bin…", i + 1, items.Count);
                 try

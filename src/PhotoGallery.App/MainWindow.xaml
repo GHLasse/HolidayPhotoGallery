@@ -101,7 +101,16 @@
                             <Flyout Placement="BottomEdgeAlignedRight">
                                 <StackPanel Spacing="8" MaxWidth="320">
                                     <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}">
-                                        <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" TextWrapping="Wrap" />
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                            <!-- Stops after the photo it is on; what is done stays done. -->
+                                            <HyperlinkButton Grid.Column="1" Content="{local:Loc Text='Stop'}" Padding="4,0" Click="StopBusy_Click"
+                                                             ToolTipService.ToolTip="{local:Loc Text='Stop after the current photo. The photos already done keep their changes.'}" />
+                                        </Grid>
                                         <ProgressBar IsIndeterminate="True" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ViewModel.IsUploading, Mode=OneWay}">
