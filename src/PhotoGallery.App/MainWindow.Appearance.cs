@@ -192,9 +192,14 @@ public sealed partial class MainWindow
     // The app's resources follow Windows' mode, not the one picked in Settings, so look in the right theme dictionary.
     private static object? FindInTheme(ResourceDictionary dictionary, string key)
     {
-        if (dictionary.ThemeDictionaries.TryGetValue(s_themeKey, out var theme) && theme is ResourceDictionary themed
-            && (themed.TryGetValue(key, out var found) || (found = FindInMerged(themed, key)) is not null))
-            return found;
+        // WinUI files its dark brushes under "Default", not "Dark"; missing that gave light-mode grey text
+        // (and black sparkles) in dark Settings.
+        foreach (var themeKey in s_themeKey == "Dark" ? new[] { "Dark", "Default" } : new[] { s_themeKey })
+        {
+            if (dictionary.ThemeDictionaries.TryGetValue(themeKey, out var theme) && theme is ResourceDictionary themed
+                && (themed.TryGetValue(key, out var found) || (found = FindInMerged(themed, key)) is not null))
+                return found;
+        }
         foreach (var merged in dictionary.MergedDictionaries)
         {
             if (FindInTheme(merged, key) is { } value)
