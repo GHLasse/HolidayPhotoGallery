@@ -310,6 +310,21 @@ public sealed partial class MainWindow
     // A click on the one selected photo deselects it, so the info pane can go away again (Esc does too).
     private PhotoItemViewModel? _pressedSelected;
 
+    // Flag and Reject in the info pane show their words while they fit beside the stars, else only icons
+    // (the German words are long). Measured with the words, so they come back when the pane widens.
+    private void SetUpRatingRow()
+    {
+        if (RatingRow.Parent is not FrameworkElement area)
+            return;
+        area.SizeChanged += (_, e) =>
+        {
+            FlagButtonLabel.Visibility = RejectButtonLabel.Visibility = Visibility.Visible;
+            RatingRow.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (RatingRow.DesiredSize.Width > e.NewSize.Width)
+                FlagButtonLabel.Visibility = RejectButtonLabel.Visibility = Visibility.Collapsed;
+        };
+    }
+
     private void SetUpClickToDeselect()
     {
         // handledEventsToo: the grid's items take these events for their own selection handling.

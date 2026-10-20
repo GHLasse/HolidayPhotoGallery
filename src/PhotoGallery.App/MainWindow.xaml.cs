@@ -45,6 +45,7 @@ public sealed partial class MainWindow : Window
         SetUpZoom();
         SetUpTimeline();
         SetUpClickToDeselect();
+        SetUpRatingRow();
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
