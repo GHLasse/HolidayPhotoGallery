@@ -120,6 +120,10 @@ public sealed partial class MainWindow
 
         NavPane.Visibility = NavSplitter.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
         NavRail.Visibility = rail ? Visibility.Visible : Visibility.Collapsed;
+        SettingsButton.Visibility = nav || rail ? Visibility.Visible : Visibility.Collapsed;
+        SettingsLabel.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
+        SettingsButton.HorizontalAlignment = nav ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        SettingsButton.Width = nav ? double.NaN : 36;
         AnimateColumn(NavColumn, nav ? ViewModel.NavPaneWidth : rail ? RailWidth : 0, animate);
 
         // The map beside the grid and the info pane share the right-hand column: one or the other.

@@ -122,6 +122,7 @@ public sealed partial class MainWindow
             ["SystemControlHighlightListAccentLowBrush"] = Solid(s.Fill, 0.6),
             ["SystemControlHighlightListAccentMediumBrush"] = Solid(s.Fill, 0.8),
             ["SystemControlHighlightListAccentHighBrush"] = Solid(s.Fill, 0.9),
+            ["SelectorBarItemPillFill"] = Solid(s.Fill),
 
             // WinUI's controls read these, set once from the Windows accent colour, so they are replaced too.
             ["AccentButtonBackground"] = Solid(s.Fill),

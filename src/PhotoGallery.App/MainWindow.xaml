@@ -58,12 +58,14 @@
         <TitleBar x:Name="AppTitleBar" Grid.Row="0" Grid.ColumnSpan="5" Height="48" Title="Holiday Photo Gallery"
                   IsBackButtonVisible="False" IsPaneToggleButtonVisible="False">
             <TitleBar.Content>
+            <!-- The four workspaces centred on their own; search at the right. -->
             <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <SelectorBar x:Name="ModeBar" VerticalAlignment="Center" SelectionChanged="ModeBar_SelectionChanged">
+                <SelectorBar x:Name="ModeBar" Grid.Column="1" VerticalAlignment="Center" SelectionChanged="ModeBar_SelectionChanged">
                     <SelectorBarItem x:Name="LibraryTab" Text="{local:Loc Text='Library'}"
                                      ToolTipService.ToolTip="{local:Loc Text='Your photos with the folder, date and place trees'}" />
                     <SelectorBarItem x:Name="MapTab" Text="{local:Loc Text='Map'}"
@@ -73,7 +75,7 @@
                     <SelectorBarItem x:Name="AlbumsTab" Text="{local:Loc Text='Albums'}"
                                      ToolTipService.ToolTip="{local:Loc Text='Your trips and events as albums. Right-click a folder to make it an album.'}" />
                 </SelectorBar>
-                <AutoSuggestBox x:Name="SearchBox" Grid.Column="1" MaxWidth="360" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                <AutoSuggestBox x:Name="SearchBox" Grid.Column="2" MaxWidth="320" HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                 PlaceholderText="{local:Loc Text='Search names, captions and tags (Ctrl+E)'}"
                                 QueryIcon="Find"
                                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -105,11 +107,6 @@
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>
-                    </Button>
-                    <Button Padding="8" Background="Transparent" BorderThickness="0" Click="Settings_Click"
-                            AutomationProperties.Name="{local:Loc Text='Settings'}"
-                            ToolTipService.ToolTip="{local:Loc Text='Settings for tagging and cropping, and the keyboard shortcuts'}">
-                        <FontIcon Glyph="&#xE713;" FontSize="16" />
                     </Button>
                 </StackPanel>
             </TitleBar.RightHeader>
@@ -325,7 +322,7 @@
         <!-- Navigation: folders (tags and people are in the filter bar) -->
         <!-- The folder pane: All photos, Folders, Dates and Places, each under a heading with its icon. Folded,
              only the icons remain, in the same places (NavRail). -->
-        <Grid x:Name="NavPane" Grid.Row="3" Grid.Column="0" Padding="8,0,0,8" RowSpacing="2">
+        <Grid x:Name="NavPane" Grid.Row="3" Grid.Column="0" Padding="8,0,0,52" RowSpacing="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -510,6 +507,20 @@
                 <FontIcon Glyph="&#xE707;" FontSize="16" />
             </Button>
         </StackPanel>
+
+        <!-- Settings at the foot of the side pane, under the folders when open and under the icons when folded. -->
+        <Button x:Name="SettingsButton" Grid.Row="3" Grid.Column="0" Style="{StaticResource NavHeading}" VerticalAlignment="Bottom"
+                Margin="8,0,0,8" Click="Settings_Click" AutomationProperties.Name="{local:Loc Text='Settings'}"
+                ToolTipService.ToolTip="{local:Loc Text='Settings for tagging and cropping, and the keyboard shortcuts'}">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <FontIcon Glyph="&#xE713;" FontSize="16" />
+                <TextBlock x:Name="SettingsLabel" Grid.Column="1" Text="{local:Loc Text='Settings'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </Button>
 
         <controls:PaneSplitter x:Name="NavSplitter" Grid.Row="3" Grid.Column="1" />
 
