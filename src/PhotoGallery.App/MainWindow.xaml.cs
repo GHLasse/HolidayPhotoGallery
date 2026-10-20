@@ -332,6 +332,11 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 CycleViewerLights();
             }
+            else if (e.Key == VirtualKey.I)
+            {
+                e.Handled = true;
+                ToggleViewerDetails();
+            }
             return;
         }
 
@@ -794,6 +799,7 @@ public sealed partial class MainWindow : Window
         _viewerItems = ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
+        ApplyChrome(animate: false); // the details stay beside the photo
         StartOpenMotion(item, tile);
         ShowViewerControls();
         // Move focus off the grid, which would otherwise take the arrow keys for itself.
@@ -806,6 +812,7 @@ public sealed partial class MainWindow : Window
         App.Trace("viewer: close");
         EndEdit();
         StartCloseMotion();
+        ApplyChrome(animate: false);
         _viewerPixels = null;
         if (_viewerIndex < _viewerItems.Count)
         {
@@ -824,6 +831,9 @@ public sealed partial class MainWindow : Window
         EndEdit();
         var version = ++_viewerLoadVersion;
         var item = _viewerItems[_viewerIndex];
+        // The details beside the viewer show the photo being looked at.
+        if (PhotoGrid.SelectedItems.Count != 1 || !ReferenceEquals(PhotoGrid.SelectedItem, item))
+            PhotoGrid.SelectedItem = item;
         UpdateViewerTitle();
         SyncViewerStrip();
         ViewerError.Text = "";

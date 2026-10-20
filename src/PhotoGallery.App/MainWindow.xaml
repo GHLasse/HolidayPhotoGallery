@@ -1071,6 +1071,10 @@
                             <TextBlock Text="{local:Loc Text='Open with…'}" />
                         </StackPanel>
                     </Button>
+                    <ToggleButton x:Name="ViewerDetailsButton" IsChecked="True" Click="ViewerDetails_Click"
+                                  ToolTipService.ToolTip="{local:Loc Text='Show or hide the details beside the photo (I)'}">
+                        <FontIcon Glyph="&#xE946;" FontSize="16" />
+                    </ToggleButton>
                     <AppBarSeparator />
                     <Button x:Name="ViewerCloseButton" Click="ViewerClose_Click" ToolTipService.ToolTip="{local:Loc Text='Back to the gallery (Esc)'}">
                         <SymbolIcon Symbol="Cancel" />

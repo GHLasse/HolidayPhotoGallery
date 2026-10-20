@@ -123,9 +123,11 @@ public sealed partial class MainWindow
         AnimateColumn(NavColumn, nav ? ViewModel.NavPaneWidth : rail ? RailWidth : 0, animate);
 
         // The map beside the grid and the info pane share the right-hand column: one or the other.
-        var map = MapBeside && !_chromeHidden;
+        var viewer = IsViewerOpen;
+        var map = MapBeside && !_chromeHidden && !viewer;
         var full = _workspace == Workspace.Map;
-        info &= !map;
+        info = viewer ? _viewerDetails && PhotoGrid.SelectedItems.Count > 0 : info && !map;
+        PlaceInfoBesideViewer(viewer && info);
         InfoSplitter.Visibility = info ? Visibility.Visible : Visibility.Collapsed;
         MapSplitter.Visibility = map ? Visibility.Visible : Visibility.Collapsed;
         if (info)
@@ -138,10 +140,10 @@ public sealed partial class MainWindow
         AnimateColumn(InfoColumn, width, animate, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
-            if (!(!_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
+            if (!(IsViewerOpen ? _viewerDetails : !_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
                 InfoPane.Visibility = Visibility.Collapsed;
         });
-        TopBar.Visibility = _chromeHidden || _workspace == Workspace.People ? Visibility.Collapsed : Visibility.Visible;
+        TopBar.Visibility = _chromeHidden || viewer || _workspace == Workspace.People ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // Tab and Shift+Tab hide the panes, like Lightroom, wherever the focus is; only a text box keeps Tab.

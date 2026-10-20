@@ -224,6 +224,34 @@ public sealed partial class MainWindow
         _ = ShowViewerImageAsync();
     }
 
+    // ---- Details beside the viewer ----
+
+    private bool _viewerDetails = true;
+
+    private void ViewerDetails_Click(object sender, RoutedEventArgs e) => ToggleViewerDetails();
+
+    private void ToggleViewerDetails()
+    {
+        _viewerDetails = !_viewerDetails;
+        ViewerDetailsButton.IsChecked = _viewerDetails;
+        ApplyChrome();
+    }
+
+    /// <summary>
+    /// With the viewer open the info pane stays at the right, full height, and the viewer takes the rest;
+    /// otherwise the viewer covers the whole window.
+    /// </summary>
+    private void PlaceInfoBesideViewer(bool beside)
+    {
+        Grid.SetColumnSpan(ViewerLayer, beside ? 3 : 5);
+        foreach (var pane in new FrameworkElement[] { InfoSplitter, InfoPane })
+        {
+            Grid.SetRow(pane, beside ? 1 : 3);
+            Grid.SetRowSpan(pane, beside ? 3 : 1);
+        }
+        InfoPane.Background = beside ? ThemeBrush("SolidBackgroundFillColorBaseBrush") : null;
+    }
+
     // ---- Lights out ----
 
     private void CycleViewerLights()
