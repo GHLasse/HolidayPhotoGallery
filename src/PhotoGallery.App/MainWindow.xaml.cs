@@ -239,8 +239,11 @@ public sealed partial class MainWindow : Window
             ViewModel.SortIndex = SortCombo.SelectedIndex;
     }
 
-    private void ClearFilters_Click(object sender, RoutedEventArgs e)
+    private void ClearFilters_Click(object sender, RoutedEventArgs e) => ClearAllFilters();
+
+    private void ClearAllFilters()
     {
+        ClearBrowseTrees(); // a month or place from the left pane is a filter too, and names the grid
         ViewModel.SearchText = "";
         ViewModel.MinRating = 0;
         ViewModel.FlaggedOnly = false;

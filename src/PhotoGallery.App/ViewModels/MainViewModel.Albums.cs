@@ -41,10 +41,11 @@ public sealed partial class MainViewModel
 
     public bool HasNoAlbums => IsAlbumView && Albums.Count == 0;
 
-    /// <summary>The title above the grid: "Albums", the album's name, the folder, or "All photos".</summary>
+    /// <summary>The title above the grid: "Albums", the album's name, the folder, the month or place picked in the
+    /// left pane, or "All photos".</summary>
     public string HeaderText =>
         IsAlbumView ? Tr("Albums")
-        : SelectedFolder is not { } folder ? Tr("All photos")
+        : SelectedFolder is not { } folder ? SelectedPlace?.Title ?? _dateTitle ?? Tr("All photos")
         : folder.IsAlbum ? AlbumName(folder.FullPath)
         : folder.FullPath;
 

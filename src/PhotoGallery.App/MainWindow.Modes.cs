@@ -177,8 +177,14 @@ public sealed partial class MainWindow
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, person.Tag);
         button.PointerEntered += Tile_PointerEntered;
         button.PointerExited += Tile_PointerExited;
+        // All of the person's photos, wherever they are: the folder, month or place browsed before and the
+        // other filters are left behind.
         button.Click += (_, _) =>
         {
+            FolderTree.SelectedItem = null;
+            ClearAllFilters();
+            ViewModel.IsAlbumView = false;
+            ViewModel.SelectedFolder = null;
             ViewModel.ShowOnlyPerson(person);
             ShowWorkspace(Workspace.Library);
         };

@@ -25,6 +25,9 @@ public sealed class PlaceNodeViewModel
     public ObservableCollection<PlaceNodeViewModel> Children { get; } = [];
 
     /// <summary>"Italy (120)", "Rome (40)" or "Unknown place (5)".</summary>
+    /// <summary>The city, country or "Unknown place", as the title above the grid.</summary>
+    public string Title => City ?? Country ?? Strings.Tr("Unknown place");
+
     public string Label => $"{City ?? Country ?? Strings.Tr("Unknown place")} ({Count:N0})";
 
     /// <summary>Countries with their cities, by name, and "No place" last.</summary>
