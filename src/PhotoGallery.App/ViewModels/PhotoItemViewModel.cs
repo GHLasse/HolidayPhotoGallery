@@ -28,6 +28,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
             if (SetProperty(ref _photo, value))
             {
                 OnPropertyChanged(nameof(Stars));
+                OnPropertyChanged(nameof(Rating));
                 OnPropertyChanged(nameof(FlagVisibility));
                 OnPropertyChanged(nameof(RejectVisibility));
                 OnPropertyChanged(nameof(ThumbnailOpacity));
@@ -55,6 +56,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     public string FileName => Photo.FileName;
 
     public bool CanRotate => SupportedFormats.CanRotate(Path);
+
+    public int Rating => Photo.Rating;
 
     public string Stars => Photo.Rating > 0 ? new string('★', Photo.Rating) : "";
 

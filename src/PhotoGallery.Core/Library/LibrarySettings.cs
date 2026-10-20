@@ -49,6 +49,12 @@ public sealed class LibrarySettings
 
     public double InfoPaneWidth { get; set; } = 320;
 
+    /// <summary>Width of the map beside the grid (the Map button in the Library), as last dragged.</summary>
+    public double MapPaneWidth { get; set; } = 520;
+
+    /// <summary>True when the folder pane was folded into its strip of icons.</summary>
+    public bool NavPaneFolded { get; set; }
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 

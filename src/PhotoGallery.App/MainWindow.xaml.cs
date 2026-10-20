@@ -42,10 +42,6 @@ public sealed partial class MainWindow : Window
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         SetUpFrame();
 
-        // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
-        RotateLeftButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)188 });
-        RotateRightButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)190 });
-
         SetUpZoom();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
@@ -327,6 +323,11 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 CloseViewer();
             }
+            else if (e.Key == VirtualKey.L)
+            {
+                e.Handled = true;
+                CycleViewerLights();
+            }
             return;
         }
 
@@ -356,6 +357,10 @@ public sealed partial class MainWindow : Window
             case VirtualKey.C:
                 e.Handled = true;
                 OpenCompare(selected);
+                break;
+            case VirtualKey.I:
+                e.Handled = true;
+                ToggleInfoPane();
                 break;
             case VirtualKey.M when _workspace == Workspace.Library:
                 e.Handled = true;
@@ -394,8 +399,10 @@ public sealed partial class MainWindow : Window
             (Tr("E or Enter"), Tr("Show the photo large (Enter with several photos: compare them)")),
             ("C", Tr("Compare the selected photos")),
             ("M", Tr("Show or hide the map")),
-            ("Tab", Tr("Hide or show the side panes (while the photos have the focus)")),
-            ("Shift+Tab", Tr("Hide or show the side panes and the toolbar")),
+            ("Tab", Tr("Hide or show the side panes")),
+            ("Shift+Tab", Tr("Hide or show the side panes and the filter bar")),
+            ("I", Tr("Show or hide the info pane")),
+            ("L", Tr("Dim the room around the photo in the viewer (press again for black)")),
             ("Ctrl+E", Tr("Search")),
             ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
             ("P", Tr("Flag or unflag the selected photos")),
@@ -558,6 +565,7 @@ public sealed partial class MainWindow : Window
 
     private async void PhotoGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        OnSelectionChromeChanged();
         if (_handlingSelection)
             return;
         _handlingSelection = true;
@@ -745,13 +753,16 @@ public sealed partial class MainWindow : Window
 
     // ---- Viewer ----
 
-    private bool IsViewerOpen => ViewerLayer.Visibility == Visibility.Visible;
+    private bool IsViewerOpen => ViewerLayer.Visibility == Visibility.Visible && !_viewerClosing;
 
     private void OpenViewer(PhotoItemViewModel item)
     {
+        var tile = TileImageBounds(item); // before the viewer covers it
         _viewerItems = ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
+        StartOpenMotion(item, tile);
+        ShowViewerControls();
         // Move focus off the grid, which would otherwise take the arrow keys for itself.
         ViewerCloseButton.Focus(FocusState.Programmatic);
         _ = ShowViewerImageAsync();
@@ -760,8 +771,7 @@ public sealed partial class MainWindow : Window
     private void CloseViewer()
     {
         EndEdit();
-        ViewerLayer.Visibility = Visibility.Collapsed;
-        ViewerCanvas.Source = null;
+        StartCloseMotion();
         _viewerPixels = null;
         if (_viewerIndex < _viewerItems.Count)
         {
@@ -781,6 +791,7 @@ public sealed partial class MainWindow : Window
         var version = ++_viewerLoadVersion;
         var item = _viewerItems[_viewerIndex];
         UpdateViewerTitle();
+        SyncViewerStrip();
         ViewerError.Text = "";
         ViewerProgress.IsActive = true;
         UpdateUndoButtons();
@@ -814,7 +825,10 @@ public sealed partial class MainWindow : Window
         finally
         {
             if (version == _viewerLoadVersion)
+            {
                 ViewerProgress.IsActive = false;
+                OnViewerImageReady();
+            }
         }
     }
 

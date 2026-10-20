@@ -63,7 +63,7 @@ public sealed partial class MainWindow
         var people = workspace == Workspace.People;
         PeoplePage.Visibility = people ? Visibility.Visible : Visibility.Collapsed;
         PhotoArea.Visibility = people ? Visibility.Collapsed : Visibility.Visible;
-        FilterRow.Visibility = people ? Visibility.Collapsed : Visibility.Visible;
+        ApplyChrome(); // the People page has no use for the filter bar
         await ApplyMapLayoutAsync();
         if (people)
             await ShowPeoplePageAsync();
@@ -87,15 +87,19 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// The Map workspace gives the map the grid's whole width; in the Library the Map button (M) still
-    /// puts it beside the grid, for placing photos Geosetter-style.
+    /// puts it beside the grid, for placing photos Geosetter-style, as wide as it was last dragged.
     /// </summary>
     private async Task ApplyMapLayoutAsync()
     {
         var full = _workspace == Workspace.Map;
         var open = full || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
+        var beside = open && !full;
         GridColumn.Width = full ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        MapColumn.Width = open ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        MapColumn.Width = full ? new GridLength(1, GridUnitType.Star) : new GridLength(beside ? Math.Min(ViewModel.MapPaneWidth, Math.Max(280, PhotoArea.ActualWidth * 0.7)) : 0);
+        MapSplitter.Visibility = beside ? Visibility.Visible : Visibility.Collapsed;
         MapView.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        // The selection bar sits over the grid; in the Map workspace there is no grid to sit on.
+        SelectionBar.Visibility = full || _workspace == Workspace.Albums ? Visibility.Collapsed : Visibility.Visible;
         MapToggle.IsEnabled = !full;
         if (!open)
             return;
