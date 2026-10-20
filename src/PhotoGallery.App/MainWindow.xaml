@@ -621,16 +621,6 @@
                                 </Grid.OpacityTransition>
                                 <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
                             </Grid>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind FlagVisibility, Mode=OneWay}"
-                                    ToolTipService.ToolTip="{local:Loc Text='Flagged'}">
-                                <FontIcon Glyph="&#xE7C1;" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                            </Border>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
-                                    Background="{ThemeResource SystemFillColorCriticalBrush}" Visibility="{x:Bind RejectVisibility, Mode=OneWay}"
-                                    ToolTipService.ToolTip="{local:Loc Text='Rejected'}">
-                                <FontIcon Glyph="&#xE711;" FontSize="12" Foreground="White" />
-                            </Border>
                             <!-- In Google Photos, in OneDrive -->
                             <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Orientation="Horizontal" Spacing="3">
                                 <Border Padding="4" CornerRadius="10" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
@@ -669,12 +659,23 @@
                                     <Button Tag="4" Click="TileStar_Click" Content="{x:Bind local:Ui.Star(Rating, 4), Mode=OneWay}" Style="{StaticResource TileActionButton}" />
                                     <Button Tag="5" Click="TileStar_Click" Content="{x:Bind local:Ui.Star(Rating, 5), Mode=OneWay}" Style="{StaticResource TileActionButton}" />
                                     </StackPanel>
-                                    <Button HorizontalAlignment="Right" Click="TileFlag_Click" Style="{StaticResource TileActionButton}"
-                                            ToolTipService.ToolTip="{local:Loc Text='Flag or unflag (P)'}">
-                                        <FontIcon Glyph="&#xE7C1;" FontSize="12" />
-                                    </Button>
                                 </Grid>
+                                <!-- The flag's one place: the corner where a flagged photo shows its mark (drawn over this). -->
+                                <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Width="20" Height="20" Click="TileFlag_Click"
+                                        Style="{StaticResource TileActionButton}" ToolTipService.ToolTip="{local:Loc Text='Flag or unflag (P)'}">
+                                    <FontIcon Glyph="&#xE7C1;" FontSize="12" Visibility="{x:Bind local:Ui.Collapsed(IsFlagged), Mode=OneWay}" />
+                                </Button>
                             </Grid>
+                            <Border IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind FlagVisibility, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Flagged'}">
+                                <FontIcon Glyph="&#xE7C1;" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
+                            <Border IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
+                                    Background="{ThemeResource SystemFillColorCriticalBrush}" Visibility="{x:Bind RejectVisibility, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Rejected'}">
+                                <FontIcon Glyph="&#xE711;" FontSize="12" Foreground="White" />
+                            </Border>
                         </Grid>
                     </DataTemplate>
                 </GridView.ItemTemplate>

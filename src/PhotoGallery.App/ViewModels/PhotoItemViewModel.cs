@@ -31,6 +31,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 OnPropertyChanged(nameof(Rating));
                 OnPropertyChanged(nameof(StarsVisibility));
                 OnPropertyChanged(nameof(FlagVisibility));
+                OnPropertyChanged(nameof(IsFlagged));
                 OnPropertyChanged(nameof(RejectVisibility));
                 OnPropertyChanged(nameof(ThumbnailOpacity));
                 OnPropertyChanged(nameof(Tooltip));
@@ -64,6 +65,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
 
     public Microsoft.UI.Xaml.Visibility StarsVisibility =>
         Photo.Rating > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public bool IsFlagged => Photo.Flagged;
 
     public Microsoft.UI.Xaml.Visibility FlagVisibility =>
         Photo.Flagged ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
