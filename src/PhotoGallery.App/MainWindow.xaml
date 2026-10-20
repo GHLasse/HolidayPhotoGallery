@@ -964,6 +964,21 @@
                 <TextBlock Text="{x:Bind ViewModel.Editor.Summary, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                 <TextBlock Text="{x:Bind ViewModel.Editor.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <!-- Camera, lens, exposure and author, read from the file when opened; which ones in Settings › App. -->
+                <Expander x:Name="MoreDetailsExpander" Header="{local:Loc Text='More details'}"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Visibility="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}">
+                    <StackPanel Spacing="6">
+                        <Grid x:Name="MoreDetailsGrid" ColumnSpacing="12" RowSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                        </Grid>
+                        <TextBlock x:Name="MoreDetailsNote" TextWrapping="Wrap" Visibility="Collapsed"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Expander>
                 <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.Editor.HasSelection, Mode=OneWay}">
                     <StackPanel Spacing="4">
                         <TextBlock Text="{local:Loc Text='Rating'}" />

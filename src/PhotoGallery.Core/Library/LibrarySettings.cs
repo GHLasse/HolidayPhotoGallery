@@ -58,6 +58,12 @@ public sealed class LibrarySettings
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 
+    /// <summary>The details "More details" in the info pane shows (<see cref="Metadata.PhotoDetails"/> keys); null for the defaults.</summary>
+    public List<string>? DetailKeys { get; set; }
+
+    /// <summary>Whether "More details" in the info pane was left open.</summary>
+    public bool MoreDetailsOpen { get; set; }
+
     /// <summary>The user's own Google Cloud client, when they use one instead of the app's built-in one.</summary>
     public string? GoogleClientId { get; set; }
 

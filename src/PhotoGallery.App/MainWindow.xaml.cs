@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window
         SetUpTimeline();
         SetUpClickToDeselect();
         SetUpRatingRow();
+        SetUpMoreDetails();
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
@@ -1176,7 +1177,25 @@ public sealed partial class MainWindow : Window
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
         var languagePage = LanguagePage(out var chosenLanguage);
 
-        // App tab: how the gallery behaves, and the language.
+        // Which facts "More details" in the info pane shows, two columns of ticks.
+        var detailBoxes = new List<(string Key, CheckBox Box)>();
+        var detailGrid = new Grid { ColumnSpacing = 12 };
+        detailGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        detailGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var detailRows = (Core.Metadata.PhotoDetails.All.Count + 1) / 2;
+        for (var i = 0; i < detailRows; i++)
+            detailGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var i = 0; i < Core.Metadata.PhotoDetails.All.Count; i++)
+        {
+            var detail = Core.Metadata.PhotoDetails.All[i];
+            var box = new CheckBox { Content = detail.Label, IsChecked = ViewModel.DetailKeys.Contains(detail.Key), MinWidth = 0 };
+            Grid.SetRow(box, i % detailRows);
+            Grid.SetColumn(box, i / detailRows);
+            detailGrid.Children.Add(box);
+            detailBoxes.Add((detail.Key, box));
+        }
+
+        // App tab: how the gallery behaves, the details pane, and the language.
         gallery.Visibility = languagePage.Visibility = Visibility.Visible;
         var appPage = new ScrollViewer
         {
@@ -1189,6 +1208,9 @@ public sealed partial class MainWindow : Window
                 Children =
                 {
                     gallery,
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    new TextBlock { Text = Tr("More details in the info pane"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
+                    detailGrid,
                     new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
                     new TextBlock { Text = Tr("Language"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
                     languagePage,
@@ -1308,6 +1330,8 @@ public sealed partial class MainWindow : Window
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
+        ViewModel.SaveDetailKeys(detailBoxes.Where(d => d.Box.IsChecked == true).Select(d => d.Key).ToList());
+        _ = ShowMoreDetailsAsync();
         ViewModel.SaveFavouriteApps(chosenApps());
         if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
