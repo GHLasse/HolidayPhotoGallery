@@ -64,6 +64,8 @@ public sealed partial class MainWindow
         ShowFilterBadges();
         _ = ShowTopPeopleAsync();
         RecolourTabMarks();
+        foreach (var tree in new[] { FolderTree, DateTree, PlaceTree })
+            RecolourTreeMark(tree);
     }
 
     // Dialogs and their popups are not inside Root, so each dialog gets the palette and mode as it opens.
@@ -128,6 +130,8 @@ public sealed partial class MainWindow
             ["ListViewItemSelectionIndicatorBrush"] = Solid(s.Fill),
             ["ListViewItemSelectionIndicatorPointerOverBrush"] = Solid(s.Fill),
             ["ListViewItemSelectionIndicatorPressedBrush"] = Solid(s.Fill),
+            // The same line beside the chosen folder, date or place in the left pane.
+            ["TreeViewItemSelectionIndicatorForeground"] = Solid(s.Fill),
 
             // WinUI's controls read these, set once from the Windows accent colour, so they are replaced too.
             ["AccentButtonBackground"] = Solid(s.Fill),

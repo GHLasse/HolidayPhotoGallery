@@ -45,6 +45,8 @@ public sealed partial class MainWindow
         foreach (var tab in ModeBar.Items)
             tab.SizeChanged += (_, _) => WidenTabMark(tab);
         ModeBar.SelectionChanged += (_, _) => RecolourTabMarks();
+        foreach (var tree in new[] { FolderTree, DateTree, PlaceTree })
+            tree.SelectionChanged += (_, _) => DispatcherQueue.TryEnqueue(() => RecolourTreeMark(tree));
 
         // Selected here rather than in XAML, where it would switch workspaces before the window is built.
         _syncingWorkspace = true;
@@ -378,6 +380,22 @@ public sealed partial class MainWindow
     {
         foreach (var tab in ModeBar.Items)
             WidenTabMark(tab);
+    }
+
+    // The line beside the chosen folder, date or place: painted here too, in case the tree's template
+    // kept the Windows accent like the selector bar did.
+    private void RecolourTreeMark(TreeView tree)
+    {
+        var fill = ThemeBrush("AccentFillColorDefaultBrush");
+        if (fill is null)
+            return;
+        foreach (var mark in Descendants(tree).OfType<FrameworkElement>().Where(e => e.Name == "SelectionIndicator"))
+        {
+            if (mark is Microsoft.UI.Xaml.Shapes.Shape shape)
+                shape.Fill = fill;
+            else if (mark is Border border)
+                border.Background = fill;
+        }
     }
 
     private void SetUpRatingRow()
