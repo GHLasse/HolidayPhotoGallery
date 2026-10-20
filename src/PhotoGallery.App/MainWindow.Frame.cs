@@ -61,6 +61,7 @@ public sealed partial class MainWindow
 
         Root.SizeChanged += (_, e) => OnWindowWidthChanged(e.NewSize.Width);
         NavPane.SizeChanged += (_, _) => LimitNavTrees();
+        WatchNavTrees();
         Root.PreviewKeyDown += Root_PreviewKeyDown;
 
         // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
@@ -281,13 +282,52 @@ public sealed partial class MainWindow
         LimitNavTrees();
     }
 
-    // The open tree gets the height the headings leave free, and scrolls within it.
+    // The open tree gets the height the headings leave free, and scrolls within it. Measured, not counted:
+    // a fixed sum let a long tree run on under the Settings button. Whatever still doesn't fit (a very low
+    // window) is cut off at a line above Settings instead of being drawn over it.
     private void LimitNavTrees()
     {
-        const double headings = 6 * 36 + 8 * 2; // hamburger, All photos, Albums, Folders, Dates, Places, and the row gaps
-        var room = Math.Max(120, NavPane.ActualHeight - NavPane.Padding.Top - NavPane.Padding.Bottom - headings);
-        FoldersContent.MaxHeight = DateTree.MaxHeight = PlaceTree.MaxHeight = room;
+        var trees = new FrameworkElement[] { FoldersContent, DateTree, PlaceTree };
+        double used = 0;
+        var rows = 0;
+        foreach (var child in NavPane.Children.OfType<FrameworkElement>())
+        {
+            if (child.Visibility != Visibility.Visible || child == NavLine || trees.Contains(child))
+                continue;
+            used += child.ActualHeight > 0 ? child.ActualHeight : 36;
+            rows++;
+        }
+        var free = NavPane.ActualHeight - NavPane.Padding.Top - NavPane.Padding.Bottom - used - NavPane.RowSpacing * rows;
+        var room = Math.Max(72, free);
+        foreach (var tree in trees)
+            tree.MaxHeight = room;
+
+        var bottom = Math.Max(0, NavPane.ActualHeight - NavPane.Padding.Bottom);
+        NavPane.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, NavPane.ActualWidth), bottom) };
+        ShowNavLine();
     }
+
+    private void ShowNavLine()
+    {
+        var open = new FrameworkElement[] { FoldersContent, DateTree, PlaceTree }.FirstOrDefault(t => t.Visibility == Visibility.Visible);
+        NavLine.Visibility = open is not null && TreeOverflows(open) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Opening a branch can make a tree outgrow its room; the line follows.
+    private void WatchNavTrees()
+    {
+        foreach (var tree in new FrameworkElement[] { FolderTree, DateTree, PlaceTree })
+            tree.Loaded += (_, _) =>
+            {
+                if (Descendants(tree).OfType<ScrollViewer>().FirstOrDefault() is { } viewer)
+                    viewer.RegisterPropertyChangedCallback(ScrollViewer.ScrollableHeightProperty, (_, _) => ShowNavLine());
+                ShowNavLine();
+            };
+    }
+
+    // The tree has more than its room, so part of it scrolls below the line.
+    private static bool TreeOverflows(FrameworkElement content) =>
+        Descendants(content).OfType<ScrollViewer>().FirstOrDefault() is { ScrollableHeight: > 0 };
 
     private (FrameworkElement Content, FontIcon Chevron) NavSection(object heading) =>
         ReferenceEquals(heading, FoldersHeading) ? (FoldersContent, FoldersChevron)
