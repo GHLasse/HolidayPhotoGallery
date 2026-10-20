@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
         Closed += (_, _) => ViewModel.Dispose();
+        AppWindow.Closing += AppWindow_Closing;
         ViewModel.Editor.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MetadataEditorViewModel.TimeZones) or nameof(MetadataEditorViewModel.TimeZoneIndex))
@@ -232,6 +233,46 @@ public sealed partial class MainWindow : Window
         PlaceTree.SelectedItem = null;
         ViewModel.ClearDateFromTree();
         ViewModel.SelectedPlace = null;
+    }
+
+    // Closing while a long job or an upload runs would cut it off half way, so the app asks first.
+    private bool _closeConfirmed;
+
+    private async void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (_closeConfirmed || !(ViewModel.IsBusy || ViewModel.IsUploading))
+            return;
+        args.Cancel = true;
+        var doing = string.Join(" ", new[] { ViewModel.IsBusy ? ViewModel.StatusText : "", ViewModel.IsUploading ? ViewModel.UploadText : "" }
+            .Where(t => t.Length > 0));
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Close while work is running?"),
+            Content = new TextBlock
+            {
+                Text = Tr("The app is still busy: {0} Closing it stops this; the photos already done keep their changes.", doing),
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = Tr("Close anyway"),
+            CloseButtonText = Tr("Keep working"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        ContentDialogResult answer;
+        try
+        {
+            answer = await dialog.ShowThemedAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return; // another dialog is open; the window stays
+        }
+        if (answer != ContentDialogResult.Primary)
+            return;
+        ViewModel.StopBusyWork();
+        ViewModel.CancelUpload();
+        _closeConfirmed = true;
+        Close();
     }
 
     private void SortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
