@@ -58,8 +58,6 @@ public sealed partial class MainWindow
         // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
         AddAccelerator((VirtualKey)188, VirtualKeyModifiers.Control, () => RotateLeft_Click(this, new RoutedEventArgs()));
         AddAccelerator((VirtualKey)190, VirtualKeyModifiers.Control, () => RotateRight_Click(this, new RoutedEventArgs()));
-        SelectionBar.OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(167) };
-        SelectionBar.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(250) };
         SetUpFilterFolding();
         SetUpViewerMotion();
     }
@@ -198,11 +196,36 @@ public sealed partial class MainWindow
             ApplyChrome();
         }
         SelectionCountText.Text = Tr("{0} selected", count);
-        SelectionBar.IsHitTestVisible = has;
-        SelectionBar.Opacity = has ? 1 : 0;
-        SelectionBar.Translation = has ? Vector3.Zero : new Vector3(0, 24, 0);
+        ShowSelectionBar(has);
         // Room under the last row, so the bar never covers a photo that is scrolled to the end.
         PhotoGrid.Padding = new Thickness(0, 0, 0, has ? 80 : 8);
+    }
+
+    private bool _selectionBarShown;
+    private int _selectionBarVersion;
+
+    // Rises from the bottom while photos are selected, and sinks away when none are.
+    private void ShowSelectionBar(bool show)
+    {
+        if (show == _selectionBarShown)
+            return;
+        _selectionBarShown = show;
+        var version = ++_selectionBarVersion;
+        if (!s_animations)
+        {
+            SelectionBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+        SelectionBar.Visibility = Visibility.Visible;
+        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        AnimateDouble(storyboard, SelectionBar, "Opacity", show ? 0 : 1, show ? 1 : 0, show ? SlideMs : 167);
+        AnimateDouble(storyboard, SelectionBarShift, "TranslateY", show ? 24 : 0, show ? 0 : 24, show ? SlideMs : 167);
+        storyboard.Completed += (_, _) =>
+        {
+            if (version == _selectionBarVersion && !_selectionBarShown)
+                SelectionBar.Visibility = Visibility.Collapsed;
+        };
+        storyboard.Begin();
     }
 
     // ---- Quick actions on a tile ----

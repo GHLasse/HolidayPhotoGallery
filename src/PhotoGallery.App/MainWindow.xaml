@@ -705,7 +705,10 @@
                     Margin="12,0,12,16" Padding="12,0,4,0" CornerRadius="8"
                     Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
-                    Opacity="0" IsHitTestVisible="False" Translation="0,24,0">
+                    Visibility="Collapsed">
+                <Border.RenderTransform>
+                    <CompositeTransform x:Name="SelectionBarShift" />
+                </Border.RenderTransform>
                 <!-- MaxWidth: centred, the bar would otherwise be measured with no width limit, which the
                      command bar's overflow can't handle. -->
                 <CommandBar x:Name="SelectionCommands" Background="Transparent" IsOpen="False" DefaultLabelPosition="Right" MaxWidth="1100"
