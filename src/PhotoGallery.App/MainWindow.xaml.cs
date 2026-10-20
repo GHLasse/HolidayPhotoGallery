@@ -589,6 +589,8 @@ public sealed partial class MainWindow : Window
 
     private async void PhotoGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // Before the info pane slides in or out and the grid reflows: the clicked photo stays where it is.
+        RememberAnchor(e.AddedItems.OfType<PhotoItemViewModel>().LastOrDefault());
         OnSelectionChromeChanged();
         if (_handlingSelection)
             return;

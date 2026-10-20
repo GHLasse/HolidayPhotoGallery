@@ -53,7 +53,94 @@ public sealed partial class MainWindow
                 TimelineBubble.Visibility = Visibility.Collapsed;
         };
         TimelineRail.SizeChanged += (_, _) => DrawTimeline();
-        PhotoGrid.SizeChanged += (_, _) => ApplyTileSize();
+        PhotoGrid.SizeChanged += (_, e) =>
+        {
+            if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) >= 1 && _anchorItem is not null)
+            {
+                _restoreAnchor = true;
+                _anchorRetries = 0;
+            }
+            ApplyTileSize();
+        };
+        PhotoGrid.LayoutUpdated += (_, _) => RestoreAnchor();
+        PhotoGrid.Loaded += (_, _) =>
+        {
+            if (_gridScroller is not null)
+                return;
+            _gridScroller = Descendants(PhotoGrid).OfType<ScrollViewer>().FirstOrDefault();
+            if (_gridScroller is not null)
+                _gridScroller.ViewChanged += (_, e) =>
+                {
+                    if (!e.IsIntermediate && !_restoreAnchor)
+                        RememberAnchor(null);
+                };
+        };
+    }
+
+    // ---- Keeping the place while the grid reflows ----
+
+    // A photo and how far from the top of the visible grid it was; when the grid gets narrower or wider
+    // (a pane slides in or out, the window is resized), the scroll position follows so it stays there.
+    private ScrollViewer? _gridScroller;
+    private PhotoItemViewModel? _anchorItem;
+    private double _anchorY;
+    private bool _restoreAnchor;
+    private int _anchorRetries;
+
+    /// <summary>Notes the photo to keep in place: the one given if it is on screen, else the first one fully shown.</summary>
+    private void RememberAnchor(PhotoItemViewModel? preferred)
+    {
+        if (_gridScroller is not { } scroller || scroller.ViewportHeight <= 0)
+            return;
+        _anchorItem = null;
+        IEnumerable<PhotoItemViewModel> candidates = preferred is null ? PhotoGrid.SelectedItems.OfType<PhotoItemViewModel>().Reverse() : [preferred];
+        foreach (var item in candidates)
+        {
+            if (TopInGrid(item) is { } y && y > -ViewModel.TileSize && y < scroller.ViewportHeight)
+            {
+                (_anchorItem, _anchorY) = (item, y);
+                break;
+            }
+        }
+        if (_anchorItem is null && PhotoGrid.ItemsPanelRoot is { } panel)
+        {
+            foreach (var container in panel.Children.OfType<GridViewItem>())
+            {
+                if (container.Content is PhotoItemViewModel item && TopInGrid(item) is { } y && y >= 0 && (_anchorItem is null || y < _anchorY))
+                    (_anchorItem, _anchorY) = (item, y);
+            }
+        }
+        _anchorRetries = 0;
+    }
+
+    private double? TopInGrid(PhotoItemViewModel item) =>
+        _gridScroller is { } scroller && PhotoGrid.ContainerFromItem(item) is UIElement container
+            ? container.TransformToVisual(scroller).TransformPoint(new Windows.Foundation.Point(0, 0)).Y
+            : null;
+
+    private void RestoreAnchor()
+    {
+        if (!_restoreAnchor || _gridScroller is not { } scroller || _anchorItem is not { } item)
+            return;
+        if (TopInGrid(item) is not { } y)
+        {
+            // Scrolled out of the realised range by the reflow: bring it back, then place it exactly.
+            if (_anchorRetries++ < 3)
+                PhotoGrid.ScrollIntoView(item);
+            else
+                _restoreAnchor = false;
+            return;
+        }
+        var delta = y - _anchorY;
+        if (Math.Abs(delta) < 1)
+        {
+            _restoreAnchor = false;
+            return;
+        }
+        scroller.ChangeView(null, Math.Max(0, scroller.VerticalOffset + delta), null, disableAnimation: true);
+        // At the very top or bottom the photo can't be moved further; give up rather than try forever.
+        if (_anchorRetries++ > 20)
+            _restoreAnchor = false;
     }
 
     private void EndScrub(PointerRoutedEventArgs e)
