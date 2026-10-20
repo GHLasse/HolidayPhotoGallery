@@ -102,7 +102,7 @@ public sealed partial class MainWindow
     private void MorePeople_Click(object sender, RoutedEventArgs e)
     {
         var width = PeopleGroup.ActualWidth;
-        PeopleList.Width = Math.Max(240, width);
+        MorePeopleList.Width = Math.Max(240, width);
         PeopleGroup.CornerRadius = new CornerRadius(ControlCorner, ControlCorner, 0, 0);
         PeopleFlyout.Closed -= RestorePeopleCorners;
         PeopleFlyout.Closed += RestorePeopleCorners;

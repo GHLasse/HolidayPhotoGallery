@@ -148,7 +148,7 @@
                                                 <Setter Property="CornerRadius" Value="0,0,4,4" />
                                             </Style>
                                         </Flyout.FlyoutPresenterStyle>
-                                        <ListView x:Name="PeopleList" MaxHeight="480" Padding="0,4" SelectionMode="None" ItemsSource="{x:Bind ViewModel.PeopleByName, Mode=OneWay}">
+                                        <ListView x:Name="MorePeopleList" MaxHeight="480" Padding="0,4" SelectionMode="None" ItemsSource="{x:Bind ViewModel.PeopleByName, Mode=OneWay}">
                                             <ListView.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:TagFilterViewModel">
                                                     <Grid ColumnSpacing="8">
