@@ -331,6 +331,8 @@
     "No people named": "لم تتم تسمية أي شخص",
     "No photo has tags yet.": "لا توجد علامات على أي صورة بعد.",
     "No photo selected": "لم يتم تحديد أي صورة",
+    "No photos match the filter. Clear it to see the photos again?": "لا توجد صور تطابق عامل التصفية. هل تريد مسحه لرؤية الصور مرة أخرى؟",
+    "No photos match these {0} filters. Clear them to see the photos again?": "لا توجد صور تطابق عوامل التصفية الـ {0}. هل تريد مسحها لرؤية الصور مرة أخرى؟",
     "No read-only photos found.": "لم يتم العثور على صور للقراءة فقط.",
     "No tag matches.": "لا توجد علامات مطابقة.",
     "No tags": "بلا علامات",

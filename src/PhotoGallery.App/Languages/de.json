@@ -331,6 +331,8 @@
     "No people named": "Keine Personen benannt",
     "No photo has tags yet.": "Noch kein Foto hat Markierungen.",
     "No photo selected": "Kein Foto ausgewählt",
+    "No photos match the filter. Clear it to see the photos again?": "Kein Foto passt zum Filter. Filter löschen, um die Fotos wieder zu sehen?",
+    "No photos match these {0} filters. Clear them to see the photos again?": "Kein Foto passt zu diesen {0} Filtern. Filter löschen, um die Fotos wieder zu sehen?",
     "No read-only photos found.": "Keine schreibgeschützten Fotos gefunden.",
     "No tag matches.": "Keine passende Markierung.",
     "No tags": "Keine Markierungen",

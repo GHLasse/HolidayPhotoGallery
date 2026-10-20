@@ -100,7 +100,10 @@ public sealed partial class MainWindow : Window
                     _ = ShowPeoplePageAsync();
             }
             else if (e.PropertyName is nameof(MainViewModel.IsAlbumView))
+            {
                 OnAlbumViewChanged();
+                ShowFilterBadges();
+            }
             else if (e.PropertyName is nameof(MainViewModel.IsBusy) or nameof(MainViewModel.StatusText))
                 ApplyBusyGates();
             else if (e.PropertyName is nameof(MainViewModel.Photos))

@@ -331,6 +331,8 @@
     "No people named": "无已命名人物",
     "No photo has tags yet.": "还没有照片带有标记。",
     "No photo selected": "未选择照片",
+    "No photos match the filter. Clear it to see the photos again?": "没有符合筛选条件的照片。清除筛选以重新显示照片？",
+    "No photos match these {0} filters. Clear them to see the photos again?": "没有符合这 {0} 个筛选条件的照片。清除筛选以重新显示照片？",
     "No read-only photos found.": "未找到只读照片。",
     "No tag matches.": "没有匹配的标记。",
     "No tags": "无标记",

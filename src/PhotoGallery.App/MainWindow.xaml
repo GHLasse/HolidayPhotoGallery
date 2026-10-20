@@ -732,6 +732,15 @@
                     </DataTemplate>
                 </GridView.ItemTemplate>
             </GridView>
+            <!-- When the filters leave nothing to show (MainWindow.Tags.cs). -->
+            <StackPanel x:Name="NoMatchHint" Grid.Row="1" Visibility="Collapsed" Spacing="12" Padding="16"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420">
+                <FontIcon Glyph="&#xE71C;" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock x:Name="NoMatchText" TextWrapping="Wrap" TextAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Button HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Click="ClearFilters_Click"
+                        Content="{local:Loc Text='Clear filters'}" />
+            </StackPanel>
             <!-- Album view: one tile per album, opened with a click. -->
             <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Visibility="{x:Bind ViewModel.HasNoAlbums, Mode=OneWay}"

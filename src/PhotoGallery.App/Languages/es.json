@@ -331,6 +331,8 @@
     "No people named": "Ninguna persona con nombre",
     "No photo has tags yet.": "Ninguna foto tiene etiquetas todavía.",
     "No photo selected": "Ninguna foto seleccionada",
+    "No photos match the filter. Clear it to see the photos again?": "Ninguna foto coincide con el filtro. ¿Quitarlo para volver a ver las fotos?",
+    "No photos match these {0} filters. Clear them to see the photos again?": "Ninguna foto coincide con estos {0} filtros. ¿Quitarlos para volver a ver las fotos?",
     "No read-only photos found.": "No se encontraron fotos de solo lectura.",
     "No tag matches.": "Ninguna etiqueta coincide.",
     "No tags": "Sin etiquetas",

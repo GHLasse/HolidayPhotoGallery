@@ -160,6 +160,12 @@ public sealed partial class MainWindow
     {
         // The count on "Clear filters" points at filters set somewhere easy to overlook.
         var active = ViewModel.ActiveFilterCount;
+        var none = active > 0 && ViewModel.Photos.Count == 0 && !ViewModel.IsAlbumView;
+        NoMatchHint.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
+        if (none)
+            NoMatchText.Text = active == 1
+                ? Tr("No photos match the filter. Clear it to see the photos again?")
+                : Tr("No photos match these {0} filters. Clear them to see the photos again?", active);
         ClearFiltersButton.Content = active == 0 ? Tr("Clear filters") : Tr("Clear filters ({0})", active);
         ClearFiltersButton.IsEnabled = active > 0;
 
