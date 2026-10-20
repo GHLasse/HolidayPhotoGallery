@@ -984,20 +984,37 @@
                         <TextBlock x:Name="PeopleHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}">
-                        <Grid RowSpacing="8">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                        <!-- One label over two boxes: the local date and time, and its time zone (just the offset
+                             while closed; the list names the places). -->
+                        <TextBlock Text="{local:Loc Text='Date taken'}" Margin="0,0,0,4" />
+                        <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBox Header="{local:Loc Text='Date taken'}" PlaceholderText="2024-07-01 14:30:00"
+                            <TextBox PlaceholderText="2024-07-01 14:30:00" MinWidth="0"
+                                     AutomationProperties.Name="{local:Loc Text='Date taken'}"
                                      Text="{x:Bind ViewModel.Editor.DateText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <!-- Filled from code: binding both the list and the index let x:Bind set the index first, which crashed at startup. -->
-                            <ComboBox x:Name="TimeZoneCombo" Grid.Row="1" Grid.ColumnSpan="2" Header="{local:Loc Text='Time zone'}" HorizontalAlignment="Stretch"
-                                      SelectionChanged="TimeZoneCombo_SelectionChanged" />
+                            <ComboBox x:Name="TimeZoneCombo" Grid.Column="1" MinWidth="118"
+                                      AutomationProperties.Name="{local:Loc Text='Time zone'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Time zone'}"
+                                      SelectionChanged="TimeZoneCombo_SelectionChanged">
+                                <ComboBox.ItemTemplateSelector>
+                                    <controls:ClosedComboTemplate>
+                                        <controls:ClosedComboTemplate.Full>
+                                            <DataTemplate x:DataType="vm:TimeZoneChoice">
+                                                <TextBlock Text="{x:Bind Display}" />
+                                            </DataTemplate>
+                                        </controls:ClosedComboTemplate.Full>
+                                        <controls:ClosedComboTemplate.Short>
+                                            <DataTemplate x:DataType="vm:TimeZoneChoice">
+                                                <TextBlock Text="{x:Bind Short}" />
+                                            </DataTemplate>
+                                        </controls:ClosedComboTemplate.Short>
+                                    </controls:ClosedComboTemplate>
+                                </ComboBox.ItemTemplateSelector>
+                            </ComboBox>
                         </Grid>
                         <TextBlock Text="{local:Loc Text='The camera’s local time, and where it was taken. Summer time is worked out from the date.'}"
                                    TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
