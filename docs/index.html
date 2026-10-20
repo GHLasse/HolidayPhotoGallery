@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Holiday Photo Gallery</title>
+<meta name="description" content="A free photo manager for Windows in the spirit of Windows Live Photo Gallery. Everything you add is saved in the photo itself.">
+<meta property="og:title" content="Holiday Photo Gallery">
+<meta property="og:description" content="A free photo manager for Windows in the spirit of Windows Live Photo Gallery. Everything you add is saved in the photo itself.">
+<meta property="og:image" content="assets/app-icon-512.png">
+<link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<style>
+:root {
+  --bg: #fbfaf8;
+  --surface: #ffffff;
+  --surface-2: #f2f0ec;
+  --text: #1c1b1a;
+  --muted: #5c5a57;
+  --line: #e4e1dc;
+  --accent: #16788f;
+  --accent-strong: #0f5f72;
+  --accent-soft: #e2f3f4;
+  --sun: #ff9a62;
+  --sky: #173f86;
+  --radius: 14px;
+  --max: 1120px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141517;
+    --surface: #1c1e21;
+    --surface-2: #24272b;
+    --text: #ecebe8;
+    --muted: #a9a7a3;
+    --line: #33363b;
+    --accent: #38c3b5;
+    --accent-strong: #6fd8cc;
+    --accent-soft: #17312f;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+a { color: var(--accent); }
+a:hover { color: var(--accent-strong); }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+/* Header */
+header.top {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+header.top .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; color: var(--text); text-decoration: none; }
+.brand img { width: 30px; height: 30px; }
+nav.links { margin-left: auto; display: flex; gap: 22px; }
+nav.links a { color: var(--muted); text-decoration: none; font-size: 15px; }
+nav.links a:hover { color: var(--text); }
+@media (max-width: 760px) { nav.links a.opt { display: none; } }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px; border-radius: 10px;
+  font-weight: 600; text-decoration: none; border: 1px solid transparent;
+}
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-strong); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.primary, .btn.primary:hover { color: #0b1f1d; } }
+.btn.ghost { border-color: var(--line); color: var(--text); background: var(--surface); }
+.btn.ghost:hover { border-color: var(--accent); color: var(--text); }
+.btn svg { width: 18px; height: 18px; }
+
+/* Hero */
+.hero { padding: 72px 0 56px; position: relative; overflow: hidden; }
+.hero::before {
+  content: ""; position: absolute; inset: -40% -10% auto auto; width: 70%; height: 140%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--sun) 22%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.hero .wrap { display: grid; grid-template-columns: 1.3fr 1fr; gap: 48px; align-items: center; position: relative; }
+.hero h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.1; margin: 0 0 18px; letter-spacing: -0.02em; }
+.hero h1 span { color: var(--accent); }
+.hero p.lead { font-size: 19px; color: var(--muted); margin: 0 0 28px; max-width: 34em; }
+.hero .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+.hero .meta { margin-top: 16px; font-size: 14px; color: var(--muted); }
+.hero .icon { justify-self: center; width: min(320px, 70vw); filter: drop-shadow(0 24px 40px rgb(0 0 0 / .18)); }
+@media (max-width: 860px) {
+  .hero { padding: 40px 0; }
+  .hero .wrap { grid-template-columns: 1fr; gap: 28px; }
+  .hero .icon { grid-row: 1; width: 160px; justify-self: start; }
+}
+
+/* Sections */
+section { padding: 64px 0; }
+section.alt { background: var(--surface-2); }
+h2 { font-size: clamp(26px, 3.4vw, 34px); line-height: 1.2; margin: 0 0 10px; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 0 0 36px; max-width: 42em; font-size: 17px; }
+
+/* Pillars */
+.pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.pillar { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+.pillar .ico { width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; margin-bottom: 14px; }
+.pillar .ico svg { width: 22px; height: 22px; }
+.pillar h3 { margin: 0 0 6px; font-size: 18px; }
+.pillar p { margin: 0; color: var(--muted); }
+@media (max-width: 860px) { .pillars { grid-template-columns: 1fr; } }
+
+/* Screenshots */
+.shots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.shots figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.shots figure:first-child { grid-column: 1 / -1; }
+.shots img { display: block; width: 100%; height: auto; }
+.shots figcaption { padding: 12px 16px; font-size: 14px; color: var(--muted); }
+@media (max-width: 700px) { .shots { grid-template-columns: 1fr; } }
+
+/* Features */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.feature { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; }
+.feature h3 { margin: 0 0 10px; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+.feature h3 svg { width: 20px; height: 20px; color: var(--accent); flex: none; }
+.feature ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
+.feature li { margin: 4px 0; }
+.feature li strong { color: var(--text); font-weight: 600; }
+@media (max-width: 960px) { .features { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .features { grid-template-columns: 1fr; } }
+
+/* Comparison */
+.compare { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; font-size: 15px; }
+.compare th, .compare td { padding: 14px 18px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.compare tr:last-child td { border-bottom: 0; }
+.compare th { background: var(--surface-2); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.compare td:first-child { font-weight: 600; width: 26%; }
+.compare td { color: var(--muted); }
+@media (max-width: 640px) {
+  .compare, .compare tbody, .compare tr, .compare td { display: block; width: 100% !important; }
+  .compare thead { display: none; }
+  .compare td:first-child { padding-bottom: 0; border-bottom: 0; color: var(--text); }
+}
+
+/* Formats + requirements */
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+.card h3 { margin: 0 0 12px; font-size: 18px; }
+.card ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.card li { margin: 6px 0; }
+table.formats { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.formats th, table.formats td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+table.formats th { color: var(--muted); font-weight: 600; font-size: 13px; }
+table.formats td.y { color: var(--accent); font-weight: 700; }
+.note { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
+
+/* Download */
+.download { text-align: center; }
+.download .sub { margin-left: auto; margin-right: auto; }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 36px auto 0; max-width: 720px; text-align: left; display: grid; gap: 12px; }
+.steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px 14px 60px; position: relative; color: var(--muted); }
+.steps li strong { color: var(--text); }
+.steps li::before { content: counter(s); position: absolute; left: 16px; top: 13px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 14px; }
+@media (prefers-color-scheme: dark) { .steps li::before { color: #0b1f1d; } }
+code { font-family: "Cascadia Code", Consolas, monospace; font-size: .92em; background: var(--surface-2); padding: 1px 6px; border-radius: 5px; }
+
+/* FAQ */
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0 20px; margin-bottom: 10px; }
+summary { cursor: pointer; padding: 16px 0; font-weight: 600; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; float: right; color: var(--muted); font-weight: 400; }
+details[open] summary::after { content: "−"; }
+details p { margin: 0 0 16px; color: var(--muted); }
+
+footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/app-icon.svg" alt="" width="30" height="30">Holiday Photo Gallery</a>
+    <nav class="links">
+      <a class="opt" href="#features">Features</a>
+      <a class="opt" href="#why">Why this app</a>
+      <a class="opt" href="#faq">FAQ</a>
+      <a href="#download">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <h1>Your holiday photos, <span>sorted</span>.</h1>
+      <p class="lead">A free photo manager for Windows in the spirit of Windows Live Photo Gallery. Browse your folders, rate and compare, tag people and places on a map, fix dates and crop. Your tags, ratings, people and places go into the files themselves, so your work is never locked into one app.</p>
+      <div class="cta">
+        <a class="btn primary" href="#download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+          Download for Windows
+        </a>
+        <a class="btn ghost" href="https://github.com/GHLasse/HolidayPhotoGallery">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+          Source on GitHub
+        </a>
+      </div>
+      <p class="meta">Windows 10 and 11 · Free and open source · No account, no subscription</p>
+    </div>
+    <img class="icon" src="assets/app-icon.svg" alt="Holiday Photo Gallery app icon: a sunset instant photo with a plane">
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Three promises</h2>
+    <p class="sub">The app is built around a few rules that do not change, whatever feature comes next.</p>
+    <div class="pillars">
+      <div class="pillar">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 14h8M8 18h5"/></svg></div>
+        <h3>Your files are the truth</h3>
+        <p>Tags, ratings, flags, captions, people, places and dates are written into each photo (XMP, EXIF, IPTC). Copy a folder anywhere and it all comes along. The app's database is only a search cache.</p>
+      </div>
+      <div class="pillar">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+        <h3>Private by design</h3>
+        <p>Face recognition and automatic tagging run on your own PC. No account, no tracking. Photos only leave your PC when you upload them yourself.</p>
+      </div>
+      <div class="pillar">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg></div>
+        <h3>Every edit can be undone</h3>
+        <p>Before a crop or colour fix, the original is kept in a hidden folder next to the photo. Undo the last edit, or go back to the original at any time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="screenshots" hidden>
+  <div class="wrap">
+    <h2>A look inside</h2>
+    <p class="sub">A Windows 11 app with the familiar Photo Gallery layout: folders on the left, photos in the middle, details on the right.</p>
+    <div class="shots">
+      <figure><img src="assets/screenshots/library.png" alt="Library with folder tree, photo grid and details pane"><figcaption>The Library: folder, date and place trees, photo grid and details.</figcaption></figure>
+      <figure><img src="assets/screenshots/compare.png" alt="Comparing photos side by side"><figcaption>Compare up to four photos and rate them with the number keys.</figcaption></figure>
+      <figure><img src="assets/screenshots/map.png" alt="Map workspace with placed photos"><figcaption>Place photos on an OpenStreetMap map.</figcaption></figure>
+      <figure><img src="assets/screenshots/people.png" alt="People workspace with named faces"><figcaption>Everyone you named, found on your PC.</figcaption></figure>
+      <figure><img src="assets/screenshots/dark.png" alt="The app in dark mode"><figcaption>Light, dark and seven colour palettes.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Everything for the work after a trip</h2>
+    <p class="sub">Sort hundreds of photos, choose the best ones, and make sure the dates, places and names are right.</p>
+    <div class="features">
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Library</h3>
+        <ul>
+          <li>Works on <strong>your own folders</strong>, nothing to import</li>
+          <li>Folder, <strong>Date</strong> and <strong>Place</strong> trees</li>
+          <li>Thumbnails in their real shape, zoom with Ctrl+wheel</li>
+          <li>Month headers and a year timeline</li>
+          <li>Search and a filter bar for people, tags, camera, rating, flags and dates</li>
+          <li>Drag photos onto a folder to move them, with undo</li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>Sort and rate</h3>
+        <ul>
+          <li><strong>Compare 1 to 4 photos</strong> side by side with shared zoom</li>
+          <li>Rate with keys 1 to 5</li>
+          <li><strong>Flags</strong> (for example "to print") and a <strong>reject</strong> mark, saved in the file</li>
+          <li>Send rejected photos to the Recycle Bin</li>
+          <li>Lightroom keyboard shortcuts, optional auto-advance</li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Dates and time zones</h3>
+        <ul>
+          <li>Edit the date taken with its time zone</li>
+          <li>Pick one camera's photos and <strong>shift them all</strong> at once</li>
+          <li>Or set the first photo to a known time and move the rest</li>
+          <li>Summer time handled per photo</li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>Map and places</h3>
+        <ul>
+          <li><strong>OpenStreetMap</strong> map beside the grid or full width</li>
+          <li>Click the map to place the selected photos</li>
+          <li>Fill in <strong>country, region, city and district</strong> automatically, in your language</li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14.5a5 5 0 0 1 4.5 5"/></svg>People</h3>
+        <ul>
+          <li>Faces found and recognised <strong>on your PC</strong></li>
+          <li>Confirm suggestions, name whole groups at once</li>
+          <li>Names saved in the standard face fields that Lightroom and digiKam read</li>
+          <li><strong>Imports your Windows Live Photo Gallery people</strong></li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/></svg>Automatic tags</h3>
+        <ul>
+          <li>On-device tagging from <strong>your own tag list</strong>, in your language</li>
+          <li>Written as plain tags other apps understand</li>
+          <li>Remove all automatic tags in one go</li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>Light editing</h3>
+        <ul>
+          <li><strong>Crop</strong> with print and screen ratios (1:1, 3:2, 16:9 and more)</li>
+          <li><strong>Auto brightness and contrast</strong></li>
+          <li>Rotate JPEG, HEIC, PNG, WebP, TIFF and GIF</li>
+          <li>Original always kept; undo or revert any time</li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a5 5 0 0 1-.6-10A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/><path d="M12 11v6m0-6-2.5 2.5M12 11l2.5 2.5"/></svg>Albums and sharing</h3>
+        <ul>
+          <li>Folder albums that travel with the folder</li>
+          <li>Upload albums to <strong>Google Photos</strong>, uploaded photos are marked</li>
+          <li><strong>OneDrive</strong> albums</li>
+          <li>Open in your favourite editor with one click</li>
+        </ul>
+      </div>
+      <div class="feature">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18M12 3a9 9 0 0 1 0 18" /><path d="M12 3c-3 3-3 15 0 18M12 3c3 3 3 15 0 18"/></svg>Look and language</h3>
+        <ul>
+          <li>Windows 11 design, resizable panes, gentle animations</li>
+          <li>Light, dark or follow Windows, plus <strong>seven colour palettes</strong></li>
+          <li>English, German, Spanish, Arabic and Chinese</li>
+          <li>Add your own language with a simple text file</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="why" class="alt">
+  <div class="wrap">
+    <h2>Why not just use…?</h2>
+    <p class="sub">Good photo tools exist. Here is what this one does differently.</p>
+    <table class="compare">
+      <thead><tr><th>Compared with</th><th>What Holiday Photo Gallery does differently</th></tr></thead>
+      <tbody>
+        <tr><td>Windows Live Photo Gallery</td><td>Discontinued in 2017. This app keeps the familiar layout and runs on Windows 11, but stores flags and people in the file instead of a database that can get lost. Your existing WLPG people tags are read straight from the photos.</td></tr>
+        <tr><td>Windows Photos</td><td>Real organising tools: tags, ratings, flags, people, captions, map geotagging and batch date shifting, all saved in the files.</td></tr>
+        <tr><td>Adobe Lightroom Classic</td><td>Free, no subscription and no catalogue to import into or back up. It works directly on your folders, with the same keyboard shortcuts and the same metadata fields.</td></tr>
+        <tr><td>Google Photos and iCloud</td><td>Your photos stay on your PC at full quality, and face and tag recognition run locally. Upload only what you choose.</td></tr>
+        <tr><td>digiKam</td><td>The same file-first approach and compatible fields, in a simpler, native Windows 11 app.</td></tr>
+        <tr><td>Geosetter and Picasa</td><td>Geotagging with place names is built into the same app you sort and tag in. Picasa has been discontinued since 2016.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="two">
+      <div class="card">
+        <h3>Supported formats</h3>
+        <table class="formats">
+          <thead><tr><th>Format</th><th>View</th><th>Tags, rating, people, places</th><th>Edit</th></tr></thead>
+          <tbody>
+            <tr><td>JPEG</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+            <tr><td>HEIC / HEIF</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+            <tr><td>TIFF</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+            <tr><td>PNG, WebP</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+            <tr><td>GIF</td><td class="y">✓</td><td>XMP only</td><td>rotate</td></tr>
+          </tbody>
+        </table>
+        <p class="note">HEIC needs Microsoft's free <a href="https://apps.microsoft.com/detail/9pmmsr1cgpwg">HEIF Image Extensions</a>, which most Windows 11 PCs already have.</p>
+      </div>
+      <div class="card">
+        <h3>What you need</h3>
+        <ul>
+          <li>Windows 10 version 1809 or later, or Windows 11, 64-bit</li>
+          <li>No installer and no admin rights: unzip and run</li>
+          <li>About 1 GB free space for the optional on-device AI models, downloaded the first time you use them</li>
+          <li>Internet only for map tiles and place names (OpenStreetMap), the model downloads, and Google Photos or OneDrive if you link them</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download" class="download alt">
+  <div class="wrap">
+    <h2>Download</h2>
+    <p class="sub">Holiday Photo Gallery is free and open source under the Apache 2.0 licence.</p>
+    <a class="btn primary" href="https://github.com/GHLasse/HolidayPhotoGallery/releases/latest">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+      Get the latest version
+    </a>
+    <ol class="steps">
+      <li><strong>Download</strong> the <code>.zip</code> file for Windows x64 from the latest release.</li>
+      <li><strong>Unzip</strong> it to a folder of your choice, for example <code>Documents\HolidayPhotoGallery</code>.</li>
+      <li><strong>Start</strong> <code>HolidayPhotoGallery.exe</code>. The app is not code-signed yet, so Windows may show "Windows protected your PC". Choose <em>More info</em>, then <em>Run anyway</em>.</li>
+      <li><strong>Add a folder</strong> with your photos. Nothing is moved or copied; the app works where your photos already are.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Questions</h2>
+    <p class="sub">&nbsp;</p>
+    <details><summary>Does the app change my photos?</summary><p>Only their metadata, and only when you change something: a tag, a rating, a date or a place. The picture itself is only re-saved when you crop, auto-adjust or rotate, and then the original is kept in a hidden <code>.originals</code> folder next to the photo.</p></details>
+    <details><summary>Will other programs see my tags and ratings?</summary><p>Yes. The app writes the standard XMP, EXIF and IPTC fields plus the Microsoft fields, so Windows Explorer, Lightroom, digiKam, Windows Live Photo Gallery and most other photo tools read them.</p></details>
+    <details><summary>I used Windows Live Photo Gallery for years. Can I switch?</summary><p>Yes. Add your photo folders and your ratings, tags, captions and named people (the ones WLPG saved in the files) show up. Flags that WLPG kept only in its own database cannot be recovered.</p></details>
+    <details><summary>Are my photos sent to the cloud for face or tag recognition?</summary><p>No. Both run on your PC with open models (YuNet and SFace for faces, SigLIP 2 for tags). The models are downloaded once, the first time you use the feature.</p></details>
+    <details><summary>What if I delete the app's database?</summary><p>Nothing is lost. The index in <code>%LocalAppData%\HolidayPhotoGallery</code> is only a search cache and is rebuilt from your files.</p></details>
+    <details><summary>Do I need a Google or Microsoft account?</summary><p>No. Google Photos and OneDrive are optional; you only sign in if you want to upload.</p></details>
+    <details><summary>Where do I report a bug or ask for a feature?</summary><p>Open an issue on <a href="https://github.com/GHLasse/HolidayPhotoGallery/issues">GitHub</a>.</p></details>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Holiday Photo Gallery · Apache 2.0 licence · <a href="https://github.com/GHLasse/HolidayPhotoGallery">GitHub</a></span>
+    <span>Metadata by <a href="https://exiftool.org">ExifTool</a> · Maps © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors</span>
+  </div>
+</footer>
+
+<script>
+// Show the screenshot section once at least one screenshot exists; drop the slots that have none.
+(function () {
+  var section = document.getElementById('screenshots');
+  section.querySelectorAll('figure').forEach(function (fig) {
+    var img = fig.querySelector('img');
+    var loaded = function () { section.hidden = false; };
+    var failed = function () { fig.remove(); };
+    if (img.complete) { img.naturalWidth ? loaded() : failed(); }
+    else { img.addEventListener('load', loaded); img.addEventListener('error', failed); }
+  });
+})();
+</script>
+</body>
+</html>
