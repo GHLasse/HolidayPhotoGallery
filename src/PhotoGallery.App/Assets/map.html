@@ -30,7 +30,7 @@
 <script>
 // The page talks to the app through WebView2 messages:
 //   from the app: {type:"photos", photos:[{path,name,lat,lon}]}, {type:"selection", paths:[...], fit:true|false},
-//                 {type:"pin", lat, lon} (lat null removes the pin)
+//                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on}
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
@@ -120,7 +120,9 @@ function start() {
     if (notify) send({ type: "pin", lat, lon });
   }
 
-  map.on("click", e => setPin(e.latlng.lat, e.latlng.lng, true));
+  // Off while browsing the whole map (Map workspace): there are no photos picked to place there.
+  let placing = true;
+  map.on("click", e => { if (placing) setPin(e.latlng.lat, e.latlng.lng, true); });
 
   function showMessage(text) {
     const box = document.getElementById("message");
@@ -184,6 +186,9 @@ function start() {
         if (m.fit) fitSelection();
       } else if (m.type === "pin") {
         setPin(m.lat, m.lon, false);
+      } else if (m.type === "placing") {
+        placing = m.on;
+        if (!placing) setPin(null);
       }
     });
   }

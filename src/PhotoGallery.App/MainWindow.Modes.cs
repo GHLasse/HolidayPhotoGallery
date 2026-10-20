@@ -102,6 +102,7 @@ public sealed partial class MainWindow
         // Beside the grid the map sits in the info pane's column (ApplyChrome); in the Map workspace it
         // takes the photo area's place as well.
         Grid.SetColumn(MapView, full ? 2 : 4);
+        MapView.CanPlacePhotos = !full;
         Grid.SetColumnSpan(MapView, full ? 3 : 1);
         if (full)
             PhotoArea.Visibility = Visibility.Collapsed;

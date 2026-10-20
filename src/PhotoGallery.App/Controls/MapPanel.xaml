@@ -13,7 +13,8 @@
         <Border CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <WebView2 x:Name="Web" />
         </Border>
-        <Grid Grid.Row="1" ColumnSpacing="8">
+        <!-- Placing photos needs the grid to pick them in, so the Map workspace hides this row. -->
+        <Grid x:Name="AssignRow" Grid.Row="1" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

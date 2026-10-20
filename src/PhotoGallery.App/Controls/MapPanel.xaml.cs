@@ -112,6 +112,19 @@ public sealed partial class MapPanel : UserControl
         UpdateButtons();
     }
 
+    /// <summary>Whether the pin and the Assign and Remove buttons are offered; not while browsing the whole map.</summary>
+    public bool CanPlacePhotos
+    {
+        get => AssignRow.Visibility == Visibility.Visible;
+        set
+        {
+            AssignRow.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            Post(new JsonObject { ["type"] = "placing", ["on"] = value });
+            if (!value)
+                SetPin(null, tellMap: false);
+        }
+    }
+
     private void UpdateButtons()
     {
         var count = _selection.Count;

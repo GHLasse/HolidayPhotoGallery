@@ -706,11 +706,17 @@ public sealed partial class MainWindow : Window
 
     // Beside the grid the map shows the grid's photos, to place them; the Map workspace shows the whole
     // library, where you have been, whatever folder or album is open.
+    private string? _mapScope;
+
     private async void RefreshMap(bool fit)
     {
         var version = ++_mapVersion;
         if (_workspace == Workspace.Map)
         {
+            // Picking a folder, month or place in the left pane narrows the map, and it zooms to them.
+            var scope = ViewModel.MapScope;
+            fit |= scope != _mapScope;
+            _mapScope = scope;
             var all = await ViewModel.PhotosWithLocationAsync();
             if (version != _mapVersion)
                 return;
