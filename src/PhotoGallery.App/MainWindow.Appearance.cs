@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Shapes;
 using PhotoGallery.Core.Appearance;
 using Orientation = Microsoft.UI.Xaml.Controls.Orientation;
 using UiColor = Windows.UI.Color;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -18,7 +19,7 @@ public sealed partial class MainWindow
     // The palette's brushes for the current light or dark mode, for UI built in code (badges, faces).
     private static Dictionary<string, Brush> s_paletteBrushes = [];
     private static string s_themeKey = "Light";
-    private PaletteShades? _lightShades, _darkShades;
+    private static PaletteShades? s_lightShades, s_darkShades;
 
     private void ApplyAppearance(string theme, string paletteKey)
     {
@@ -31,16 +32,9 @@ public sealed partial class MainWindow
         };
 
         var palette = ColorPalette.Find(paletteKey);
-        _lightShades = palette.ShadesFor(dark: false);
-        _darkShades = palette.ShadesFor(dark: true);
-        var themes = Root.Resources.ThemeDictionaries;
-        themes.Clear();
-        if (_lightShades is not null && _darkShades is not null)
-        {
-            themes["Light"] = PaletteResources(_lightShades);
-            themes["Dark"] = PaletteResources(_darkShades);
-            themes["Default"] = PaletteResources(_darkShades);
-        }
+        s_lightShades = palette.ShadesFor(dark: false);
+        s_darkShades = palette.ShadesFor(dark: true);
+        AddPaletteResources(Root.Resources);
 
         // Theme resources are looked up again only when the theme changes, so switch away and back.
         var requested = Root.RequestedTheme;
@@ -55,7 +49,7 @@ public sealed partial class MainWindow
     {
         var dark = Root.ActualTheme == ElementTheme.Dark;
         s_themeKey = dark ? "Dark" : "Light";
-        var shades = dark ? _darkShades : _lightShades;
+        var shades = dark ? s_darkShades : s_lightShades;
         s_paletteBrushes = shades is null ? [] : Brushes(shades);
 
         // A palette washes the window with its colour and the toolbar and status bar a little more;
@@ -69,6 +63,25 @@ public sealed partial class MainWindow
         ShowTagBadges();
         ShowFilterBadges();
         _ = ShowTopPeopleAsync();
+    }
+
+    // Dialogs and their popups are not inside Root, so each dialog gets the palette and mode as it opens.
+    internal static void ApplyAppearance(ContentDialog dialog)
+    {
+        dialog.RequestedTheme = s_themeKey == "Dark" ? ElementTheme.Dark : ElementTheme.Light;
+        AddPaletteResources(dialog.Resources);
+    }
+
+    private static void AddPaletteResources(ResourceDictionary resources)
+    {
+        var themes = resources.ThemeDictionaries;
+        themes.Clear();
+        if (s_lightShades is not null && s_darkShades is not null)
+        {
+            themes["Light"] = PaletteResources(s_lightShades);
+            themes["Dark"] = PaletteResources(s_darkShades);
+            themes["Default"] = PaletteResources(s_darkShades);
+        }
     }
 
     private static ResourceDictionary PaletteResources(PaletteShades shades)
@@ -109,6 +122,50 @@ public sealed partial class MainWindow
             ["SystemControlHighlightListAccentLowBrush"] = Solid(s.Fill, 0.6),
             ["SystemControlHighlightListAccentMediumBrush"] = Solid(s.Fill, 0.8),
             ["SystemControlHighlightListAccentHighBrush"] = Solid(s.Fill, 0.9),
+
+            // WinUI's controls read these, set once from the Windows accent colour, so they are replaced too.
+            ["AccentButtonBackground"] = Solid(s.Fill),
+            ["AccentButtonBackgroundPointerOver"] = Solid(s.Fill, 0.9),
+            ["AccentButtonBackgroundPressed"] = Solid(s.Fill, 0.8),
+            ["AccentButtonForeground"] = Solid(s.TextOnFill),
+            ["AccentButtonForegroundPointerOver"] = Solid(s.TextOnFill),
+            ["AccentButtonForegroundPressed"] = Solid(s.TextOnFill, 0.7),
+            ["SliderThumbBackground"] = Solid(s.Fill),
+            ["SliderThumbBackgroundPointerOver"] = Solid(s.Fill, 0.9),
+            ["SliderThumbBackgroundPressed"] = Solid(s.Fill, 0.8),
+            ["SliderTrackValueFill"] = Solid(s.Fill),
+            ["SliderTrackValueFillPointerOver"] = Solid(s.Fill),
+            ["SliderTrackValueFillPressed"] = Solid(s.Fill),
+            ["ProgressBarForeground"] = Solid(s.Fill),
+            ["ProgressBarIndeterminateForeground"] = Solid(s.Fill),
+            ["ProgressRingForegroundThemeBrush"] = Solid(s.Fill),
+            ["RadioButtonOuterEllipseCheckedStroke"] = Solid(s.Fill),
+            ["RadioButtonOuterEllipseCheckedStrokePointerOver"] = Solid(s.Fill, 0.9),
+            ["RadioButtonOuterEllipseCheckedStrokePressed"] = Solid(s.Fill, 0.8),
+            ["RadioButtonOuterEllipseCheckedFill"] = Solid(s.Fill),
+            ["RadioButtonOuterEllipseCheckedFillPointerOver"] = Solid(s.Fill, 0.9),
+            ["RadioButtonOuterEllipseCheckedFillPressed"] = Solid(s.Fill, 0.8),
+            ["RadioButtonCheckGlyphFill"] = Solid(s.TextOnFill),
+            ["RadioButtonCheckGlyphFillPointerOver"] = Solid(s.TextOnFill),
+            ["RadioButtonCheckGlyphFillPressed"] = Solid(s.TextOnFill),
+            ["ToggleSwitchFillOn"] = Solid(s.Fill),
+            ["ToggleSwitchFillOnPointerOver"] = Solid(s.Fill, 0.9),
+            ["ToggleSwitchFillOnPressed"] = Solid(s.Fill, 0.8),
+            ["ToggleSwitchStrokeOn"] = Solid(s.Fill),
+            ["ToggleSwitchStrokeOnPointerOver"] = Solid(s.Fill, 0.9),
+            ["ToggleSwitchStrokeOnPressed"] = Solid(s.Fill, 0.8),
+            ["ToggleSwitchKnobFillOn"] = Solid(s.TextOnFill),
+            ["ToggleSwitchKnobFillOnPointerOver"] = Solid(s.TextOnFill),
+            ["ToggleSwitchKnobFillOnPressed"] = Solid(s.TextOnFill),
+            ["CheckBoxCheckBackgroundFillChecked"] = Solid(s.Fill),
+            ["CheckBoxCheckBackgroundFillCheckedPointerOver"] = Solid(s.Fill, 0.9),
+            ["CheckBoxCheckBackgroundFillCheckedPressed"] = Solid(s.Fill, 0.8),
+            ["CheckBoxCheckBackgroundStrokeChecked"] = Solid(s.Fill),
+            ["CheckBoxCheckBackgroundStrokeCheckedPointerOver"] = Solid(s.Fill, 0.9),
+            ["CheckBoxCheckBackgroundStrokeCheckedPressed"] = Solid(s.Fill, 0.8),
+            ["CheckBoxCheckGlyphForegroundChecked"] = Solid(s.TextOnFill),
+            ["CheckBoxCheckGlyphForegroundCheckedPointerOver"] = Solid(s.TextOnFill),
+            ["CheckBoxCheckGlyphForegroundCheckedPressed"] = Solid(s.TextOnFill),
         };
     }
 
@@ -152,7 +209,7 @@ public sealed partial class MainWindow
 
     // ---- The Appearance tab in Settings ----
 
-    private static readonly (string Key, string Name)[] Themes = [("system", "Follow Windows"), ("light", "Light"), ("dark", "Dark")];
+    private static (string Key, string Name)[] Themes => [("system", Tr("Follow Windows")), ("light", Tr("Light")), ("dark", Tr("Dark"))];
 
     /// <summary>The Appearance tab; changes show straight away, and <paramref name="revert"/> undoes them on Cancel.</summary>
     private StackPanel AppearanceTab(out Func<(string Theme, string Palette)> chosen, out Action revert)
@@ -160,12 +217,12 @@ public sealed partial class MainWindow
         var savedTheme = ViewModel.Theme;
         var savedPalette = ViewModel.Palette;
 
-        var theme = new RadioButtons { Header = "Mode" };
+        var theme = new RadioButtons { Header = Tr("Mode") };
         foreach (var (_, name) in Themes)
             theme.Items.Add(name);
         theme.SelectedIndex = Math.Max(0, Array.FindIndex(Themes, t => t.Key == savedTheme));
 
-        var palette = new RadioButtons { Header = "Colours", MaxColumns = 2 };
+        var palette = new RadioButtons { Header = Tr("Colours"), MaxColumns = 2 };
         foreach (var p in ColorPalette.All)
         {
             var swatch = new Ellipse
@@ -206,11 +263,21 @@ public sealed partial class MainWindow
                 palette,
                 new TextBlock
                 {
-                    Text = "The photo viewer keeps a neutral background in every palette, so colours don't change how a photo looks.",
+                    Text = Tr("The photo viewer keeps a neutral background in every palette, so colours don't change how a photo looks."),
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                 },
             },
         };
+    }
+}
+
+/// <summary>Opens dialogs in the app's mode and palette (see <see cref="MainWindow.ApplyAppearance(ContentDialog)"/>).</summary>
+internal static class ThemedDialogs
+{
+    public static Windows.Foundation.IAsyncOperation<ContentDialogResult> ShowThemedAsync(this ContentDialog dialog)
+    {
+        MainWindow.ApplyAppearance(dialog);
+        return dialog.ShowAsync();
     }
 }

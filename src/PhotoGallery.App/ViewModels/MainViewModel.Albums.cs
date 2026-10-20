@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using PhotoGallery.Core.Albums;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -7,7 +8,7 @@ namespace PhotoGallery.App.ViewModels;
 public sealed partial class MainViewModel
 {
     public static readonly (string Key, string Label)[] AlbumSorts =
-        [(Album.SortNewest, "Newest first"), (Album.SortOldest, "Oldest first"), (Album.SortName, "By name")];
+        [(Album.SortNewest, Tr("Newest first")), (Album.SortOldest, Tr("Oldest first")), (Album.SortName, Tr("By name"))];
 
     private bool _isAlbumView;
     private ObservableCollection<AlbumViewModel> _albums = [];
@@ -42,8 +43,8 @@ public sealed partial class MainViewModel
 
     /// <summary>The title above the grid: "Albums", the album's name, the folder, or "All photos".</summary>
     public string HeaderText =>
-        IsAlbumView ? "Albums"
-        : SelectedFolder is not { } folder ? "All photos"
+        IsAlbumView ? Tr("Albums")
+        : SelectedFolder is not { } folder ? Tr("All photos")
         : folder.IsAlbum ? AlbumName(folder.FullPath)
         : folder.FullPath;
 
@@ -117,9 +118,9 @@ public sealed partial class MainViewModel
             child.IsAlbum = AlbumFile.IsAlbum(child.FullPath);
         Inform(made switch
         {
-            0 => "Every subfolder already is an album.",
-            1 => "1 subfolder is now an album.",
-            _ => $"{made} subfolders are now albums.",
+            0 => Tr("Every subfolder already is an album."),
+            1 => Tr("1 subfolder is now an album."),
+            _ => Tr("{0} subfolders are now albums.", made),
         });
         await AlbumsChangedAsync();
     }
@@ -155,7 +156,7 @@ public sealed partial class MainViewModel
         var info = AlbumFile.Read(folder) ?? new AlbumInfo();
         if (TryChangeAlbums(folder, () => AlbumFile.Write(folder, info with { Cover = Path.GetRelativePath(folder, photoPath) })))
         {
-            Inform($"The photo is now the cover of “{AlbumName(folder)}”.");
+            Inform(Tr("The photo is now the cover of “{0}”.", AlbumName(folder)));
             await AlbumsChangedAsync();
         }
     }
@@ -169,7 +170,7 @@ public sealed partial class MainViewModel
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ErrorMessage = $"Could not change the album in {folder}: {ex.Message}";
+            ErrorMessage = Tr("Could not change the album in {0}: {1}", folder, ex.Message);
             return false;
         }
     }

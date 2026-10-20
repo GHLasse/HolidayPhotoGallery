@@ -9,6 +9,7 @@ using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Metadata;
 using PhotoGallery.Core.Tagging;
+using static PhotoGallery.Core.Localization.Strings;
 using Orientation = Microsoft.UI.Xaml.Controls.Orientation;
 
 namespace PhotoGallery.App;
@@ -28,14 +29,14 @@ public sealed partial class MainWindow
         {
             var tag = badge.Tag;
             var tooltip = badge.IsOnAll
-                ? $"Show only photos tagged {tag}" + (badge.IsAuto ? " (added by auto-tagging)" : "")
-                : $"{badge.Count} of the {badge.Of} selected photos have this tag. Click to add it to all of them.";
+                ? (badge.IsAuto ? Tr("Show only photos tagged {0} (added by auto-tagging)", tag) : Tr("Show only photos tagged {0}", tag))
+                : Tr("{0} of the {1} selected photos have this tag. Click to add it to all of them.", badge.Count, badge.Of);
             Action click = badge.IsOnAll ? () => ViewModel.FilterByTag(tag) : () => ViewModel.Editor.AddTags([tag]);
             TagBadges.Children.Add(Badge(badge.Label, badge.IsAuto, outlined: !badge.IsOnAll, tooltip, click,
-                                         $"Remove {tag}", () => ViewModel.Editor.RemoveTag(tag)));
+                                         Tr("Remove {0}", tag), () => ViewModel.Editor.RemoveTag(tag)));
         }
         var partial = badges.Count(b => !b.IsOnAll);
-        TagHint.Text = partial > 0 ? "Outlined tags are on only some of the selected photos; click one to add it to all." : "";
+        TagHint.Text = partial > 0 ? Tr("Outlined tags are on only some of the selected photos; click one to add it to all.") : "";
         TagHint.Visibility = TagHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -79,40 +80,40 @@ public sealed partial class MainWindow
     {
         // The count on "Clear filters" points at filters set somewhere easy to overlook.
         var active = ViewModel.ActiveFilterCount;
-        ClearFiltersButton.Content = active == 0 ? "Clear filters" : $"Clear filters ({active})";
+        ClearFiltersButton.Content = active == 0 ? Tr("Clear filters") : Tr("Clear filters ({0})", active);
         ClearFiltersButton.IsEnabled = active > 0;
 
         FilterBadges.Children.Clear();
         if (ViewModel.WithoutTags)
-            FilterBadges.Children.Add(Badge("No tags", false, outlined: false, "Showing photos without your own tags (auto tags don't count)",
-                                            null, "Stop filtering by no tags", () => ViewModel.WithoutTags = false));
+            FilterBadges.Children.Add(Badge(Tr("No tags"), false, outlined: false, Tr("Showing photos without your own tags (auto tags don't count)"),
+                                            null, Tr("Stop filtering by no tags"), () => ViewModel.WithoutTags = false));
         if (ViewModel.WithoutPeople)
-            FilterBadges.Children.Add(Badge("No people", false, outlined: false, "Showing photos with nobody named",
-                                            null, "Stop filtering by no people", () => ViewModel.WithoutPeople = false));
+            FilterBadges.Children.Add(Badge(Tr("No people"), false, outlined: false, Tr("Showing photos with nobody named"),
+                                            null, Tr("Stop filtering by no people"), () => ViewModel.WithoutPeople = false));
         if (ViewModel.WithoutLocation)
-            FilterBadges.Children.Add(Badge("No location", false, outlined: false, "Showing photos without a GPS position",
-                                            null, "Stop filtering by no location", () => ViewModel.WithoutLocation = false));
+            FilterBadges.Children.Add(Badge(Tr("No location"), false, outlined: false, Tr("Showing photos without a GPS position"),
+                                            null, Tr("Stop filtering by no location"), () => ViewModel.WithoutLocation = false));
         if (ViewModel.OnGoogleOnly)
-            FilterBadges.Children.Add(Badge("In Google Photos", false, outlined: false, "Showing photos uploaded to Google Photos",
-                                            null, "Stop filtering by Google Photos", () => ViewModel.OnGoogleOnly = false));
+            FilterBadges.Children.Add(Badge(Tr("In Google Photos"), false, outlined: false, Tr("Showing photos uploaded to Google Photos"),
+                                            null, Tr("Stop filtering by Google Photos"), () => ViewModel.OnGoogleOnly = false));
         if (ViewModel.NotOnGoogleOnly)
-            FilterBadges.Children.Add(Badge("Not in Google Photos", false, outlined: false, "Showing photos not uploaded to Google Photos yet",
-                                            null, "Stop filtering by Google Photos", () => ViewModel.NotOnGoogleOnly = false));
+            FilterBadges.Children.Add(Badge(Tr("Not in Google Photos"), false, outlined: false, Tr("Showing photos not uploaded to Google Photos yet"),
+                                            null, Tr("Stop filtering by Google Photos"), () => ViewModel.NotOnGoogleOnly = false));
         if (ViewModel.OnOneDriveOnly)
-            FilterBadges.Children.Add(Badge("In OneDrive", false, outlined: false, "Showing photos in OneDrive",
-                                            null, "Stop filtering by OneDrive", () => ViewModel.OnOneDriveOnly = false));
+            FilterBadges.Children.Add(Badge(Tr("In OneDrive"), false, outlined: false, Tr("Showing photos in OneDrive"),
+                                            null, Tr("Stop filtering by OneDrive"), () => ViewModel.OnOneDriveOnly = false));
         if (ViewModel.NotOnOneDriveOnly)
-            FilterBadges.Children.Add(Badge("Not in OneDrive", false, outlined: false, "Showing photos not in OneDrive yet",
-                                            null, "Stop filtering by OneDrive", () => ViewModel.NotOnOneDriveOnly = false));
+            FilterBadges.Children.Add(Badge(Tr("Not in OneDrive"), false, outlined: false, Tr("Showing photos not in OneDrive yet"),
+                                            null, Tr("Stop filtering by OneDrive"), () => ViewModel.NotOnOneDriveOnly = false));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
-            FilterBadges.Children.Add(Badge(tag.Tag, AutoTags.IsAuto(tag.Tag), outlined: false, $"Showing photos tagged {tag.Tag}",
-                                            null, $"Stop filtering by {tag.Tag}", () => tag.IsSelected = false));
+            FilterBadges.Children.Add(Badge(tag.Tag, AutoTags.IsAuto(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", tag.Tag),
+                                            null, Tr("Stop filtering by {0}", tag.Tag), () => tag.IsSelected = false));
         }
         foreach (var person in ViewModel.People.Where(p => p.IsSelected).ToList())
         {
-            FilterBadges.Children.Add(Badge(person.Tag, false, outlined: false, $"Showing photos of {person.Tag}",
-                                            null, $"Stop filtering by {person.Tag}", () => person.IsSelected = false, person: true));
+            FilterBadges.Children.Add(Badge(person.Tag, false, outlined: false, Tr("Showing photos of {0}", person.Tag),
+                                            null, Tr("Stop filtering by {0}", person.Tag), () => person.IsSelected = false, person: true));
         }
     }
 
@@ -172,7 +173,9 @@ public sealed partial class MainWindow
                 BorderThickness = new Thickness(0),
                 CornerRadius = new CornerRadius(LargeFace / 2),
             };
-            var tip = $"{person.Tag} ({person.CountText} photos). Click to " + (person.IsSelected ? "stop filtering by them." : "show only photos with them.");
+            var tip = person.IsSelected
+                ? Tr("{0} ({1} photos). Click to stop filtering by them.", person.Tag, person.CountText)
+                : Tr("{0} ({1} photos). Click to show only photos with them.", person.Tag, person.CountText);
             ToolTipService.SetToolTip(button, tip);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, person.Tag);
             button.Click += (_, _) => person.IsSelected = !person.IsSelected;
@@ -305,7 +308,7 @@ public sealed partial class MainWindow
     {
         public StackPanel View { get; } = new() { Spacing = 8 };
         private readonly WrapPanel _badges = new();
-        private readonly TextBox _box = new() { PlaceholderText = "Add a tag" };
+        private readonly TextBox _box = new() { PlaceholderText = Tr("Add a tag") };
         private IReadOnlyList<string> _tags = [];
 
         public TagListEditor(string header, IReadOnlyList<string> tags)
@@ -345,7 +348,7 @@ public sealed partial class MainWindow
                 foreach (var tag in _tags)
                 {
                     _badges.Children.Add(Badge(tag, false, outlined: false, tag, null,
-                                               $"Remove {tag}", () => Tags = _tags.Where(t => t != tag).ToList()));
+                                               Tr("Remove {0}", tag), () => Tags = _tags.Where(t => t != tag).ToList()));
                 }
             }
         }

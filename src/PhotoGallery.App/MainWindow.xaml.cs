@@ -9,11 +9,13 @@ using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.Library;
+using PhotoGallery.Core.Localization;
 using PhotoGallery.Core.Tagging;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
 using Windows.System;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -32,6 +34,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Arabic and other right-to-left languages mirror the whole window.
+        if (Strings.RightToLeft)
+            Root.FlowDirection = FlowDirection.RightToLeft;
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new SizeInt32(1500, 950));
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
@@ -329,19 +334,19 @@ public sealed partial class MainWindow : Window
     {
         (string Keys, string What)[] shortcuts =
         [
-            ("G", "Back to the grid"),
-            ("E or Enter", "Show the photo large (Enter with several photos: compare them)"),
-            ("C", "Compare the selected photos"),
-            ("M", "Show or hide the map"),
-            ("0 – 5", "Rate the selected photos (0 removes the rating)"),
-            ("P", "Flag or unflag the selected photos"),
-            ("← →", "Previous or next photo in the viewer and compare"),
-            ("Tab", "Next photo in compare"),
-            ("Ctrl+,  Ctrl+.", "Rotate left or right"),
-            ("Ctrl+S", "Save the changes in the info pane"),
-            ("F11", "Full screen"),
-            ("Esc", "Close the viewer or compare"),
-            ("? or F1", "This list"),
+            ("G", Tr("Back to the grid")),
+            (Tr("E or Enter"), Tr("Show the photo large (Enter with several photos: compare them)")),
+            ("C", Tr("Compare the selected photos")),
+            ("M", Tr("Show or hide the map")),
+            ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
+            ("P", Tr("Flag or unflag the selected photos")),
+            ("← →", Tr("Previous or next photo in the viewer and compare")),
+            ("Tab", Tr("Next photo in compare")),
+            ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
+            ("Ctrl+S", Tr("Save the changes in the info pane")),
+            ("F11", Tr("Full screen")),
+            ("Esc", Tr("Close the viewer or compare")),
+            (Tr("? or F1"), Tr("This list")),
         ];
         var grid = new Grid { ColumnSpacing = 24, RowSpacing = 8 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -371,10 +376,10 @@ public sealed partial class MainWindow : Window
             await new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
-                Title = "Keyboard shortcuts",
+                Title = Tr("Keyboard shortcuts"),
                 Content = new ScrollViewer { Content = grid, MaxHeight = 520 },
-                CloseButtonText = "Close",
-            }.ShowAsync();
+                CloseButtonText = Tr("Close"),
+            }.ShowThemedAsync();
         }
         finally
         {
@@ -486,7 +491,7 @@ public sealed partial class MainWindow : Window
         var photos = SelectedPhotos;
         if (photos.Count == 0)
         {
-            ViewModel.Warn("Select the photos to tag.");
+            ViewModel.Warn(Tr("Select the photos to tag."));
             return;
         }
         if (!MainViewModel.IsTagModelInstalled)
@@ -494,15 +499,14 @@ public sealed partial class MainWindow : Window
             var dialog = new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
-                Title = "Download the tagging model?",
-                Content = "Auto-tagging recognises what is in your photos on this PC, so no photo is sent anywhere. " +
-                          $"It needs an image-recognition model (Google's SigLIP 2) of about {TagModel.DownloadSize / 1_000_000:N0} MB, " +
-                          "which is downloaded once from Hugging Face and kept in the app's data folder.",
-                PrimaryButtonText = "Download",
-                CloseButtonText = "Cancel",
+                Title = Tr("Download the tagging model?"),
+                Content = Tr("Auto-tagging recognises what is in your photos on this PC, so no photo is sent anywhere.") + " " +
+                          Tr("It needs an image-recognition model (Google's SigLIP 2) of about {0:N0} MB, which is downloaded once from Hugging Face and kept in the app's data folder.", TagModel.DownloadSize / 1_000_000),
+                PrimaryButtonText = Tr("Download"),
+                CloseButtonText = Tr("Cancel"),
                 DefaultButton = ContentDialogButton.Primary,
             };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadTagModelAsync())
+            if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadTagModelAsync())
                 return;
         }
         await ViewModel.AutoTagAsync(photos);
@@ -577,12 +581,12 @@ public sealed partial class MainWindow : Window
     {
         if (photos.Count == 0)
         {
-            ViewModel.Warn("Select 1 to 4 photos to compare.");
+            ViewModel.Warn(Tr("Select 1 to 4 photos to compare."));
             return;
         }
         if (photos.Count > CompareView.MaxPhotos)
         {
-            ViewModel.Warn($"Select at most {CompareView.MaxPhotos} photos to compare; {photos.Count} are selected.");
+            ViewModel.Warn(Tr("Select at most {0} photos to compare; {1} are selected.", CompareView.MaxPhotos, photos.Count));
             return;
         }
         CompareLayer.Visibility = Visibility.Visible;
@@ -622,8 +626,8 @@ public sealed partial class MainWindow : Window
         if (dated.Count == 0)
         {
             ViewModel.Warn(selected.Count == 0
-                ? "Select the photos whose date and time you want to correct."
-                : "None of the selected photos has a date taken to shift.");
+                ? Tr("Select the photos whose date and time you want to correct.")
+                : Tr("None of the selected photos has a date taken to shift."));
             return;
         }
 
@@ -633,7 +637,7 @@ public sealed partial class MainWindow : Window
 
         var earliest = dated.Select(p => p.Photo.DateTaken!.Value).MinBy(d => d.Local);
         var dialog = new ShiftDatesDialog(earliest, dated.Count, selected.Count - dated.Count) { XamlRoot = Root.XamlRoot };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
             await ViewModel.ShiftDatesAsync(selected, dialog.Delta, dialog.NewZone);
     }
 
@@ -699,9 +703,9 @@ public sealed partial class MainWindow : Window
             {
                 _viewerPixels = null;
                 ViewerCanvas.Source = null;
-                ViewerError.Text = $"This photo cannot be shown. {ex.Message}" +
+                ViewerError.Text = Tr("This photo cannot be shown. {0}", ex.Message) +
                     (item.Path.EndsWith(".heic", StringComparison.OrdinalIgnoreCase) || item.Path.EndsWith(".heif", StringComparison.OrdinalIgnoreCase)
-                        ? " For HEIC photos, install \"HEIF Image Extensions\" from the Microsoft Store."
+                        ? " " + Tr("For HEIC photos, install \"HEIF Image Extensions\" from the Microsoft Store.")
                         : "");
             }
         }
@@ -717,8 +721,8 @@ public sealed partial class MainWindow : Window
     {
         if (ViewerItem is not { } item)
             return;
-        var marks = (item.Photo.Rating > 0 ? "   " + new string('★', item.Photo.Rating) : "") + (item.Photo.Flagged ? "   ⚑ Flagged" : "");
-        ViewerTitle.Text = $"{item.FileName}   ({_viewerIndex + 1} of {_viewerItems.Count}){marks}";
+        var marks = (item.Photo.Rating > 0 ? "   " + new string('★', item.Photo.Rating) : "") + (item.Photo.Flagged ? "   ⚑ " + Tr("Flagged") : "");
+        ViewerTitle.Text = Tr("{0}   ({1} of {2}){3}", item.FileName, _viewerIndex + 1, _viewerItems.Count, marks);
     }
 
     // Esc first leaves an edit, then the viewer.
@@ -841,12 +845,12 @@ public sealed partial class MainWindow : Window
     private async Task ShowSettingsAsync(CloudService? cloudTab = null)
     {
         // Tagging tab
-        var language = new ComboBox { Header = "Language of the tags", MinWidth = 160 };
+        var language = new ComboBox { Header = Tr("Language of the tags"), MinWidth = 160 };
         language.Items.Add("English");
         language.Items.Add("Deutsch");
         language.SelectedIndex = ViewModel.AutoTagLanguage == "de" ? 1 : 0;
 
-        var list = new TagListEditor("Tags the photos may get", ViewModel.AutoTagLabels);
+        var list = new TagListEditor(Tr("Tags the photos may get"), ViewModel.AutoTagLabels);
 
         // Switching the language swaps in the starter list for it, unless the user has made their own list.
         var shownLanguage = ViewModel.AutoTagLanguage;
@@ -858,12 +862,12 @@ public sealed partial class MainWindow : Window
             shownLanguage = picked;
         };
 
-        var threshold = new Slider { Minimum = 5, Maximum = 80, StepFrequency = 1, Value = Math.Round(ViewModel.AutoTagThreshold * 100) };
-        void ShowThreshold() => threshold.Header = $"How clearly a tag must stand out: {threshold.Value:0} % (higher: fewer, surer tags)";
+        var threshold = new Slider { Foreground = ThemeBrush("AccentFillColorDefaultBrush"), Minimum = 5, Maximum = 80, StepFrequency = 1, Value = Math.Round(ViewModel.AutoTagThreshold * 100) };
+        void ShowThreshold() => threshold.Header = Tr("How clearly a tag must stand out: {0:0} % (higher: fewer, surer tags)", threshold.Value);
         ShowThreshold();
         threshold.ValueChanged += (_, _) => ShowThreshold();
 
-        var reset = new HyperlinkButton { Content = "Use the starter list", Padding = new Thickness(0) };
+        var reset = new HyperlinkButton { Content = Tr("Use the starter list"), Padding = new Thickness(0) };
         reset.Click += (_, _) => list.Tags = AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en");
 
         var tagging = new StackPanel
@@ -873,7 +877,7 @@ public sealed partial class MainWindow : Window
             {
                 new TextBlock
                 {
-                    Text = "Auto-tagging only uses tags from this list and writes them as ai/…, so you can tell them apart from your own tags and remove them together. Your own tags are never changed.",
+                    Text = Tr("Auto-tagging only uses tags from this list and writes them as ai/…, so you can tell them apart from your own tags and remove them together. Your own tags are never changed."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 language,
@@ -884,7 +888,7 @@ public sealed partial class MainWindow : Window
         };
 
         // Gallery tab
-        var defaultSort = new ComboBox { Header = "Order of the photos in every folder", MinWidth = 320 };
+        var defaultSort = new ComboBox { Header = Tr("Order of the photos in every folder"), MinWidth = 320 };
         foreach (var (_, label) in PhotoSort.All)
             defaultSort.Items.Add(label);
         defaultSort.SelectedIndex = ViewModel.DefaultSortIndex;
@@ -897,21 +901,21 @@ public sealed partial class MainWindow : Window
                 defaultSort,
                 new TextBlock
                 {
-                    Text = "Each folder opens in this order. The order box in the filter bar changes it for the folder you are looking at.",
+                    Text = Tr("Each folder opens in this order. The order box in the filter bar changes it for the folder you are looking at."),
                     TextWrapping = TextWrapping.Wrap,
                 },
             },
         };
 
         // Editing tab
-        var crop = new ComboBox { Header = "Crop shape to start with", MinWidth = 320 };
+        var crop = new ComboBox { Header = Tr("Crop shape to start with"), MinWidth = 320 };
         foreach (var ratio in CropRatios.All)
             crop.Items.Add(ratio.Name);
         crop.SelectedIndex = CropRatios.All.ToList().IndexOf(CropRatios.Find(ViewModel.CropRatio));
 
         var backUp = new ToggleSwitch
         {
-            Header = "Keep a copy of a photo before opening it in another app",
+            Header = Tr("Keep a copy of a photo before opening it in another app"),
             IsOn = ViewModel.BackUpBeforeOpenWith,
             Margin = new Thickness(0, 12, 0, 0),
         };
@@ -927,14 +931,14 @@ public sealed partial class MainWindow : Window
                 crop,
                 new TextBlock
                 {
-                    Text = "The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping.",
+                    Text = Tr("The crop tool starts with this shape, turned to match each photo. You can still pick another shape while cropping."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 favourites,
                 backUp,
                 new TextBlock
                 {
-                    Text = "Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere.",
+                    Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere."),
                     TextWrapping = TextWrapping.Wrap,
                 },
             },
@@ -971,18 +975,20 @@ public sealed partial class MainWindow : Window
         });
         tags.Visibility = Visibility.Collapsed;
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
+        var languagePage = LanguagePage(out var chosenLanguage);
 
         // The tabs are listed down the left side; the pages share one cell so the dialog keeps its size.
         (string Text, Func<FrameworkElement> Icon, FrameworkElement Page)[] pages =
         [
-            ("Gallery", () => new FontIcon { Glyph = "\uE8B9" }, gallery),
-            ("AI tagging", () => new Controls.AiSparkle { Width = 16, Height = 16 }, tagging),
-            ("Tags", () => new FontIcon { Glyph = "\uE8EC" }, tags),
-            ("Dates and places", () => new FontIcon { Glyph = "\uE787" }, datesAndPlaces),
-            ("Editing", () => new FontIcon { Glyph = "\uE7A8" }, cropping),
-            ("Appearance", () => new FontIcon { Glyph = "\uE790" }, appearance),
-            ("Linked apps", () => new FontIcon { Glyph = "\uE753" }, linked),
-            ("Keyboard", () => new FontIcon { Glyph = "\uE765" }, keyboard),
+            (Tr("Gallery"), () => new FontIcon { Glyph = "\uE8B9" }, gallery),
+            (Tr("Language"), () => new FontIcon { Glyph = "\uE774" }, languagePage),
+            (Tr("AI tagging"), () => new Controls.AiSparkle { Width = 16, Height = 16 }, tagging),
+            (Tr("Tags"), () => new FontIcon { Glyph = "\uE8EC" }, tags),
+            (Tr("Dates and places"), () => new FontIcon { Glyph = "\uE787" }, datesAndPlaces),
+            (Tr("Editing"), () => new FontIcon { Glyph = "\uE7A8" }, cropping),
+            (Tr("Appearance"), () => new FontIcon { Glyph = "\uE790" }, appearance),
+            (Tr("Linked apps"), () => new FontIcon { Glyph = "\uE753" }, linked),
+            (Tr("Keyboard"), () => new FontIcon { Glyph = "\uE765" }, keyboard),
         ];
         var tabs = new ListView { SelectionMode = ListViewSelectionMode.Single, Width = 200 };
         foreach (var (text, icon, _) in pages)
@@ -1024,15 +1030,15 @@ public sealed partial class MainWindow : Window
         dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = "Settings",
+            Title = Tr("Settings"),
             Content = layout,
-            PrimaryButtonText = "Save",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = Tr("Save"),
+            CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
         // Wide enough for the tab list next to the pages.
         dialog.Resources["ContentDialogMaxWidth"] = 900.0;
-        var answer = await dialog.ShowAsync();
+        var answer = await dialog.ShowThemedAsync();
         dialogClosed.Cancel();
         if (showTag is not null)
         {
@@ -1047,6 +1053,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (chosenLanguage() is { } uiLanguage)
+            ViewModel.SaveUiLanguage(uiLanguage);
         var (keepDatesInSync, placeLanguage) = chosenDatesAndPlaces();
         ViewModel.SaveDatesAndPlaces(keepDatesInSync, placeLanguage);
 
@@ -1080,8 +1088,8 @@ public sealed partial class MainWindow : Window
         if (!canKeepFormat)
             SaveFormatCombo.SelectedIndex = 1;
         ViewerEditHint.Text = ViewerCropButton.IsChecked == true
-            ? "Drag the frame to move it and its corners to resize it."
-            : "Showing the adjusted photo. Save keeps the original in a hidden .originals folder.";
+            ? Tr("Drag the frame to move it and its corners to resize it.")
+            : Tr("Showing the adjusted photo. Save keeps the original in a hidden .originals folder.");
     }
 
     private void UpdateUndoButtons()
@@ -1151,15 +1159,15 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = "Revert to the original?",
+            Title = Tr("Revert to the original?"),
             Content = edits == 1
-                ? "The photo goes back to how it was before it was edited. Tags, rating and other details you changed are kept."
-                : $"The photo goes back to how it was before all {edits} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.",
-            PrimaryButtonText = "Revert",
-            CloseButtonText = "Cancel",
+                ? Tr("The photo goes back to how it was before it was edited. Tags, rating and other details you changed are kept.")
+                : Tr("The photo goes back to how it was before all {0} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.", edits),
+            PrimaryButtonText = Tr("Revert"),
+            CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
             return;
         await ViewModel.RevertEditAsync(item);
         await ShowViewerImageAsync();

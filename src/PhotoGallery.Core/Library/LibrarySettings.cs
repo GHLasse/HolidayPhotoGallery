@@ -35,6 +35,9 @@ public sealed class LibrarySettings
     /// <summary>The language of place names: "de", "en", "local" (as written there), or null for the app's language.</summary>
     public string? PlaceLanguage { get; set; }
 
+    /// <summary>The language the app is shown in (e.g. "de"); null for Windows' language when the app has it.</summary>
+    public string? UiLanguage { get; set; }
+
     /// <summary>The size of the photo tiles in the grid, in pixels (the zoom slider in the status bar).</summary>
     public int ThumbnailSize { get; set; } = 180;
 

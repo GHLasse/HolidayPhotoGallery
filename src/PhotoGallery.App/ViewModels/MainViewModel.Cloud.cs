@@ -4,6 +4,7 @@ using PhotoGallery.App.Native;
 using PhotoGallery.Core.Albums;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.Library;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -145,7 +146,7 @@ public sealed partial class MainViewModel
             .ToList());
         if (photos.Count == 0)
         {
-            Warn($"“{AlbumName(folder)}” has no photos to upload.");
+            Warn(Tr("“{0}” has no photos to upload.", AlbumName(folder)));
             return;
         }
         await UploadAsync(service, [(folder, photos)]);
@@ -172,12 +173,12 @@ public sealed partial class MainViewModel
         var name = DisplayName(service);
         if (IsUploading)
         {
-            Warn("An upload is still running. Start the next one when it has finished.");
+            Warn(Tr("An upload is still running. Start the next one when it has finished."));
             return;
         }
         if (CreateCloud(service) is not { } cloud)
         {
-            Warn($"Connect to {name} first: Settings › Linked apps.");
+            Warn(Tr("Connect to {0} first: Settings › Linked apps.", name));
             return;
         }
 
@@ -188,7 +189,7 @@ public sealed partial class MainViewModel
         var done = 0;
         int uploaded = 0, already = 0, failed = 0;
         string? firstError = null;
-        UploadText = $"Uploading to {name}: 0 of {total}…";
+        UploadText = Tr("Uploading to {0}: 0 of {1}…", name, total);
         try
         {
             using (cloud as IDisposable)
@@ -197,7 +198,7 @@ public sealed partial class MainViewModel
                 {
                     var before = done;
                     var progress = new Progress<UploadProgress>(p =>
-                        UploadText = $"Uploading to {name}: {before + list.Count - p.Total + p.Done} of {total}…");
+                        UploadText = Tr("Uploading to {0}: {1} of {2}…", name, before + list.Count - p.Total + p.Done, total));
                     state.LooseUploads ??= CloudUpload.LoadLooseUploads(state.LooseUploadsFile);
                     var loose = state.LooseUploads;
                     var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose, into));
@@ -212,11 +213,11 @@ public sealed partial class MainViewModel
             }
             Inform(Summary(name, uploaded, already, failed));
             if (firstError is not null)
-                Warn($"Not uploaded: {firstError}");
+                Warn(Tr("Not uploaded: {0}", firstError));
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
-            Inform($"Upload stopped. {Summary(name, uploaded, already, failed)} Upload again to send the rest.");
+            Inform(Tr("Upload stopped. {0} Upload again to send the rest.", Summary(name, uploaded, already, failed)));
         }
         catch (CloudSignInRequiredException ex)
         {
@@ -226,7 +227,7 @@ public sealed partial class MainViewModel
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException
                                        or Core.GooglePhotos.GooglePhotosException or Core.OneDrive.OneDriveException)
         {
-            ErrorMessage = $"The upload to {name} stopped: {ex.Message} {Summary(name, uploaded, already, failed)}";
+            ErrorMessage = Tr("The upload to {0} stopped: {1} {2}", name, ex.Message, Summary(name, uploaded, already, failed));
         }
         finally
         {
@@ -257,17 +258,17 @@ public sealed partial class MainViewModel
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Warn($"Couldn't save which photos were uploaded: {ex.Message}");
+            Warn(Tr("Couldn't save which photos were uploaded: {0}", ex.Message));
         }
     }
 
     private static string Summary(string name, int uploaded, int already, int failed)
     {
-        var parts = new List<string> { uploaded == 1 ? $"1 photo uploaded to {name}." : $"{uploaded:N0} photos uploaded to {name}." };
+        var parts = new List<string> { uploaded == 1 ? Tr("1 photo uploaded to {0}.", name) : Tr("{0:N0} photos uploaded to {1}.", uploaded, name) };
         if (already > 0)
-            parts.Add(already == 1 ? "1 was already there." : $"{already:N0} were already there.");
+            parts.Add(already == 1 ? Tr("1 was already there.") : Tr("{0:N0} were already there.", already));
         if (failed > 0)
-            parts.Add(failed == 1 ? "1 didn't upload." : $"{failed:N0} didn't upload.");
+            parts.Add(failed == 1 ? Tr("1 didn't upload.") : Tr("{0:N0} didn't upload.", failed));
         return string.Join(' ', parts);
     }
 
@@ -283,7 +284,7 @@ public sealed partial class MainViewModel
         }
         catch (OperationCanceledException)
         {
-            return cancellationToken.IsCancellationRequested ? "Sign-in cancelled." : "The sign-in took too long. Please try again.";
+            return cancellationToken.IsCancellationRequested ? Tr("Sign-in cancelled.") : Tr("The sign-in took too long. Please try again.");
         }
         catch (CloudSignInRequiredException ex)
         {
@@ -291,7 +292,7 @@ public sealed partial class MainViewModel
         }
         catch (HttpRequestException ex)
         {
-            return $"Couldn't reach {DisplayName(service)} ({ex.Message}). Check the internet connection.";
+            return Tr("Couldn't reach {0} ({1}). Check the internet connection.", DisplayName(service), ex.Message);
         }
     }
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.ExifTool;
 
@@ -35,7 +36,7 @@ public sealed class ExifToolProcess : IAsyncDisposable, IDisposable
         psi.ArgumentList.Add("-@");
         psi.ArgumentList.Add("-");
 
-        _process = Process.Start(psi) ?? throw new ExifToolException($"Could not start ExifTool at {exifToolPath}.");
+        _process = Process.Start(psi) ?? throw new ExifToolException(Tr("Could not start ExifTool at {0}.", exifToolPath));
     }
 
     public static ExifToolProcess? TryStart()
@@ -55,7 +56,7 @@ public sealed class ExifToolProcess : IAsyncDisposable, IDisposable
         try
         {
             if (_process.HasExited)
-                throw new ExifToolException($"ExifTool exited unexpectedly (code {_process.ExitCode}).");
+                throw new ExifToolException(Tr("ExifTool exited unexpectedly (code {0}).", _process.ExitCode));
 
             var id = ++_nextId;
             var stdoutMarker = $"{{ready{id}}}";
@@ -115,7 +116,7 @@ public sealed class ExifToolProcess : IAsyncDisposable, IDisposable
         while (true)
         {
             var line = await reader.ReadLineAsync().ConfigureAwait(false)
-                ?? throw new ExifToolException("ExifTool closed its output unexpectedly.");
+                ?? throw new ExifToolException(Tr("ExifTool closed its output unexpectedly."));
             if (line.TrimEnd() == marker)
                 return sb.ToString();
             sb.Append(line).Append('\n');

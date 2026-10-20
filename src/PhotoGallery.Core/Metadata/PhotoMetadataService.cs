@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Faces;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.Metadata;
 
@@ -37,7 +38,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var results = await ReadAsync([path], cancellationToken).ConfigureAwait(false);
         return results.TryGetValue(path, out var metadata)
             ? metadata
-            : throw new ExifToolException($"Could not read metadata from {path}.");
+            : throw new ExifToolException(Tr("Could not read metadata from {0}.", path));
     }
 
     /// <summary>Reads several files in one ExifTool call. Files ExifTool cannot read are left out.</summary>
@@ -78,7 +79,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             return;
 
         if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
-            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.");
+            throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
 
         // People tags are rewritten as a whole, keeping the file's other regions; Windows' copy of them
         // is measured on the upright photo, so it changes when the photo is rotated.
@@ -115,8 +116,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
 
             var reason = string.Join(" ", errors);
             if (errors.Any(IsFileLockedError))
-                reason += " Another program may have the photo open; close it and try again.";
-            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: {reason}");
+                reason += " " + Tr("Another program may have the photo open; close it and try again.");
+            throw new ExifToolException(Tr("Could not save {0}: {1}", Path.GetFileName(path), reason));
         }
     }
 
@@ -139,7 +140,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         ], cancellationToken).ConfigureAwait(false);
         var errors = output.ErrorLines.ToList();
         if (errors.Count > 0)
-            throw new ExifToolException($"Could not copy the metadata of {Path.GetFileName(source)}: {string.Join(" ", errors)}");
+            throw new ExifToolException(Tr("Could not copy the metadata of {0}: {1}", Path.GetFileName(source), string.Join(" ", errors)));
     }
 
     private const int WriteAttempts = 5;
@@ -169,7 +170,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 if (attempt == 10)
-                    throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the leftover file {Path.GetFileName(temp)} cannot be removed ({ex.Message}).");
+                    throw new ExifToolException(Tr("Could not save {0}: the leftover file {1} cannot be removed ({2}).", Path.GetFileName(path), Path.GetFileName(temp), ex.Message));
                 await Task.Delay(200, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -279,7 +280,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.Orientation is { } orientation)
         {
             if (!SupportedFormats.CanRotateLosslessly(path))
-                throw new NotSupportedException($"Rotating {Path.GetExtension(path)} files is not supported yet.");
+                throw new NotSupportedException(Tr("Rotating {0} files is not supported yet.", Path.GetExtension(path)));
             args.Add($"-IFD0:Orientation#={Orientation.Normalize(orientation)}");
         }
 
@@ -289,7 +290,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.Location is { } location)
         {
             if (!location.IsValid)
-                throw new ArgumentOutOfRangeException(nameof(changes), $"{location} is not a valid GPS position.");
+                throw new ArgumentOutOfRangeException(nameof(changes), Tr("{0} is not a valid GPS position.", location));
             // EXIF stores the distance from the equator and meridian plus a hemisphere letter; XMP keeps the sign.
             static string Degrees(double value) => value.ToString("0.0000000", CultureInfo.InvariantCulture);
             args.Add($"-GPS:GPSLatitude={Degrees(Math.Abs(location.Latitude))}");

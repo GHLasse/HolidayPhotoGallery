@@ -1,5 +1,6 @@
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.Imaging;
 
@@ -22,7 +23,7 @@ public static class ImageEncoder
     public static Task EncodeAsync(DecodedImage image, string path) => Task.Run(async () =>
     {
         var extension = Path.GetExtension(path);
-        var encoderId = EncoderFor(extension) ?? throw new NotSupportedException($"Saving {extension} files is not supported.");
+        var encoderId = EncoderFor(extension) ?? throw new NotSupportedException(Tr("Saving {0} files is not supported.", extension));
         var lossy = encoderId == BitmapEncoder.JpegEncoderId || encoderId == BitmapEncoder.HeifEncoderId;
 
         using var memory = new InMemoryRandomAccessStream();

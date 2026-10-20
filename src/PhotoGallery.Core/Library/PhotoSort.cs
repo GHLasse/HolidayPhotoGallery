@@ -1,3 +1,5 @@
+using static PhotoGallery.Core.Localization.Strings;
+
 namespace PhotoGallery.Core.Library;
 
 /// <summary>The orders the photo grid can show photos in.</summary>
@@ -8,7 +10,7 @@ public static class PhotoSort
     public const string FileName = "name";
 
     public static readonly IReadOnlyList<(string Key, string Label)> All =
-        [(Oldest, "Date taken, oldest first"), (Newest, "Date taken, newest first"), (FileName, "File name")];
+        [(Oldest, Tr("Date taken, oldest first")), (Newest, Tr("Date taken, newest first")), (FileName, Tr("File name"))];
 
     public static int IndexOf(string? key) => Math.Max(0, All.ToList().FindIndex(s => s.Key == key));
 

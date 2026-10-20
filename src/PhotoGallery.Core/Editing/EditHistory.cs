@@ -1,4 +1,5 @@
 using System.Text.Json;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.Editing;
 
@@ -92,13 +93,13 @@ public static class EditHistory
     {
         var steps = Load(path);
         if (steps.Count == 0)
-            throw new InvalidOperationException($"{Path.GetFileName(path)} has no edits to undo.");
+            throw new InvalidOperationException(Tr("{0} has no edits to undo.", Path.GetFileName(path)));
 
         var folder = Path.Combine(Path.GetDirectoryName(path)!, FolderName);
         var target = steps[keep];
         var restored = Path.Combine(Path.GetDirectoryName(path)!, target.FileName);
         if (!string.Equals(restored, path, StringComparison.OrdinalIgnoreCase) && File.Exists(restored))
-            throw new IOException($"Cannot restore {target.FileName}: a different photo with that name is in the folder now.");
+            throw new IOException(Tr("Cannot restore {0}: a different photo with that name is in the folder now.", target.FileName));
 
         // Copy back first and delete afterwards, so a failure never loses a version.
         File.Copy(Path.Combine(folder, target.Backup), restored, overwrite: true);

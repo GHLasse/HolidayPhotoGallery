@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.OneDrive;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -14,24 +15,22 @@ public sealed partial class MainWindow
 {
     private const string AppRegistrations = "https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade";
 
-    private static readonly WizardStep[] OneDriveSteps =
+    private static WizardStep[] OneDriveSteps =>
     [
-        new("Register the app with Microsoft",
-            "Microsoft lets apps use OneDrive once they are registered. It is free. The Azure portal may show German names; they are in brackets.\n\n" +
-            "1. Open the Azure portal and sign in with the Microsoft account whose OneDrive should get the photos. " +
-            "If Microsoft asks you to set up a free account or directory first, follow its steps.\n" +
-            "2. Click New registration (Neue Registrierung).\n" +
-            "3. Name: \"Holiday Photo Gallery\".\n" +
-            "4. Supported account types (Unterstützte Kontotypen): Personal Microsoft accounts only (Nur persönliche Microsoft-Konten).\n" +
-            "5. Redirect URI (Umleitungs-URI): choose Public client/native (mobile & desktop) (Öffentlicher Client/nativ) and type http://localhost\n" +
-            "6. Click Register (Registrieren).",
-            [("Open the Azure portal: app registrations", AppRegistrations)]),
-        new("Copy the app's ID",
-            "The app's Overview (Übersicht) page shows the Application (client) ID (Anwendungs-ID (Client)), a code like " +
-            "0a1b2c3d-…. Copy it into the box below. Microsoft needs no secret for desktop apps.",
+        new(Tr("Register the app with Microsoft"),
+            Tr("Microsoft lets apps use OneDrive once they are registered. It is free. The Azure portal may show German names; they are in brackets.") + "\n\n" +
+            Tr("1. Open the Azure portal and sign in with the Microsoft account whose OneDrive should get the photos. If Microsoft asks you to set up a free account or directory first, follow its steps.") + "\n" +
+            Tr("2. Click New registration (Neue Registrierung).") + "\n" +
+            Tr("3. Name: \"Holiday Photo Gallery\".") + "\n" +
+            Tr("4. Supported account types (Unterstützte Kontotypen): Personal Microsoft accounts only (Nur persönliche Microsoft-Konten).") + "\n" +
+            Tr("5. Redirect URI (Umleitungs-URI): choose Public client/native (mobile & desktop) (Öffentlicher Client/nativ) and type http://localhost") + "\n" +
+            Tr("6. Click Register (Registrieren)."),
+            [(Tr("Open the Azure portal: app registrations"), AppRegistrations)]),
+        new(Tr("Copy the app's ID"),
+            Tr("The app's Overview (Übersicht) page shows the Application (client) ID (Anwendungs-ID (Client)), a code like 0a1b2c3d-…. Copy it into the box below. Microsoft needs no secret for desktop apps."),
             []),
-        new("Sign in",
-            "Click Sign in with Microsoft. Your browser opens Microsoft's sign-in page. Allow the app to use your OneDrive files, then come back here.",
+        new(Tr("Sign in"),
+            Tr("Click Sign in with Microsoft. Your browser opens Microsoft's sign-in page. Allow the app to use your OneDrive files, then come back here."),
             []),
     ];
 
@@ -51,10 +50,10 @@ public sealed partial class MainWindow
     {
         if (await ViewModel.ListOneDriveAlbumsAsync() is not { } albums)
             return null;
-        var list = new ComboBox { Header = "OneDrive album", HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 320 };
+        var list = new ComboBox { Header = Tr("OneDrive album"), HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 320 };
         list.Items.Add(firstChoice);
         foreach (var album in albums)
-            list.Items.Add(album.PhotoCount == 1 ? $"{album.Name} (1 photo)" : $"{album.Name} ({album.PhotoCount:N0} photos)");
+            list.Items.Add(album.PhotoCount == 1 ? Tr("{0} (1 photo)", album.Name) : Tr("{0} ({1:N0} photos)", album.Name, album.PhotoCount));
         var same = preselect is null ? -1 : albums.ToList().FindIndex(a => string.Equals(a.Name, preselect, StringComparison.CurrentCultureIgnoreCase));
         list.SelectedIndex = same + 1;
         var dialog = new ContentDialog
@@ -69,18 +68,18 @@ public sealed partial class MainWindow
                     list,
                     new TextBlock
                     {
-                        Text = $"The photos are stored in Pictures › {OneDriveClient.AppFolder} in your OneDrive and shown in the album you pick. " +
-                            "Albums made on your phone or on the OneDrive website are listed too.",
+                        Text = Tr("The photos are stored in Pictures › {0} in your OneDrive and shown in the album you pick.", OneDriveClient.AppFolder) + " " +
+                            Tr("Albums made on your phone or on the OneDrive website are listed too."),
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                     },
                 },
             },
-            PrimaryButtonText = "Upload",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = Tr("Upload"),
+            CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
             return null;
         return new OneDriveAlbumChoice(list.SelectedIndex > 0 ? albums[list.SelectedIndex - 1] : null);
     }
@@ -93,7 +92,7 @@ public sealed partial class MainWindow
         var panel = new StackPanel { Spacing = 12 };
         CancellationTokenSource? signingIn = null;
         closed.Register(() => signingIn?.Cancel());
-        var clientId = new TextBox { Header = "Application (client) ID", PlaceholderText = "0a1b2c3d-…", Text = ViewModel.OwnOneDriveClientId ?? "" };
+        var clientId = new TextBox { Header = Tr("Application (client) ID"), PlaceholderText = "0a1b2c3d-…", Text = ViewModel.OwnOneDriveClientId ?? "" };
 
         TextBlock Text(string text, bool secondary = false)
         {
@@ -117,7 +116,7 @@ public sealed partial class MainWindow
             signingIn = new CancellationTokenSource();
             foreach (var control in disable)
                 control.IsEnabled = false;
-            message.Text = "Finish signing in in your browser, then come back here…";
+            message.Text = Tr("Finish signing in in your browser, then come back here…");
             message.Foreground = ThemeBrush("TextFillColorSecondaryBrush");
             var error = await ViewModel.SignInToOneDriveAsync(id, signingIn.Token);
             signingIn = null;
@@ -141,13 +140,11 @@ public sealed partial class MainWindow
                 Spacing = 8,
                 Children =
                 {
-                    new FontIcon { Glyph = "", FontSize = 24 },
+                    new Controls.OneDriveLogo { Width = 24, Height = 24 },
                     new TextBlock { Text = "OneDrive", Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] },
                 },
             });
-            panel.Children.Add(Text($"Upload albums and photos to your OneDrive. They go into Pictures › {Core.OneDrive.OneDriveClient.AppFolder} › album name, " +
-                "and each album goes into a OneDrive album: one you already have, or a new one. Uploading again later only sends the new photos. Photos already in your " +
-                "OneDrive folder on this PC aren't uploaded twice: the app puts the copy OneDrive has into the album."));
+            panel.Children.Add(Text(Tr("Upload albums and photos to your OneDrive. They go into Pictures › {0} › album name, and each album goes into a OneDrive album: one you already have, or a new one. Uploading again later only sends the new photos. Photos already in your OneDrive folder on this PC aren't uploaded twice: the app puts the copy OneDrive has into the album.", Core.OneDrive.OneDriveClient.AppFolder)));
 
             if (ViewModel.IsOneDriveSignedIn)
             {
@@ -156,52 +153,50 @@ public sealed partial class MainWindow
                     IsOpen = true,
                     IsClosable = false,
                     Severity = InfoBarSeverity.Success,
-                    Title = "Connected",
-                    Message = ViewModel.OneDriveAccount is { } account ? $"Signed in as {account}." : "Signed in to OneDrive.",
+                    Title = Tr("Connected"),
+                    Message = ViewModel.OneDriveAccount is { } account ? Tr("Signed in as {0}.", account) : Tr("Signed in to OneDrive."),
                 });
-                var signOut = new Button { Content = "Sign out" };
+                var signOut = new Button { Content = Tr("Sign out") };
                 signOut.Click += (_, _) =>
                 {
                     ViewModel.SignOutOfOneDrive();
                     ShowStatus();
                 };
                 panel.Children.Add(signOut);
-                panel.Children.Add(Text("Right-click an album or photos and choose Upload to OneDrive. Photos in OneDrive show the cloud mark, " +
-                    "and the Cloud filter finds what isn't there yet. OneDrive keeps the photos if you sign out.", secondary: true));
+                panel.Children.Add(Text(Tr("Right-click an album or photos and choose Upload to OneDrive. Photos in OneDrive show the cloud mark, and the Cloud filter finds what isn't there yet. OneDrive keeps the photos if you sign out."), secondary: true));
             }
             else if (ViewModel.OneDriveClientId is { } id)
             {
                 var message = Text("", secondary: true);
-                var signIn = Accent("Sign in with Microsoft");
+                var signIn = Accent(Tr("Sign in with Microsoft"));
                 signIn.Click += async (_, _) => await SignInAsync(id, message, signIn);
                 panel.Children.Add(signIn);
                 panel.Children.Add(message);
             }
             else
             {
-                var start = Accent("Connect to OneDrive…");
+                var start = Accent(Tr("Connect to OneDrive…"));
                 start.Click += (_, _) => ShowWizard(0);
-                panel.Children.Add(Text("This copy of the app has no Microsoft app registration built in, so it needs one of your own. " +
-                    "It's free and takes about 5 minutes, once.", secondary: true));
+                panel.Children.Add(Text(Tr("This copy of the app has no Microsoft app registration built in, so it needs one of your own. It's free and takes about 5 minutes, once."), secondary: true));
                 panel.Children.Add(start);
             }
 
             if (ViewModel.OwnOneDriveClientId is { } own)
             {
-                panel.Children.Add(Link("Change the app registration…", () => ShowWizard(1)));
+                panel.Children.Add(Link(Tr("Change the app registration…"), () => ShowWizard(1)));
                 if (MainViewModel.BuiltInOneDriveClientId is not null)
                 {
-                    panel.Children.Add(Link("Use the app's built-in registration instead", () =>
+                    panel.Children.Add(Link(Tr("Use the app's built-in registration instead"), () =>
                     {
                         ViewModel.SignOutOfOneDrive(forgetOwnKey: true);
                         ShowStatus();
                     }));
                 }
-                panel.Children.Add(Text($"Application ID: {own}", secondary: true));
+                panel.Children.Add(Text(Tr("Application ID: {0}", own), secondary: true));
             }
             else if (MainViewModel.BuiltInOneDriveClientId is not null && !ViewModel.IsOneDriveSignedIn)
             {
-                panel.Children.Add(Link("Use your own app registration instead (advanced)…", () => ShowWizard(0)));
+                panel.Children.Add(Link(Tr("Use your own app registration instead (advanced)…"), () => ShowWizard(0)));
             }
         }
 
@@ -209,7 +204,7 @@ public sealed partial class MainWindow
         {
             var step = OneDriveSteps[index];
             panel.Children.Clear();
-            panel.Children.Add(new TextBlock { Text = $"Step {index + 1} of {OneDriveSteps.Length}", Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
+            panel.Children.Add(new TextBlock { Text = Tr("Step {0} of {1}", index + 1, OneDriveSteps.Length), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
             panel.Children.Add(new TextBlock { Text = step.Title, Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] });
             panel.Children.Add(Text(step.Text));
             foreach (var (label, url) in step.Links)
@@ -218,7 +213,7 @@ public sealed partial class MainWindow
                 panel.Children.Add(clientId);
 
             var message = Text("", secondary: true);
-            var back = new Button { Content = index == 0 ? "Cancel" : "Back" };
+            var back = new Button { Content = index == 0 ? Tr("Cancel") : Tr("Back") };
             back.Click += (_, _) =>
             {
                 if (index == 0)
@@ -229,12 +224,12 @@ public sealed partial class MainWindow
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 0), Children = { back } };
             if (index < OneDriveSteps.Length - 1)
             {
-                var next = Accent("Next");
+                var next = Accent(Tr("Next"));
                 next.Click += (_, _) =>
                 {
                     if (index == 1 && !Guid.TryParse(clientId.Text.Trim(), out _))
                     {
-                        message.Text = "The Application (client) ID looks like 0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d. Check that all of it was copied.";
+                        message.Text = Tr("The Application (client) ID looks like 0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d. Check that all of it was copied.");
                         message.Foreground = ThemeBrush("SystemFillColorCriticalBrush");
                         return;
                     }
@@ -244,7 +239,7 @@ public sealed partial class MainWindow
             }
             else
             {
-                var signIn = Accent("Sign in with Microsoft");
+                var signIn = Accent(Tr("Sign in with Microsoft"));
                 var id = clientId.Text.Trim();
                 signIn.Click += async (_, _) => await SignInAsync(id, message, signIn, back);
                 buttons.Children.Add(signIn);

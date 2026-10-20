@@ -1,3 +1,5 @@
+using static PhotoGallery.Core.Localization.Strings;
+
 namespace PhotoGallery.Core.Editing;
 
 /// <summary>A crop shape the user can pick, written landscape (e.g. 3:2); it turns with the photo.</summary>
@@ -12,19 +14,19 @@ public static class CropRatios
     /// <summary>The photo's own shape first (the default), then any shape, then common print, screen and social media shapes.</summary>
     public static readonly IReadOnlyList<CropRatio> All =
     [
-        new(Original, "Original shape", 0),
-        new(Free, "Free", 0),
-        new("1:1", "1:1  square, Instagram", 1),
-        new("5:4", "5:4  20×25 / 8×10″ print, Instagram portrait", 5.0 / 4),
-        new("4:3", "4:3  compact and phone cameras, iPad", 4.0 / 3),
-        new("7:5", "7:5  13×18 / 5×7″ print", 7.0 / 5),
-        new("3:2", "3:2  10×15 / 4×6″ print, DSLR", 3.0 / 2),
-        new("16:10", "16:10  laptop screens", 16.0 / 10),
-        new("16:9", "16:9  TV, PC screens, YouTube", 16.0 / 9),
-        new("1.91:1", "1.91:1  Facebook and link previews", 1.91),
-        new("2:1", "2:1  panorama", 2),
-        new("19.5:9", "19.5:9  phone screens, wallpapers", 19.5 / 9),
-        new("21:9", "21:9  ultrawide screens", 21.0 / 9),
+        new(Original, Tr("Original shape"), 0),
+        new(Free, Tr("Free"), 0),
+        new("1:1", Tr("1:1  square, Instagram"), 1),
+        new("5:4", Tr("5:4  20×25 / 8×10″ print, Instagram portrait"), 5.0 / 4),
+        new("4:3", Tr("4:3  compact and phone cameras, iPad"), 4.0 / 3),
+        new("7:5", Tr("7:5  13×18 / 5×7″ print"), 7.0 / 5),
+        new("3:2", Tr("3:2  10×15 / 4×6″ print, DSLR"), 3.0 / 2),
+        new("16:10", Tr("16:10  laptop screens"), 16.0 / 10),
+        new("16:9", Tr("16:9  TV, PC screens, YouTube"), 16.0 / 9),
+        new("1.91:1", Tr("1.91:1  Facebook and link previews"), 1.91),
+        new("2:1", Tr("2:1  panorama"), 2),
+        new("19.5:9", Tr("19.5:9  phone screens, wallpapers"), 19.5 / 9),
+        new("21:9", Tr("21:9  ultrawide screens"), 21.0 / 9),
     ];
 
     /// <summary>The ratio with this key, or the photo's own shape for an unknown or missing key.</summary>

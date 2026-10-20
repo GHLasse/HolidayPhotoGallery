@@ -6,6 +6,7 @@ using PhotoGallery.App.Native;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Library;
 using Windows.Storage.Pickers;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -42,7 +43,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             ViewModel.OtherAppCancelled(photo);
-            ViewModel.ErrorMessage = $"Could not open {photo.FileName} in another app: {ex.Message}";
+            ViewModel.ErrorMessage = Tr("Could not open {0} in another app: {1}", photo.FileName, ex.Message);
         }
     }
 
@@ -81,7 +82,7 @@ public sealed partial class MainWindow
     {
         if (photos.Count == 0)
         {
-            ViewModel.Warn($"Select the photos to edit in {app.Name} first.");
+            ViewModel.Warn(Tr("Select the photos to edit in {0} first.", app.Name));
             return;
         }
         var ready = photos.Where(ViewModel.PrepareForOtherApp).Select(p => p.Path).ToList();
@@ -104,7 +105,7 @@ public sealed partial class MainWindow
                 {
                     if (!await AssocHandlers.OpenAsync(app.Path, path))
                     {
-                        ViewModel.ErrorMessage = $"Windows no longer offers {app.Name} for {Path.GetExtension(path)} files. Choose the app again in Settings › Editing.";
+                        ViewModel.ErrorMessage = Tr("Windows no longer offers {0} for {1} files. Choose the app again in Settings › Editing.", app.Name, Path.GetExtension(path));
                         return;
                     }
                 }
@@ -112,7 +113,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
-            ViewModel.ErrorMessage = $"Could not start {app.Name}: {ex.Message}. Check the app in Settings › Editing.";
+            ViewModel.ErrorMessage = Tr("Could not start {0}: {1}. Check the app in Settings › Editing.", app.Name, ex.Message);
         }
     }
 
@@ -131,8 +132,8 @@ public sealed partial class MainWindow
                 continue;
             }
             var app = apps[i];
-            var tip = $"Open the selected photos in {app.Name}. A copy is kept in .originals first, so Revert still works.";
-            bar[i].Label = $"Edit in {app.Name}";
+            var tip = Tr("Open the selected photos in {0}. A copy is kept in .originals first, so Revert still works.", app.Name);
+            bar[i].Label = Tr("Edit in {0}", app.Name);
             ToolTipService.SetToolTip(bar[i], tip);
             ToolTipService.SetToolTip(viewer[i], tip);
             bar[i].Visibility = Visibility.Visible;
@@ -194,8 +195,8 @@ public sealed partial class MainWindow
         var picked = new FavouriteApp?[] { ViewModel.FavouriteApps.ElementAtOrDefault(0), ViewModel.FavouriteApps.ElementAtOrDefault(1) };
         ComboBox[] boxes =
         [
-            new() { Header = "Favourite app 1", MinWidth = 320, PlaceholderText = "Loading the apps…" },
-            new() { Header = "Favourite app 2", MinWidth = 320, PlaceholderText = "Loading the apps…" },
+            new() { Header = Tr("Favourite app 1"), MinWidth = 320, PlaceholderText = Tr("Loading the apps…") },
+            new() { Header = Tr("Favourite app 2"), MinWidth = 320, PlaceholderText = Tr("Loading the apps…") },
         ];
         var panel = new StackPanel
         {
@@ -205,7 +206,7 @@ public sealed partial class MainWindow
             {
                 new TextBlock
                 {
-                    Text = "Up to two apps get an \u201cEdit in \u2026\u201d button in the toolbar and the viewer. The list shows the apps Windows offers for photos.",
+                    Text = Tr("Up to two apps get an \u201cEdit in \u2026\u201d button in the toolbar and the viewer. The list shows the apps Windows offers for photos."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 boxes[0],
@@ -219,8 +220,8 @@ public sealed partial class MainWindow
 
     private async Task FillFavouriteBoxesAsync(ComboBox[] boxes, FavouriteApp?[] picked)
     {
-        const string None = "None";
-        const string Other = "Other app…";
+        var None = Tr("None");
+        var Other = Tr("Other app…");
         List<FavouriteApp> offered;
         try
         {
@@ -229,7 +230,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             offered = []; // Only "Other app…" then.
-            ViewModel.Warn($"Couldn't read the apps Windows offers for photos ({ex.Message}). \"Other app…\" still works.");
+            ViewModel.Warn(Tr("Couldn't read the apps Windows offers for photos ({0}). \"Other app…\" still works.", ex.Message));
         }
 
         for (var i = 0; i < boxes.Length; i++)

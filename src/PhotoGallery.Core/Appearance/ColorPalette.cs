@@ -1,4 +1,5 @@
 using System.Globalization;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.Appearance;
 
@@ -97,7 +98,7 @@ public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBa
 
     public static IReadOnlyList<ColorPalette> All { get; } =
     [
-        new(WindowsKey, "Windows accent colour", null),
+        new(WindowsKey, Tr("Windows accent colour"), null),
         new("mocha", "Mocha Mousse", Rgb.Parse("#A47864")),
         new("cloud", "Cloud Dancer", Rgb.Parse("#F0EEE9"), IsBackground: true),
         new("classic-blue", "Classic Blue", Rgb.Parse("#0F4C81")),

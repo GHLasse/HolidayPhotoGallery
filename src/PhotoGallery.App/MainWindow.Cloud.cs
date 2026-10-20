@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Cloud;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -16,7 +17,7 @@ public sealed partial class MainWindow
         if (service == CloudService.OneDrive && !MainViewModel.HasOneDriveAlbum(folder))
         {
             var name = ViewModel.CurrentAlbumName(folder);
-            if (await ChooseOneDriveAlbumAsync($"Upload “{name}” to OneDrive", $"New album “{name}”", name) is not { } choice)
+            if (await ChooseOneDriveAlbumAsync(Tr("Upload “{0}” to OneDrive", name), Tr("New album “{0}”", name), name) is not { } choice)
                 return;
             if (choice.Album is { } album && !ViewModel.LinkToOneDriveAlbum(folder, album))
                 return;
@@ -34,8 +35,8 @@ public sealed partial class MainWindow
             await ViewModel.UploadPhotosAsync(service, photos);
             return;
         }
-        var title = photos.Count == 1 ? "Upload the photo to OneDrive" : $"Upload {photos.Count} photos to OneDrive";
-        if (await ChooseOneDriveAlbumAsync(title, "The album each photo is in here (or none)", null) is not { } choice)
+        var title = photos.Count == 1 ? Tr("Upload the photo to OneDrive") : Tr("Upload {0} photos to OneDrive", photos.Count);
+        if (await ChooseOneDriveAlbumAsync(title, Tr("The album each photo is in here (or none)"), null) is not { } choice)
             return;
         await ViewModel.UploadPhotosAsync(service, photos, choice.Album is { } album ? (album.Link(), album.Name) : null);
     }

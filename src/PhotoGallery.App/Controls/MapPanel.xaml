@@ -2,7 +2,8 @@
 <UserControl
     x:Class="PhotoGallery.App.Controls.MapPanel"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PhotoGallery.App">
 
     <Grid RowSpacing="6">
         <Grid.RowDefinitions>
@@ -20,13 +21,13 @@
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="PinText" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Text="Click the map or search for a place to set a pin." />
+                       Text="{local:Loc Text='Click the map or search for a place to set a pin.'}" />
             <Button x:Name="AssignButton" Grid.Column="1" Style="{ThemeResource AccentButtonStyle}" IsEnabled="False"
-                    Click="Assign_Click" ToolTipService.ToolTip="Write the pin's position into the selected photos">
-                <TextBlock x:Name="AssignText" Text="Assign to selected" />
+                    Click="Assign_Click" ToolTipService.ToolTip="{local:Loc Text='Write the pin’s position into the selected photos'}">
+                <TextBlock x:Name="AssignText" Text="{local:Loc Text='Assign to selected'}" />
             </Button>
-            <Button x:Name="RemoveButton" Grid.Column="2" IsEnabled="False" Content="Remove location"
-                    Click="Remove_Click" ToolTipService.ToolTip="Delete the GPS position from the selected photos" />
+            <Button x:Name="RemoveButton" Grid.Column="2" IsEnabled="False" Content="{local:Loc Text='Remove location'}"
+                    Click="Remove_Click" ToolTipService.ToolTip="{local:Loc Text='Delete the GPS position from the selected photos'}" />
         </Grid>
     </Grid>
 </UserControl>

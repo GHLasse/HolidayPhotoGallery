@@ -1,4 +1,5 @@
 using PhotoGallery.Core.Cloud;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.OneDrive;
 
@@ -14,7 +15,7 @@ public sealed class MicrosoftAuth(string clientId, string? refreshToken, HttpMes
 
     protected override string ServiceName => "Microsoft";
 
-    protected override string SettingsPlace => "Settings › Linked apps";
+    protected override string SettingsPlace => Tr("Settings › Linked apps");
 
     protected override string AuthEndpoint => Authority + "authorize";
 

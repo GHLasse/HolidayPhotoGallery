@@ -2,6 +2,7 @@ using PhotoGallery.App.Native;
 using PhotoGallery.Core.Albums;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.OneDrive;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -100,7 +101,7 @@ public sealed partial class MainViewModel
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OneDriveException)
         {
-            ErrorMessage = $"Couldn't read your OneDrive albums: {ex.Message}";
+            ErrorMessage = Tr("Couldn't read your OneDrive albums: {0}", ex.Message);
         }
         return null;
     }
@@ -118,7 +119,7 @@ public sealed partial class MainViewModel
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ErrorMessage = $"Couldn't save the album's OneDrive album: {ex.Message}";
+            ErrorMessage = Tr("Couldn't save the album's OneDrive album: {0}", ex.Message);
             return false;
         }
     }

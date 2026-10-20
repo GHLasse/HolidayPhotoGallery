@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.App.ViewModels;
+using static PhotoGallery.Core.Localization.Strings;
 using DateTaken = PhotoGallery.Core.Metadata.DateTaken;
 
 namespace PhotoGallery.App.Controls;
@@ -18,14 +19,14 @@ public sealed class ShiftDatesDialog : ContentDialog
 
     private readonly RadioButtons _mode = new() { MaxColumns = 1 };
     private readonly StackPanel _shiftPanel = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
-    private readonly ComboBox _direction = new() { Header = "Direction", ItemsSource = new[] { "Later", "Earlier" }, SelectedIndex = 0 };
-    private readonly NumberBox _days = NewNumberBox("Days", 3650);
-    private readonly NumberBox _hours = NewNumberBox("Hours", 23);
-    private readonly NumberBox _minutes = NewNumberBox("Minutes", 59);
-    private readonly NumberBox _seconds = NewNumberBox("Seconds", 59);
-    private readonly TextBox _target = new() { Header = "Earliest photo was really taken at", PlaceholderText = "2024-07-01 14:30:00" };
-    private readonly List<TimeZoneChoice> _zones = TimeZoneChoice.List(TimeZoneChoice.Unknown("Keep each photo's time zone"));
-    private readonly ComboBox _zone = new() { Header = "Time zone", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly ComboBox _direction = new() { Header = Tr("Direction"), ItemsSource = new[] { Tr("Later"), Tr("Earlier") }, SelectedIndex = 0 };
+    private readonly NumberBox _days = NewNumberBox(Tr("Days"), 3650);
+    private readonly NumberBox _hours = NewNumberBox(Tr("Hours"), 23);
+    private readonly NumberBox _minutes = NewNumberBox(Tr("Minutes"), 59);
+    private readonly NumberBox _seconds = NewNumberBox(Tr("Seconds"), 59);
+    private readonly TextBox _target = new() { Header = Tr("Earliest photo was really taken at"), PlaceholderText = "2024-07-01 14:30:00" };
+    private readonly List<TimeZoneChoice> _zones = TimeZoneChoice.List(TimeZoneChoice.Unknown(Tr("Keep each photo's time zone")));
+    private readonly ComboBox _zone = new() { Header = Tr("Time zone"), HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBlock _preview = new() { TextWrapping = TextWrapping.Wrap };
 
     public ShiftDatesDialog(DateTaken first, int datedCount, int undatedCount)
@@ -34,13 +35,13 @@ public sealed class ShiftDatesDialog : ContentDialog
         _datedCount = datedCount;
         _undatedCount = undatedCount;
 
-        Title = "Shift date and time";
-        PrimaryButtonText = "Shift";
-        CloseButtonText = "Cancel";
+        Title = Tr("Shift date and time");
+        PrimaryButtonText = Tr("Shift");
+        CloseButtonText = Tr("Cancel");
         DefaultButton = ContentDialogButton.Primary;
 
-        _mode.Items.Add("Shift all by an amount");
-        _mode.Items.Add("Set the time of the earliest photo, shift the rest to match");
+        _mode.Items.Add(Tr("Shift all by an amount"));
+        _mode.Items.Add(Tr("Set the time of the earliest photo, shift the rest to match"));
         _mode.SelectedIndex = 0;
         _target.Text = first.ToDisplayDate();
         _zone.ItemsSource = _zones;
@@ -54,12 +55,12 @@ public sealed class ShiftDatesDialog : ContentDialog
 
 
         var skipped = undatedCount > 0
-            ? $" {undatedCount} selected photo(s) have no date and will be left alone."
+            ? Tr(" {0} selected photo(s) have no date and will be left alone.", undatedCount)
             : "";
         var content = new StackPanel { Spacing = 12, MinWidth = 480 };
         content.Children.Add(new TextBlock
         {
-            Text = $"Changes the date taken of {datedCount} photo(s), e.g. when the camera clock was wrong or still on home time.{skipped}",
+            Text = Tr("Changes the date taken of {0} photo(s), e.g. when the camera clock was wrong or still on home time.", datedCount) + skipped,
             TextWrapping = TextWrapping.Wrap,
         });
         content.Children.Add(_mode);
@@ -105,7 +106,7 @@ public sealed class ShiftDatesDialog : ContentDialog
         if (IsSetMode)
         {
             if (!DateTaken.TryParse(_target.Text, out var target))
-                return (false, "Enter the date and time as 2024-07-01 14:30:00.");
+                return (false, Tr("Enter the date and time as 2024-07-01 14:30:00."));
             delta = target.Local - _first.Local;
         }
         else
@@ -119,12 +120,12 @@ public sealed class ShiftDatesDialog : ContentDialog
         Delta = delta;
         NewZone = zone;
         if (delta == TimeSpan.Zero && zone is null)
-            return (false, "Nothing to change yet.");
+            return (false, Tr("Nothing to change yet."));
 
         var after = _first.Shifted(delta, zone?.OffsetFor(_first.Local + delta));
-        var text = $"Earliest photo: {_first} → {after}";
+        var text = Tr("Earliest photo: {0} → {1}", _first, after);
         if (_datedCount > 1)
-            text += $"{Environment.NewLine}The other {_datedCount - 1} photo(s) move by the same {FormatDelta(delta)}.";
+            text += Environment.NewLine + Tr("The other {0} photo(s) move by the same {1}.", _datedCount - 1, FormatDelta(delta));
         return (true, text);
     }
 

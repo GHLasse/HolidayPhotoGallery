@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using PhotoGallery.App.Native;
 using PhotoGallery.Core.Library;
+using PhotoGallery.Core.Localization;
 
 namespace PhotoGallery.App;
 
@@ -56,10 +57,20 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Where the app looks for language files: the ones it ships with, and the user's own.</summary>
+    public static string[] LanguageFolders =>
+        [Path.Combine(AppContext.BaseDirectory, "Languages"), UserLanguagesFolder];
+
+    /// <summary>The folder where a new language file can be added (Settings › Language opens it).</summary>
+    public static string UserLanguagesFolder => Path.Combine(LibrarySettings.DefaultDataFolder, "Languages");
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         try
         {
+            // The language is chosen before the window is built, since its texts are read as it is built.
+            var settings = LibrarySettings.Load(Path.Combine(LibrarySettings.DefaultDataFolder, "settings.json"));
+            Strings.Use(settings.UiLanguage, LanguageFolders);
             _window = new MainWindow();
             _window.Activate();
         }

@@ -1,6 +1,7 @@
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Metadata;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core.Editing;
 
@@ -26,13 +27,13 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
                                             CancellationToken cancellationToken = default)
     {
         if (File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
-            throw new ExifToolException($"Could not save {Path.GetFileName(path)}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.");
+            throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
 
         var newPath = string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase)
             ? path
             : Path.ChangeExtension(path, extension);
         if (newPath != path && File.Exists(newPath))
-            throw new IOException($"Could not save as {Path.GetFileName(newPath)}: a photo with that name already exists.");
+            throw new IOException(Tr("Could not save as {0}: a photo with that name already exists.", Path.GetFileName(newPath)));
 
         // Written next to the photo under a hidden name, then swapped in, so a failure leaves the photo as it was.
         var temp = Path.Combine(Path.GetDirectoryName(path)!, $".edit-{Guid.NewGuid():N}{extension}");

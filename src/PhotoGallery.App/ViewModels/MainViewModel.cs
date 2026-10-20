@@ -10,6 +10,7 @@ using PhotoGallery.Core.Geocoding;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 using PhotoGallery.Core.Tagging;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -75,7 +76,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<TagFilterViewModel> Tags { get; } = [];
 
     /// <summary>"All cameras" followed by the cameras in the current folder.</summary>
-    private static readonly CameraFilterViewModel AllCameras = new(null, "All cameras");
+    private static readonly CameraFilterViewModel AllCameras = new(null, Tr("All cameras"));
 
     /// <summary>"All cameras", then each camera in the current folder. Replaced as a whole, never edited.</summary>
     public List<CameraFilterViewModel> Cameras
@@ -319,8 +320,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = LoadCloudUploadsAsync();
         if (IsExifToolMissing)
         {
-            ErrorMessage = "ExifTool was not found, so photos cannot be indexed or edited. " +
-                           "Run scripts\\Get-ExifTool.ps1 and rebuild, or install ExifTool and add it to the PATH.";
+            ErrorMessage = Tr("ExifTool was not found, so photos cannot be indexed or edited. Run scripts\\Get-ExifTool.ps1 and rebuild, or install ExifTool and add it to the PATH.");
             return;
         }
         await RescanAsync();
@@ -371,8 +371,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             var progress = new Progress<IndexProgress>(p =>
                 StatusText = p.Total == 0
-                    ? $"Checking {p.Folder}…"
-                    : $"Reading {p.Processed} of {p.Total} new or changed photos in {p.Folder}…");
+                    ? Tr("Checking {0}…", p.Folder)
+                    : Tr("Reading {0} of {1} new or changed photos in {2}…", p.Processed, p.Total, p.Folder));
 
             foreach (var folder in folders)
             {
@@ -382,7 +382,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ExifToolException)
                 {
-                    ErrorMessage = $"Could not read {folder}: {ex.Message}";
+                    ErrorMessage = Tr("Could not read {0}: {1}", folder, ex.Message);
                 }
             }
         }
@@ -441,7 +441,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UpdateTags(tags);
         UpdatePeople(people);
         UpdateCameras(cameras);
-        _countText = photos.Count == 1 ? "1 photo" : $"{photos.Count:N0} photos";
+        _countText = photos.Count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", photos.Count);
         if (!IsBusy)
             StatusText = _countText;
     }
@@ -534,7 +534,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             for (var i = 0; i < edits.Count; i++)
             {
                 var (item, changes) = edits[i];
-                StatusText = $"Saving {i + 1} of {edits.Count}…";
+                StatusText = Tr("Saving {0} of {1}…", i + 1, edits.Count);
                 try
                 {
                     await _metadata.WriteAsync(item.Path, changes with { SyncOtherDates = changes.DateTaken is not null && _settings.KeepDatesInSync });
@@ -552,8 +552,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some photos could not be saved. " + string.Join(" ", failures);
-        Inform(failures.Count == 0 ? $"Saved {edits.Count} photo(s)" : $"Saved {edits.Count - failures.Count} of {edits.Count} photos");
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be saved.") + " " + string.Join(" ", failures);
+        Inform(failures.Count == 0 ? Tr("Saved {0} photo(s)", edits.Count) : Tr("Saved {0} of {1} photos", edits.Count - failures.Count, edits.Count));
         Editor.Load(items);
         await RefreshTagsAsync();
         return failures.Count == 0;
@@ -579,7 +579,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             {
                 var item = rotatable[i];
                 if (rotatable.Count > 1)
-                    StatusText = $"Rotating {i + 1} of {rotatable.Count}…";
+                    StatusText = Tr("Rotating {0} of {1}…", i + 1, rotatable.Count);
                 try
                 {
                     if (SupportedFormats.CanRotateLosslessly(item.Path))
@@ -600,9 +600,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                                or System.Runtime.InteropServices.COMException or SixLabors.ImageSharp.ImageFormatException)
                 {
                     failed++;
-                    ErrorMessage = $"Could not rotate {item.FileName}: {ex.Message}" +
+                    ErrorMessage = Tr("Could not rotate {0}: {1}", item.FileName, ex.Message) +
                         (Path.GetExtension(item.Path).ToLowerInvariant() is ".heic" or ".heif"
-                            ? " Rotating HEIC needs the HEVC Video Extensions from the Microsoft Store." : "");
+                            ? " " + Tr("Rotating HEIC needs the HEVC Video Extensions from the Microsoft Store.") : "");
                 }
             }
         }
@@ -614,9 +614,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var done = rotatable.Count - failed;
         if (skipped == 0 && failed == 0)
-            Inform($"Rotated {done} photo(s)");
+            Inform(Tr("Rotated {0} photo(s)", done));
         else if (skipped > 0)
-            Warn($"Rotated {done} photo(s). {skipped} skipped: their format can't be rotated.");
+            Warn(Tr("Rotated {0} photo(s). {1} skipped: their format can't be rotated.", done, skipped));
     }
 
     /// <summary>Turns a photo whose format has no orientation tag, by saving its turned pixels as an edit.</summary>
@@ -670,9 +670,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var changed = await Task.Run(() => folders.Sum(f => ReadOnlyPhotos.MakeWritable(f)));
         Inform(changed switch
         {
-            0 => "No read-only photos found.",
-            1 => "1 photo is now editable.",
-            _ => $"{changed:N0} photos are now editable.",
+            0 => Tr("No read-only photos found."),
+            1 => Tr("1 photo is now editable."),
+            _ => Tr("{0:N0} photos are now editable.", changed),
         });
         await CheckReadOnlyAsync();
     }
@@ -690,7 +690,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
         {
-            ErrorMessage = $"Could not rate {item.FileName}: {ex.Message}";
+            ErrorMessage = Tr("Could not rate {0}: {1}", item.FileName, ex.Message);
         }
     }
 
@@ -724,7 +724,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 failures.Add($"{item.FileName}: {ex.Message}");
             }
         }
-        ErrorMessage = failures.Count == 0 ? null : (flag ? "Some photos could not be flagged. " : "Some flags could not be removed. ") + string.Join(" ", failures);
+        ErrorMessage = failures.Count == 0 ? null : (flag ? Tr("Some photos could not be flagged.") : Tr("Some flags could not be removed.")) + " " + string.Join(" ", failures);
         FlagsChanged?.Invoke();
     }
 
@@ -749,7 +749,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             for (var i = 0; i < dated.Count; i++)
             {
                 var item = dated[i];
-                StatusText = $"Shifting {i + 1} of {dated.Count}…";
+                StatusText = Tr("Shifting {0} of {1}…", i + 1, dated.Count);
                 try
                 {
                     var date = item.Photo.DateTaken!.Value;
@@ -773,11 +773,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some dates could not be changed. " + string.Join(" ", failures);
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some dates could not be changed.") + " " + string.Join(" ", failures);
         // Re-sort, since the photos' dates have moved.
         await SearchAsync();
-        Inform($"Changed the date of {dated.Count - failures.Count} photo(s)" +
-                     (items.Count > dated.Count ? $"; {items.Count - dated.Count} without a date were left alone" : ""));
+        Inform(items.Count > dated.Count
+            ? Tr("Changed the date of {0} photo(s); {1} without a date were left alone", dated.Count - failures.Count, items.Count - dated.Count)
+            : Tr("Changed the date of {0} photo(s)", dated.Count - failures.Count));
     }
 
     /// <summary>Writes a GPS position into the photos, or with null removes their GPS information.</summary>
@@ -794,7 +795,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             for (var i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                StatusText = $"Saving the location of {i + 1} of {items.Count}…";
+                StatusText = Tr("Saving the location of {0} of {1}…", i + 1, items.Count);
                 try
                 {
                     await _metadata.WriteAsync(item.Path, changes);
@@ -812,11 +813,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some locations could not be saved. " + string.Join(" ", failures);
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some locations could not be saved.") + " " + string.Join(" ", failures);
         var done = items.Count - failures.Count;
         Inform(position is null
-            ? $"Removed the location from {done} photo(s)"
-            : $"Placed {done} photo(s) on the map");
+            ? Tr("Removed the location from {0} photo(s)", done)
+            : Tr("Placed {0} photo(s) on the map", done));
     }
 
     /// <summary>
@@ -829,7 +830,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         if (items.Count == 0)
         {
-            Warn("Select the photos to add place names to.");
+            Warn(Tr("Select the photos to add place names to."));
             return;
         }
 
@@ -837,7 +838,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var skipped = items.Count - located.Count;
         if (located.Count == 0)
         {
-            Warn("None of the selected photos has a GPS position. Place them on the map first.");
+            Warn(Tr("None of the selected photos has a GPS position. Place them on the map first."));
             return;
         }
 
@@ -850,7 +851,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             for (var i = 0; i < located.Count; i++)
             {
                 var item = located[i];
-                StatusText = $"Looking up the place of {i + 1} of {located.Count}…";
+                StatusText = Tr("Looking up the place of {0} of {1}…", i + 1, located.Count);
                 try
                 {
                     var place = await _geocoder.LookUpAsync(item.Photo.Location!.Value);
@@ -866,7 +867,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 catch (HttpRequestException ex)
                 {
                     // Without a connection every further lookup fails the same way.
-                    failures.Add($"The place lookup did not work ({ex.Message}). Check the internet connection.");
+                    failures.Add(Tr("The place lookup did not work ({0}). Check the internet connection.", ex.Message));
                     break;
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or TaskCanceledException)
@@ -880,14 +881,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some place names could not be added. " + string.Join(" ", failures);
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some place names could not be added.") + " " + string.Join(" ", failures);
         var done = located.Count - unknown - failures.Count;
         var notes = new List<string>();
         if (skipped > 0)
-            notes.Add($"{skipped} without GPS skipped");
+            notes.Add(Tr("{0} without GPS skipped", skipped));
         if (unknown > 0)
-            notes.Add($"{unknown} with no place found");
-        Inform($"Added place names to {Math.Max(done, 0)} photo(s)" + (notes.Count > 0 ? $"; {string.Join(", ", notes)}" : ""));
+            notes.Add(Tr("{0} with no place found", unknown));
+        Inform(notes.Count > 0
+            ? Tr("Added place names to {0} photo(s); {1}", Math.Max(done, 0), string.Join(", ", notes))
+            : Tr("Added place names to {0} photo(s)", Math.Max(done, 0)));
     }
 
     /// <summary>The crop shape the crop tool starts with (a CropRatios key).</summary>
@@ -938,14 +941,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         IsBusy = true;
         try
         {
-            var progress = new Progress<double>(p => StatusText = $"Downloading the tagging model… {p:P0}");
+            var progress = new Progress<double>(p => StatusText = Tr("Downloading the tagging model… {0:P0}", p));
             await TagModel.DownloadAsync(TagModelFolder, progress);
-            Inform("The tagging model is ready.");
+            Inform(Tr("The tagging model is ready."));
             return true;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
         {
-            ErrorMessage = $"The tagging model could not be downloaded ({ex.Message}). Check the internet connection and try again; what was already downloaded is kept.";
+            ErrorMessage = Tr("The tagging model could not be downloaded ({0}). Check the internet connection and try again; what was already downloaded is kept.", ex.Message);
             StatusText = "";
             return false;
         }
@@ -965,13 +968,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         if (items.Count == 0)
         {
-            Warn("Select the photos to tag.");
+            Warn(Tr("Select the photos to tag."));
             return;
         }
         var labels = AutoTagLabels;
         if (labels.Count == 0)
         {
-            Warn("The auto-tag list is empty. Add tags to it in Settings.");
+            Warn(Tr("The auto-tag list is empty. Add tags to it in Settings."));
             return;
         }
 
@@ -984,7 +987,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (_tagger is null)
             {
-                StatusText = "Loading the tagging model…";
+                StatusText = Tr("Loading the tagging model…");
                 _tagger = await Task.Run(() => ImageTagger.Load(TagModelFolder));
             }
             if (_labelVectors is null)
@@ -999,7 +1002,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             for (var i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                StatusText = $"Tagging {i + 1} of {items.Count}…";
+                StatusText = Tr("Tagging {0} of {1}…", i + 1, items.Count);
                 try
                 {
                     // A small copy is plenty: the model looks at 224 × 224 pixels.
@@ -1032,15 +1035,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _tagger?.Dispose();
             _tagger = null;
             _labelVectors = null;
-            failures.Add($"The tagging model could not be loaded ({ex.Message}).");
+            failures.Add(Tr("The tagging model could not be loaded ({0}).", ex.Message));
         }
         finally
         {
             IsBusy = false;
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some photos could not be tagged. " + string.Join(" ", failures);
-        Inform($"Auto-tagged {tagged} photo(s) with {added} tag(s)");
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be tagged.") + " " + string.Join(" ", failures);
+        Inform(Tr("Auto-tagged {0} photo(s) with {1} tag(s)", tagged, added));
         await RefreshTagsAsync();
     }
 
@@ -1052,7 +1055,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var tagged = items.Where(i => i.Photo.Tags.Any(AutoTags.IsAuto)).ToList();
         if (tagged.Count == 0)
         {
-            Warn(items.Count == 0 ? "Select the photos to remove auto tags from." : "None of the selected photos has auto tags.");
+            Warn(items.Count == 0 ? Tr("Select the photos to remove auto tags from.") : Tr("None of the selected photos has auto tags."));
             return;
         }
 
@@ -1063,7 +1066,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             for (var i = 0; i < tagged.Count; i++)
             {
                 var item = tagged[i];
-                StatusText = $"Removing auto tags from {i + 1} of {tagged.Count}…";
+                StatusText = Tr("Removing auto tags from {0} of {1}…", i + 1, tagged.Count);
                 try
                 {
                     await _metadata.WriteAsync(item.Path, new MetadataChanges { Tags = AutoTags.Replace(item.Photo.Tags, []) });
@@ -1081,8 +1084,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
 
-        ErrorMessage = failures.Count == 0 ? null : "Some auto tags could not be removed. " + string.Join(" ", failures);
-        Inform($"Removed auto tags from {tagged.Count - failures.Count} photo(s)");
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some auto tags could not be removed.") + " " + string.Join(" ", failures);
+        Inform(Tr("Removed auto tags from {0} photo(s)", tagged.Count - failures.Count));
         await RefreshTagsAsync();
     }
 
@@ -1102,7 +1105,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             extension = ".jpg";
 
         IsBusy = true;
-        StatusText = $"Saving the edit of {item.FileName}…";
+        StatusText = Tr("Saving the edit of {0}…", item.FileName);
         try
         {
             var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
@@ -1129,14 +1132,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                                            target => ImageEncoder.EncodeAsync(image, target), kept);
             await AfterFileReplacedAsync(item, path, newPath);
             Inform(newPath == path
-                ? $"Saved the edit of {item.FileName}. The original is in the hidden .originals folder."
-                : $"Saved the edit as {Path.GetFileName(newPath)}. The original is in the hidden .originals folder.");
+                ? Tr("Saved the edit of {0}. The original is in the hidden .originals folder.", item.FileName)
+                : Tr("Saved the edit as {0}. The original is in the hidden .originals folder.", Path.GetFileName(newPath)));
             return true;
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.COMException)
         {
-            ErrorMessage = $"Could not save the edit of {item.FileName}: {ex.Message}" +
-                (extension is ".heic" or ".heif" ? " Saving HEIC needs the HEVC Video Extensions from the Microsoft Store; you can save as JPEG instead." : "");
+            ErrorMessage = Tr("Could not save the edit of {0}: {1}", item.FileName, ex.Message) +
+                (extension is ".heic" or ".heif" ? " " + Tr("Saving HEIC needs the HEVC Video Extensions from the Microsoft Store; you can save as JPEG instead.") : "");
             return false;
         }
         finally
@@ -1146,12 +1149,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     public Task UndoEditAsync(PhotoItemViewModel item) =>
-        RestoreAsync(item, _photoEditor is null ? null : _photoEditor.UndoAsync, "Undid the last edit of");
+        RestoreAsync(item, _photoEditor is null ? null : _photoEditor.UndoAsync, name => Tr("Undid the last edit of {0}", name));
 
     public Task RevertEditAsync(PhotoItemViewModel item) =>
-        RestoreAsync(item, _photoEditor is null ? null : _photoEditor.RevertAsync, "Reverted to the original of");
+        RestoreAsync(item, _photoEditor is null ? null : _photoEditor.RevertAsync, name => Tr("Reverted to the original of {0}", name));
 
-    private async Task RestoreAsync(PhotoItemViewModel item, Func<string, CancellationToken, Task<string>>? restore, string done)
+    private async Task RestoreAsync(PhotoItemViewModel item, Func<string, CancellationToken, Task<string>>? restore, Func<string, string> done)
     {
         if (restore is null)
             return;
@@ -1161,11 +1164,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             var restored = await restore(path, CancellationToken.None);
             await AfterFileReplacedAsync(item, path, restored);
-            Inform($"{done} {item.FileName}");
+            Inform(done(item.FileName));
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            ErrorMessage = $"Could not restore {item.FileName}: {ex.Message}";
+            ErrorMessage = Tr("Could not restore {0}: {1}", item.FileName, ex.Message);
         }
         finally
         {

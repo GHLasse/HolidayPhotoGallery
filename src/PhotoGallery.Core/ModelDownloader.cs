@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.Core;
 
@@ -50,9 +51,9 @@ public static class ModelDownloader
                 }
                 // A connection that drops can end the stream early without an error.
                 if (response.Content.Headers.ContentLength is { } expected && length != expected)
-                    throw new HttpRequestException($"The download of {model.File} stopped after {length:N0} of {expected:N0} bytes.");
+                    throw new HttpRequestException(Tr("The download of {0} stopped after {1:N0} of {2:N0} bytes.", model.File, length, expected));
                 if (model.Sha256 is { } sha && !Convert.ToHexStringLower(hash.GetHashAndReset()).Equals(sha, StringComparison.OrdinalIgnoreCase))
-                    throw new HttpRequestException($"The download of {model.File} is not the expected file.");
+                    throw new HttpRequestException(Tr("The download of {0} is not the expected file.", model.File));
             }
             File.Move(part, target, overwrite: true);
         }

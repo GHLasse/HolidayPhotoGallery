@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Tagging;
+using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
@@ -15,13 +16,13 @@ public sealed partial class MainWindow
     /// <param name="showPhotos">Closes Settings and shows the photos with the tag.</param>
     private FrameworkElement TagManagementPage(Action<string> showPhotos)
     {
-        var search = new TextBox { PlaceholderText = "Find a tag", MinWidth = 220 };
+        var search = new TextBox { PlaceholderText = Tr("Find a tag"), MinWidth = 220 };
         var sort = new ComboBox { MinWidth = 140 };
-        sort.Items.Add("By name");
-        sort.Items.Add("Most used");
+        sort.Items.Add(Tr("By name"));
+        sort.Items.Add(Tr("Most used"));
         sort.SelectedIndex = 0;
         var list = new ListView { SelectionMode = ListViewSelectionMode.None };
-        var working = new ProgressBar { IsIndeterminate = true, Visibility = Visibility.Collapsed };
+        var working = new ProgressBar { IsIndeterminate = true, Visibility = Visibility.Collapsed, Foreground = ThemeBrush("AccentFillColorDefaultBrush") };
         var workingText = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
         IReadOnlyList<TagCount> all = [];
 
@@ -40,7 +41,7 @@ public sealed partial class MainWindow
             foreach (var tag in shown)
                 list.Items.Add(Row(tag));
             if (list.Items.Count == 0)
-                list.Items.Add(new TextBlock { Text = all.Count == 0 ? "No photo has tags yet." : "No tag matches.", Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
+                list.Items.Add(new TextBlock { Text = all.Count == 0 ? Tr("No photo has tags yet.") : Tr("No tag matches."), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
         }
 
         // Rename or remove, writing into every photo; the list is disabled meanwhile and shows the progress.
@@ -77,13 +78,13 @@ public sealed partial class MainWindow
                 : AutoTags.IsAuto(tag.Tag) ? new Controls.AiSparkle { Width = 14, Height = 14 } : new FontIcon { Glyph = "", FontSize = 14 };
             var name = new TextBlock
             {
-                Text = tag.IsGroup ? $"{tag.Tag} (group)" : tag.Tag,
+                Text = tag.IsGroup ? Tr("{0} (group)", tag.Tag) : tag.Tag,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
             };
             var count = new TextBlock
             {
-                Text = tag.Count == 1 ? "1 photo" : $"{tag.Count:N0} photos",
+                Text = tag.Count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", tag.Count),
                 Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -96,9 +97,9 @@ public sealed partial class MainWindow
             }
 
             // Rename: a box with the current name, in a flyout (Settings is already a dialog).
-            var rename = IconButton("", tag.IsGroup ? "Rename the group (all its tags move with it)" : "Rename, or merge into another tag by giving its name");
+            var rename = IconButton("", tag.IsGroup ? Tr("Rename the group (all its tags move with it)") : Tr("Rename, or merge into another tag by giving its name"));
             var newName = new TextBox { Text = tag.Tag, MinWidth = 220 };
-            var renameGo = new Button { Content = "Rename", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+            var renameGo = new Button { Content = Tr("Rename"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
             var renameFlyout = new Flyout
             {
                 Content = new StackPanel
@@ -107,7 +108,7 @@ public sealed partial class MainWindow
                     Children =
                     {
                         newName,
-                        new TextBlock { Text = "An existing tag's name merges the two.", Foreground = ThemeBrush("TextFillColorSecondaryBrush") },
+                        new TextBlock { Text = Tr("An existing tag's name merges the two."), Foreground = ThemeBrush("TextFillColorSecondaryBrush") },
                         renameGo,
                     },
                 },
@@ -123,8 +124,8 @@ public sealed partial class MainWindow
             rename.Click += (_, _) => FlyoutBase.ShowAttachedFlyout(rename);
 
             // Remove: asks once, in a flyout.
-            var remove = IconButton("", tag.IsGroup ? "Remove all the group's tags from every photo" : "Remove from every photo");
-            var removeGo = new Button { Content = "Remove" };
+            var remove = IconButton("", tag.IsGroup ? Tr("Remove all the group's tags from every photo") : Tr("Remove from every photo"));
+            var removeGo = new Button { Content = Tr("Remove") };
             var removeFlyout = new Flyout
             {
                 Content = new StackPanel
@@ -135,7 +136,9 @@ public sealed partial class MainWindow
                     {
                         new TextBlock
                         {
-                            Text = $"Remove “{tag.Tag}”{(tag.IsGroup ? " and all its tags" : "")} from {count.Text}? Their other tags stay.",
+                            Text = tag.IsGroup
+                                ? Tr("Remove “{0}” and all its tags from {1}? Their other tags stay.", tag.Tag, count.Text)
+                                : Tr("Remove “{0}” from {1}? Their other tags stay.", tag.Tag, count.Text),
                             TextWrapping = TextWrapping.Wrap,
                         },
                         removeGo,
@@ -153,7 +156,7 @@ public sealed partial class MainWindow
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
             if (!tag.IsGroup)
             {
-                var show = IconButton("", "Show these photos");
+                var show = IconButton("", Tr("Show these photos"));
                 show.Click += (_, _) => showPhotos(tag.Tag);
                 buttons.Children.Add(show);
             }
@@ -189,8 +192,8 @@ public sealed partial class MainWindow
         page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var intro = new TextBlock
         {
-            Text = "Rename, merge or remove tags in all your photos at once. Changes are written into the photos straight away. " +
-                   "A group such as “ai” holds the tags written as “ai/…”.",
+            Text = Tr("Rename, merge or remove tags in all your photos at once. Changes are written into the photos straight away. ") +
+                   Tr("A group such as “ai” holds the tags written as “ai/…”."),
             TextWrapping = TextWrapping.Wrap,
             Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
         };
@@ -212,10 +215,10 @@ public sealed partial class MainWindow
     {
         var sync = new ToggleSwitch
         {
-            Header = "Keep all dates in sync",
+            Header = Tr("Keep all dates in sync"),
             IsOn = ViewModel.KeepDatesInSync,
         };
-        var language = new ComboBox { Header = "Language of place names", MinWidth = 260 };
+        var language = new ComboBox { Header = Tr("Language of place names"), MinWidth = 260 };
         foreach (var (_, name) in ViewModels.MainViewModel.PlaceLanguages)
             language.Items.Add(name);
         language.SelectedIndex = Math.Max(0, Array.FindIndex(ViewModels.MainViewModel.PlaceLanguages, l => l.Key == ViewModel.PlaceLanguage));
@@ -229,11 +232,11 @@ public sealed partial class MainWindow
             Children =
             {
                 sync,
-                Note("A photo holds several dates: when it was taken, when it was digitized, when it was last changed, and the file's own dates that Explorer shows. " +
-                     "When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes."),
+                Note(Tr("A photo holds several dates: when it was taken, when it was digitized, when it was last changed, and the file's own dates that Explorer shows. ") +
+                     Tr("When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes.")),
                 language,
-                Note("For “Add place names”: the country, region, city and district are written in this language. " +
-                     "Local uses the names as people there write them. Photos that already have place names keep them until you add them again."),
+                Note(Tr("For “Add place names”: the country, region, city and district are written in this language. ") +
+                     Tr("Local uses the names as people there write them. Photos that already have place names keep them until you add them again.")),
             },
         };
     }
