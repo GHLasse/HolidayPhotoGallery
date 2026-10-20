@@ -10,6 +10,23 @@
 
     <Grid x:Name="Root">
         <Grid.Resources>
+            <!-- The folder pane: section headings and the icons of the folded pane share size and icon position. -->
+            <Style x:Key="NavRailButton" TargetType="Button">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+            </Style>
+            <Style x:Key="NavHeading" TargetType="Button">
+                <Setter Property="Height" Value="36" />
+                <Setter Property="Padding" Value="10,0,8,0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
             <!-- The small buttons on a photo tile (stars, flag, tick): no frame, just the symbol. -->
             <Style x:Key="TileActionButton" TargetType="Button">
                 <Setter Property="Padding" Value="3,0" />
@@ -112,12 +129,11 @@
             <Grid x:Name="FilterBarHost" Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
                 <StackPanel x:Name="FilterBarPanel" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left">
                     <!-- People as one group: the faces of the five people on the most photos, then everyone by name
-                         under "More". Pointing at the group grows the bar and all faces together. Faces filled from code. -->
+                         under "More". Faces filled from code. -->
                     <Border x:Name="PeopleGroup" VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasPeople, Mode=OneWay}"
                             Padding="8,3,3,3" CornerRadius="18" BorderThickness="1"
                             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                            Background="{ThemeResource ControlFillColorDefaultBrush}"
-                            PointerEntered="PeopleGroup_PointerEntered" PointerExited="PeopleGroup_PointerExited">
+                            Background="{ThemeResource ControlFillColorDefaultBrush}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE77B;" FontSize="14" VerticalAlignment="Center"
                                       ToolTipService.ToolTip="{local:Loc Text='People: click a face to show only photos with them'}" />
@@ -322,54 +338,69 @@
         </StackPanel>
 
         <!-- Navigation: folders (tags and people are in the filter bar) -->
-        <Grid x:Name="NavPane" Grid.Row="3" Grid.Column="0" Padding="8,0,0,8" RowSpacing="4">
+        <!-- The folder pane: All photos, Folders, Dates and Places, each under a heading with its icon. Folded,
+             only the icons remain, in the same places (NavRail). -->
+        <Grid x:Name="NavPane" Grid.Row="3" Grid.Column="0" Padding="8,0,0,8" RowSpacing="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition x:Name="FoldersRow" Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <StackPanel Grid.Row="0" Spacing="4">
-                <Grid ColumnSpacing="4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Button Click="ToggleNavPane_Click" Padding="8" Background="Transparent" BorderThickness="0"
-                            AutomationProperties.Name="{local:Loc Text='Fold the pane into icons'}"
-                            ToolTipService.ToolTip="{local:Loc Text='Fold the pane into icons'}">
-                        <FontIcon Glyph="&#xE700;" FontSize="16" />
-                    </Button>
-                    <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="AllPhotos_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon Glyph="&#xE91B;" FontSize="16" />
-                            <TextBlock Text="{local:Loc Text='All photos'}" />
-                        </StackPanel>
-                    </Button>
-                </Grid>
-                <!-- Adding and rescanning act on the folder list, so they sit on its heading, like in File Explorer. -->
-                <Grid Padding="8,4,0,0" ColumnSpacing="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{local:Loc Text='Folders'}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <Button Grid.Column="1" Click="AddFolder_Click" Padding="6" Background="Transparent" BorderThickness="0"
-                            AutomationProperties.Name="{local:Loc Text='Add folder'}"
-                            ToolTipService.ToolTip="{local:Loc Text='Add a folder to the library'}">
-                        <FontIcon Glyph="&#xE710;" FontSize="14" />
-                    </Button>
-                    <Button Grid.Column="2" Click="Rescan_Click" Padding="6" Background="Transparent" BorderThickness="0"
-                            IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
-                            AutomationProperties.Name="{local:Loc Text='Rescan'}"
-                            ToolTipService.ToolTip="{local:Loc Text='Look for new, changed and deleted photos'}">
-                        <FontIcon Glyph="&#xE72C;" FontSize="14" />
-                    </Button>
-                </Grid>
-            </StackPanel>
+            <Button Style="{StaticResource NavRailButton}" Click="ToggleNavPane_Click"
+                    AutomationProperties.Name="{local:Loc Text='Fold the pane into icons'}"
+                    ToolTipService.ToolTip="{local:Loc Text='Fold the pane into icons'}">
+                <FontIcon Glyph="&#xE700;" FontSize="16" />
+            </Button>
             <Grid Grid.Row="1">
+                <Button x:Name="AllPhotosHeading" Style="{StaticResource NavHeading}" Click="AllPhotos_Click">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE91B;" FontSize="16" />
+                        <TextBlock Grid.Column="1" Text="{local:Loc Text='All photos'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                </Button>
+            </Grid>
+            <!-- Adding and rescanning act on the folder list, so they sit on its heading, like in File Explorer. -->
+            <Grid Grid.Row="2" ColumnSpacing="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="FoldersHeading" Style="{StaticResource NavHeading}" Click="NavSection_Click">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE8B7;" FontSize="16" />
+                        <TextBlock Grid.Column="1" Text="{local:Loc Text='Folders'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <FontIcon x:Name="FoldersChevron" Grid.Column="2" Glyph="&#xE70E;" FontSize="10" />
+                    </Grid>
+                </Button>
+                <Button Grid.Column="1" Click="AddFolder_Click" Padding="6" Background="Transparent" BorderThickness="0"
+                        AutomationProperties.Name="{local:Loc Text='Add folder'}"
+                        ToolTipService.ToolTip="{local:Loc Text='Add a folder to the library'}">
+                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                </Button>
+                <Button Grid.Column="2" Click="Rescan_Click" Padding="6" Background="Transparent" BorderThickness="0"
+                        IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                        AutomationProperties.Name="{local:Loc Text='Rescan'}"
+                        ToolTipService.ToolTip="{local:Loc Text='Look for new, changed and deleted photos'}">
+                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                </Button>
+            </Grid>
+            <Grid x:Name="FoldersContent" Grid.Row="3">
                 <TextBlock Margin="8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Visibility="{x:Bind ViewModel.HasNoFolders, Mode=OneWay}"
                            Text="{local:Loc Text='Add a folder with your photos to get started. Your files stay where they are.'}" />
@@ -404,6 +435,14 @@
                                         </MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
                                         <MenuFlyoutItem Text="{local:Loc Text='Make each subfolder an album'}" Tag="{x:Bind}" Click="MakeSubfolderAlbums_Click" />
+                                        <MenuFlyoutSeparator Visibility="{x:Bind IsRoot}" />
+                                        <MenuFlyoutItem Text="{local:Loc Text='Remove folder from library'}" Tag="{x:Bind}" Click="RemoveFolderMenu_Click"
+                                                        Visibility="{x:Bind IsRoot}"
+                                                        ToolTipService.ToolTip="{local:Loc Text='Stops showing this folder. No files are deleted.'}">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE738;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                     </MenuFlyout>
                                 </TreeViewItem.ContextFlyout>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -416,67 +455,71 @@
                 </TreeView>
             </Grid>
             <!-- The library by date taken and by place, across all folders; both start closed. -->
-            <Expander x:Name="DatesExpander" Grid.Row="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0">
-                <Expander.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+            <Grid Grid.Row="4">
+                <Button x:Name="DatesHeading" Style="{StaticResource NavHeading}" Click="NavSection_Click">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE787;" FontSize="16" />
-                        <TextBlock Text="{local:Loc Text='Dates'}" />
-                    </StackPanel>
-                </Expander.Header>
-                <TreeView x:Name="DateTree" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Dates}" ItemInvoked="DateTree_ItemInvoked">
-                    <TreeView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:DateNodeViewModel">
-                            <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
-                        </DataTemplate>
-                    </TreeView.ItemTemplate>
-                </TreeView>
-            </Expander>
-            <Expander x:Name="PlacesExpander" Grid.Row="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0">
-                <Expander.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Grid.Column="1" Text="{local:Loc Text='Dates'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <FontIcon x:Name="DatesChevron" Grid.Column="2" Glyph="&#xE70D;" FontSize="10" />
+                    </Grid>
+                </Button>
+            </Grid>
+            <TreeView x:Name="DateTree" Grid.Row="5" Visibility="Collapsed" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Dates}" ItemInvoked="DateTree_ItemInvoked">
+                <TreeView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DateNodeViewModel">
+                        <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
+                    </DataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+            <Grid Grid.Row="6">
+                <Button x:Name="PlacesHeading" Style="{StaticResource NavHeading}" Click="NavSection_Click">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE707;" FontSize="16" />
-                        <TextBlock Text="{local:Loc Text='Places'}" />
-                    </StackPanel>
-                </Expander.Header>
-                <TreeView x:Name="PlaceTree" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Places}" ItemInvoked="PlaceTree_ItemInvoked">
-                    <TreeView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:PlaceNodeViewModel">
-                            <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
-                        </DataTemplate>
-                    </TreeView.ItemTemplate>
-                </TreeView>
-            </Expander>
-            <Button Grid.Row="4" Content="{local:Loc Text='Remove folder from library'}" HorizontalAlignment="Stretch"
-                    IsEnabled="{x:Bind local:Ui.IsRootFolder(ViewModel.SelectedFolder), Mode=OneWay}"
-                    Click="RemoveFolder_Click"
-                    ToolTipService.ToolTip="{local:Loc Text='Stops showing this folder. No files are deleted.'}" />
+                        <TextBlock Grid.Column="1" Text="{local:Loc Text='Places'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <FontIcon x:Name="PlacesChevron" Grid.Column="2" Glyph="&#xE70D;" FontSize="10" />
+                    </Grid>
+                </Button>
+            </Grid>
+            <TreeView x:Name="PlaceTree" Grid.Row="7" Visibility="Collapsed" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Places}" ItemInvoked="PlaceTree_ItemInvoked">
+                <TreeView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PlaceNodeViewModel">
+                        <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
+                    </DataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
         </Grid>
 
         <!-- The folded pane: a strip of icons; each opens the pane at its part. -->
-        <StackPanel x:Name="NavRail" Grid.Row="3" Grid.Column="0" Visibility="Collapsed" Spacing="4" Padding="4,0,0,8" HorizontalAlignment="Center">
-            <Button Click="ToggleNavPane_Click" Padding="10" Background="Transparent" BorderThickness="0"
+        <StackPanel x:Name="NavRail" Grid.Row="3" Grid.Column="0" Visibility="Collapsed" Spacing="2" Padding="8,0,0,8">
+            <Button Style="{StaticResource NavRailButton}" Click="ToggleNavPane_Click"
                     AutomationProperties.Name="{local:Loc Text='Unfold the pane'}" ToolTipService.ToolTip="{local:Loc Text='Unfold the pane'}">
                 <FontIcon Glyph="&#xE700;" FontSize="16" />
             </Button>
-            <Button Click="AllPhotos_Click" Padding="10" Background="Transparent" BorderThickness="0"
+            <Button Style="{StaticResource NavRailButton}" Click="AllPhotos_Click"
                     AutomationProperties.Name="{local:Loc Text='All photos'}" ToolTipService.ToolTip="{local:Loc Text='All photos'}">
                 <FontIcon Glyph="&#xE91B;" FontSize="16" />
             </Button>
-            <Button Click="RailFolders_Click" Padding="10" Background="Transparent" BorderThickness="0"
+            <Button Style="{StaticResource NavRailButton}" Click="RailFolders_Click"
                     AutomationProperties.Name="{local:Loc Text='Folders'}" ToolTipService.ToolTip="{local:Loc Text='Folders'}">
                 <FontIcon Glyph="&#xE8B7;" FontSize="16" />
             </Button>
-            <Button Click="RailDates_Click" Padding="10" Background="Transparent" BorderThickness="0"
+            <Button Style="{StaticResource NavRailButton}" Click="RailDates_Click"
                     AutomationProperties.Name="{local:Loc Text='Dates'}" ToolTipService.ToolTip="{local:Loc Text='Dates'}">
                 <FontIcon Glyph="&#xE787;" FontSize="16" />
             </Button>
-            <Button Click="RailPlaces_Click" Padding="10" Background="Transparent" BorderThickness="0"
+            <Button Style="{StaticResource NavRailButton}" Click="RailPlaces_Click"
                     AutomationProperties.Name="{local:Loc Text='Places'}" ToolTipService.ToolTip="{local:Loc Text='Places'}">
                 <FontIcon Glyph="&#xE707;" FontSize="16" />
-            </Button>
-            <Button Click="AddFolder_Click" Padding="10" Background="Transparent" BorderThickness="0"
-                    AutomationProperties.Name="{local:Loc Text='Add folder'}" ToolTipService.ToolTip="{local:Loc Text='Add a folder to the library'}">
-                <FontIcon Glyph="&#xE710;" FontSize="16" />
             </Button>
         </StackPanel>
 

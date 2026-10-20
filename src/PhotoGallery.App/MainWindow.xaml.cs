@@ -179,9 +179,9 @@ public sealed partial class MainWindow : Window
             await ViewModel.AddFolderAsync(folder.Path);
     }
 
-    private async void RemoveFolder_Click(object sender, RoutedEventArgs e)
+    private async void RemoveFolderMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SelectedFolder is { IsRoot: true } folder)
+        if ((sender as FrameworkElement)?.Tag is FolderNodeViewModel { IsRoot: true } folder)
             await ViewModel.RemoveFolderAsync(folder);
     }
 

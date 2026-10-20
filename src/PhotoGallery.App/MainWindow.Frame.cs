@@ -97,7 +97,10 @@ public sealed partial class MainWindow
         _navFolded || NavPane.Visibility != Visibility.Visible ? ViewModel.NavPaneWidth : NavColumn.Width.Value,
         InfoPane.Visibility != Visibility.Visible ? ViewModel.InfoPaneWidth : InfoColumn.Width.Value);
 
-    private bool InfoShown => _infoForced ?? PhotoGrid.SelectedItems.Count > 0;
+    // The map takes the info pane's place: there is room for one or the other (I still shows it).
+    private bool InfoShown => _infoForced ?? (PhotoGrid.SelectedItems.Count > 0 && !IsMapShown);
+
+    private bool IsMapShown => _workspace == Workspace.Map || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
 
     /// <summary>
     /// Shows, folds or hides the side panes and the top bar. A pane that goes away gives its width to the
@@ -169,20 +172,42 @@ public sealed partial class MainWindow
     private void RailFolders_Click(object sender, RoutedEventArgs e)
     {
         SetNavFolded(false);
+        OpenNavSection(FoldersHeading, true);
         FolderTree.Focus(FocusState.Programmatic);
     }
 
     private void RailDates_Click(object sender, RoutedEventArgs e)
     {
         SetNavFolded(false);
-        DatesExpander.IsExpanded = true;
+        OpenNavSection(DatesHeading, true);
     }
 
     private void RailPlaces_Click(object sender, RoutedEventArgs e)
     {
         SetNavFolded(false);
-        PlacesExpander.IsExpanded = true;
+        OpenNavSection(PlacesHeading, true);
     }
+
+    // A heading opens or closes its section; Folders starts open, Dates and Places closed.
+    private void NavSection_Click(object sender, RoutedEventArgs e)
+    {
+        var (content, _) = NavSection(sender);
+        OpenNavSection(sender, content.Visibility != Visibility.Visible);
+    }
+
+    private void OpenNavSection(object heading, bool open)
+    {
+        var (content, chevron) = NavSection(heading);
+        content.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        chevron.Glyph = open ? "\uE70E" : "\uE70D";
+        if (heading == FoldersHeading)
+            FoldersRow.Height = open ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+    }
+
+    private (FrameworkElement Content, FontIcon Chevron) NavSection(object heading) =>
+        heading == FoldersHeading ? (FoldersContent, FoldersChevron)
+        : heading == DatesHeading ? (DateTree, DatesChevron)
+        : (PlaceTree, PlacesChevron);
 
     // ---- Selection: the info pane and the selection bar follow it ----
 
@@ -203,12 +228,13 @@ public sealed partial class MainWindow
         PhotoGrid.Padding = new Thickness(0, 0, 0, has ? 80 : 8);
     }
 
-    private bool _selectionBarShown;
+    private bool _selectionBarShown, _selectionBarAllowed = true;
     private int _selectionBarVersion;
 
     // Rises from the bottom while photos are selected, and sinks away when none are.
     private void ShowSelectionBar(bool show)
     {
+        show &= _selectionBarAllowed;
         if (show == _selectionBarShown)
             return;
         _selectionBarShown = show;

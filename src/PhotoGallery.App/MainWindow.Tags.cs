@@ -127,12 +127,9 @@ public sealed partial class MainWindow
     // ---- People in the filter bar: the five on the most photos as faces, everyone else under "More" ----
 
     private const int TopPeopleCount = 5;
-    private const double SmallFace = 28;
-    private const double LargeFace = 72;
+    // Fixed size: growing on hover changed the bar's height and width while the filters were folding.
+    private const double FaceSize = 28;
     private readonly Dictionary<string, byte[]?> _latestFaces = new(StringComparer.CurrentCultureIgnoreCase);
-    private readonly List<Ellipse> _topFaces = [];
-    private Storyboard? _faceZoom;
-    private bool _isPointerOnPeople;
     private int _topPeopleVersion;
 
     /// <summary>Forgets the faces shown, e.g. after faces were named, so the newest ones are loaded.</summary>
@@ -151,24 +148,19 @@ public sealed partial class MainWindow
         if (version != _topPeopleVersion)
             return; // A newer refresh started while the faces were loading.
 
-        _faceZoom?.Stop();
         TopPeople.Children.Clear();
-        _topFaces.Clear();
-        var size = _isPointerOnPeople ? LargeFace : SmallFace;
         foreach (var person in top)
         {
-            // An ellipse filled with the face, so it stays round at any size while it grows.
             var face = new Ellipse
             {
-                Width = size,
-                Height = size,
+                Width = FaceSize,
+                Height = FaceSize,
                 StrokeThickness = person.IsSelected ? 3 : 0,
                 Stroke = ThemeBrush("AccentFillColorDefaultBrush"),
                 Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
             };
             if (_latestFaces[person.Tag] is { } thumbnail)
                 LoadFaceFill(face, thumbnail);
-            _topFaces.Add(face);
 
             var button = new Button
             {
@@ -178,7 +170,7 @@ public sealed partial class MainWindow
                 MinHeight = 0,
                 Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
                 BorderThickness = new Thickness(0),
-                CornerRadius = new CornerRadius(LargeFace / 2),
+                CornerRadius = new CornerRadius(FaceSize / 2),
             };
             var tip = person.IsSelected
                 ? Tr("{0} ({1} photos). Click to stop filtering by them.", person.Tag, person.CountText)
@@ -200,54 +192,6 @@ public sealed partial class MainWindow
         {
             // A damaged thumbnail keeps the plain circle.
         }
-    }
-
-    // Pointing at the people grows the whole bar: all faces get bigger together, and shrink again on leaving.
-    private void PeopleGroup_PointerEntered(object sender, PointerRoutedEventArgs e) => ZoomFaces(true);
-
-    // Moving between faces also raises "exited" (from the face), so only shrink once the pointer is outside the group.
-    private void PeopleGroup_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(PeopleGroup).Position;
-        if (point.X > 0 && point.Y > 0 && point.X < PeopleGroup.ActualWidth && point.Y < PeopleGroup.ActualHeight)
-            return;
-        ZoomFaces(false);
-    }
-
-    private void ZoomFaces(bool large)
-    {
-        if (large == _isPointerOnPeople)
-            return;
-        _isPointerOnPeople = large;
-        _faceZoom?.Stop();
-        var size = large ? LargeFace : SmallFace;
-        var zoom = new Storyboard();
-        foreach (var face in _topFaces)
-        {
-            foreach (var property in new[] { "Width", "Height" })
-            {
-                // Width and Height change the layout, so they need a dependent (UI thread) animation.
-                var animation = new DoubleAnimation
-                {
-                    From = face.ActualWidth > 0 ? face.ActualWidth : face.Width,
-                    To = size,
-                    Duration = TimeSpan.FromMilliseconds(150),
-                    EnableDependentAnimation = true,
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-                };
-                Storyboard.SetTarget(animation, face);
-                Storyboard.SetTargetProperty(animation, property);
-                zoom.Children.Add(animation);
-            }
-        }
-        // The animation holds its end value; set it too, so the size stays when the storyboard is stopped.
-        zoom.Completed += (_, _) =>
-        {
-            foreach (var face in _topFaces)
-                face.Width = face.Height = size;
-        };
-        _faceZoom = zoom;
-        zoom.Begin();
     }
 
     // ---- The badge itself ----
