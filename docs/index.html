@@ -164,6 +164,7 @@ table.formats td.y { color: var(--accent); font-weight: 700; }
 /* Download */
 .download { text-align: center; }
 .download .sub { margin-left: auto; margin-right: auto; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .steps { counter-reset: s; list-style: none; padding: 0; margin: 36px auto 0; max-width: 720px; text-align: left; display: grid; gap: 12px; }
 .steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px 14px 60px; position: relative; color: var(--muted); }
 .steps li strong { color: var(--text); }
@@ -387,7 +388,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: 
         <h3>What you need</h3>
         <ul>
           <li>Windows 10 version 1809 or later, or Windows 11, 64-bit</li>
-          <li>No installer and no admin rights: unzip and run</li>
+          <li>No admin rights needed: per-user installer or portable zip</li>
           <li>About 1 GB free space for the optional on-device AI models, downloaded the first time you use them</li>
           <li>Internet only for map tiles and place names (OpenStreetMap), the model downloads, and Google Photos or OneDrive if you link them</li>
         </ul>
@@ -400,16 +401,21 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: 
   <div class="wrap">
     <h2>Download</h2>
     <p class="sub">Holiday Photo Gallery is free and open source under the Apache 2.0 licence.</p>
-    <a class="btn primary" href="https://github.com/GHLasse/HolidayPhotoGallery/releases/latest">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
-      Get the latest version
-    </a>
+    <div class="cta-row">
+      <a class="btn primary" href="https://github.com/GHLasse/HolidayPhotoGallery/releases/latest/download/HolidayPhotoGallery-Setup-x64.exe">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+        Download installer (x64)
+      </a>
+      <a class="btn ghost" href="https://github.com/GHLasse/HolidayPhotoGallery/releases/latest/download/HolidayPhotoGallery-win-x64.zip">Portable zip</a>
+    </div>
+    <p class="note">Always the newest version. <a href="https://github.com/GHLasse/HolidayPhotoGallery/releases">All releases and what changed</a></p>
     <ol class="steps">
-      <li><strong>Download</strong> the <code>.zip</code> file for Windows x64 from the latest release.</li>
-      <li><strong>Unzip</strong> it to a folder of your choice, for example <code>Documents\HolidayPhotoGallery</code>.</li>
-      <li><strong>Start</strong> <code>HolidayPhotoGallery.exe</code>. The app is not code-signed yet, so Windows may show "Windows protected your PC". Choose <em>More info</em>, then <em>Run anyway</em>.</li>
+      <li><strong>Run</strong> <code>HolidayPhotoGallery-Setup-x64.exe</code>. It installs for your user only, so no admin rights are needed.</li>
+      <li><strong>If Windows warns you:</strong> the app is not code-signed yet, so SmartScreen may show "Windows protected your PC". Choose <em>More info</em>, then <em>Run anyway</em>.</li>
+      <li><strong>Start</strong> Holiday Photo Gallery from the Start menu.</li>
       <li><strong>Add a folder</strong> with your photos. Nothing is moved or copied; the app works where your photos already are.</li>
     </ol>
+    <p class="note">Prefer no installer? Unzip the portable zip anywhere and start <code>HolidayPhotoGallery.exe</code>.</p>
   </div>
 </section>
 
