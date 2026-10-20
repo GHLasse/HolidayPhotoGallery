@@ -85,6 +85,27 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task Rejecting_replaces_the_flag_and_keeps_the_stars()
+    {
+        var path = _temp.CopySample(".jpg");
+        await Service.WriteAsync(path, new MetadataChanges { Rating = 2, Flagged = true });
+
+        await Service.WriteAsync(path, new MetadataChanges { Rejected = true });
+        var rejected = await Service.ReadAsync(path);
+        Assert.Equal((true, false, 2), (rejected.Rejected, rejected.Flagged, rejected.Rating));
+
+        await Service.WriteAsync(path, new MetadataChanges { Rejected = false });
+        var back = await Service.ReadAsync(path);
+        Assert.Equal((false, false, 2), (back.Rejected, back.Flagged, back.Rating));
+
+        // Windows and Adobe write a reject as rating -1; taking the mark off clears it.
+        await _exifTool!.RunAsync(["-overwrite_original", "-XMP-xmp:Rating=-1", path]);
+        Assert.True((await Service.ReadAsync(path)).Rejected);
+        await Service.WriteAsync(path, new MetadataChanges { Rejected = false });
+        Assert.False((await Service.ReadAsync(path)).Rejected);
+    }
+
+    [ExifToolFact]
     public async Task A_temp_file_left_by_an_interrupted_save_does_not_block_saving()
     {
         var path = _temp.CopySample(".jpg");

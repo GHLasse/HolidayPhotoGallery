@@ -33,6 +33,8 @@ public sealed partial class CompareView : UserControl
     /// <summary>Raised when the user presses P to flag or unflag the photo; the handler writes it to the file.</summary>
     public event Func<PhotoItemViewModel, Task>? FlagRequested;
 
+    public event Func<PhotoItemViewModel, Task>? RejectRequested;
+
     /// <summary>Raised with -1 or +1 when a single photo is shown and the user presses Left or Right.</summary>
     public event Action<int>? NavigateRequested;
 
@@ -112,15 +114,8 @@ public sealed partial class CompareView : UserControl
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 360,
         };
-        var flag = new FontIcon
-        {
-            Glyph = "\uE7C1",
-            FontSize = 14,
-            VerticalAlignment = VerticalAlignment.Center,
-            Foreground = ThemeBrush("AccentTextFillColorPrimaryBrush", Colors.DodgerBlue),
-            Visibility = item.Photo.Flagged ? Visibility.Visible : Visibility.Collapsed,
-        };
-        ToolTipService.SetToolTip(flag, Tr("Flagged (P)"));
+        var flag = new FontIcon { FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        ShowMark(flag, item);
         var footer = new Grid { ColumnSpacing = 8, Padding = new Thickness(8, 4, 8, 4) };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -265,7 +260,14 @@ public sealed partial class CompareView : UserControl
                 var flagged = _panes[_activeIndex];
                 if (FlagRequested is { } flag)
                     await flag(flagged.Item);
-                flagged.Flag.Visibility = flagged.Item.Photo.Flagged ? Visibility.Visible : Visibility.Collapsed;
+                ShowMark(flagged.Flag, flagged.Item);
+                return;
+            case VirtualKey.X:
+                e.Handled = true;
+                var rejected = _panes[_activeIndex];
+                if (RejectRequested is { } reject)
+                    await reject(rejected.Item);
+                ShowMark(rejected.Flag, rejected.Item);
                 return;
             case VirtualKey.Tab:
                 e.Handled = true;
@@ -298,6 +300,17 @@ public sealed partial class CompareView : UserControl
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
+
+    // The flag (P) or the reject mark (X) next to the file name; a photo has one or neither.
+    private static void ShowMark(FontIcon mark, PhotoItemViewModel item)
+    {
+        mark.Visibility = item.Photo.Flagged || item.Photo.Rejected ? Visibility.Visible : Visibility.Collapsed;
+        mark.Glyph = item.Photo.Rejected ? "\uE711" : "\uE7C1";
+        mark.Foreground = item.Photo.Rejected
+            ? ThemeBrush("SystemFillColorCriticalBrush", Colors.IndianRed)
+            : ThemeBrush("AccentTextFillColorPrimaryBrush", Colors.DodgerBlue);
+        ToolTipService.SetToolTip(mark, item.Photo.Rejected ? Tr("Rejected (X)") : Tr("Flagged (P)"));
+    }
 
     private sealed class Pane(PhotoItemViewModel item, ContentControl host, Border root, ScrollViewer scroller, Image image, RatingControl rating, TextBlock status, FontIcon flag)
     {

@@ -19,6 +19,9 @@ public sealed record PhotoMetadata
     /// <summary>Flagged (picked), e.g. to print; kept apart from the rating.</summary>
     public bool Flagged { get; init; }
 
+    /// <summary>Rejected (Lightroom's X), e.g. to move to the Recycle Bin later. A photo is flagged or rejected, never both.</summary>
+    public bool Rejected { get; init; }
+
     public DateTaken? DateTaken { get; init; }
 
     /// <summary>EXIF orientation, 1-8. 1 means "as stored".</summary>

@@ -121,19 +121,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>A result for the user, shown as a blue banner; the status bar goes back to the photo count.</summary>
     public void Inform(string message) => Notify(message, NoticeSeverity.Info);
 
+    /// <summary>A result with an Undo button on its banner.</summary>
+    public void Inform(string message, Func<Task> undo) => Notify(message, NoticeSeverity.Info, undo);
+
     /// <summary>Something the user should do differently, shown as a yellow banner.</summary>
     public void Warn(string message) => Notify(message, NoticeSeverity.Warning);
 
     private const int MaxNotices = 3;
 
-    private void Notify(string message, NoticeSeverity severity)
+    private void Notify(string message, NoticeSeverity severity, Func<Task>? undo = null)
     {
         if (!IsBusy)
             StatusText = _countText;
         // The same message again moves to the top instead of showing twice.
         if (Notices.FirstOrDefault(n => n.Message == message) is { } same)
             Notices.Remove(same);
-        var notice = new Notice(message, severity);
+        var notice = new Notice(message, severity, undo);
         Notices.Insert(0, notice);
         while (Notices.Count > MaxNotices)
             Notices.RemoveAt(Notices.Count - 1);
@@ -142,7 +145,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task CloseLaterAsync(Notice notice)
     {
-        await Task.Delay(Notice.ShowFor);
+        await Task.Delay(notice.ShowFor);
         Notices.Remove(notice);
     }
 
@@ -308,7 +311,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>How many filters "Clear filters" would reset: the search text, each tag and person, and every other filter set.</summary>
     public int ActiveFilterCount =>
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
-        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
+        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
         (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) +
         (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
@@ -423,6 +426,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             People = SelectedPeople,
             MinRating = MinRating,
             FlaggedOnly = FlaggedOnly,
+            RejectedOnly = RejectedOnly,
             WithoutTags = WithoutTags,
             WithoutPeople = WithoutPeople,
             WithoutLocation = WithoutLocation,

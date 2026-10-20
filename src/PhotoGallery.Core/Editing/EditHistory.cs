@@ -75,6 +75,16 @@ public static class EditHistory
         return File.ReadAllBytes(backup.FullName).AsSpan().SequenceEqual(File.ReadAllBytes(current.FullName));
     }
 
+    /// <summary>The backups and the list of them kept for the photo, e.g. to remove them along with it.</summary>
+    public static IReadOnlyList<string> FilesOf(string path)
+    {
+        var folder = Path.Combine(Path.GetDirectoryName(path)!, FolderName);
+        var files = Load(path).Select(s => Path.Combine(folder, s.Backup)).Where(File.Exists).ToList();
+        if (File.Exists(ManifestPath(path)))
+            files.Add(ManifestPath(path));
+        return files;
+    }
+
     /// <summary>Moves the history along when an edit saved the photo under a new name (e.g. HEIC to JPEG).</summary>
     public static void Rename(string oldPath, string newPath)
     {

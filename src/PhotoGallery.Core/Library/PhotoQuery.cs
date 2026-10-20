@@ -24,6 +24,9 @@ public sealed record PhotoQuery
 
     public bool FlaggedOnly { get; init; }
 
+    /// <summary>Only rejected photos, e.g. to check them before they go to the Recycle Bin.</summary>
+    public bool RejectedOnly { get; init; }
+
     /// <summary>Only photos with none of the user's own tags (auto tags don't count, they still need checking).</summary>
     public bool WithoutTags { get; init; }
 

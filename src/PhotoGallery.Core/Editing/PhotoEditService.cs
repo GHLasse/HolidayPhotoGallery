@@ -101,6 +101,8 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         {
             Tags = current.Tags,
             Rating = current.Rating,
+            Flagged = current.Flagged ? true : null,
+            Rejected = current.Rejected ? true : null,
             Caption = current.Caption ?? "",
             DateTaken = current.DateTaken,
             Location = current.Latitude is { } lat && current.Longitude is { } lon ? new GeoPosition(lat, lon) : null,

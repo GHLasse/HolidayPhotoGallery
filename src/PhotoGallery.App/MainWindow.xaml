@@ -198,6 +198,21 @@
                         <TextBlock Text="{local:Loc Text='Flagged'}" />
                     </StackPanel>
                 </ToggleButton>
+                <ToggleButton VerticalAlignment="Center" IsChecked="{x:Bind ViewModel.RejectedOnly, Mode=TwoWay}"
+                              ToolTipService.ToolTip="{local:Loc Text='Only rejected photos, to check them before they go to the Recycle Bin'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE711;" FontSize="14" />
+                        <TextBlock Text="{local:Loc Text='Rejected'}" />
+                    </StackPanel>
+                </ToggleButton>
+                <Button VerticalAlignment="Center" Click="RecycleRejected_Click" Visibility="{x:Bind ViewModel.RejectedOnly, Mode=OneWay}"
+                        IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                        ToolTipService.ToolTip="{local:Loc Text='Move the rejected photos shown to the Recycle Bin, with their earlier versions'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                        <TextBlock Text="{local:Loc Text='Move to Recycle Bin…'}" />
+                    </StackPanel>
+                </Button>
                 <!-- Filled from code, like the time zone list: editing a bound list while x:Bind also sets
                      the index crashed the app inside WinUI. -->
                 <ComboBox x:Name="CameraCombo" VerticalAlignment="Center" MinWidth="150" MaxWidth="260"
@@ -403,11 +418,16 @@
                               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                               ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
                             <FontIcon Glyph="&#xEB9F;" FontSize="32" Opacity="0.3" />
-                            <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4,4,4,24" />
+                            <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4,4,4,24" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
                             <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind FlagVisibility, Mode=OneWay}"
                                     ToolTipService.ToolTip="{local:Loc Text='Flagged'}">
                                 <FontIcon Glyph="&#xE7C1;" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
+                                    Background="{ThemeResource SystemFillColorCriticalBrush}" Visibility="{x:Bind RejectVisibility, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Rejected'}">
+                                <FontIcon Glyph="&#xE711;" FontSize="12" Foreground="White" />
                             </Border>
                             <!-- In Google Photos, in OneDrive -->
                             <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Orientation="Horizontal" Spacing="3">
@@ -524,6 +544,12 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE7C1;" FontSize="14" />
                                     <TextBlock Text="{local:Loc Text='Flag'}" />
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton x:Name="RejectButton" VerticalAlignment="Center" Click="Reject_Click" ToolTipService.ToolTip="{local:Loc Text='Reject the selected photos, or take the mark off (X)'}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE711;" FontSize="14" />
+                                    <TextBlock Text="{local:Loc Text='Reject'}" />
                                 </StackPanel>
                             </ToggleButton>
                         </StackPanel>

@@ -231,6 +231,18 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.Flagged is { } flagged)
             args.Add(flagged ? "-XMP-digiKam:PickLabel=3" : "-XMP-digiKam:PickLabel-=3");
 
+        // A reject is digiKam's pick label "rejected" (1), which replaces the flag; the star rating stays.
+        // Windows and Adobe write a reject as rating -1, so taking the mark off clears that too.
+        if (changes.Rejected is { } rejected)
+        {
+            if (rejected)
+                args.Add("-XMP-digiKam:PickLabel=1");
+            else if (changes.Rating is null)
+                args.AddRange(["-XMP-digiKam:PickLabel-=1", "-XMP-xmp:Rating-=-1", "-IFD0:Rating-=-1"]);
+            else
+                args.Add("-XMP-digiKam:PickLabel-=1");
+        }
+
         if (changes.Caption is { } caption)
         {
             caption = caption.Trim();
@@ -404,6 +416,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Tags = TagList.Normalize(tags),
             Rating = Math.Clamp(rating, 0, 5),
             Flagged = GetNumber(item, "XMP-digiKam:PickLabel") == 3,
+            Rejected = GetNumber(item, "XMP-digiKam:PickLabel") == 1 || rating < 0,
             Caption = caption,
             DateTaken = ParseDateTaken(item),
             Orientation = Orientation.Normalize(orientation),

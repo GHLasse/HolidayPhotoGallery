@@ -176,7 +176,8 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$date", (object?)photo.DateTaken?.Local.ToString(DateFormat, CultureInfo.InvariantCulture) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$offset", (object?)(photo.DateTaken?.Offset is { } o ? (int)o.TotalMinutes : null) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$rating", photo.Rating);
-        cmd.Parameters.AddWithValue("$flagged", photo.Flagged ? 1 : 0);
+        // One column for the pick mark: 1 flagged, -1 rejected.
+        cmd.Parameters.AddWithValue("$flagged", photo.Rejected ? -1 : photo.Flagged ? 1 : 0);
         cmd.Parameters.AddWithValue("$caption", (object?)photo.Caption ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$orientation", photo.Orientation);
         cmd.Parameters.AddWithValue("$width", (object?)photo.Width ?? DBNull.Value);
@@ -302,6 +303,9 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.FlaggedOnly)
                 where.Add("p.flagged = 1");
+
+            if (query.RejectedOnly)
+                where.Add("p.flagged = -1");
 
             if (query.WithoutTags)
             {
@@ -515,7 +519,8 @@ public sealed partial class PhotoIndex : IDisposable
             Location = r.IsDBNull(14) || r.IsDBNull(15) ? null : new GeoPosition(r.GetDouble(14), r.GetDouble(15)),
             Place = ReadPlace(r, 16),
             People = r.IsDBNull(21) ? [] : ReadPeople(r.GetString(21)),
-            Flagged = r.GetInt32(22) != 0,
+            Flagged = r.GetInt32(22) == 1,
+            Rejected = r.GetInt32(22) == -1,
         };
     }
 

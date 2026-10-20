@@ -20,6 +20,8 @@ public sealed record IndexedPhoto
 
     public bool Flagged { get; init; }
 
+    public bool Rejected { get; init; }
+
     public string? Caption { get; init; }
 
     public IReadOnlyList<string> Tags { get; init; } = [];
@@ -50,6 +52,7 @@ public sealed record IndexedPhoto
         DateTaken = metadata.DateTaken,
         Rating = metadata.Rating,
         Flagged = metadata.Flagged,
+        Rejected = metadata.Rejected,
         Caption = metadata.Caption,
         Tags = metadata.Tags,
         Orientation = metadata.Orientation,
