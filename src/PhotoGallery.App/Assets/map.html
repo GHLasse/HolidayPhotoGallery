@@ -43,7 +43,7 @@ if (!window.L) {
 function start() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem("view")); } catch (e) { }
-  const map = L.map("map", { zoomControl: true, worldCopyJump: true })
+  const map = L.map("map", { zoomControl: true, worldCopyJump: true, preferCanvas: true })
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
   // Labels in the app's language where a free map has them: German from the German OpenStreetMap
   // map (German names, else the local name written in Latin letters), Chinese from the standard map
@@ -147,6 +147,8 @@ function start() {
           markers.set(p.path, marker);
         }
         restyle();
+        if (m.fitAll && markers.size)
+          map.fitBounds(L.latLngBounds([...markers.values()].map(x => x.getLatLng())), { padding: [40, 40], maxZoom: 12 });
       } else if (m.type === "selection") {
         selected = new Set(m.paths);
         restyle();

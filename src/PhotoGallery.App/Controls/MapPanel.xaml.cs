@@ -68,15 +68,18 @@ public sealed partial class MapPanel : UserControl
     }
 
     /// <summary>Shows a marker for every photo in the list that has a GPS position.</summary>
-    public void ShowPhotos(IEnumerable<PhotoItemViewModel> photos)
+    public void ShowPhotos(IEnumerable<PhotoItemViewModel> photos) => ShowPhotos(photos.Select(p => p.Photo), fitAll: false);
+
+    /// <summary>Shows a marker for every photo with a GPS position; <paramref name="fitAll"/> zooms out to show them all.</summary>
+    public void ShowPhotos(IEnumerable<IndexedPhoto> photos, bool fitAll)
     {
         var list = new JsonArray();
         foreach (var photo in photos)
         {
-            if (photo.Photo.Location is { } at)
-                list.Add(new JsonObject { ["path"] = photo.Path, ["name"] = photo.FileName, ["lat"] = at.Latitude, ["lon"] = at.Longitude });
+            if (photo.Location is { } at)
+                list.Add(new JsonObject { ["path"] = photo.Path, ["name"] = Path.GetFileName(photo.Path), ["lat"] = at.Latitude, ["lon"] = at.Longitude });
         }
-        Post(new JsonObject { ["type"] = "photos", ["photos"] = list });
+        Post(new JsonObject { ["type"] = "photos", ["photos"] = list, ["fitAll"] = fitAll });
     }
 
     /// <summary>Highlights the selected photos, and with <paramref name="fit"/> moves the map to them.</summary>

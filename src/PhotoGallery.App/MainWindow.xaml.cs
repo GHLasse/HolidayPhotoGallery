@@ -656,9 +656,24 @@ public sealed partial class MainWindow : Window
 
     private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e) => await ViewModel.RemoveAutoTagsAsync(SelectedPhotos);
 
-    private void RefreshMap(bool fit)
+    private int _mapVersion;
+
+    // Beside the grid the map shows the grid's photos, to place them; the Map workspace shows the whole
+    // library, where you have been, whatever folder or album is open.
+    private async void RefreshMap(bool fit)
     {
-        MapView.ShowPhotos(ViewModel.Photos);
+        var version = ++_mapVersion;
+        if (_workspace == Workspace.Map)
+        {
+            var all = await ViewModel.PhotosWithLocationAsync();
+            if (version != _mapVersion)
+                return;
+            MapView.ShowPhotos(all, fitAll: fit && SelectedPhotos.Count == 0);
+        }
+        else
+        {
+            MapView.ShowPhotos(ViewModel.Photos);
+        }
         MapView.ShowSelection(SelectedPhotos, fit);
     }
 

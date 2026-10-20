@@ -1,5 +1,6 @@
 using System.Globalization;
 using PhotoGallery.Core.Localization;
+using PhotoGallery.Core.Library;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -56,4 +57,8 @@ public sealed partial class MainViewModel
         }
         _settings.Save(SettingsPath);
     }
+
+    /// <summary>Every photo in the library with a GPS position, for the Map workspace.</summary>
+    public Task<List<IndexedPhoto>> PhotosWithLocationAsync() =>
+        Task.Run(() => _index.Search(new PhotoQuery()).Where(p => p.Location is not null).ToList());
 }
