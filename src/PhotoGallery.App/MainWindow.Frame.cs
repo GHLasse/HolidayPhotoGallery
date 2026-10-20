@@ -98,7 +98,9 @@ public sealed partial class MainWindow
         InfoPane.Visibility != Visibility.Visible ? ViewModel.InfoPaneWidth : InfoColumn.Width.Value);
 
     // The map takes the info pane's place: there is room for one or the other (I still shows it).
-    private bool InfoShown => _infoForced ?? (PhotoGrid.SelectedItems.Count > 0 && !IsMapShown);
+    // The details only belong to the photo grid: not beside the People or Albums pages.
+    private bool InfoShown => _workspace is Workspace.Library or Workspace.Map &&
+                              (_infoForced ?? (PhotoGrid.SelectedItems.Count > 0 && !IsMapShown));
 
     private bool IsMapShown => _workspace == Workspace.Map || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
 
