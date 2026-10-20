@@ -43,6 +43,10 @@
     <AssemblyMetadata Include="GoogleClientId" Value="$(GoogleClientId)" />
     <AssemblyMetadata Include="GoogleClientSecret" Value="$(GoogleClientSecret)" />
   </ItemGroup>
+  <!-- The app's Microsoft app registration for OneDrive (-p:OneDriveClientId=…). -->
+  <ItemGroup Condition="'$(OneDriveClientId)' != ''">
+    <AssemblyMetadata Include="OneDriveClientId" Value="$(OneDriveClientId)" />
+  </ItemGroup>
 
   <!-- The map page, served to WebView2 from the app folder. -->
   <ItemGroup>

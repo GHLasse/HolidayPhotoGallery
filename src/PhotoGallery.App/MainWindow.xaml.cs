@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Controls;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
+using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Tagging;
@@ -199,6 +200,8 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutLocation = false;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;
+        ViewModel.OnOneDriveOnly = false;
+        ViewModel.NotOnOneDriveOnly = false;
         ViewModel.TakenFrom = null;
         ViewModel.TakenTo = null;
         ViewModel.CameraIndex = 0;
@@ -834,7 +837,7 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
 
-    private async Task ShowSettingsAsync(bool googleTab = false)
+    private async Task ShowSettingsAsync(CloudService? cloudTab = null)
     {
         // Tagging tab
         var language = new ComboBox { Header = "Language of the tags", MinWidth = 160 };
@@ -940,10 +943,19 @@ public sealed partial class MainWindow : Window
         var appearance = AppearanceTab(out var chosenAppearance, out var revertAppearance);
         appearance.Visibility = Visibility.Collapsed;
 
-        // Google Photos tab
+        // Linked apps tab: Google Photos and OneDrive
         using var dialogClosed = new CancellationTokenSource();
-        var google = GoogleTab(dialogClosed.Token);
-        google.Visibility = Visibility.Collapsed;
+        var linked = new ScrollViewer
+        {
+            MaxHeight = 480,
+            Padding = new Thickness(0, 0, 12, 0),
+            Visibility = Visibility.Collapsed,
+            Content = new StackPanel
+            {
+                Spacing = 24,
+                Children = { GoogleSection(dialogClosed.Token), new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, OneDriveSection(dialogClosed.Token) },
+            },
+        };
 
         // Keyboard tab
         var keyboard = new ScrollViewer { Content = ShortcutList(), MaxHeight = 480, Visibility = Visibility.Collapsed };
@@ -957,8 +969,8 @@ public sealed partial class MainWindow : Window
         tabs.Items.Add(croppingTab);
         var appearanceTab = new SelectorBarItem { Text = "Appearance", Icon = new FontIcon { Glyph = "\uE790" } };
         tabs.Items.Add(appearanceTab);
-        var googleTabItem = new SelectorBarItem { Text = "Google Photos", Icon = new FontIcon { Glyph = "\uE753" } };
-        tabs.Items.Add(googleTabItem);
+        var linkedTab = new SelectorBarItem { Text = "Linked apps", Icon = new FontIcon { Glyph = "\uE753" } };
+        tabs.Items.Add(linkedTab);
         var keyboardTab = new SelectorBarItem { Text = "Keyboard", Icon = new FontIcon { Glyph = "\uE765" } };
         tabs.Items.Add(keyboardTab);
         tabs.SelectionChanged += (_, _) =>
@@ -967,11 +979,11 @@ public sealed partial class MainWindow : Window
             tagging.Visibility = tabs.SelectedItem == taggingTab ? Visibility.Visible : Visibility.Collapsed;
             cropping.Visibility = tabs.SelectedItem == croppingTab ? Visibility.Visible : Visibility.Collapsed;
             appearance.Visibility = tabs.SelectedItem == appearanceTab ? Visibility.Visible : Visibility.Collapsed;
-            google.Visibility = tabs.SelectedItem == googleTabItem ? Visibility.Visible : Visibility.Collapsed;
+            linked.Visibility = tabs.SelectedItem == linkedTab ? Visibility.Visible : Visibility.Collapsed;
             keyboard.Visibility = tabs.SelectedItem == keyboardTab ? Visibility.Visible : Visibility.Collapsed;
         };
-        if (googleTab)
-            tabs.SelectedItem = googleTabItem;
+        if (cloudTab is not null)
+            tabs.SelectedItem = linkedTab;
 
         var dialog = new ContentDialog
         {
@@ -985,7 +997,7 @@ public sealed partial class MainWindow : Window
                 {
                     tabs,
                     // The tabs share one cell so the dialog keeps its size when switching.
-                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, google, keyboard } },
+                    new Grid { MinHeight = 480, Children = { gallery, tagging, cropping, appearance, linked, keyboard } },
                 },
             },
             PrimaryButtonText = "Save",

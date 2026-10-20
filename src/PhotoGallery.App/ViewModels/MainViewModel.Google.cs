@@ -1,35 +1,20 @@
-using System.Diagnostics;
-using System.Reflection;
 using PhotoGallery.App.Native;
+using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.GooglePhotos;
-using PhotoGallery.Core.Library;
 
 namespace PhotoGallery.App.ViewModels;
 
-/// <summary>Google Photos: signing in, and uploading albums and photos in the background.</summary>
+/// <summary>Google Photos: the key and the sign-in.</summary>
 public sealed partial class MainViewModel
 {
     /// <summary>
     /// The app's own Google client, added to official builds from the build server's secrets (never kept
     /// in the code). Without it, users set up their own key with the connection wizard.
     /// </summary>
-    public static GoogleClient? BuiltInGoogleClient { get; } = ReadBuiltInGoogleClient();
-
-    private static readonly string LooseUploadsPath = Path.Combine(DataFolder, "google-uploads.json");
+    public static GoogleClient? BuiltInGoogleClient { get; } =
+        BuiltInValue("GoogleClientId") is { } id && BuiltInValue("GoogleClientSecret") is { } secret ? new GoogleClient(id, secret) : null;
 
     private GoogleAuth? _googleAuth;
-    private Dictionary<string, string>? _looseUploads;
-    private HashSet<string> _onGoogle = new(StringComparer.OrdinalIgnoreCase);
-    private bool _onGoogleOnly, _notOnGoogleOnly;
-    private CancellationTokenSource? _upload;
-    private string _uploadText = "";
-
-    private static GoogleClient? ReadBuiltInGoogleClient()
-    {
-        var metadata = typeof(MainViewModel).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().ToList();
-        string? Value(string key) => metadata.FirstOrDefault(m => m.Key == key)?.Value is { Length: > 0 } v ? v : null;
-        return Value("GoogleClientId") is { } id && Value("GoogleClientSecret") is { } secret ? new GoogleClient(id, secret) : null;
-    }
 
     /// <summary>The user's own key from the wizard, if they set one up.</summary>
     public GoogleClient? OwnGoogleClient =>
@@ -37,73 +22,10 @@ public sealed partial class MainViewModel
 
     public GoogleClient? GoogleClient => OwnGoogleClient ?? BuiltInGoogleClient;
 
-    public bool IsGoogleSignedIn => GoogleClient is not null && GoogleCredentials.Load() is not null;
+    public bool IsGoogleSignedIn => GoogleClient is not null && CloudCredentials.Load(CloudService.GooglePhotos) is not null;
 
     /// <summary>The signed-in account's e-mail address, if Google told it.</summary>
     public string? GoogleAccount => _settings.GoogleAccount;
-
-    /// <summary>What the running upload is doing, for the status bar; empty when nothing uploads.</summary>
-    public string UploadText
-    {
-        get => _uploadText;
-        private set
-        {
-            if (SetProperty(ref _uploadText, value))
-                OnPropertyChanged(nameof(IsUploading));
-        }
-    }
-
-    public bool IsUploading => UploadText.Length > 0;
-
-    /// <summary>Shows only photos uploaded to Google Photos.</summary>
-    public bool OnGoogleOnly
-    {
-        get => _onGoogleOnly;
-        set
-        {
-            if (!SetProperty(ref _onGoogleOnly, value))
-                return;
-            if (value)
-                NotOnGoogleOnly = false;
-            _ = SearchAsync();
-        }
-    }
-
-    /// <summary>Shows only photos not yet uploaded to Google Photos.</summary>
-    public bool NotOnGoogleOnly
-    {
-        get => _notOnGoogleOnly;
-        set
-        {
-            if (!SetProperty(ref _notOnGoogleOnly, value))
-                return;
-            if (value)
-                OnGoogleOnly = false;
-            _ = SearchAsync();
-        }
-    }
-
-    private IReadOnlyList<IndexedPhoto> FilterByGoogle(IReadOnlyList<IndexedPhoto> photos) =>
-        OnGoogleOnly ? photos.Where(p => _onGoogle.Contains(p.Path)).ToList()
-        : NotOnGoogleOnly ? photos.Where(p => !_onGoogle.Contains(p.Path)).ToList()
-        : photos;
-
-    /// <summary>Reads which photos are in Google Photos (from the album files and the app's list), and marks them in the grid.</summary>
-    public async Task LoadGoogleUploadsAsync()
-    {
-        var roots = _settings.Folders.ToList();
-        var (loose, uploaded) = await Task.Run(() =>
-        {
-            var loose = _looseUploads ?? GoogleUpload.LoadLooseUploads(LooseUploadsPath);
-            return (loose, GoogleUpload.UploadedPaths(roots, loose.Keys));
-        });
-        _looseUploads = loose;
-        _onGoogle = uploaded;
-        foreach (var item in Photos)
-            item.IsOnGoogle = _onGoogle.Contains(item.Path);
-        if (OnGoogleOnly || NotOnGoogleOnly)
-            await SearchAsync();
-    }
 
     /// <summary>
     /// Opens Google's sign-in page in the browser and waits for the answer. On success the sign-in is
@@ -112,25 +34,8 @@ public sealed partial class MainViewModel
     public async Task<string?> SignInToGoogleAsync(GoogleClient client, CancellationToken cancellationToken)
     {
         using var auth = new GoogleAuth(client, null);
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromMinutes(10));
-            var refreshToken = await auth.SignInAsync(OpenInBrowser, timeout.Token);
-            GoogleCredentials.Save(refreshToken);
-        }
-        catch (OperationCanceledException)
-        {
-            return cancellationToken.IsCancellationRequested ? "Sign-in cancelled." : "The sign-in took too long. Please try again.";
-        }
-        catch (GoogleSignInRequiredException ex)
-        {
-            return ex.Message;
-        }
-        catch (HttpRequestException ex)
-        {
-            return $"Couldn't reach Google ({ex.Message}). Check the internet connection.";
-        }
+        if (await SignInAsync(auth, CloudService.GooglePhotos, cancellationToken) is { } error)
+            return error;
 
         var own = client == BuiltInGoogleClient ? null : client;
         _settings.GoogleClientId = own?.ClientId;
@@ -144,7 +49,7 @@ public sealed partial class MainViewModel
     /// <summary>Forgets the sign-in; with <paramref name="forgetOwnKey"/> also the user's own key, so the built-in one is used.</summary>
     public void SignOutOfGoogle(bool forgetOwnKey = false)
     {
-        GoogleCredentials.Remove();
+        CloudCredentials.Remove(CloudService.GooglePhotos);
         _settings.GoogleAccount = null;
         if (forgetOwnKey)
         {
@@ -163,121 +68,11 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(GoogleAccount));
     }
 
-    public static void OpenInBrowser(Uri uri) =>
-        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-
-    /// <summary>Uploads the album's photos (not those of albums inside it) to a Google album of the same name.</summary>
-    public async Task UploadAlbumToGoogleAsync(string folder)
+    private GooglePhotosClient? CreateGooglePhotos()
     {
-        var photos = await Task.Run(() => _index.Search(new PhotoQuery { Folder = folder })
-            .Where(p => string.Equals(FindAlbumFor(p.Path), folder, StringComparison.OrdinalIgnoreCase))
-            .Select(p => new UploadPhoto(p.Path, p.Caption))
-            .ToList());
-        if (photos.Count == 0)
-        {
-            Warn($"“{AlbumName(folder)}” has no photos to upload.");
-            return;
-        }
-        await UploadToGoogleAsync([(folder, photos)]);
-    }
-
-    /// <summary>Uploads the photos, each into the Google album of the album it belongs to.</summary>
-    public Task UploadPhotosToGoogleAsync(IReadOnlyList<PhotoItemViewModel> items) =>
-        UploadToGoogleAsync(items
-            .GroupBy(i => FindAlbumFor(i.Path), StringComparer.OrdinalIgnoreCase)
-            .Select(g => (g.Key, g.Select(i => new UploadPhoto(i.Path, i.Photo.Caption)).ToList()))
-            .ToList());
-
-    public void CancelUpload() => _upload?.Cancel();
-
-    /// <summary>Runs in the background: the app stays usable, and the status bar shows how far it got.</summary>
-    private async Task UploadToGoogleAsync(IReadOnlyList<(string? Album, List<UploadPhoto> Photos)> groups)
-    {
-        if (IsUploading)
-        {
-            Warn("An upload to Google Photos is still running. Start the next one when it has finished.");
-            return;
-        }
-        if (GoogleClient is not { } client || GoogleCredentials.Load() is not { } refreshToken)
-        {
-            Warn("Connect to Google Photos first: Settings › Google Photos.");
-            return;
-        }
-
+        if (GoogleClient is not { } client || CloudCredentials.Load(CloudService.GooglePhotos) is not { } refreshToken)
+            return null;
         _googleAuth ??= new GoogleAuth(client, refreshToken);
-        using var cancel = new CancellationTokenSource();
-        _upload = cancel;
-        var total = groups.Sum(g => g.Photos.Count);
-        var done = 0;
-        int uploaded = 0, already = 0, failed = 0;
-        string? firstError = null;
-        UploadText = $"Uploading to Google Photos: 0 of {total}…";
-        try
-        {
-            using var photos = new GooglePhotosClient(_googleAuth);
-            foreach (var (album, list) in groups)
-            {
-                var before = done;
-                var progress = new Progress<UploadProgress>(p =>
-                    UploadText = $"Uploading to Google Photos: {before + list.Count - p.Total + p.Done} of {total}…");
-                _looseUploads ??= GoogleUpload.LoadLooseUploads(LooseUploadsPath);
-                var loose = _looseUploads;
-                var result = await Task.Run(() => GoogleUpload.UploadAsync(photos, album, list, progress, cancel.Token, loose));
-                if (album is null && result.Uploaded > 0)
-                    SaveLooseUploads();
-                done += list.Count;
-                uploaded += result.Uploaded;
-                already += result.AlreadyThere;
-                failed += result.Failed;
-                firstError ??= result.FirstError;
-            }
-            Inform(Summary(uploaded, already, failed));
-            if (firstError is not null)
-                Warn($"Not uploaded: {firstError}");
-        }
-        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
-        {
-            Inform($"Upload stopped. {Summary(uploaded, already, failed)} Upload again to send the rest.");
-        }
-        catch (GoogleSignInRequiredException ex)
-        {
-            if (!_googleAuth.IsSignedIn)
-                SignOutOfGoogle();
-            ErrorMessage = ex.Message;
-        }
-        catch (Exception ex) when (ex is GooglePhotosException or HttpRequestException or TaskCanceledException or IOException)
-        {
-            ErrorMessage = $"The upload to Google Photos stopped: {ex.Message} {Summary(uploaded, already, failed)}";
-        }
-        finally
-        {
-            _upload = null;
-            UploadText = "";
-        }
-        await LoadGoogleUploadsAsync();
-        if (IsAlbumView)
-            await LoadAlbumsAsync();
-    }
-
-    private void SaveLooseUploads()
-    {
-        try
-        {
-            GoogleUpload.SaveLooseUploads(LooseUploadsPath, _looseUploads!);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Warn($"Couldn't save which photos are in Google Photos: {ex.Message}");
-        }
-    }
-
-    private static string Summary(int uploaded, int already, int failed)
-    {
-        var parts = new List<string> { uploaded == 1 ? "1 photo uploaded to Google Photos." : $"{uploaded:N0} photos uploaded to Google Photos." };
-        if (already > 0)
-            parts.Add(already == 1 ? "1 was already there." : $"{already:N0} were already there.");
-        if (failed > 0)
-            parts.Add(failed == 1 ? "1 didn't upload." : $"{failed:N0} didn't upload.");
-        return string.Join(' ', parts);
+        return new GooglePhotosClient(_googleAuth);
     }
 }

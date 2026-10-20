@@ -15,6 +15,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     private ImageSource? _thumbnail;
     private bool _thumbnailRequested;
     private bool _isOnGoogle;
+    private bool _isOnOneDrive;
 
     public IndexedPhoto Photo
     {
@@ -37,6 +38,13 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     {
         get => _isOnGoogle;
         set => SetProperty(ref _isOnGoogle, value);
+    }
+
+    /// <summary>True when the photo is in OneDrive: uploaded, or in the synced OneDrive folder.</summary>
+    public bool IsOnOneDrive
+    {
+        get => _isOnOneDrive;
+        set => SetProperty(ref _isOnOneDrive, value);
     }
 
     public string FileName => Photo.FileName;

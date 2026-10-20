@@ -33,6 +33,12 @@ public sealed class AlbumViewModel(Album album) : ObservableObject
         ? "In Google Photos (1 photo uploaded)"
         : $"In Google Photos ({Album.GooglePhotoCount:N0} photos uploaded)";
 
+    public bool IsOnOneDrive => Album.OneDriveUrl is not null;
+
+    public string OneDriveToolTip => Album.OneDrivePhotoCount == 1
+        ? "In OneDrive (1 photo uploaded)"
+        : $"In OneDrive ({Album.OneDrivePhotoCount:N0} photos uploaded)";
+
     public ImageSource? Cover
     {
         get => _cover;

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.App.ViewModels;
+using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.GooglePhotos;
 
 namespace PhotoGallery.App;
@@ -50,41 +51,14 @@ public sealed partial class MainWindow
             [("Open Audience", GoogleConsole + "auth/audience")]),
     ];
 
-    private async void ConnectGoogle_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync(googleTab: true);
+    private async void UploadAlbumToGoogle_Click(object sender, RoutedEventArgs e) => await UploadAlbumAsync(CloudService.GooglePhotos, sender);
 
-    private async void UploadAlbumToGoogle_Click(object sender, RoutedEventArgs e)
-    {
-        var folder = TagOf<AlbumViewModel>(sender)?.Folder ?? TagOf<FolderNodeViewModel>(sender)?.FullPath;
-        if (folder is not null && await EnsureGoogleAsync())
-            await ViewModel.UploadAlbumToGoogleAsync(folder);
-    }
+    private async void UploadPhotosToGoogle_Click(object sender, RoutedEventArgs e) => await UploadPhotosAsync(CloudService.GooglePhotos);
 
-    private async void UploadPhotosToGoogle_Click(object sender, RoutedEventArgs e)
-    {
-        var photos = SelectedPhotos;
-        if (photos.Count > 0 && await EnsureGoogleAsync())
-            await ViewModel.UploadPhotosToGoogleAsync(photos);
-    }
+    private void OpenAlbumInGoogle_Click(object sender, RoutedEventArgs e) => OpenInBrowser(TagOf<AlbumViewModel>(sender)?.Album.GoogleUrl);
 
-    private void OpenAlbumInGoogle_Click(object sender, RoutedEventArgs e)
-    {
-        if (TagOf<AlbumViewModel>(sender)?.Album.GoogleUrl is { } url)
-            MainViewModel.OpenInBrowser(new Uri(url));
-    }
-
-    private void CancelUpload_Click(object sender, RoutedEventArgs e) => ViewModel.CancelUpload();
-
-    /// <summary>Opens the Google tab when nobody is signed in yet; true when uploading can go ahead.</summary>
-    private async Task<bool> EnsureGoogleAsync()
-    {
-        if (ViewModel.IsGoogleSignedIn)
-            return true;
-        await ShowSettingsAsync(googleTab: true);
-        return ViewModel.IsGoogleSignedIn;
-    }
-
-    /// <summary>The Google Photos tab. Signing in takes effect at once, not on Save; closing the dialog cancels a sign-in.</summary>
-    private FrameworkElement GoogleTab(CancellationToken closed)
+    /// <summary>The Google Photos part of the Linked apps tab. Signing in takes effect at once, not on Save; closing the dialog cancels a sign-in.</summary>
+    private FrameworkElement GoogleSection(CancellationToken closed)
     {
         var panel = new StackPanel { Spacing = 12 };
         CancellationTokenSource? signingIn = null;
@@ -160,7 +134,7 @@ public sealed partial class MainWindow
                 };
                 panel.Children.Add(signOut);
                 panel.Children.Add(Text("Right-click an album or photos and choose Upload to Google Photos. Uploaded photos and albums show the " +
-                    "Google Photos mark, and the Google Photos filter finds what isn't uploaded yet. Google keeps the uploaded photos " +
+                    "Google Photos mark, and the Cloud filter finds what isn't uploaded yet. Google keeps the uploaded photos " +
                     "if you sign out; to remove them, delete them in Google Photos.", secondary: true));
             }
             else if (MainViewModel.BuiltInGoogleClient is { } builtIn && ViewModel.OwnGoogleClient is null)
@@ -272,7 +246,7 @@ public sealed partial class MainWindow
         }
 
         ShowStatus();
-        return new ScrollViewer { Content = panel, MaxHeight = 480, Padding = new Thickness(0, 0, 12, 0) };
+        return panel;
     }
 
     /// <summary>Catches the usual copy-and-paste slips before Google gives a vaguer error.</summary>

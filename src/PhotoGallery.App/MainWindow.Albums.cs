@@ -122,6 +122,8 @@ public sealed partial class MainWindow
             : $"Use as cover of “{ViewModel.CurrentAlbumName(album)}”";
         UploadPhotosItem.IsEnabled = photos.Count > 0;
         UploadPhotosItem.Text = photos.Count > 1 ? $"Upload {photos.Count} photos to Google Photos" : "Upload to Google Photos";
+        UploadOneDrivePhotosItem.IsEnabled = photos.Count > 0;
+        UploadOneDrivePhotosItem.Text = photos.Count > 1 ? $"Upload {photos.Count} photos to OneDrive" : "Upload to OneDrive";
     }
 
     private async void UseAsAlbumCover_Click(object sender, RoutedEventArgs e)

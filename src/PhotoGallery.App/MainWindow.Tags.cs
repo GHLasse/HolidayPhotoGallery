@@ -98,6 +98,12 @@ public sealed partial class MainWindow
         if (ViewModel.NotOnGoogleOnly)
             FilterBadges.Children.Add(Badge("Not in Google Photos", false, outlined: false, "Showing photos not uploaded to Google Photos yet",
                                             null, "Stop filtering by Google Photos", () => ViewModel.NotOnGoogleOnly = false));
+        if (ViewModel.OnOneDriveOnly)
+            FilterBadges.Children.Add(Badge("In OneDrive", false, outlined: false, "Showing photos in OneDrive",
+                                            null, "Stop filtering by OneDrive", () => ViewModel.OnOneDriveOnly = false));
+        if (ViewModel.NotOnOneDriveOnly)
+            FilterBadges.Children.Add(Badge("Not in OneDrive", false, outlined: false, "Showing photos not in OneDrive yet",
+                                            null, "Stop filtering by OneDrive", () => ViewModel.NotOnOneDriveOnly = false));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
             FilterBadges.Children.Add(Badge(tag.Tag, AutoTags.IsAuto(tag.Tag), outlined: false, $"Showing photos tagged {tag.Tag}",

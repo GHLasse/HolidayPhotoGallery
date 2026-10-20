@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using PhotoGallery.Core.Albums;
+using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.GooglePhotos;
 
 namespace PhotoGallery.Core.Tests;
@@ -78,7 +79,7 @@ public class GooglePhotosTests
         var google = new FakeGoogle { TokenStatus = HttpStatusCode.BadRequest, TokenAnswer = """{"error":"invalid_grant"}""" };
         using var auth = new GoogleAuth(new GoogleClient("id", "secret"), "refresh", google);
 
-        await Assert.ThrowsAsync<GoogleSignInRequiredException>(() => auth.GetAccessTokenAsync());
+        await Assert.ThrowsAsync<CloudSignInRequiredException>(() => auth.GetAccessTokenAsync());
         Assert.False(auth.IsSignedIn);
     }
 
@@ -102,7 +103,7 @@ public class GooglePhotosTests
         var a = AddPhoto(temp, "a.jpg");
         var b = AddPhoto(temp, "b.heic");
 
-        var first = await GoogleUpload.UploadAsync(client, temp.Path, [new(a, "Fjord"), new(b, null)]);
+        var first = await CloudUpload.UploadAsync(client, temp.Path, [new(a, "Fjord"), new(b, null)]);
         Assert.Equal((2, 0, 0), (first.Uploaded, first.AlreadyThere, first.Failed));
         Assert.Equal("https://photos.google.com/album1", first.AlbumUrl);
         Assert.Contains("Norway 2024", google.Bodies[google.Requests.IndexOf("POST /v1/albums")]);
@@ -120,7 +121,7 @@ public class GooglePhotosTests
 
         var c = AddPhoto(temp, "c.jpg");
         google.Requests.Clear();
-        var second = await GoogleUpload.UploadAsync(client, temp.Path, [new(a, null), new(b, null), new(c, null)]);
+        var second = await CloudUpload.UploadAsync(client, temp.Path, [new(a, null), new(b, null), new(c, null)]);
         Assert.Equal((1, 2, 0), (second.Uploaded, second.AlreadyThere, second.Failed));
         Assert.DoesNotContain("POST /v1/albums", google.Requests);
         Assert.Single(google.Requests, r => r.EndsWith("/uploads"));
@@ -137,7 +138,7 @@ public class GooglePhotosTests
         var a = AddPhoto(temp, "a.jpg");
         var b = AddPhoto(temp, "b.jpg");
 
-        var result = await GoogleUpload.UploadAsync(client, temp.Path, [new(a, null), new(b, null)]);
+        var result = await CloudUpload.UploadAsync(client, temp.Path, [new(a, null), new(b, null)]);
 
         Assert.Equal((1, 1), (result.Uploaded, result.Failed));
         Assert.Equal("b.jpg: Unsupported file", result.FirstError);
@@ -159,15 +160,15 @@ public class GooglePhotosTests
         var notUploaded = AddPhoto(temp, "b.jpg");
         var loose = AddPhoto(temp, "c.jpg");
 
-        await GoogleUpload.UploadAsync(client, albumFolder, [new(inAlbum, null)]);
+        await CloudUpload.UploadAsync(client, albumFolder, [new(inAlbum, null)]);
         var looseUploads = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var result = await GoogleUpload.UploadAsync(client, null, [new(loose, null)], looseUploads: looseUploads);
+        var result = await CloudUpload.UploadAsync(client, null, [new(loose, null)], looseUploads: looseUploads);
         Assert.Equal(1, result.Uploaded);
-        Assert.Equal(1, (await GoogleUpload.UploadAsync(client, null, [new(loose, null)], looseUploads: looseUploads)).AlreadyThere);
+        Assert.Equal(1, (await CloudUpload.UploadAsync(client, null, [new(loose, null)], looseUploads: looseUploads)).AlreadyThere);
 
         var file = Path.Combine(temp.Path, "data", "google-uploads.json");
-        GoogleUpload.SaveLooseUploads(file, looseUploads);
-        var uploaded = GoogleUpload.UploadedPaths([temp.Path], GoogleUpload.LoadLooseUploads(file).Keys);
+        CloudUpload.SaveLooseUploads(file, looseUploads);
+        var uploaded = CloudUpload.UploadedPaths(CloudService.GooglePhotos, [temp.Path], CloudUpload.LoadLooseUploads(file).Keys);
 
         Assert.Contains(Path.GetFullPath(inAlbum), uploaded);
         Assert.Contains(loose, uploaded);
