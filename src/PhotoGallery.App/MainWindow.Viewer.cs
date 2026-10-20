@@ -249,7 +249,9 @@ public sealed partial class MainWindow
             Grid.SetRow(pane, beside ? 1 : 3);
             Grid.SetRowSpan(pane, beside ? 3 : 1);
         }
-        InfoPane.Background = beside ? ThemeBrush("SolidBackgroundFillColorBaseBrush") : null;
+        // No background of its own: it shows the window's, like the normal pane. A looked-up brush came out
+        // light in dark mode (white text on a light pane).
+        InfoPane.Background = null;
     }
 
     // ---- Lights out ----
