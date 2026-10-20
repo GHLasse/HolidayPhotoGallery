@@ -473,6 +473,7 @@ public sealed partial class MainWindow : Window
             ("P", Tr("Flag or unflag the selected photos")),
             ("X", Tr("Reject the selected photos, or take the mark off")),
             ("← →", Tr("Previous or next photo in the viewer and compare")),
+            (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
             ("Tab", Tr("Next photo in compare")),
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
             ("Ctrl+S", Tr("Save the changes in the info pane")),

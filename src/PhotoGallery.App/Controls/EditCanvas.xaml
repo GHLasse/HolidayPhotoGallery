@@ -4,9 +4,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- The photo, fitted into the space, with the crop frame drawn over it while cropping. -->
-    <Grid x:Name="Host" SizeChanged="Host_SizeChanged" Background="Transparent">
+    <!-- The photo, fitted into the space, with the crop frame drawn over it while cropping. The mouse wheel
+         zooms it, and zoomed in it is dragged around (EditCanvas.xaml.cs). -->
+    <Grid x:Name="Host" SizeChanged="Host_SizeChanged" Background="Transparent"
+          PointerWheelChanged="Host_PointerWheelChanged" PointerPressed="Host_PointerPressed" PointerMoved="Host_PointerMoved"
+          PointerReleased="Host_PointerReleased" PointerCaptureLost="Host_PointerCaptureLost" DoubleTapped="Host_DoubleTapped">
         <Grid x:Name="Frame" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid.RenderTransform>
+                <CompositeTransform x:Name="Zoom" />
+            </Grid.RenderTransform>
             <Image x:Name="Picture" Stretch="Fill" />
             <Canvas x:Name="Overlay" Visibility="Collapsed" Background="Transparent"
                     PointerPressed="Overlay_PointerPressed" PointerMoved="Overlay_PointerMoved"

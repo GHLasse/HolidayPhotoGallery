@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using Windows.Foundation;
 
@@ -27,11 +28,32 @@ public sealed partial class MainWindow
     private int _flightVersion;
     private bool _flightDone = true, _viewerImageReady;
 
+    // The viewer decodes at screen size; zoomed in, the photo is decoded again in more detail. Only the
+    // picture changes: edits keep working on the screen-size pixels, and an edit being previewed is left alone.
+    private async Task ShowSharperPhotoAsync()
+    {
+        if (_viewerIndex < 0 || _viewerIndex >= _viewerItems.Count || ViewerEditBar.Visibility == Visibility.Visible)
+            return;
+        var version = _viewerLoadVersion;
+        try
+        {
+            var pixels = await ImageLoader.DecodePixelsAsync(_viewerItems[_viewerIndex].Path, 6000);
+            var source = await ImageLoader.ToImageSourceAsync(pixels);
+            if (version == _viewerLoadVersion && ViewerEditBar.Visibility != Visibility.Visible)
+                ViewerCanvas.Source = source;
+        }
+        catch (Exception)
+        {
+            // The screen-size picture stays.
+        }
+    }
+
     private void SetUpViewerMotion()
     {
         foreach (var control in new UIElement[] { ViewerPreviousButton, ViewerNextButton })
             control.OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(SlideMs) };
         ViewerCanvas.OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(167) };
+        ViewerCanvas.ZoomedIn += async (_, _) => await ShowSharperPhotoAsync();
         // handledEventsToo: the crop frame takes the pointer for itself while it is dragged.
         ViewerLayer.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, _) => ShowViewerControls()), true);
         _viewerIdleTimer = DispatcherQueue.CreateTimer();
