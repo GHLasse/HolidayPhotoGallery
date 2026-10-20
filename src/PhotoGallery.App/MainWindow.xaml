@@ -785,22 +785,39 @@
 
             <!-- What can be done with the selected photos; rises from the bottom while any are selected. -->
             <Border x:Name="SelectionBar" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Margin="12,0,12,16" Padding="12,0,4,0" CornerRadius="8"
-                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
-                    Visibility="Collapsed">
+                    Margin="12,0,12,16" Visibility="Collapsed">
                 <Border.RenderTransform>
                     <CompositeTransform x:Name="SelectionBarShift" />
                 </Border.RenderTransform>
                 <!-- MaxWidth: centred, the bar would otherwise be measured with no width limit, which the
                      command bar's overflow can't handle. -->
-                <CommandBar x:Name="SelectionCommands" Background="Transparent" IsOpen="False" VerticalContentAlignment="Center" DefaultLabelPosition="Right" MaxWidth="1100"
+                <!-- The command bar draws the rounded acrylic itself: a frame around it showed its own square edge
+                     inside the rounded one when the window was narrow. -->
+                <CommandBar x:Name="SelectionCommands" IsOpen="False" Padding="12,0,4,0" CornerRadius="8"
+                            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1" VerticalContentAlignment="Center" DefaultLabelPosition="Right" MaxWidth="1400"
                             OverflowButtonVisibility="Auto">
+                    <!-- Opening "…" switches the bar to its open look (another background and border, square
+                         corners), which showed as odd edges; it keeps its closed look instead. -->
+                    <CommandBar.Resources>
+                        <ResourceDictionary>
+                            <ResourceDictionary.ThemeDictionaries>
+                                <ResourceDictionary x:Key="Default">
+                                    <StaticResource x:Key="CommandBarBackgroundOpen" ResourceKey="AcrylicInAppFillColorDefaultBrush" />
+                                    <StaticResource x:Key="CommandBarBorderBrushOpen" ResourceKey="SurfaceStrokeColorFlyoutBrush" />
+                                </ResourceDictionary>
+                                <ResourceDictionary x:Key="Light">
+                                    <StaticResource x:Key="CommandBarBackgroundOpen" ResourceKey="AcrylicInAppFillColorDefaultBrush" />
+                                    <StaticResource x:Key="CommandBarBorderBrushOpen" ResourceKey="SurfaceStrokeColorFlyoutBrush" />
+                                </ResourceDictionary>
+                            </ResourceDictionary.ThemeDictionaries>
+                        </ResourceDictionary>
+                    </CommandBar.Resources>
                     <CommandBar.Content>
                         <TextBlock x:Name="SelectionCountText" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Style="{ThemeResource BodyStrongTextBlockStyle}" />
                     </CommandBar.Content>
-                    <AppBarButton Label="{local:Loc Text='Left'}" Click="RotateLeft_Click"
+                    <AppBarButton Label="{local:Loc Text='Left'}" LabelPosition="Collapsed" Click="RotateLeft_Click"
                                   ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
@@ -810,7 +827,7 @@
                             </FontIcon>
                         </AppBarButton.Icon>
                     </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Right'}" Click="RotateRight_Click"
+                    <AppBarButton Label="{local:Loc Text='Right'}" LabelPosition="Collapsed" Click="RotateRight_Click"
                                   ToolTipService.ToolTip="{local:Loc Text='Rotate right (Ctrl+.)'}">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE7AD;" />
@@ -826,6 +843,29 @@
                                   ToolTipService.ToolTip="{local:Loc Text='Show 1 to 4 selected photos side by side to rate them (C)'}">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE89F;" />
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <!-- Lasse's everyday batch jobs, straight on the bar (they were in the overflow menu). The bar
+                         drops commands into "…" from the end when narrow, so these come early. -->
+                    <AppBarButton Label="{local:Loc Text='Place names'}" Click="AddPlaceNames_Click"
+                                  IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files'}">
+                        <AppBarButton.Icon>
+                            <FontIcon Glyph="&#xE707;" />
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="{local:Loc Text='Auto-tag'}" Click="AutoTag_Click"
+                                  IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list'}">
+                        <AppBarButton.Icon>
+                            <FontIcon Glyph="&#xE8EC;" />
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="{local:Loc Text='Find people'}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Find people in the selected photos'}" Click="FindPeople_Click"
+                                  IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}">
+                        <AppBarButton.Icon>
+                            <FontIcon Glyph="&#xE721;" />
                         </AppBarButton.Icon>
                     </AppBarButton>
                     <AppBarButton Label="{local:Loc Text='Shift dates'}" Click="ShiftDates_Click"
@@ -849,20 +889,6 @@
                     <AppBarButton x:Name="FavouriteApp1Button" Tag="0" Visibility="Collapsed" Click="FavouriteApp_Click" />
                     <AppBarButton x:Name="FavouriteApp2Button" Tag="1" Visibility="Collapsed" Click="FavouriteApp_Click" />
                     <CommandBar.SecondaryCommands>
-                        <AppBarButton Label="{local:Loc Text='Add place names'}" Click="AddPlaceNames_Click"
-                                      IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files'}">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE707;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarButton Label="{local:Loc Text='Auto-tag'}" Click="AutoTag_Click"
-                                      IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list'}">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE8EC;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
                         <AppBarButton Label="{local:Loc Text='Remove auto tags'}" Click="RemoveAutoTags_Click"
                                       IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
                                       ToolTipService.ToolTip="{local:Loc Text='Remove the tags auto-tagging added to the selected photos; your own tags stay'}">
@@ -871,12 +897,6 @@
                             </AppBarButton.Icon>
                         </AppBarButton>
                         <AppBarSeparator />
-                        <AppBarButton Label="{local:Loc Text='Find people in the selected photos'}" Click="FindPeople_Click"
-                                      IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE721;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
                         <AppBarButton Label="{local:Loc Text='Add a person to the selected photos…'}" Click="AddPerson_Click">
                             <AppBarButton.Icon>
                                 <FontIcon Glyph="&#xE8FA;" />

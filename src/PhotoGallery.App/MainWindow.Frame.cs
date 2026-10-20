@@ -20,7 +20,7 @@ public sealed partial class MainWindow
     // Narrower windows fold the folder pane into its icons, so the photos keep their room.
     private const double FoldNavBelowWidth = 1100;
     private const double RailWidth = 52;
-    private const double SelectionBarLabelsWidth = 900;
+    private const double SelectionBarLabelsWidth = 1150;
 
     private static readonly bool s_animations = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
     private bool _panesHidden, _chromeHidden;
