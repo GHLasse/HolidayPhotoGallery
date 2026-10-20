@@ -72,8 +72,6 @@
                                      ToolTipService.ToolTip="{local:Loc Text='All photos shown on a big map'}" />
                     <SelectorBarItem x:Name="PeopleTab" Text="{local:Loc Text='People'}"
                                      ToolTipService.ToolTip="{local:Loc Text='Everyone named in your photos'}" />
-                    <SelectorBarItem x:Name="AlbumsTab" Text="{local:Loc Text='Albums'}"
-                                     ToolTipService.ToolTip="{local:Loc Text='Your trips and events as albums. Right-click a folder to make it an album.'}" />
                 </SelectorBar>
                 <AutoSuggestBox x:Name="SearchBox" Grid.Column="2" MaxWidth="320" HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                 PlaceholderText="{local:Loc Text='Search names, captions and tags (Ctrl+E)'}"
@@ -339,6 +337,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition x:Name="FoldersRow" Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -365,8 +364,22 @@
                     </Grid>
                 </Button>
             </Grid>
+            <Grid Grid.Row="2">
+                <Button x:Name="AlbumsHeading" Style="{StaticResource NavHeading}" Click="AlbumsNav_Click"
+                        ToolTipService.ToolTip="{local:Loc Text='Your trips and events as albums. Right-click a folder to make it an album.'}">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE8F1;" FontSize="16" />
+                        <TextBlock Grid.Column="1" Text="{local:Loc Text='Albums'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                </Button>
+            </Grid>
             <!-- Adding and rescanning act on the folder list, so they sit on its heading, like in File Explorer. -->
-            <Grid Grid.Row="2" ColumnSpacing="2">
+            <Grid Grid.Row="3" ColumnSpacing="2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -396,7 +409,7 @@
                     <FontIcon Glyph="&#xE72C;" FontSize="14" />
                 </Button>
             </Grid>
-            <Grid x:Name="FoldersContent" Grid.Row="3">
+            <Grid x:Name="FoldersContent" Grid.Row="4">
                 <TextBlock Margin="8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Visibility="{x:Bind ViewModel.HasNoFolders, Mode=OneWay}"
                            Text="{local:Loc Text='Add a folder with your photos to get started. Your files stay where they are.'}" />
@@ -454,7 +467,7 @@
                 </TreeView>
             </Grid>
             <!-- The library by date taken and by place, across all folders; both start closed. -->
-            <Grid Grid.Row="4">
+            <Grid Grid.Row="5">
                 <Button x:Name="DatesHeading" Style="{StaticResource NavHeading}" Click="NavSection_Click">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -468,14 +481,14 @@
                     </Grid>
                 </Button>
             </Grid>
-            <TreeView x:Name="DateTree" Grid.Row="5" Visibility="Collapsed" SelectionMode="Single" ItemsSource="{x:Bind ViewModel.Dates}" ItemInvoked="DateTree_ItemInvoked">
+            <TreeView x:Name="DateTree" Grid.Row="6" Visibility="Collapsed" SelectionMode="Single" ItemsSource="{x:Bind ViewModel.Dates}" ItemInvoked="DateTree_ItemInvoked">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="vm:DateNodeViewModel">
                         <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
-            <Grid Grid.Row="6">
+            <Grid Grid.Row="7">
                 <Button x:Name="PlacesHeading" Style="{StaticResource NavHeading}" Click="NavSection_Click">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -489,7 +502,7 @@
                     </Grid>
                 </Button>
             </Grid>
-            <TreeView x:Name="PlaceTree" Grid.Row="7" Visibility="Collapsed" SelectionMode="Single" ItemsSource="{x:Bind ViewModel.Places}" ItemInvoked="PlaceTree_ItemInvoked">
+            <TreeView x:Name="PlaceTree" Grid.Row="8" Visibility="Collapsed" SelectionMode="Single" ItemsSource="{x:Bind ViewModel.Places}" ItemInvoked="PlaceTree_ItemInvoked">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="vm:PlaceNodeViewModel">
                         <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
@@ -507,6 +520,10 @@
             <Button Style="{StaticResource NavRailButton}" Click="AllPhotos_Click"
                     AutomationProperties.Name="{local:Loc Text='All photos'}" ToolTipService.ToolTip="{local:Loc Text='All photos'}">
                 <FontIcon Glyph="&#xE91B;" FontSize="16" />
+            </Button>
+            <Button Style="{StaticResource NavRailButton}" Click="AlbumsNav_Click"
+                    AutomationProperties.Name="{local:Loc Text='Albums'}" ToolTipService.ToolTip="{local:Loc Text='Albums'}">
+                <FontIcon Glyph="&#xE8F1;" FontSize="16" />
             </Button>
             <Button Style="{StaticResource NavRailButton}" Click="RailFolders_Click"
                     AutomationProperties.Name="{local:Loc Text='Folders'}" ToolTipService.ToolTip="{local:Loc Text='Folders'}">

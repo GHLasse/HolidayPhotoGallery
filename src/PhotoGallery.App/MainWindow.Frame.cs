@@ -274,7 +274,7 @@ public sealed partial class MainWindow
     // The open tree gets the height the headings leave free, and scrolls within it.
     private void LimitNavTrees()
     {
-        const double headings = 5 * 36 + 8 * 2; // hamburger, All photos, Folders, Dates, Places, and the row gaps
+        const double headings = 6 * 36 + 8 * 2; // hamburger, All photos, Albums, Folders, Dates, Places, and the row gaps
         var room = Math.Max(120, NavPane.ActualHeight - NavPane.Padding.Top - NavPane.Padding.Bottom - headings);
         FoldersContent.MaxHeight = DateTree.MaxHeight = PlaceTree.MaxHeight = room;
     }

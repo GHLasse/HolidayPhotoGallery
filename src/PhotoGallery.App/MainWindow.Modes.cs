@@ -28,7 +28,6 @@ public sealed partial class MainWindow
         var item = sender.SelectedItem;
         ShowWorkspace(item == MapTab ? Workspace.Map
                       : item == PeopleTab ? Workspace.People
-                      : item == AlbumsTab ? Workspace.Albums
                       : Workspace.Library);
     }
 
@@ -43,8 +42,7 @@ public sealed partial class MainWindow
             {
                 Workspace.Map => MapTab,
                 Workspace.People => PeopleTab,
-                Workspace.Albums => AlbumsTab,
-                _ => LibraryTab,
+                _ => LibraryTab, // the albums are part of the Library, picked in the left pane
             };
         }
         finally
@@ -68,6 +66,13 @@ public sealed partial class MainWindow
         await ApplyMapLayoutAsync();
         if (people)
             await ShowPeoplePageAsync();
+    }
+
+    /// <summary>Albums sits in the left pane, between All photos and Folders.</summary>
+    private void AlbumsNav_Click(object sender, RoutedEventArgs e)
+    {
+        ClearBrowseTrees();
+        ShowWorkspace(Workspace.Albums);
     }
 
     // Opening an album, or a folder while the albums are shown, goes back to the photos.
