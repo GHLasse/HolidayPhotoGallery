@@ -327,11 +327,13 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition x:Name="FoldersRow" Height="*" />
+                <RowDefinition x:Name="FoldersRow" Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <!-- The headings stay at the top; the open tree is limited to the room left (MainWindow.Frame.cs). -->
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Button Style="{StaticResource NavRailButton}" Click="ToggleNavPane_Click"
                     AutomationProperties.Name="{local:Loc Text='Fold the pane into icons'}"
@@ -454,7 +456,7 @@
                     </Grid>
                 </Button>
             </Grid>
-            <TreeView x:Name="DateTree" Grid.Row="5" Visibility="Collapsed" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Dates}" ItemInvoked="DateTree_ItemInvoked">
+            <TreeView x:Name="DateTree" Grid.Row="5" Visibility="Collapsed" SelectionMode="Single" ItemsSource="{x:Bind ViewModel.Dates}" ItemInvoked="DateTree_ItemInvoked">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="vm:DateNodeViewModel">
                         <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
@@ -475,7 +477,7 @@
                     </Grid>
                 </Button>
             </Grid>
-            <TreeView x:Name="PlaceTree" Grid.Row="7" Visibility="Collapsed" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Places}" ItemInvoked="PlaceTree_ItemInvoked">
+            <TreeView x:Name="PlaceTree" Grid.Row="7" Visibility="Collapsed" SelectionMode="Single" ItemsSource="{x:Bind ViewModel.Places}" ItemInvoked="PlaceTree_ItemInvoked">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="vm:PlaceNodeViewModel">
                         <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />

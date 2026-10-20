@@ -53,6 +53,7 @@ public sealed partial class MainWindow
         ApplyChrome(animate: false);
 
         Root.SizeChanged += (_, e) => OnWindowWidthChanged(e.NewSize.Width);
+        NavPane.SizeChanged += (_, _) => LimitNavTrees();
         Root.PreviewKeyDown += Root_PreviewKeyDown;
 
         // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
@@ -215,13 +216,25 @@ public sealed partial class MainWindow
         OpenNavSection(sender, content.Visibility != Visibility.Visible);
     }
 
+    // One tree open at a time, like an accordion; the headings all stay at the top.
     private void OpenNavSection(object heading, bool open)
     {
-        var (content, chevron) = NavSection(heading);
-        content.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        chevron.Glyph = open ? "\uE70E" : "\uE70D";
-        if (heading == FoldersHeading)
-            FoldersRow.Height = open ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        foreach (var other in new object[] { FoldersHeading, DatesHeading, PlacesHeading })
+        {
+            var (content, chevron) = NavSection(other);
+            var show = other == heading ? open : open ? false : content.Visibility == Visibility.Visible;
+            content.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            chevron.Glyph = show ? "\uE70E" : "\uE70D";
+        }
+        LimitNavTrees();
+    }
+
+    // The open tree gets the height the headings leave free, and scrolls within it.
+    private void LimitNavTrees()
+    {
+        const double headings = 5 * 36 + 8 * 2; // hamburger, All photos, Folders, Dates, Places, and the row gaps
+        var room = Math.Max(120, NavPane.ActualHeight - NavPane.Padding.Top - NavPane.Padding.Bottom - headings);
+        FoldersContent.MaxHeight = DateTree.MaxHeight = PlaceTree.MaxHeight = room;
     }
 
     private (FrameworkElement Content, FontIcon Chevron) NavSection(object heading) =>
