@@ -124,11 +124,12 @@ public sealed partial class MainWindow
             return;
         if (TopInGrid(item) is not { } y)
         {
-            // Scrolled out of the realised range by the reflow: bring it back, then place it exactly.
-            if (_anchorRetries++ < 3)
+            // Scrolled out of the realised range by the reflow (likely in a big folder): bring it back once,
+            // then wait for the grid to realise its tile and place it exactly.
+            if (_anchorRetries == 0)
                 PhotoGrid.ScrollIntoView(item);
-            else
-                _restoreAnchor = false;
+            if (_anchorRetries++ > 40)
+                GiveUpAnchor(item);
             return;
         }
         var delta = y - _anchorY;
@@ -139,8 +140,16 @@ public sealed partial class MainWindow
         }
         scroller.ChangeView(null, Math.Max(0, scroller.VerticalOffset + delta), null, disableAnimation: true);
         // At the very top or bottom the photo can't be moved further; give up rather than try forever.
-        if (_anchorRetries++ > 20)
-            _restoreAnchor = false;
+        if (_anchorRetries++ > 40)
+            GiveUpAnchor(item);
+    }
+
+    // Not back in its old place, but at least on screen.
+    private void GiveUpAnchor(PhotoItemViewModel item)
+    {
+        _restoreAnchor = false;
+        if (_gridScroller is not { } scroller || TopInGrid(item) is not { } y || y < 0 || y + ViewModel.TileSize > scroller.ViewportHeight)
+            PhotoGrid.ScrollIntoView(item);
     }
 
     private void EndScrub(PointerRoutedEventArgs e)
