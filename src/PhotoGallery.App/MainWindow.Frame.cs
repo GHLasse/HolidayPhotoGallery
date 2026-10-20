@@ -127,13 +127,23 @@ public sealed partial class MainWindow
         var info = panes && InfoShown;
         App.Trace($"chrome: nav {nav}, rail {rail}, info {info}, animate {animate}");
 
-        NavPane.Visibility = NavSplitter.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
-        NavRail.Visibility = rail ? Visibility.Visible : Visibility.Collapsed;
-        SettingsButton.Visibility = nav || rail ? Visibility.Visible : Visibility.Collapsed;
-        SettingsLabel.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
-        SettingsButton.HorizontalAlignment = nav ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        SettingsButton.Width = nav ? double.NaN : 36;
-        AnimateColumn(NavColumn, nav ? ViewModel.NavPaneWidth : rail ? RailWidth : 0, animate);
+        // A pane going away keeps its content until it has slid out.
+        void ShowNav()
+        {
+            NavPane.Visibility = NavSplitter.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
+            NavRail.Visibility = rail ? Visibility.Visible : Visibility.Collapsed;
+            SettingsButton.Visibility = nav || rail ? Visibility.Visible : Visibility.Collapsed;
+            SettingsLabel.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
+            SettingsButton.HorizontalAlignment = nav ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+            SettingsButton.Width = nav ? double.NaN : 36;
+        }
+        var navGoes = !nav && !rail;
+        if (!navGoes)
+            ShowNav();
+        NavSplitter.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
+        AnimateColumn(NavColumn, nav ? ViewModel.NavPaneWidth : rail ? RailWidth : 0, animate, fromLeft: true,
+                      done: navGoes ? () => { if (_panesHidden || _chromeHidden) ShowNav(); } : null,
+                      content: [NavPane, NavRail, SettingsButton]);
 
         // The map beside the grid and the info pane share the right-hand column: one or the other.
         var viewer = IsViewerOpen;
@@ -155,7 +165,7 @@ public sealed partial class MainWindow
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
             if (!(IsViewerOpen ? _viewerDetails : !_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
                 InfoPane.Visibility = Visibility.Collapsed;
-        });
+        }, content: [InfoPane]);
         // The filters work on the grid; the People page and the whole-library map have none.
         TopBar.Visibility = _chromeHidden || viewer || _workspace is Workspace.People or Workspace.Map ? Visibility.Collapsed : Visibility.Visible;
     }
