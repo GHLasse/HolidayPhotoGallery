@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -96,6 +97,21 @@ public sealed partial class MainWindow
     }
 
     // ---- Filter bar ----
+
+    // The list of everyone rolls down from the people group, as wide as it, as if the group opened up.
+    private void MorePeople_Click(object sender, RoutedEventArgs e)
+    {
+        var width = PeopleGroup.ActualWidth;
+        PeopleList.Width = Math.Max(240, width);
+        PeopleGroup.CornerRadius = new CornerRadius(ControlCorner, ControlCorner, 0, 0);
+        PeopleFlyout.Closed -= RestorePeopleCorners;
+        PeopleFlyout.Closed += RestorePeopleCorners;
+        PeopleFlyout.ShowAt(PeopleGroup, new FlyoutShowOptions { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft });
+    }
+
+    private void RestorePeopleCorners(object? sender, object e) => PeopleGroup.CornerRadius = new CornerRadius(ControlCorner);
+
+    private const double ControlCorner = 4; // WinUI's ControlCornerRadius, as the other filters have
 
     private void ShowFilterBadges()
     {
