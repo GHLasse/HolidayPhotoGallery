@@ -643,6 +643,7 @@
     "Use your own app registration instead (advanced)…": "استخدام تسجيل التطبيق الخاص بك بدلاً من ذلك (متقدم)…",
     "Use your own Google Cloud key instead (advanced)…": "استخدام مفتاح Google Cloud الخاص بك بدلاً من ذلك (متقدم)…",
     "Wait until it is ready, and make sure it is selected at the top of the page.": "انتظر حتى يصبح جاهزًا، وتأكد من تحديده في أعلى الصفحة.",
+    "Waits until the app has finished: {0} You can stop that with the circle at the top right.": "ينتظر حتى ينتهي التطبيق: {0} يمكنك إيقاف ذلك بالدائرة في أعلى اليمين.",
     "When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes.": "عند تشغيل هذا الخيار، يؤدي تغيير تاريخ الالتقاط أو إزاحته إلى تعيين كل التواريخ عليه. عند إيقاف تشغيله، يتغير تاريخ الالتقاط فقط.",
     "White balance": "توازن اللون الأبيض",
     "Who is in these photos?": "من يظهر في هذه الصور؟",

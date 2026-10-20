@@ -289,7 +289,7 @@
                         </DropDownButton.Flyout>
                     </DropDownButton>
                     <Button x:Name="RecycleButton" VerticalAlignment="Center" Click="RecycleRejected_Click" Visibility="{x:Bind ViewModel.RejectedOnly, Mode=OneWay}"
-                            IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                            local:Busy.Gate="True"
                             ToolTipService.ToolTip="{local:Loc Text='Move the rejected photos shown to the Recycle Bin, with their earlier versions'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE74D;" FontSize="14" />
@@ -416,7 +416,7 @@
                     <FontIcon Glyph="&#xE710;" FontSize="14" />
                 </Button>
                 <Button Grid.Column="2" Click="Rescan_Click" Padding="6" Background="Transparent" BorderThickness="0"
-                        IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                        local:Busy.Gate="True"
                         AutomationProperties.Name="{local:Loc Text='Rescan'}"
                         ToolTipService.ToolTip="{local:Loc Text='Look for new, changed and deleted photos'}">
                     <FontIcon Glyph="&#xE72C;" FontSize="14" />
@@ -878,14 +878,14 @@
                     <!-- Lasse's everyday batch jobs, straight on the bar (they were in the overflow menu). The bar
                          drops commands into "…" from the end when narrow, so these come early. -->
                     <AppBarButton Label="{local:Loc Text='Place names'}" Click="AddPlaceNames_Click"
-                                  IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                  local:Busy.Gate="True"
                                   ToolTipService.ToolTip="{local:Loc Text='Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files'}">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE707;" />
                         </AppBarButton.Icon>
                     </AppBarButton>
                     <AppBarButton Label="{local:Loc Text='Auto-tag'}" Click="AutoTag_Click"
-                                  IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                  local:Busy.Gate="True"
                                   ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list'}">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE8EC;" />
@@ -893,7 +893,7 @@
                     </AppBarButton>
                     <AppBarButton Label="{local:Loc Text='Find people'}"
                                   ToolTipService.ToolTip="{local:Loc Text='Find people in the selected photos'}" Click="FindPeople_Click"
-                                  IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}">
+                                  local:Busy.Gate="True">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE721;" />
                         </AppBarButton.Icon>
@@ -920,7 +920,7 @@
                     <AppBarButton x:Name="FavouriteApp2Button" Tag="1" Visibility="Collapsed" Click="FavouriteApp_Click" />
                     <CommandBar.SecondaryCommands>
                         <AppBarButton Label="{local:Loc Text='Remove auto tags'}" Click="RemoveAutoTags_Click"
-                                      IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                      local:Busy.Gate="True"
                                       ToolTipService.ToolTip="{local:Loc Text='Remove the tags auto-tagging added to the selected photos; your own tags stay'}">
                             <AppBarButton.Icon>
                                 <FontIcon Glyph="&#xE74D;" />
@@ -963,14 +963,14 @@
             </Grid.RowDefinitions>
             <controls:WrapPanel>
                 <TextBlock Text="{local:Loc Text='People'}" Style="{ThemeResource SubtitleTextBlockStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
-                <Button Click="FindPeopleInAll_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                <Button Click="FindPeopleInAll_Click" local:Busy.Gate="True"
                         ToolTipService.ToolTip="{local:Loc Text='Find the people in your photos on this PC and name them'}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE721;" FontSize="14" />
                         <TextBlock Text="{local:Loc Text='Find people in all photos shown'}" />
                     </StackPanel>
                 </Button>
-                <Button Style="{ThemeResource AccentButtonStyle}" Click="NamePeople_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}">
+                <Button Style="{ThemeResource AccentButtonStyle}" Click="NamePeople_Click" local:Busy.Gate="True">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE8EC;" FontSize="14" />
                         <TextBlock Text="{local:Loc Text='Name the people found…'}" />

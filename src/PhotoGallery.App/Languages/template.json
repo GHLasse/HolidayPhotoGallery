@@ -643,6 +643,7 @@
     "Use your own app registration instead (advanced)…": "",
     "Use your own Google Cloud key instead (advanced)…": "",
     "Wait until it is ready, and make sure it is selected at the top of the page.": "",
+    "Waits until the app has finished: {0} You can stop that with the circle at the top right.": "",
     "When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes.": "",
     "White balance": "",
     "Who is in these photos?": "",

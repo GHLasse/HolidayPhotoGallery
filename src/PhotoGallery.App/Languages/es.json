@@ -643,6 +643,7 @@
     "Use your own app registration instead (advanced)…": "Usar tu propio registro de aplicación (avanzado)…",
     "Use your own Google Cloud key instead (advanced)…": "Usar tu propia clave de Google Cloud (avanzado)…",
     "Wait until it is ready, and make sure it is selected at the top of the page.": "Espera a que esté listo y asegúrate de que esté seleccionado en la parte superior de la página.",
+    "Waits until the app has finished: {0} You can stop that with the circle at the top right.": "Espera a que la aplicación termine: {0} Puede detenerlo con el círculo de arriba a la derecha.",
     "When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes.": "Si está activado, al cambiar o desplazar la fecha de captura todas las fechas se ajustan a ella. Si está desactivado, solo cambia la fecha de captura.",
     "White balance": "Balance de blancos",
     "Who is in these photos?": "¿Quién aparece en estas fotos?",

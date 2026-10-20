@@ -643,6 +643,7 @@
     "Use your own app registration instead (advanced)…": "改用你自己的应用注册(高级)…",
     "Use your own Google Cloud key instead (advanced)…": "改用你自己的 Google Cloud 密钥(高级)…",
     "Wait until it is ready, and make sure it is selected at the top of the page.": "请等待它准备就绪，并确保在页面顶部已选择它。",
+    "Waits until the app has finished: {0} You can stop that with the circle at the top right.": "等待应用完成：{0} 可以用右上角的圆圈停止。",
     "When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes.": "启用此选项后，更改或调整拍摄日期会将所有日期都设为该日期。关闭后，只更改拍摄日期。",
     "White balance": "白平衡",
     "Who is in these photos?": "这些照片中有谁？",

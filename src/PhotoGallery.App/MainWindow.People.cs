@@ -16,9 +16,17 @@ public sealed partial class MainWindow
     private const double FaceSize = 48;
     private int _peopleVersion;
 
-    private async void FindPeople_Click(object sender, RoutedEventArgs e) => await FindPeopleAsync(SelectedPhotos);
+    private async void FindPeople_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await FindPeopleAsync(SelectedPhotos);
+    }
 
-    private async void FindPeopleInAll_Click(object sender, RoutedEventArgs e) => await FindPeopleAsync(ViewModel.Photos.ToList());
+    private async void FindPeopleInAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await FindPeopleAsync(ViewModel.Photos.ToList());
+    }
 
     private async Task FindPeopleAsync(IReadOnlyList<PhotoItemViewModel> photos)
     {
@@ -321,6 +329,8 @@ public sealed partial class MainWindow
 
     private async void NamePeople_Click(object sender, RoutedEventArgs e)
     {
+        if (WaitsForBusyWork())
+            return;
         var groups = await ViewModel.GroupUnnamedFacesAsync();
         if (groups.Count == 0)
         {

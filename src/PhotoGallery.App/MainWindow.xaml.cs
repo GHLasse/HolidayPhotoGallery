@@ -101,6 +101,8 @@ public sealed partial class MainWindow : Window
             }
             else if (e.PropertyName is nameof(MainViewModel.IsAlbumView))
                 OnAlbumViewChanged();
+            else if (e.PropertyName is nameof(MainViewModel.IsBusy) or nameof(MainViewModel.StatusText))
+                ApplyBusyGates();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
                 ShowPhotoGroups();
@@ -193,7 +195,11 @@ public sealed partial class MainWindow : Window
             await ViewModel.RemoveFolderAsync(folder);
     }
 
-    private async void Rescan_Click(object sender, RoutedEventArgs e) => await ViewModel.RescanAsync();
+    private async void Rescan_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await ViewModel.RescanAsync();
+    }
 
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
     {
@@ -525,6 +531,8 @@ public sealed partial class MainWindow : Window
 
     private async void RecycleRejected_Click(object sender, RoutedEventArgs e)
     {
+        if (WaitsForBusyWork())
+            return;
         var rejected = ViewModel.ShownRejectedPhotos;
         if (rejected.Count == 0)
             return;
@@ -670,12 +678,18 @@ public sealed partial class MainWindow : Window
 
     private async void Map_Click(object sender, RoutedEventArgs e) => await ApplyMapLayoutAsync();
 
-    private async void AddPlaceNames_Click(object sender, RoutedEventArgs e) => await ViewModel.AddPlaceNamesAsync(SelectedPhotos);
+    private async void AddPlaceNames_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await ViewModel.AddPlaceNamesAsync(SelectedPhotos);
+    }
 
     // ---- Auto-tagging ----
 
     private async void AutoTag_Click(object sender, RoutedEventArgs e)
     {
+        if (WaitsForBusyWork())
+            return;
         var photos = SelectedPhotos;
         if (photos.Count == 0)
         {
@@ -700,7 +714,41 @@ public sealed partial class MainWindow : Window
         await ViewModel.AutoTagAsync(photos);
     }
 
-    private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e) => await ViewModel.RemoveAutoTagsAsync(SelectedPhotos);
+    private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await ViewModel.RemoveAutoTagsAsync(SelectedPhotos);
+    }
+
+    // ---- Buttons that wait while a long job runs (Busy.Gate) ----
+
+    private readonly Dictionary<FrameworkElement, object?> _gateTips = [];
+
+    // Faded, with a tooltip that says why; disabled buttons show no tooltip at all.
+    private void ApplyBusyGates()
+    {
+        var busy = ViewModel.IsBusy;
+        var why = Tr("Waits until the app has finished: {0} You can stop that with the circle at the top right.", ViewModel.StatusText);
+        Busy.Gated.RemoveAll(w => !w.TryGetTarget(out _));
+        foreach (var weak in Busy.Gated)
+        {
+            if (!weak.TryGetTarget(out var element))
+                continue;
+            if (!_gateTips.ContainsKey(element))
+                _gateTips[element] = ToolTipService.GetToolTip(element);
+            element.Opacity = busy ? 0.4 : 1;
+            ToolTipService.SetToolTip(element, busy ? why : _gateTips[element]);
+        }
+    }
+
+    /// <summary>True, with a banner saying why, when a long job is running and this has to wait for it.</summary>
+    private bool WaitsForBusyWork()
+    {
+        if (!ViewModel.IsBusy)
+            return false;
+        ViewModel.Warn(Tr("Waits until the app has finished: {0} You can stop that with the circle at the top right.", ViewModel.StatusText));
+        return true;
+    }
 
     private int _mapVersion;
 
