@@ -46,6 +46,18 @@ public sealed record IndexedPhoto
 
     public string FileName => System.IO.Path.GetFileName(Path);
 
+    /// <summary>The same photo at another place (moved or copied there), with that file's time.</summary>
+    public IndexedPhoto MovedTo(string path)
+    {
+        var file = new FileInfo(path);
+        return this with
+        {
+            Path = file.FullName,
+            Folder = file.DirectoryName!,
+            FileModifiedUtc = file.Exists ? file.LastWriteTimeUtc : FileModifiedUtc,
+        };
+    }
+
     public static IndexedPhoto From(FileInfo file, PhotoMetadata metadata) => new()
     {
         Path = file.FullName,

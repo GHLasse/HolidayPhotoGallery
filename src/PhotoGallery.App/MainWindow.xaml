@@ -117,11 +117,7 @@
 
         <!-- Filters: one row in the order Lasse set. On a narrow window the least important ones move into
              "More filters" (MainWindow.Filters.cs); the count, sort, map and photo size sit at the right end. -->
-        <Grid x:Name="TopBar" Grid.Row="1" Grid.ColumnSpan="5" Padding="12,0,12,8" ColumnSpacing="12" RowSpacing="4">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <Grid x:Name="TopBar" Grid.Row="1" Grid.ColumnSpan="5" Padding="12,0,12,8" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -312,8 +308,6 @@
                     </Button>
                 </StackPanel>
             </StackPanel>
-            <!-- The ticked tags and people as badges, each with × to drop it from the filter. -->
-            <controls:WrapPanel x:Name="FilterBadges" Grid.Row="1" Grid.ColumnSpan="2" />
         </Grid>
 
         <!-- Photos copied from a phone are often read-only; this offers to fix it while it matters. -->
@@ -404,13 +398,16 @@
                 <TextBlock Margin="8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Visibility="{x:Bind ViewModel.HasNoFolders, Mode=OneWay}"
                            Text="{local:Loc Text='Add a folder with your photos to get started. Your files stay where they are.'}" />
-                <TreeView x:Name="FolderTree" SelectionMode="Single"
+                <TreeView x:Name="FolderTree" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
                           ItemsSource="{x:Bind ViewModel.Folders}"
                           ItemInvoked="FolderTree_ItemInvoked"
                           Expanding="FolderTree_Expanding">
                     <TreeView.ItemTemplate>
                         <DataTemplate x:DataType="vm:FolderNodeViewModel">
-                            <TreeViewItem ItemsSource="{x:Bind Children}" IsExpanded="{x:Bind IsRoot}"
+                            <!-- Photos dragged here from the grid are moved into the folder (Ctrl copies). -->
+                            <TreeViewItem ItemsSource="{x:Bind Children}" IsExpanded="{x:Bind IsRoot}" Tag="{x:Bind}"
+                                          AllowDrop="True" DragEnter="FolderItem_DragOver" DragOver="FolderItem_DragOver"
+                                          DragLeave="FolderItem_DragLeave" Drop="FolderItem_Drop"
                                           AutomationProperties.Name="{x:Bind Name}"
                                           ToolTipService.ToolTip="{x:Bind FullPath}">
                                 <TreeViewItem.ContextFlyout>
@@ -540,15 +537,23 @@
                 <!-- The map, next to the grid like in Geosetter; opened with the Map button, resized with the splitter. -->
                 <ColumnDefinition x:Name="MapColumn" Width="0" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.ColumnSpan="3" Margin="4,0" Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}"
-                       Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+            <!-- What is shown, then the ticked tags, people and places as badges, each with × to drop it from the filter. -->
+            <Grid Grid.ColumnSpan="3" ColumnSpacing="12" Margin="4,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}" MaxWidth="480" VerticalAlignment="Center"
+                           Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                <controls:WrapPanel x:Name="FilterBadges" Grid.Column="1" VerticalAlignment="Center" />
+            </Grid>
             <!-- Filled from code (list before index). -->
             <ComboBox x:Name="AlbumSortCombo" HorizontalAlignment="Right" MinWidth="150"
                       Visibility="{x:Bind ViewModel.IsAlbumView, Mode=OneWay}"
                       SelectionChanged="AlbumSortCombo_SelectionChanged" />
-            <GridView x:Name="PhotoGrid" Grid.Row="1" Padding="0,0,0,8"
+            <GridView x:Name="PhotoGrid" Grid.Row="1" Padding="0,0,0,8" CanDragItems="True"
+                      DragItemsStarting="PhotoGrid_DragItemsStarting" DragItemsCompleted="PhotoGrid_DragItemsCompleted"
                       Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
-                      ItemsSource="{x:Bind ViewModel.Photos, Mode=OneWay}"
                       SelectionMode="Extended"
                       SelectionChanged="PhotoGrid_SelectionChanged"
                       ContainerContentChanging="PhotoGrid_ContainerContentChanging"
@@ -590,6 +595,20 @@
                         <ItemsWrapGrid Orientation="Horizontal" ItemWidth="184" ItemHeight="184" />
                     </ItemsPanelTemplate>
                 </GridView.ItemsPanel>
+                <!-- Month headers when sorted by date (MainWindow.Timeline.cs). -->
+                <GridView.GroupStyle>
+                    <GroupStyle HidesIfEmpty="True">
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate x:DataType="local:PhotoGroup">
+                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+                                    <TextBlock Text="{x:Bind Title}" Style="{ThemeResource BodyStrongTextBlockStyle}" FontSize="16" />
+                                    <TextBlock Text="{x:Bind CountText}" VerticalAlignment="Bottom" Margin="0,0,0,1"
+                                               Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </GridView.GroupStyle>
                 <GridView.ItemContainerStyle>
                     <Style TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -607,7 +626,7 @@
                                 <Grid.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.167" />
                                 </Grid.OpacityTransition>
-                                <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4,4,4,24" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
+                                <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
                             </Grid>
                             <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind FlagVisibility, Mode=OneWay}"
@@ -630,20 +649,19 @@
                                     <controls:OneDriveLogo Width="12" Height="12" />
                                 </Border>
                             </StackPanel>
-                            <Grid VerticalAlignment="Bottom" Height="22" Padding="6,0" ColumnSpacing="4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="{x:Bind FileName}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{x:Bind Stars, Mode=OneWay}" FontSize="12" VerticalAlignment="Center"
-                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                            </Grid>
+                            <!-- The rating stays visible; the file name only shows on hover. -->
+                            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6" Padding="5,1,5,2" CornerRadius="4"
+                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" Visibility="{x:Bind StarsVisibility, Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Stars, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            </Border>
                             <!-- Shown while the pointer is on the tile: tick to add to the selection, rate, flag. -->
                             <Grid x:Name="QuickActions" Opacity="0" IsHitTestVisible="False">
                                 <Grid.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.083" />
                                 </Grid.OpacityTransition>
+                                <Border VerticalAlignment="Top" Height="34" Padding="34,0,8,0" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+                                    <TextBlock Text="{x:Bind FileName}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                </Border>
                                 <Button HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4" Click="TileCheck_Click"
                                         Style="{StaticResource TileActionButton}" Width="26" Height="26" CornerRadius="13"
                                         Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
@@ -740,6 +758,18 @@
                     </DataTemplate>
                 </GridView.ItemTemplate>
             </GridView>
+            <!-- The years along the right edge of the grid: click or drag to jump (MainWindow.Timeline.cs). -->
+            <Grid x:Name="TimelineRail" Grid.Row="1" Grid.Column="0" Width="44" HorizontalAlignment="Right" Margin="0,4,16,16"
+                  Background="Transparent" Visibility="Collapsed"
+                  ToolTipService.ToolTip="{local:Loc Text='Click or drag to jump to a month'}">
+                <Canvas x:Name="TimelineMarks" />
+            </Grid>
+            <Border x:Name="TimelineBubble" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Padding="10,4" CornerRadius="6" IsHitTestVisible="False" Visibility="Collapsed"
+                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1">
+                <TextBlock x:Name="TimelineBubbleText" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+            </Border>
             <controls:PaneSplitter x:Name="MapSplitter" Grid.Row="1" Grid.Column="1" Visibility="Collapsed" />
             <controls:MapPanel x:Name="MapView" Grid.Row="1" Grid.Column="2" Visibility="Collapsed" />
 
@@ -754,7 +784,7 @@
                 </Border.RenderTransform>
                 <!-- MaxWidth: centred, the bar would otherwise be measured with no width limit, which the
                      command bar's overflow can't handle. -->
-                <CommandBar x:Name="SelectionCommands" Background="Transparent" IsOpen="False" DefaultLabelPosition="Right" MaxWidth="1100"
+                <CommandBar x:Name="SelectionCommands" Background="Transparent" IsOpen="False" VerticalContentAlignment="Center" DefaultLabelPosition="Right" MaxWidth="1100"
                             OverflowButtonVisibility="Auto">
                     <CommandBar.Content>
                         <TextBlock x:Name="SelectionCountText" VerticalAlignment="Center" Margin="0,0,8,0"

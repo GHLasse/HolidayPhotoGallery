@@ -23,16 +23,6 @@ public sealed partial class MainWindow
         };
     }
 
-    /// <summary>Sizes the grid's slots; the tiles stretch to fill them, and the slot keeps the 4-pixel gap between tiles.</summary>
-    private void ApplyTileSize()
-    {
-        if (PhotoGrid.ItemsPanelRoot is ItemsWrapGrid panel)
-        {
-            panel.ItemWidth = ViewModel.TileSize + 4;
-            panel.ItemHeight = ViewModel.TileSize + 4;
-        }
-    }
-
     private void PhotoGrid_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
         if (!e.KeyModifiers.HasFlag(VirtualKeyModifiers.Control))

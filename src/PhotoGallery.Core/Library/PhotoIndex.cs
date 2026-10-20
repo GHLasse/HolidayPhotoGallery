@@ -280,6 +280,25 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>Follows a photo that was moved, keeping what was found in it (faces) and its index entry.</summary>
+    public void Move(IndexedPhoto photo, string newPath)
+    {
+        lock (_lock)
+        {
+            using var tx = _connection.BeginTransaction();
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "DELETE FROM photos WHERE path = $new; UPDATE photos SET path = $new WHERE path = $old;";
+                cmd.Parameters.AddWithValue("$old", photo.Path);
+                cmd.Parameters.AddWithValue("$new", newPath);
+                cmd.ExecuteNonQuery();
+            }
+            UpsertOne(photo.MovedTo(newPath), tx);
+            tx.Commit();
+        }
+    }
+
     /// <summary>Forgets every photo under a folder, e.g. when it is removed from the library.</summary>
     public void RemoveFolder(string rootFolder)
     {

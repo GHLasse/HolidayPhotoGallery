@@ -225,7 +225,7 @@ public sealed partial class MainWindow
         SelectionCountText.Text = Tr("{0} selected", count);
         ShowSelectionBar(has);
         // Room under the last row, so the bar never covers a photo that is scrolled to the end.
-        PhotoGrid.Padding = new Thickness(0, 0, 0, has ? 80 : 8);
+        ApplyGridPadding(has ? 80 : 8);
     }
 
     private bool _selectionBarShown, _selectionBarAllowed = true;

@@ -256,8 +256,9 @@ public sealed partial class MainViewModel
         var loose = CloudUpload.LoadLooseUploads(state.LooseUploadsFile);
         var inFolders = UploadFile.Find(service, roots);
         // Lists from before the folder files existed are copied into the folders once.
-        if (loose.Keys.Any(path => !inFolders.ContainsKey(path)))
-            UploadFile.Save(service, loose);
+        var missing = loose.Where(u => !inFolders.ContainsKey(u.Key) && File.Exists(u.Key)).ToDictionary();
+        if (missing.Count > 0)
+            UploadFile.Save(service, missing);
         foreach (var (path, id) in inFolders)
             loose.TryAdd(path, id);
         return loose;

@@ -43,6 +43,8 @@ public sealed partial class MainWindow : Window
         SetUpFrame();
 
         SetUpZoom();
+        SetUpTimeline();
+        ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.RejectRequested += item => ViewModel.ToggleRejectAsync([item]);
@@ -96,6 +98,7 @@ public sealed partial class MainWindow : Window
                 OnAlbumViewChanged();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
+                ShowPhotoGroups();
                 ShowFilterBadges();
                 _ = ShowTopPeopleAsync();
                 if (IsMapOpen)
