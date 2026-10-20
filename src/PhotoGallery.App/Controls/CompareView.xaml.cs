@@ -25,7 +25,62 @@ public sealed partial class CompareView : UserControl
     public CompareView()
     {
         InitializeComponent();
+        AddKeyAccelerators();
     }
+
+    // The keys also come in as keyboard accelerators. Those reach a visible compare view wherever the focus
+    // is; PreviewKeyDown only does while the focus is inside it, and on Lasse's PC the focus kept ending up
+    // elsewhere, so the number keys and Tab did nothing. A key PreviewKeyDown already handled is skipped.
+    private VirtualKey? _keyHandledByPreview;
+
+    private void AddKeyAccelerators()
+    {
+        KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+        var keys = new List<(VirtualKey Key, VirtualKeyModifiers Modifiers)>
+        {
+            (VirtualKey.Escape, VirtualKeyModifiers.None), (VirtualKey.G, VirtualKeyModifiers.None),
+            (VirtualKey.P, VirtualKeyModifiers.None), (VirtualKey.X, VirtualKeyModifiers.None),
+            (VirtualKey.Tab, VirtualKeyModifiers.None), (VirtualKey.Tab, VirtualKeyModifiers.Shift),
+            (VirtualKey.Left, VirtualKeyModifiers.None), (VirtualKey.Right, VirtualKeyModifiers.None),
+        };
+        for (var i = 0; i <= 5; i++)
+        {
+            keys.Add((VirtualKey.Number0 + i, VirtualKeyModifiers.None));
+            keys.Add((VirtualKey.NumberPad0 + i, VirtualKeyModifiers.None));
+        }
+        foreach (var (key, modifiers) in keys)
+        {
+            var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+            accelerator.Invoked += async (_, args) =>
+            {
+                if (Visibility != Visibility.Visible || _panes.Count == 0)
+                    return;
+                if (_keyHandledByPreview == key)
+                {
+                    args.Handled = true;
+                    return;
+                }
+                args.Handled = HandlesKey(key);
+                if (args.Handled)
+                    await HandleKeyAsync(key, modifiers.HasFlag(VirtualKeyModifiers.Shift));
+            };
+            KeyboardAccelerators.Add(accelerator);
+        }
+    }
+
+    private bool HandlesKey(VirtualKey key) => key switch
+    {
+        VirtualKey.Escape or VirtualKey.G or VirtualKey.P or VirtualKey.X or VirtualKey.Tab => true,
+        VirtualKey.Left or VirtualKey.Right => _panes.Count == 1,
+        _ => Stars(key) >= 0,
+    };
+
+    private static int Stars(VirtualKey key) => (int)key switch
+    {
+        var k and >= (int)VirtualKey.Number0 and <= (int)VirtualKey.Number5 => k - (int)VirtualKey.Number0,
+        var k and >= (int)VirtualKey.NumberPad0 and <= (int)VirtualKey.NumberPad5 => k - (int)VirtualKey.NumberPad0,
+        _ => -1,
+    };
 
     /// <summary>Raised when the user rates a photo; the handler writes it to the file.</summary>
     public event Func<PhotoItemViewModel, int, Task>? RatingChanged;
@@ -245,53 +300,47 @@ public sealed partial class CompareView : UserControl
     // rating control can't swallow Tab, the arrows or the number keys.
     private async void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_panes.Count == 0)
+        if (_panes.Count == 0 || !HandlesKey(e.Key))
             return;
+        e.Handled = true;
+        _keyHandledByPreview = e.Key;
+        DispatcherQueue.TryEnqueue(() => _keyHandledByPreview = null);
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        await HandleKeyAsync(e.Key, shift);
+    }
 
-        switch (e.Key)
+    private async Task HandleKeyAsync(VirtualKey key, bool shift)
+    {
+        switch (key)
         {
             // G goes back to the grid, like Lightroom.
             case VirtualKey.Escape or VirtualKey.G:
-                e.Handled = true;
                 CloseRequested?.Invoke();
                 return;
             case VirtualKey.P:
-                e.Handled = true;
                 var flagged = _panes[_activeIndex];
                 if (FlagRequested is { } flag)
                     await flag(flagged.Item);
                 ShowMark(flagged.Flag, flagged.Item);
                 return;
             case VirtualKey.X:
-                e.Handled = true;
                 var rejected = _panes[_activeIndex];
                 if (RejectRequested is { } reject)
                     await reject(rejected.Item);
                 ShowMark(rejected.Flag, rejected.Item);
                 return;
             case VirtualKey.Tab:
-                e.Handled = true;
-                var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
-                    .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
                 SetActive((_activeIndex + (shift ? _panes.Count - 1 : 1)) % _panes.Count, FocusState.Keyboard);
                 return;
-            case VirtualKey.Left or VirtualKey.Right when _panes.Count == 1:
-                e.Handled = true;
-                NavigateRequested?.Invoke(e.Key == VirtualKey.Left ? -1 : 1);
+            case VirtualKey.Left or VirtualKey.Right:
+                NavigateRequested?.Invoke(key == VirtualKey.Left ? -1 : 1);
                 return;
         }
 
-        var key = (int)e.Key;
-        var stars = key switch
-        {
-            >= (int)VirtualKey.Number0 and <= (int)VirtualKey.Number5 => key - (int)VirtualKey.Number0,
-            >= (int)VirtualKey.NumberPad0 and <= (int)VirtualKey.NumberPad5 => key - (int)VirtualKey.NumberPad0,
-            _ => -1,
-        };
+        var stars = Stars(key);
         if (stars < 0)
             return;
-
-        e.Handled = true;
         var pane = _panes[_activeIndex];
         pane.SettingRating = true;
         pane.Rating.Value = stars == 0 ? -1 : stars;

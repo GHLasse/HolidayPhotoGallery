@@ -66,6 +66,7 @@ public sealed partial class MainWindow
         Root.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         AddAccelerator((VirtualKey)188, VirtualKeyModifiers.Control, () => RotateLeft_Click(this, new RoutedEventArgs()));
         AddAccelerator((VirtualKey)190, VirtualKeyModifiers.Control, () => RotateRight_Click(this, new RoutedEventArgs()));
+        AddTabAccelerators();
         SetUpFilterFolding();
         SetUpViewerMotion();
     }
@@ -158,16 +159,49 @@ public sealed partial class MainWindow
     }
 
     // Tab and Shift+Tab hide the panes, like Lightroom, wherever the focus is; only a text box keeps Tab.
+    // Tab also comes in as a keyboard accelerator, which fires wherever the focus is; on Lasse's PC
+    // PreviewKeyDown didn't see it and Tab kept moving the focus. A press already handled is skipped.
+    private bool _tabHandledByPreview;
+
+    private void AddTabAccelerators()
+    {
+        foreach (var modifiers in new[] { VirtualKeyModifiers.None, VirtualKeyModifiers.Shift })
+        {
+            var accelerator = new KeyboardAccelerator { Key = VirtualKey.Tab, Modifiers = modifiers };
+            accelerator.Invoked += (_, args) =>
+            {
+                if (_tabHandledByPreview)
+                {
+                    args.Handled = true;
+                    return;
+                }
+                if (!TabHidesPanes())
+                    return;
+                args.Handled = true;
+                TogglePanes(modifiers == VirtualKeyModifiers.Shift);
+            };
+            Root.KeyboardAccelerators.Add(accelerator);
+        }
+    }
+
+    private bool TabHidesPanes() =>
+        !IsViewerOpen && CompareLayer.Visibility != Visibility.Visible &&
+        !IsDown(VirtualKey.Control) && !IsDown(VirtualKey.Menu) &&
+        FocusManager.GetFocusedElement(Root.XamlRoot) is not (TextBox or PasswordBox or RichEditBox or AutoSuggestBox);
+
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != VirtualKey.Tab || IsViewerOpen || CompareLayer.Visibility == Visibility.Visible ||
-            IsDown(VirtualKey.Control) || IsDown(VirtualKey.Menu) ||
-            FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox)
-        {
+        if (e.Key != VirtualKey.Tab || !TabHidesPanes())
             return;
-        }
         e.Handled = true;
-        if (IsDown(VirtualKey.Shift))
+        _tabHandledByPreview = true;
+        DispatcherQueue.TryEnqueue(() => _tabHandledByPreview = false);
+        TogglePanes(IsDown(VirtualKey.Shift));
+    }
+
+    private void TogglePanes(bool shift)
+    {
+        if (shift)
             _chromeHidden = !_chromeHidden;
         else if (_chromeHidden)
             _chromeHidden = _panesHidden = false;
