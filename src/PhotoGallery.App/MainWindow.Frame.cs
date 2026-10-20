@@ -398,17 +398,20 @@ public sealed partial class MainWindow
         }
     }
 
+    // Flag and Reject keep only their icons when the pane is too narrow for their words (long in German);
+    // the row wraps as a last resort. Checked against the pane itself, after layout, whenever it resizes.
     private void SetUpRatingRow()
     {
-        if (RatingRow.Parent is not FrameworkElement area)
-            return;
-        area.SizeChanged += (_, e) =>
+        void Fit()
         {
             FlagButtonLabel.Visibility = RejectButtonLabel.Visibility = Visibility.Visible;
             RatingRow.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-            if (RatingRow.DesiredSize.Width > e.NewSize.Width)
+            var room = InfoPane.ActualWidth - InfoPane.Padding.Left - InfoPane.Padding.Right;
+            if (room > 0 && RatingRow.DesiredSize.Width > room)
                 FlagButtonLabel.Visibility = RejectButtonLabel.Visibility = Visibility.Collapsed;
-        };
+        }
+        InfoPane.SizeChanged += (_, _) => DispatcherQueue.TryEnqueue(Fit);
+        RatingRow.Loaded += (_, _) => DispatcherQueue.TryEnqueue(Fit);
     }
 
     private void SetUpClickToDeselect()

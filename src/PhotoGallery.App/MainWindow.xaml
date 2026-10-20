@@ -1000,7 +1000,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock Text="{local:Loc Text='Rating'}" />
                         <!-- Flag and Reject lose their words when the pane is too narrow for them (long in German). -->
-                        <StackPanel x:Name="RatingRow" Orientation="Horizontal" Spacing="12">
+                        <controls:WrapPanel x:Name="RatingRow" Spacing="10">
                             <RatingControl VerticalAlignment="Center" IsClearEnabled="True"
                                            Value="{x:Bind ViewModel.Editor.Rating, Mode=TwoWay}" />
                             <!-- Written straight away, like the P key; filled from the selection in code. -->
@@ -1016,7 +1016,7 @@
                                     <TextBlock x:Name="RejectButtonLabel" Text="{local:Loc Text='Reject'}" />
                                 </StackPanel>
                             </ToggleButton>
-                        </StackPanel>
+                        </controls:WrapPanel>
                     </StackPanel>
                     <TextBox Header="{local:Loc Text='Caption'}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60"
                              PlaceholderText="{x:Bind ViewModel.Editor.CaptionPlaceholder, Mode=OneWay}"
@@ -1074,7 +1074,8 @@
                     </StackPanel>
                     <TextBlock Text="{x:Bind ViewModel.Editor.ValidationError, Mode=OneWay}" TextWrapping="Wrap"
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <!-- Wraps when the pane is narrow or the words are long (German). -->
+                    <controls:WrapPanel Spacing="8">
                         <Button Style="{ThemeResource AccentButtonStyle}" Content="{local:Loc Text='Save'}" Click="Save_Click"
                                 IsEnabled="{x:Bind ViewModel.Editor.IsDirty, Mode=OneWay}"
                                 ToolTipService.ToolTip="{local:Loc Text='Write the changes into the files (Ctrl+S)'}">
@@ -1084,7 +1085,7 @@
                         </Button>
                         <Button Content="{local:Loc Text='Discard'}" Click="Discard_Click" IsEnabled="{x:Bind ViewModel.Editor.IsDirty, Mode=OneWay}" />
                         <Button Content="{local:Loc Text='Show in folder'}" Click="ShowInFolder_Click" IsEnabled="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}" />
-                    </StackPanel>
+                    </controls:WrapPanel>
                     <TextBlock Text="{local:Loc Text='Changes are also saved when you select other photos.'}"
                                TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
