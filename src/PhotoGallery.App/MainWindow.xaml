@@ -650,10 +650,10 @@
                             </StackPanel>
                             <!-- The rating under the photo, like Windows Live Photo Gallery: the photo sits on it and never
                                  hides it. The file name only shows on hover. -->
-                            <TextBlock x:Name="StarLine" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5" FontSize="13">
-                                <Run Text="{x:Bind Stars, Mode=OneWay}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /><Run
-                                     Text="{x:Bind EmptyStars, Mode=OneWay}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                            </TextBlock>
+                            <StackPanel x:Name="StarLine" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5">
+                                <TextBlock Text="{x:Bind Stars, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                <TextBlock Text="{x:Bind EmptyStars, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
                             <!-- Shown while the pointer is on the tile: tick to add to the selection, rate, flag. -->
                             <Grid x:Name="QuickActions" Opacity="0" IsHitTestVisible="False">
                                 <Grid.OpacityTransition>

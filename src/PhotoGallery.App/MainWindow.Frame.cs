@@ -278,8 +278,8 @@ public sealed partial class MainWindow
     }
 
     private (FrameworkElement Content, FontIcon Chevron) NavSection(object heading) =>
-        heading == FoldersHeading ? (FoldersContent, FoldersChevron)
-        : heading == DatesHeading ? (DateTree, DatesChevron)
+        ReferenceEquals(heading, FoldersHeading) ? (FoldersContent, FoldersChevron)
+        : ReferenceEquals(heading, DatesHeading) ? (DateTree, DatesChevron)
         : (PlaceTree, PlacesChevron);
 
     // ---- Selection: the info pane and the selection bar follow it ----
