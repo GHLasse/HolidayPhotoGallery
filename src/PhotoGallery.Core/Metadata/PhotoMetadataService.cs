@@ -41,6 +41,42 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             : throw new ExifToolException(Tr("Could not read metadata from {0}.", path));
     }
 
+    /// <summary>
+    /// The largest small copy of the photo that the camera stored in the file (preview or thumbnail), as an
+    /// encoded image, or null. It sits at the start of the file, so it usually survives when the end of the
+    /// file is lost. It is stored the way the photo's pixels are, before turning it upright.
+    /// </summary>
+    public async Task<byte[]?> ReadEmbeddedPreviewAsync(string path, CancellationToken cancellationToken = default)
+    {
+        // With -json, binary values come back as "base64:…".
+        var output = await exifTool.RunAsync(["-json", "-b", "-PreviewImage", "-ThumbnailImage", "-JpgFromRaw", path], cancellationToken)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(output.Output))
+            return null;
+        byte[]? best = null;
+        try
+        {
+            using var json = JsonDocument.Parse(output.Output);
+            foreach (var file in json.RootElement.EnumerateArray())
+            {
+                foreach (var tag in file.EnumerateObject())
+                {
+                    if (tag.Name == "SourceFile" || tag.Value.ValueKind != JsonValueKind.String ||
+                        tag.Value.GetString() is not { } text || !text.StartsWith("base64:", StringComparison.Ordinal))
+                        continue;
+                    var bytes = Convert.FromBase64String(text["base64:".Length..]);
+                    if (bytes.Length > (best?.Length ?? 0))
+                        best = bytes;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException)
+        {
+            return null;
+        }
+        return best;
+    }
+
     /// <summary>Reads several files in one ExifTool call. Files ExifTool cannot read are left out.</summary>
     public async Task<IReadOnlyDictionary<string, PhotoMetadata>> ReadAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
     {
