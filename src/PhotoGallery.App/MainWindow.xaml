@@ -635,7 +635,7 @@
                                 <Grid.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.167" />
                                 </Grid.OpacityTransition>
-                                <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
+                                <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="6,6,6,26" VerticalAlignment="Bottom" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
                             </Grid>
                             <!-- In Google Photos, in OneDrive -->
                             <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Orientation="Horizontal" Spacing="3">
@@ -648,11 +648,12 @@
                                     <controls:OneDriveLogo Width="12" Height="12" />
                                 </Border>
                             </StackPanel>
-                            <!-- The rating stays visible; the file name only shows on hover. -->
-                            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6" Padding="5,1,5,2" CornerRadius="4"
-                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" Visibility="{x:Bind StarsVisibility, Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Stars, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                            </Border>
+                            <!-- The rating under the photo, like Windows Live Photo Gallery: the photo sits on it and never
+                                 hides it. The file name only shows on hover. -->
+                            <TextBlock x:Name="StarLine" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5" FontSize="13">
+                                <Run Text="{x:Bind Stars, Mode=OneWay}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /><Run
+                                     Text="{x:Bind EmptyStars, Mode=OneWay}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            </TextBlock>
                             <!-- Shown while the pointer is on the tile: tick to add to the selection, rate, flag. -->
                             <Grid x:Name="QuickActions" Opacity="0" IsHitTestVisible="False">
                                 <Grid.OpacityTransition>
@@ -667,8 +668,9 @@
                                         ToolTipService.ToolTip="{local:Loc Text='Add to the selection, or take it out'}">
                                     <FontIcon Glyph="&#xE73E;" FontSize="12" />
                                 </Button>
-                                <Grid VerticalAlignment="Bottom" Height="24" Padding="2,0" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
-                                    <StackPanel Orientation="Horizontal" ToolTipService.ToolTip="{local:Loc Text='Rate (click the same star again to clear)'}">
+                                <!-- On hover the stars under the photo become clickable, in the same place. -->
+                                <Grid VerticalAlignment="Bottom" Height="24" Padding="2,0" Margin="0,0,0,2">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTipService.ToolTip="{local:Loc Text='Rate (click the same star again to clear)'}">
                                     <Button Tag="1" Click="TileStar_Click" Content="{x:Bind local:Ui.Star(Rating, 1), Mode=OneWay}" Style="{StaticResource TileActionButton}" />
                                     <Button Tag="2" Click="TileStar_Click" Content="{x:Bind local:Ui.Star(Rating, 2), Mode=OneWay}" Style="{StaticResource TileActionButton}" />
                                     <Button Tag="3" Click="TileStar_Click" Content="{x:Bind local:Ui.Star(Rating, 3), Mode=OneWay}" Style="{StaticResource TileActionButton}" />

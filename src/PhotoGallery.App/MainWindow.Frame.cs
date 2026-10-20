@@ -389,6 +389,9 @@ public sealed partial class MainWindow
             actions.Opacity = show ? 1 : 0;
             actions.IsHitTestVisible = show;
         }
+        // The clickable stars take the place of the plain ones under the photo.
+        if ((tile as FrameworkElement)?.FindName("StarLine") is UIElement stars)
+            stars.Opacity = show ? 0 : 1;
     }
 
     private static void Lift(FrameworkElement element, bool up)

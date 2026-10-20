@@ -30,6 +30,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 OnPropertyChanged(nameof(Stars));
                 OnPropertyChanged(nameof(Rating));
                 OnPropertyChanged(nameof(StarsVisibility));
+                OnPropertyChanged(nameof(EmptyStars));
                 OnPropertyChanged(nameof(FlagVisibility));
                 OnPropertyChanged(nameof(IsFlagged));
                 OnPropertyChanged(nameof(RejectVisibility));
@@ -62,6 +63,9 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     public int Rating => Photo.Rating;
 
     public string Stars => Photo.Rating > 0 ? new string('★', Photo.Rating) : "";
+
+    /// <summary>The stars not given, shown faintly after the given ones (five in all).</summary>
+    public string EmptyStars => new('☆', 5 - Math.Clamp(Photo.Rating, 0, 5));
 
     public Microsoft.UI.Xaml.Visibility StarsVisibility =>
         Photo.Rating > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
