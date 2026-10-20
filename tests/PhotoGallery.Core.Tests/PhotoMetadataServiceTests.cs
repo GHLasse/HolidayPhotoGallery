@@ -84,6 +84,28 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         Assert.Equal("1", (await _exifTool.RunAsync(["-s3", "-n", "-XMP-digiKam:PickLabel", path])).Output.Trim());
     }
 
+    [ExifToolTheory]
+    [InlineData(".jpg")]
+    [InlineData(".heic")]
+    public async Task Auto_tags_are_normal_tags_with_a_hidden_list_of_which_ones(string extension)
+    {
+        var path = _temp.CopySample(extension);
+        await Service.WriteAsync(path, new MetadataChanges { Tags = ["Italy", "beach", "sea"], AutoTags = ["beach", "sea"] });
+
+        var m = await Service.ReadAsync(path);
+        Assert.Equal(["beach", "Italy", "sea"], m.Tags.Order(StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(["beach", "sea"], m.AutoTags.Order(StringComparer.OrdinalIgnoreCase));
+        // Other programs only see the normal keywords.
+        Assert.Equal("Italy, beach, sea", (await _exifTool!.RunAsync(["-s3", "-XMP-dc:Subject", path])).Output.Trim());
+
+        // A tag removed elsewhere no longer counts as an auto tag.
+        await Service.WriteAsync(path, new MetadataChanges { Tags = ["Italy", "sea"] });
+        Assert.Equal(["sea"], (await Service.ReadAsync(path)).AutoTags);
+
+        await Service.WriteAsync(path, new MetadataChanges { AutoTags = [] });
+        Assert.Empty((await Service.ReadAsync(path)).AutoTags);
+    }
+
     [ExifToolFact]
     public async Task Rejecting_replaces_the_flag_and_keeps_the_stars()
     {

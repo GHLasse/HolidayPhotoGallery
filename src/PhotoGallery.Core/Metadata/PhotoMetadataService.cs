@@ -24,7 +24,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
         "-XMP-photoshop:Country", "-XMP-iptcCore:CountryCode", "-XMP-photoshop:State", "-XMP-photoshop:City", "-XMP-iptcCore:Location",
         "-IPTC:Country-PrimaryLocationName", "-IPTC:Province-State", "-IPTC:City", "-IPTC:Sub-location",
-        $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}",
+        $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}", $"-{AppNamespace.AutoTagsField}",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -207,6 +207,13 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 }
                 args.Add($"-IFD0:XPKeywords={string.Join(";", tags)}");
             }
+        }
+
+        if (changes.AutoTags is { } autoTags)
+        {
+            args.Add($"-{AppNamespace.AutoTagsField}=");
+            foreach (var tag in TagList.Normalize(autoTags))
+                args.Add($"-{AppNamespace.AutoTagsField}={tag}");
         }
 
         if (changes.Rating is { } rating)
@@ -414,6 +421,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         {
             Path = path,
             Tags = TagList.Normalize(tags),
+            // Only tags the photo still has; the user may have removed one in another app.
+            AutoTags = TagList.Normalize(GetList(item, AppNamespace.AutoTagsField)
+                .Where(t => tags.Contains(t, StringComparer.OrdinalIgnoreCase))),
             Rating = Math.Clamp(rating, 0, 5),
             Flagged = GetNumber(item, "XMP-digiKam:PickLabel") == 3,
             Rejected = GetNumber(item, "XMP-digiKam:PickLabel") == 1 || rating < 0,

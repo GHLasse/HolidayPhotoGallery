@@ -91,7 +91,7 @@ public sealed partial class MainWindow
         {
             UIElement icon = tag.IsGroup
                 ? new FontIcon { Glyph = "", FontSize = 14 }
-                : AutoTags.IsAuto(tag.Tag) ? new Controls.AiSparkle { Width = 14, Height = 14 } : new FontIcon { Glyph = "", FontSize = 14 };
+                : tag.IsAuto || AutoTags.IsAuto(tag.Tag) ? new Controls.AiSparkle { Width = 14, Height = 14 } : new FontIcon { Glyph = "", FontSize = 14 };
             var name = new TextBlock
             {
                 Text = tag.IsGroup ? Tr("{0} (group)", tag.Tag) : tag.Tag,
@@ -209,7 +209,7 @@ public sealed partial class MainWindow
         var intro = new TextBlock
         {
             Text = Tr("Rename, merge or remove tags in all your photos at once. Changes are written into the photos straight away. ") +
-                   Tr("A group such as “ai” holds the tags written as “ai/…”."),
+                   Tr("Tags with a sparkle were added by auto-tagging."),
             TextWrapping = TextWrapping.Wrap,
             Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
         };

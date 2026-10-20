@@ -79,7 +79,7 @@
                     </AppBarButton.Icon>
                 </AppBarButton>
                 <AppBarButton Label="{local:Loc Text='Auto-tag'}" Click="AutoTag_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
-                              ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list, as ai/…'}">
+                              ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list'}">
                     <AppBarButton.Icon>
                         <FontIcon Glyph="&#xE8EC;" />
                     </AppBarButton.Icon>
@@ -106,7 +106,7 @@
                 </AppBarButton>
                 <CommandBar.SecondaryCommands>
                     <AppBarButton Label="{local:Loc Text='Remove auto tags'}" Click="RemoveAutoTags_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
-                                  ToolTipService.ToolTip="{local:Loc Text='Remove the ai/… tags from the selected photos; your own tags stay'}">
+                                  ToolTipService.ToolTip="{local:Loc Text='Remove the tags auto-tagging added to the selected photos; your own tags stay'}">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE74D;" />
                         </AppBarButton.Icon>
@@ -277,6 +277,8 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Spacing="4">
                 <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="AllPhotos_Click">
@@ -303,7 +305,7 @@
                           Expanding="FolderTree_Expanding">
                     <TreeView.ItemTemplate>
                         <DataTemplate x:DataType="vm:FolderNodeViewModel">
-                            <TreeViewItem ItemsSource="{x:Bind Children}"
+                            <TreeViewItem ItemsSource="{x:Bind Children}" IsExpanded="{x:Bind IsRoot}"
                                           AutomationProperties.Name="{x:Bind Name}"
                                           ToolTipService.ToolTip="{x:Bind FullPath}">
                                 <TreeViewItem.ContextFlyout>
@@ -339,7 +341,38 @@
                     </TreeView.ItemTemplate>
                 </TreeView>
             </Grid>
-            <Button Grid.Row="2" Content="{local:Loc Text='Remove folder from library'}" HorizontalAlignment="Stretch"
+            <!-- The library by date taken and by place, across all folders; both start closed. -->
+            <Expander Grid.Row="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE787;" FontSize="16" />
+                        <TextBlock Text="{local:Loc Text='Dates'}" />
+                    </StackPanel>
+                </Expander.Header>
+                <TreeView x:Name="DateTree" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Dates}" ItemInvoked="DateTree_ItemInvoked">
+                    <TreeView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DateNodeViewModel">
+                            <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
+                        </DataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </Expander>
+            <Expander Grid.Row="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE707;" FontSize="16" />
+                        <TextBlock Text="{local:Loc Text='Places'}" />
+                    </StackPanel>
+                </Expander.Header>
+                <TreeView x:Name="PlaceTree" SelectionMode="Single" MaxHeight="320" ItemsSource="{x:Bind ViewModel.Places}" ItemInvoked="PlaceTree_ItemInvoked">
+                    <TreeView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PlaceNodeViewModel">
+                            <TreeViewItem ItemsSource="{x:Bind Children}" Content="{x:Bind Label}" AutomationProperties.Name="{x:Bind Label}" />
+                        </DataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </Expander>
+            <Button Grid.Row="4" Content="{local:Loc Text='Remove folder from library'}" HorizontalAlignment="Stretch"
                     IsEnabled="{x:Bind local:Ui.IsRootFolder(ViewModel.SelectedFolder), Mode=OneWay}"
                     Click="RemoveFolder_Click"
                     ToolTipService.ToolTip="{local:Loc Text='Stops showing this folder. No files are deleted.'}" />

@@ -8,7 +8,8 @@ using PhotoGallery.Core.Tagging;
 namespace PhotoGallery.Core.Library;
 
 /// <summary>A tag, or a tag group (<see cref="IsGroup"/>), and how many photos have it.</summary>
-public sealed record TagCount(string Tag, int Count, bool IsGroup);
+/// <summary>A tag or tag group and how many photos have it; <see cref="IsAuto"/> when auto-tagging added it on every one of them.</summary>
+public sealed record TagCount(string Tag, int Count, bool IsGroup, bool IsAuto = false);
 
 /// <summary>
 /// A SQLite index of the photos in the library, used only to search and sort quickly.
@@ -16,7 +17,7 @@ public sealed record TagCount(string Tag, int Count, bool IsGroup);
 /// </summary>
 public sealed partial class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 6;
+    private const int SchemaVersion = 7;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -41,10 +42,12 @@ public sealed partial class PhotoIndex : IDisposable
     private void EnsureSchema()
     {
         var version = Convert.ToInt32(Scalar("PRAGMA user_version;"), CultureInfo.InvariantCulture);
-        if (version == 5)
+        if (version is 5 or 6)
         {
-            // Flags came with version 6; adding the column keeps the faces already found.
-            Execute("ALTER TABLE photos ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;");
+            // Flags came with version 6 and the auto tag mark with 7; adding the columns keeps the faces already found.
+            if (version == 5)
+                Execute("ALTER TABLE photos ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;");
+            Execute("ALTER TABLE photo_tags ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;");
         }
         else if (version != SchemaVersion)
         {
@@ -90,6 +93,7 @@ public sealed partial class PhotoIndex : IDisposable
             CREATE TABLE IF NOT EXISTS photo_tags (
                 photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
                 tag TEXT NOT NULL COLLATE NOCASE,
+                auto INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (photo_id, tag)
             );
             CREATE INDEX IF NOT EXISTS ix_photo_tags_tag ON photo_tags(tag);
@@ -198,13 +202,15 @@ public sealed partial class PhotoIndex : IDisposable
         delete.Parameters.AddWithValue("$id", id);
         delete.ExecuteNonQuery();
 
+        var autoTags = new HashSet<string>(photo.AutoTags, StringComparer.OrdinalIgnoreCase);
         foreach (var tag in TagList.Normalize(photo.Tags))
         {
             using var insert = _connection.CreateCommand();
             insert.Transaction = tx;
-            insert.CommandText = "INSERT OR IGNORE INTO photo_tags (photo_id, tag) VALUES ($id, $tag);";
+            insert.CommandText = "INSERT OR IGNORE INTO photo_tags (photo_id, tag, auto) VALUES ($id, $tag, $auto);";
             insert.Parameters.AddWithValue("$id", id);
             insert.Parameters.AddWithValue("$tag", tag);
+            insert.Parameters.AddWithValue("$auto", autoTags.Contains(tag) ? 1 : 0);
             insert.ExecuteNonQuery();
         }
 
@@ -314,7 +320,7 @@ public sealed partial class PhotoIndex : IDisposable
                     cmd.Parameters.AddWithValue($"$autoTags{i}", EscapeLike(prefix) + "%");
                     return $"t.tag NOT LIKE $autoTags{i} ESCAPE '\\'";
                 });
-                where.Add($"NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND {string.Join(" AND ", notAuto)})");
+                where.Add($"NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 0 AND {string.Join(" AND ", notAuto)})");
             }
 
             if (query.WithoutPeople)
@@ -322,6 +328,24 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.WithoutLocation)
                 where.Add("(p.latitude IS NULL OR p.longitude IS NULL)");
+
+            if (query.WithoutDate)
+                where.Add("p.date_taken IS NULL");
+
+            if (query.WithoutPlace)
+                where.Add("(p.country IS NULL OR p.country = '')");
+
+            if (!string.IsNullOrEmpty(query.Country))
+            {
+                where.Add("p.country = $country COLLATE NOCASE");
+                cmd.Parameters.AddWithValue("$country", query.Country);
+            }
+
+            if (!string.IsNullOrEmpty(query.City))
+            {
+                where.Add("p.city = $city COLLATE NOCASE");
+                cmd.Parameters.AddWithValue("$city", query.City);
+            }
 
             if (!string.IsNullOrEmpty(query.Camera))
             {
@@ -381,7 +405,8 @@ public sealed partial class PhotoIndex : IDisposable
                        p.latitude, p.longitude, p.country, p.country_code, p.state, p.city, p.sublocation,
                        (SELECT group_concat(name || char(30) || x || char(30) || y || char(30) || w || char(30) || h, char(31))
                         FROM photo_people pp WHERE pp.photo_id = p.id) AS people,
-                       p.flagged
+                       p.flagged,
+                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1) AS auto_tags
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -412,6 +437,21 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>The tags that auto-tagging added on every photo that has them (the hidden list in the file).</summary>
+    public IReadOnlySet<string> GetAutoTagNames()
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT tag FROM photo_tags GROUP BY tag COLLATE NOCASE HAVING MIN(auto) = 1;";
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(reader.GetString(0));
+            return result;
+        }
+    }
+
     /// <summary>
     /// Every tag with how many photos have it, and every tag group (the "ai" in "ai/beach") with how many
     /// photos have a tag in it; groups are listed before their tags.
@@ -420,7 +460,8 @@ public sealed partial class PhotoIndex : IDisposable
     {
         var tags = GetTagCounts();
         var groups = tags.SelectMany(t => GroupsOf(t.Tag)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var result = tags.Select(t => new TagCount(t.Tag, t.Count, false))
+        var auto = GetAutoTagNames();
+        var result = tags.Select(t => new TagCount(t.Tag, t.Count, false, auto.Contains(t.Tag)))
             .Concat(groups.Select(g => new TagCount(g, PathsWithTag(g, groupOnly: true).Count, true)));
         return result.OrderBy(t => t.Tag, StringComparer.CurrentCultureIgnoreCase).ThenByDescending(t => t.IsGroup).ToList();
     }
@@ -446,6 +487,49 @@ public sealed partial class PhotoIndex : IDisposable
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
                 result.Add(reader.GetString(0));
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// How many photos were taken in each month of the whole library, newest first, for the date tree.
+    /// Photos without a date taken come last, with no year or month.
+    /// </summary>
+    public IReadOnlyList<DateCount> GetDateCounts()
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT CAST(substr(date_taken, 1, 4) AS INTEGER) AS y, CAST(substr(date_taken, 6, 2) AS INTEGER) AS m, COUNT(*)
+                FROM photos GROUP BY y, m ORDER BY y IS NULL, y DESC, m DESC;
+                """;
+            var result = new List<DateCount>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(new DateCount(reader.IsDBNull(0) ? null : reader.GetInt32(0), reader.IsDBNull(1) ? null : reader.GetInt32(1), reader.GetInt32(2)));
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// How many photos were taken in each city of the whole library, by country, for the place tree.
+    /// Photos without place names come last, with no country.
+    /// </summary>
+    public IReadOnlyList<PlaceCount> GetPlaceCounts()
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT NULLIF(country, '') AS c, NULLIF(city, '') AS t, COUNT(*)
+                FROM photos GROUP BY c COLLATE NOCASE, t COLLATE NOCASE
+                ORDER BY c IS NULL, c COLLATE NOCASE, t IS NULL, t COLLATE NOCASE;
+                """;
+            var result = new List<PlaceCount>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(new PlaceCount(reader.IsDBNull(0) ? null : reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2)));
             return result;
         }
     }
@@ -521,6 +605,7 @@ public sealed partial class PhotoIndex : IDisposable
             People = r.IsDBNull(21) ? [] : ReadPeople(r.GetString(21)),
             Flagged = r.GetInt32(22) == 1,
             Rejected = r.GetInt32(22) == -1,
+            AutoTags = r.IsDBNull(23) ? [] : r.GetString(23).Split('\u001f'),
         };
     }
 
@@ -587,4 +672,10 @@ public sealed partial class PhotoIndex : IDisposable
 }
 
 /// <summary>A folder's photos at a glance: how many, the dates they span, and the first one.</summary>
+/// <summary>How many photos were taken in a month; no year or month for photos without a date taken.</summary>
+public sealed record DateCount(int? Year, int? Month, int Count);
+
+/// <summary>How many photos were taken in a city; no country for photos without place names, no city when only the country is known.</summary>
+public sealed record PlaceCount(string? Country, string? City, int Count);
+
 public sealed record FolderSummary(int Count, DateTime? From, DateTime? To, string? FirstPhoto);

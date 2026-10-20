@@ -11,6 +11,9 @@ public sealed record MetadataChanges
     /// <summary>The complete new tag list, replacing the old one.</summary>
     public IReadOnlyList<string>? Tags { get; init; }
 
+    /// <summary>The complete new list of tags that came from auto-tagging (kept in the app's own XMP field).</summary>
+    public IReadOnlyList<string>? AutoTags { get; init; }
+
     /// <summary>0 removes the rating, 1-5 sets stars.</summary>
     public int? Rating { get; init; }
 
@@ -52,6 +55,6 @@ public sealed record MetadataChanges
     /// <summary>The complete new list of people in the photo (faces on the stored pixels); other regions stay.</summary>
     public IReadOnlyList<PersonTag>? People { get; init; }
 
-    public bool IsEmpty => Tags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null &&
+    public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null &&
                            Orientation is null && Location is null && !RemoveLocation && Place is null && People is null;
 }

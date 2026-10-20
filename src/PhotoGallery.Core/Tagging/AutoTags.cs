@@ -3,31 +3,39 @@ using PhotoGallery.Core.Metadata;
 namespace PhotoGallery.Core.Tagging;
 
 /// <summary>
-/// Tags the app adds by itself are kept under "ai/" (e.g. "ai/Strand"), which Windows Live Photo
-/// Gallery shows as a tag group, so they can be told apart from the user's own tags and redone or
-/// removed together. The user's own tags are never touched. Tags from before the rename are under
-/// "Auto/"; they still count as auto tags and become "ai/" tags when a photo is tagged again.
+/// Tags the app adds by itself are written as normal tags (e.g. "beach"), so other programs show them
+/// like any other tag, plus a hidden list in the app's own XMP field saying which ones came from
+/// auto-tagging (see <see cref="ExifTool.AppNamespace"/>). That keeps them apart from the user's own
+/// tags, so they can be redone or removed together. Tags from earlier versions are under "ai/" or
+/// "Auto/"; they still count as auto tags and become normal tags when a photo is tagged again.
 /// </summary>
 public static class AutoTags
 {
-    public const string Parent = "ai";
-    private const string Prefix = Parent + "/";
-    private const string OldPrefix = "Auto/";
+    /// <summary>The tag groups auto tags were in before the hidden list.</summary>
+    public static IReadOnlyList<string> Prefixes { get; } = ["ai/", "Auto/"];
 
-    /// <summary>The tag groups auto tags are in: today's and the one used before.</summary>
-    public static IReadOnlyList<string> Prefixes { get; } = [Prefix, OldPrefix];
+    /// <summary>An auto tag from an earlier version, kept in a tag group.</summary>
+    public static bool IsAuto(string tag) => Prefixes.Any(p => tag.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
-    public static string ToTag(string label) => Prefix + label;
+    /// <summary>Whether auto-tagging added the tag: it is on the file's hidden list or in an old auto tag group.</summary>
+    public static bool IsAuto(string tag, IEnumerable<string> autoTags) =>
+        IsAuto(tag) || autoTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
 
-    public static bool IsAuto(string tag) =>
-        tag.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase) || tag.StartsWith(OldPrefix, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>The tag without its "ai/" group, for showing it.</summary>
+    /// <summary>The tag without an old auto tag group, for showing it.</summary>
     public static string Label(string tag) => IsAuto(tag) ? tag[(tag.IndexOf('/') + 1)..] : tag;
 
-    /// <summary>The file's tags with its earlier auto tags replaced by tags for <paramref name="labels"/>.</summary>
-    public static IReadOnlyList<string> Replace(IEnumerable<string> fileTags, IEnumerable<string> labels) =>
-        TagList.Normalize(fileTags.Where(t => !IsAuto(t)).Concat(labels.Select(ToTag)));
+    /// <summary>
+    /// The file's tags and hidden list with its earlier auto tags replaced by <paramref name="labels"/>.
+    /// A label the user already gave the photo stays their own tag.
+    /// </summary>
+    public static (IReadOnlyList<string> Tags, IReadOnlyList<string> AutoTags) Replace(
+        IEnumerable<string> fileTags, IEnumerable<string> fileAutoTags, IEnumerable<string> labels)
+    {
+        var earlier = fileAutoTags.ToList();
+        var own = TagList.Normalize(fileTags.Where(t => !IsAuto(t, earlier)));
+        var auto = TagList.Normalize(labels.Where(l => !own.Contains(l, StringComparer.OrdinalIgnoreCase)));
+        return (TagList.Normalize(own.Concat(auto)), auto);
+    }
 
     /// <summary>The labels whose score reaches the threshold, best first.</summary>
     public static IReadOnlyList<string> Pick(IReadOnlyList<string> labels, IReadOnlyList<double> scores, double threshold) =>

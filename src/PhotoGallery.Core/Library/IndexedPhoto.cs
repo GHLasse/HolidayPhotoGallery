@@ -26,6 +26,9 @@ public sealed record IndexedPhoto
 
     public IReadOnlyList<string> Tags { get; init; } = [];
 
+    /// <summary>The tags auto-tagging added (a part of <see cref="Tags"/>).</summary>
+    public IReadOnlyList<string> AutoTags { get; init; } = [];
+
     public int Orientation { get; init; } = 1;
 
     public int? Width { get; init; }
@@ -55,6 +58,7 @@ public sealed record IndexedPhoto
         Rejected = metadata.Rejected,
         Caption = metadata.Caption,
         Tags = metadata.Tags,
+        AutoTags = metadata.AutoTags,
         Orientation = metadata.Orientation,
         Width = metadata.Width,
         Height = metadata.Height,

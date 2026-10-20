@@ -11,6 +11,9 @@ public sealed record PhotoMetadata
 
     public IReadOnlyList<string> Tags { get; init; } = [];
 
+    /// <summary>The tags auto-tagging added (a hidden list in the file); the rest of <see cref="Tags"/> are the user's own.</summary>
+    public IReadOnlyList<string> AutoTags { get; init; } = [];
+
     /// <summary>0 = unrated, 1-5 stars. Rejected (-1) is shown as unrated.</summary>
     public int Rating { get; init; }
 

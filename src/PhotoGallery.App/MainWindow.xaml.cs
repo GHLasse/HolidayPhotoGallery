@@ -187,8 +187,38 @@ public sealed partial class MainWindow : Window
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
     {
         FolderTree.SelectedItem = null;
+        ClearBrowseTrees();
         ViewModel.IsAlbumView = false;
         ViewModel.SelectedFolder = null;
+    }
+
+    // A year, month, country or city is a place to browse, like a folder: picking one replaces the others.
+    private void DateTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is not DateNodeViewModel node)
+            return;
+        FolderTree.SelectedItem = null;
+        PlaceTree.SelectedItem = null;
+        ViewModel.SelectedPlace = null;
+        ViewModel.ShowDate(node);
+    }
+
+    private void PlaceTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is not PlaceNodeViewModel node)
+            return;
+        FolderTree.SelectedItem = null;
+        DateTree.SelectedItem = null;
+        ViewModel.ClearDateFromTree();
+        ViewModel.ShowPlace(node);
+    }
+
+    private void ClearBrowseTrees()
+    {
+        DateTree.SelectedItem = null;
+        PlaceTree.SelectedItem = null;
+        ViewModel.ClearDateFromTree();
+        ViewModel.SelectedPlace = null;
     }
 
     private void SortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -206,6 +236,8 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutTags = false;
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
+        ViewModel.WithoutDate = false;
+        ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;
         ViewModel.OnOneDriveOnly = false;
@@ -266,19 +298,19 @@ public sealed partial class MainWindow : Window
             {
                 e.Handled = true;
                 await ViewModel.SetRatingAsync(item, stars);
-                UpdateViewerTitle();
+                AfterMarkInViewer();
             }
             else if (e.Key == VirtualKey.P)
             {
                 e.Handled = true;
                 await ViewModel.ToggleFlagAsync([item]);
-                UpdateViewerTitle();
+                AfterMarkInViewer();
             }
             else if (e.Key == VirtualKey.X)
             {
                 e.Handled = true;
                 await ViewModel.ToggleRejectAsync([item]);
-                UpdateViewerTitle();
+                AfterMarkInViewer();
             }
             else if (e.Key == VirtualKey.G)
             {
@@ -476,6 +508,7 @@ public sealed partial class MainWindow : Window
     {
         if (args.InvokedItem is FolderNodeViewModel folder)
         {
+            ClearBrowseTrees();
             ViewModel.IsAlbumView = false;
             ViewModel.SelectedFolder = folder;
         }
@@ -791,6 +824,17 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // With auto-advance on (Settings › Gallery), a rating, flag or reject moves on to the next photo.
+    private void AfterMarkInViewer()
+    {
+        UpdateViewerTitle();
+        if (ViewModel.AutoAdvance && _viewerIndex < _viewerItems.Count - 1)
+        {
+            _viewerIndex++;
+            _ = ShowViewerImageAsync();
+        }
+    }
+
     private void ViewerNext_Click(object sender, RoutedEventArgs e)
     {
         if (_viewerIndex < _viewerItems.Count - 1)
@@ -925,7 +969,7 @@ public sealed partial class MainWindow : Window
             {
                 new TextBlock
                 {
-                    Text = Tr("Auto-tagging only uses tags from this list and writes them as ai/…, so you can tell them apart from your own tags and remove them together. Your own tags are never changed."),
+                    Text = Tr("Auto-tagging only uses tags from this list. They are written as normal tags that other apps show as usual, with a hidden note in the file, so this app can tell them apart from your own tags and remove them together. Your own tags are never changed."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 language,
@@ -940,6 +984,11 @@ public sealed partial class MainWindow : Window
         foreach (var (_, label) in PhotoSort.All)
             defaultSort.Items.Add(label);
         defaultSort.SelectedIndex = ViewModel.DefaultSortIndex;
+        var autoAdvance = new ToggleSwitch
+        {
+            Header = Tr("Move to the next photo after rating it in the viewer (also after P and X)"),
+            IsOn = ViewModel.AutoAdvance,
+        };
         var gallery = new StackPanel
         {
             Spacing = 12,
@@ -952,6 +1001,7 @@ public sealed partial class MainWindow : Window
                     Text = Tr("Each folder opens in this order. The order box in the filter bar changes it for the folder you are looking at."),
                     TextWrapping = TextWrapping.Wrap,
                 },
+                autoAdvance,
             },
         };
 
@@ -1118,6 +1168,7 @@ public sealed partial class MainWindow : Window
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
+        ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
         ViewModel.SaveFavouriteApps(chosenApps());
         if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);

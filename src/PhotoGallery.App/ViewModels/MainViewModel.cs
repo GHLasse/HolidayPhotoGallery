@@ -313,7 +313,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
         (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
-        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) +
+        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
         (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
 
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
@@ -430,21 +430,29 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             WithoutTags = WithoutTags,
             WithoutPeople = WithoutPeople,
             WithoutLocation = WithoutLocation,
+            WithoutDate = WithoutDate,
+            Country = SelectedPlace?.Country,
+            City = SelectedPlace?.City,
+            WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
             Camera = _selectedCamera,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,
         };
 
-        var (photos, tags, cameras, people) = await Task.Run(() =>
-            (_index.Search(query), _index.GetTagCounts(), _index.GetCameraCounts(query.Folder), _index.GetPeopleCounts()));
+        var (photos, tags, autoTagNames, cameras, people, dates, places) = await Task.Run(() =>
+            (_index.Search(query), _index.GetTagCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(query.Folder),
+             _index.GetPeopleCounts(), _index.GetDateCounts(), _index.GetPlaceCounts()));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
 
         photos = FilterByCloud(photos);
         Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
+        AutoTagNames = autoTagNames;
         UpdateTags(tags);
         UpdatePeople(people);
         UpdateCameras(cameras);
+        UpdateDates(dates);
+        UpdatePlaces(places);
         _countText = photos.Count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", photos.Count);
         if (!IsBusy)
             StatusText = _countText;
@@ -964,7 +972,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Recognises what is in each photo with the local model and writes the tags from the user's list
-    /// that fit well enough, as "ai/…". Earlier auto tags are replaced; the user's own tags stay.
+    /// that fit well enough, as normal tags noted in the file as auto tags. Earlier auto tags are replaced;
+    /// the user's own tags stay.
     /// </summary>
     public async Task AutoTagAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
@@ -1018,12 +1027,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                         return ImageTagger.Scores(vector, vectors);
                     });
                     var picked = AutoTags.Pick(labels, scores, threshold);
-                    var tags = AutoTags.Replace(item.Photo.Tags, picked);
+                    var (tags, autoTags) = AutoTags.Replace(item.Photo.Tags, item.Photo.AutoTags, picked);
                     tagged++;
-                    added += picked.Count;
-                    if (tags.SequenceEqual(item.Photo.Tags))
+                    added += autoTags.Count;
+                    if (tags.SequenceEqual(item.Photo.Tags) && autoTags.SequenceEqual(item.Photo.AutoTags, StringComparer.OrdinalIgnoreCase))
                         continue;
-                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Tags = tags });
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Tags = tags, AutoTags = autoTags });
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
                 }
@@ -1051,12 +1060,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await RefreshTagsAsync();
     }
 
-    /// <summary>Removes the "ai/…" tags from the photos; the user's own tags stay.</summary>
+    /// <summary>Removes the tags auto-tagging added from the photos; the user's own tags stay.</summary>
     public async Task RemoveAutoTagsAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
         if (_metadata is null || _indexer is null)
             return;
-        var tagged = items.Where(i => i.Photo.Tags.Any(AutoTags.IsAuto)).ToList();
+        var tagged = items.Where(i => i.Photo.Tags.Any(t => AutoTags.IsAuto(t, i.Photo.AutoTags))).ToList();
         if (tagged.Count == 0)
         {
             Warn(items.Count == 0 ? Tr("Select the photos to remove auto tags from.") : Tr("None of the selected photos has auto tags."));
@@ -1073,7 +1082,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = Tr("Removing auto tags from {0} of {1}…", i + 1, tagged.Count);
                 try
                 {
-                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Tags = AutoTags.Replace(item.Photo.Tags, []) });
+                    var (tags, autoTags) = AutoTags.Replace(item.Photo.Tags, item.Photo.AutoTags, []);
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Tags = tags, AutoTags = autoTags });
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
                 }
@@ -1193,7 +1203,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await item.ReloadThumbnailAsync();
     }
 
-    private async Task RefreshTagsAsync() => UpdateTags(await Task.Run(_index.GetTagCounts));
+    private async Task RefreshTagsAsync()
+    {
+        var (tags, autoTagNames) = await Task.Run(() => (_index.GetTagCounts(), _index.GetAutoTagNames()));
+        AutoTagNames = autoTagNames;
+        UpdateTags(tags);
+    }
+
+    /// <summary>The tags auto-tagging added on every photo that has them.</summary>
+    public IReadOnlySet<string> AutoTagNames { get; private set; } = new HashSet<string>();
+
+    /// <summary>Whether the library's tag came from auto-tagging (shown with a mark).</summary>
+    public bool IsAutoTag(string tag) => AutoTags.IsAuto(tag) || AutoTagNames.Contains(tag);
 
     /// <summary>Synchronous on purpose: the app exits as soon as the window's Closed handler returns.</summary>
     public void Dispose()

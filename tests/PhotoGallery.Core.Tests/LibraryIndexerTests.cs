@@ -45,13 +45,16 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
             People = [new PersonTag("Anna", new FaceBox(0, 0, 1, 1))],
         });
         await service.WriteAsync(autoOnly, new MetadataChanges { Tags = ["Auto/Beach", "ai/Sea"] });
+        var newAuto = _photos.CopySample(".jpg", "new-auto");
+        await service.WriteAsync(newAuto, new MetadataChanges { Tags = ["Beach", "Sea"], AutoTags = ["Beach", "Sea"] });
 
         await indexer.SyncFolderAsync(_photos.Path);
 
         string[] Find(PhotoQuery query) => _index!.Search(query).Select(p => p.Path).Order().ToArray();
-        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutTags = true }));
-        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutPeople = true }));
-        Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutLocation = true }));
+        Assert.Equal(new[] { autoOnly, bare, newAuto }.Order(), Find(new PhotoQuery { WithoutTags = true }));
+        Assert.Equal(new[] { autoOnly, bare, newAuto }.Order(), Find(new PhotoQuery { WithoutPeople = true }));
+        Assert.Equal(new[] { autoOnly, bare, newAuto }.Order(), Find(new PhotoQuery { WithoutLocation = true }));
+        Assert.Equal(["Beach", "Sea"], _index!.Search(new PhotoQuery()).Single(p => p.Path == newAuto).AutoTags.Order());
         Assert.Empty(Find(new PhotoQuery { WithoutTags = true, Tags = ["Italy"] }));
 
         // The tag overview lists the "ai" group too, counting each photo once.
@@ -59,6 +62,7 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Contains(new TagCount("ai", 2, true), overview);
         Assert.Contains(new TagCount("ai/Beach", 1, false), overview);
         Assert.Contains(new TagCount("Auto", 1, true), overview);
+        Assert.Contains(new TagCount("Sea", 1, false, IsAuto: true), overview);
         Assert.Equal(new[] { autoOnly, tagged }.Order(), _index.PathsWithTag("ai"));
         Assert.Equal([tagged], _index.PathsWithTag("Italy"));
     }
@@ -74,7 +78,7 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         var home = _photos.CopySample(".png", "garden", "Home");
         DateTaken.TryParse("2024-07-01 10:00:00", out var july);
         DateTaken.TryParse("2023-12-24 18:00:00", out var christmas);
-        await service.WriteAsync(rome, new MetadataChanges { Tags = ["Italy", "City"], Rating = 5, DateTaken = july });
+        await service.WriteAsync(rome, new MetadataChanges { Tags = ["Italy", "City"], Rating = 5, DateTaken = july, Place = new PlaceName { Country = "Italy", City = "Rome" } });
         await service.WriteAsync(beach, new MetadataChanges { Tags = ["Italy", "Beach"], Rating = 3, Caption = "Sunset", Flagged = true });
         await service.WriteAsync(home, new MetadataChanges { Tags = ["Garden"], DateTaken = christmas, Rejected = true });
 
@@ -85,6 +89,17 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Equal([rome], _index.Search(new PhotoQuery { MinRating = 4 }).Select(p => p.Path));
         Assert.Equal([beach], _index.Search(new PhotoQuery { FlaggedOnly = true }).Select(p => p.Path));
         Assert.Equal([home], _index.Search(new PhotoQuery { RejectedOnly = true }).Select(p => p.Path));
+        var dates = _index.GetDateCounts();
+        Assert.Contains(new DateCount(2024, 7, 1), dates);
+        Assert.Contains(new DateCount(2023, 12, 1), dates);
+        Assert.Equal(3, dates.Sum(d => d.Count));
+        var undated = _index.Search(new PhotoQuery()).Where(p => p.DateTaken is null).Select(p => p.Path).ToList();
+        Assert.Equal(undated, _index.Search(new PhotoQuery { WithoutDate = true }).Select(p => p.Path));
+        Assert.Equal(undated.Count, dates.SingleOrDefault(d => d.Year is null)?.Count ?? 0);
+        Assert.Equal([new PlaceCount("Italy", "Rome", 1), new PlaceCount(null, null, 2)], _index.GetPlaceCounts());
+        Assert.Equal([rome], _index.Search(new PhotoQuery { Country = "italy" }).Select(p => p.Path));
+        Assert.Equal([rome], _index.Search(new PhotoQuery { Country = "Italy", City = "Rome" }).Select(p => p.Path));
+        Assert.Equal(2, _index.Search(new PhotoQuery { WithoutPlace = true }).Count);
         Assert.True(_index.Search(new PhotoQuery { RejectedOnly = true })[0].Rejected);
         Assert.False(_index.Search(new PhotoQuery { FlaggedOnly = true })[0].Rejected);
         Assert.Equal([home], _index.Search(new PhotoQuery { TakenTo = new DateTime(2023, 12, 24) }).Select(p => p.Path));

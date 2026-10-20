@@ -20,8 +20,9 @@ public sealed class FolderNodeViewModel : ObservableObject
         IsRoot = isRoot;
         Name = isRoot ? fullPath : System.IO.Path.GetFileName(fullPath);
         _isAlbum = AlbumFile.IsAlbum(fullPath);
+        // The folders in the library start open one level, with arrows on the subfolders that have their own.
         if (isRoot)
-            LoadChildren();
+            PrepareToExpand();
     }
 
     public string FullPath { get; }

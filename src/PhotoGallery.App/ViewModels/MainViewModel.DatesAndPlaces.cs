@@ -31,6 +31,17 @@ public sealed partial class MainViewModel
         Inform(Strings.Tr("Restart the app to see it in the new language."));
     }
 
+    /// <summary>Whether the viewer moves to the next photo after a rating, flag or reject (Settings › Gallery).</summary>
+    public bool AutoAdvance => _settings.AutoAdvance;
+
+    public void SaveAutoAdvance(bool autoAdvance)
+    {
+        if (autoAdvance == _settings.AutoAdvance)
+            return;
+        _settings.AutoAdvance = autoAdvance;
+        _settings.Save(SettingsPath);
+    }
+
     public void SaveDatesAndPlaces(bool keepDatesInSync, string placeLanguage)
     {
         if (keepDatesInSync == _settings.KeepDatesInSync && placeLanguage == PlaceLanguage)

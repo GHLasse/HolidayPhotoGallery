@@ -32,6 +32,9 @@ public sealed class LibrarySettings
     /// <summary>Editing or shifting the date taken also sets the file's other dates (see MetadataChanges.SyncOtherDates).</summary>
     public bool KeepDatesInSync { get; set; } = true;
 
+    /// <summary>After a rating, flag or reject in the viewer, move on to the next photo.</summary>
+    public bool AutoAdvance { get; set; }
+
     /// <summary>The language of place names: "de", "en", "local" (as written there), or null for the app's language.</summary>
     public string? PlaceLanguage { get; set; }
 

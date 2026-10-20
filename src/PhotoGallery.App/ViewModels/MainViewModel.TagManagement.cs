@@ -6,10 +6,12 @@ using static PhotoGallery.Core.Localization.Strings;
 namespace PhotoGallery.App.ViewModels;
 
 /// <summary>A rename or removal of a tag across the library, kept so it can be undone.</summary>
-/// <param name="Files">Each changed photo with its tags before and after.</param>
-public sealed record TagChange(string Description, IReadOnlyList<(string Path, IReadOnlyList<string> Before, IReadOnlyList<string> After)> Files)
+/// <param name="Files">Each changed photo with its tags before and after, and its auto tags before.</param>
+public sealed record TagChange(string Description, IReadOnlyList<TagChange.File> Files)
 {
     public bool Undone { get; set; }
+
+    public sealed record File(string Path, IReadOnlyList<string> Before, IReadOnlyList<string> After, IReadOnlyList<string> AutoBefore);
 }
 
 /// <summary>Tag management (Settings › Tags): every tag in the library, renamed, merged or removed in all photos at once.</summary>
@@ -37,7 +39,7 @@ public sealed partial class MainViewModel
 
         var paths = await Task.Run(() => _index.PathsWithTag(tag));
         var failures = new List<string>();
-        var changed = new List<(string Path, IReadOnlyList<string> Before, IReadOnlyList<string> After)>();
+        var changed = new List<TagChange.File>();
         IsBusy = true;
         try
         {
@@ -49,11 +51,14 @@ public sealed partial class MainViewModel
                     : Tr("Renaming “{0}” in {1:N0} of {2:N0} photos…", tag, i + 1, paths.Count);
                 try
                 {
-                    var current = (await _metadata.ReadAsync(path)).Tags;
+                    var metadata = await _metadata.ReadAsync(path);
+                    var current = metadata.Tags;
                     if (TagList.Rename(current, tag, newName) is not { } tags)
                         continue;
-                    await _metadata.WriteAsync(path, new MetadataChanges { Tags = tags });
-                    changed.Add((path, current, tags));
+                    // A renamed auto tag stays an auto tag.
+                    var autoTags = TagList.Rename(metadata.AutoTags, tag, newName);
+                    await _metadata.WriteAsync(path, new MetadataChanges { Tags = tags, AutoTags = autoTags });
+                    changed.Add(new TagChange.File(path, current, tags, metadata.AutoTags));
                     await RefreshPhotoAsync(path);
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
@@ -104,7 +109,7 @@ public sealed partial class MainViewModel
         {
             for (var i = 0; i < change.Files.Count; i++)
             {
-                var (path, before, after) = change.Files[i];
+                var (path, before, after, autoBefore) = change.Files[i];
                 StatusText = Tr("Undoing the tag change in {0:N0} of {1:N0} photos…", i + 1, change.Files.Count);
                 try
                 {
@@ -114,7 +119,7 @@ public sealed partial class MainViewModel
                         skipped++;
                         continue;
                     }
-                    await _metadata.WriteAsync(path, new MetadataChanges { Tags = before });
+                    await _metadata.WriteAsync(path, new MetadataChanges { Tags = before, AutoTags = autoBefore });
                     restored++;
                     await RefreshPhotoAsync(path);
                 }

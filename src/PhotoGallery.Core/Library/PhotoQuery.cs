@@ -36,6 +36,18 @@ public sealed record PhotoQuery
     /// <summary>Only photos without a GPS position, to place on the map.</summary>
     public bool WithoutLocation { get; init; }
 
+    /// <summary>Only photos without a date taken.</summary>
+    public bool WithoutDate { get; init; }
+
+    /// <summary>Only photos from this country (as written in the file's place names).</summary>
+    public string? Country { get; init; }
+
+    /// <summary>Only photos from this city.</summary>
+    public string? City { get; init; }
+
+    /// <summary>Only photos without a country in their place names.</summary>
+    public bool WithoutPlace { get; init; }
+
     /// <summary>Only photos from this camera (as in <see cref="IndexedPhoto.Camera"/>).</summary>
     public string? Camera { get; init; }
 
