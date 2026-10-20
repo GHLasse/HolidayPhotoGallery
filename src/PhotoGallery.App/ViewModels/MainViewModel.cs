@@ -397,6 +397,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await CheckReadOnlyAsync();
         if (IsAlbumView)
             await LoadAlbumsAsync();
+        _ = FindFacesInNewPhotosAsync();
     }
 
     private async Task SearchSoonAsync()

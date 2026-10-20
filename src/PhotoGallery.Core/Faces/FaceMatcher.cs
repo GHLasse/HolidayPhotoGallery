@@ -21,7 +21,7 @@ public sealed class FaceMatcher
     public FaceMatcher(IEnumerable<(string Name, float[] Embedding)> named)
     {
         foreach (var group in named.GroupBy(n => n.Name.Trim(), StringComparer.CurrentCultureIgnoreCase))
-            _people.Add((group.First().Name.Trim(), group.Take(MaxFacesPerPerson).Select(g => g.Embedding).ToList()));
+            _people.Add((group.First().Name.Trim(), Spread(group.Select(g => g.Embedding).ToList())));
     }
 
     public bool IsEmpty => _people.Count == 0;
@@ -75,6 +75,15 @@ public sealed class FaceMatcher
                 sum[k] += face[k];
         }
         return groups.OrderByDescending(g => g.Members.Count).Select(g => (IReadOnlyList<int>)g.Members).ToList();
+    }
+
+    // Faces from all of a person's photos, not just the first ones, so every newly named face can help.
+    private static List<float[]> Spread(List<float[]> faces)
+    {
+        if (faces.Count <= MaxFacesPerPerson)
+            return faces;
+        var step = (faces.Count - 1) / (double)(MaxFacesPerPerson - 1);
+        return Enumerable.Range(0, MaxFacesPerPerson).Select(i => faces[(int)(i * step)]).ToList();
     }
 
     private static float[] Normalized(float[] v)

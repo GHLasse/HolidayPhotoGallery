@@ -1088,6 +1088,13 @@ public sealed partial class MainWindow : Window
             Header = Tr("Move to the next photo after rating it in the viewer (also after P and X)"),
             IsOn = ViewModel.AutoAdvance,
         };
+        var findPeople = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Look for people in new photos by itself (once Find people has been used)"),
+            IsOn = ViewModel.FindPeopleAutomatically,
+        };
         var gallery = new StackPanel
         {
             Spacing = 12,
@@ -1101,6 +1108,7 @@ public sealed partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                 },
                 autoAdvance,
+                findPeople,
             },
         };
 
@@ -1330,6 +1338,7 @@ public sealed partial class MainWindow : Window
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
+        ViewModel.SaveFindPeopleAutomatically(findPeople.IsOn);
         ViewModel.SaveDetailKeys(detailBoxes.Where(d => d.Box.IsChecked == true).Select(d => d.Key).ToList());
         _ = ShowMoreDetailsAsync();
         ViewModel.SaveFavouriteApps(chosenApps());

@@ -124,6 +124,25 @@ public sealed class FaceIndexTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Lists_the_photos_not_looked_at_for_faces_newest_first()
+    {
+        IndexedPhoto Photo(string name) => new() { Path = Path.Combine(_photos.Path, name), Folder = _photos.Path, Orientation = 6 };
+        _index!.Upsert([Photo("a.jpg"), Photo("b.jpg"), Photo("c.jpg")]);
+        _index.SaveFaces(Path.Combine(_photos.Path, "b.jpg"), []);
+
+        Assert.Equal([(Path.Combine(_photos.Path, "c.jpg"), 6), (Path.Combine(_photos.Path, "a.jpg"), 6)], _index.GetNotFaceScanned(10));
+        Assert.Single(_index.GetNotFaceScanned(1));
+    }
+
+    [Fact]
+    public void A_person_named_on_many_photos_is_recognised_from_the_latest_ones_too()
+    {
+        // 300 faces of Anna looking one way, then her newest faces looking another way.
+        var named = Enumerable.Repeat(("Anna", Vector(1, 0, 0)), 300).Append(("Anna", Vector(0, 0, 1))).ToList();
+        Assert.Equal("Anna", new FaceMatcher(named).Suggest(Vector(0, 0.1f, 1))?.Name);
+    }
+
+    [Fact]
     public void Suggests_the_most_alike_person_unless_they_were_rejected()
     {
         var matcher = new FaceMatcher([("Anna", Vector(1, 0.1f, 0)), ("Anna", Vector(1, -0.1f, 0)), ("Ben", Vector(0, 1, 0))]);

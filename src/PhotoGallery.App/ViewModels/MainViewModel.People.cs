@@ -20,6 +20,9 @@ public sealed partial class MainViewModel
 
     private FaceAnalyzer? _faceAnalyzer;
     private FaceMatcher? _matcher;
+    private readonly SemaphoreSlim _faceFinding = new(1, 1);
+    private readonly HashSet<string> _facesNotFound = new(StringComparer.OrdinalIgnoreCase);
+    private bool _findingNewFaces;
     private IReadOnlyList<string> _selectedPeople = [];
     private bool _isUpdatingPeople;
 
@@ -153,7 +156,7 @@ public sealed partial class MainViewModel
             if (todo.Count > 0 && _faceAnalyzer is null)
             {
                 StatusText = Tr("Loading the face models…");
-                _faceAnalyzer = await Task.Run(() => FaceAnalyzer.Load(FaceModelFolder));
+                await LoadFaceAnalyzerAsync();
             }
 
             for (var i = 0; i < todo.Count; i++)
@@ -162,18 +165,7 @@ public sealed partial class MainViewModel
                 StatusText = Tr("Looking for people in {0} of {1}…", i + 1, todo.Count);
                 try
                 {
-                    var image = await ImageLoader.DecodePixelsAsync(item.Path, FaceAnalyzer.ImageSize);
-                    var analyzer = _faceAnalyzer!;
-                    var faces = await Task.Run(() => analyzer.Analyze(image.Pixels, image.Width, image.Height));
-                    var newFaces = new List<NewFace>();
-                    foreach (var face in faces)
-                    {
-                        var thumbnail = await ImageEncoder.EncodeJpegAsync(FaceCrop(image, face.Box), FaceThumbnailSize, FaceThumbnailSize);
-                        // Kept on the stored pixels, like the people tags in the file.
-                        newFaces.Add(new NewFace(face.Box.FromUpright(item.Photo.Orientation), face.Score, face.Embedding, thumbnail));
-                    }
-                    await Task.Run(() => _index.SaveFaces(item.Path, newFaces));
-                    found += newFaces.Count;
+                    found += await LookForFacesAsync(item.Path, item.Photo.Orientation);
                     looked++;
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
@@ -201,6 +193,108 @@ public sealed partial class MainViewModel
             : Tr("Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.", found, looked, unnamed));
         FacesChanged?.Invoke();
         return unnamed;
+    }
+
+    /// <summary>
+    /// Finds the faces on one photo and keeps them in the index; returns how many. One photo at a time,
+    /// whether the user asked or the background search for new photos did.
+    /// </summary>
+    private async Task<int> LookForFacesAsync(string path, int orientation)
+    {
+        await _faceFinding.WaitAsync();
+        try
+        {
+            var analyzer = await LoadFaceAnalyzerAsync();
+            var image = await ImageLoader.DecodePixelsAsync(path, FaceAnalyzer.ImageSize);
+            var faces = await Task.Run(() => analyzer.Analyze(image.Pixels, image.Width, image.Height));
+            var newFaces = new List<NewFace>();
+            foreach (var face in faces)
+            {
+                var thumbnail = await ImageEncoder.EncodeJpegAsync(FaceCrop(image, face.Box), FaceThumbnailSize, FaceThumbnailSize);
+                // Kept on the stored pixels, like the people tags in the file.
+                newFaces.Add(new NewFace(face.Box.FromUpright(orientation), face.Score, face.Embedding, thumbnail));
+            }
+            if (!await Task.Run(() => _index.SaveFaces(path, newFaces)))
+                throw new IOException(Tr("The photo is no longer in the library."));
+            return newFaces.Count;
+        }
+        finally
+        {
+            _faceFinding.Release();
+        }
+    }
+
+    private async Task<FaceAnalyzer> LoadFaceAnalyzerAsync() =>
+        _faceAnalyzer ??= await Task.Run(() => FaceAnalyzer.Load(FaceModelFolder));
+
+    /// <summary>Whether new photos are looked at for faces without being asked (Settings › App).</summary>
+    public bool FindPeopleAutomatically => _settings.FindPeopleAutomatically;
+
+    public void SaveFindPeopleAutomatically(bool on)
+    {
+        if (on == _settings.FindPeopleAutomatically)
+            return;
+        _settings.FindPeopleAutomatically = on;
+        _settings.Save(SettingsPath);
+        if (on)
+            _ = FindFacesInNewPhotosAsync();
+    }
+
+    /// <summary>
+    /// Looks for faces in every photo not looked at yet, one at a time and quietly, pausing while the app
+    /// is busy with something the user asked for. Runs after each check of the folders, so new photos get
+    /// their faces without anyone pressing Find people. Needs the face models, downloaded the first time
+    /// Find people is used.
+    /// </summary>
+    public async Task FindFacesInNewPhotosAsync()
+    {
+        if (_findingNewFaces || !_settings.FindPeopleAutomatically || !IsFaceModelInstalled)
+            return;
+        _findingNewFaces = true;
+        try
+        {
+            await LoadFaceAnalyzerAsync();
+            while (true)
+            {
+                const int Batch = 50;
+                var todo = (await Task.Run(() => _index.GetNotFaceScanned(Batch + _facesNotFound.Count)))
+                    .Where(p => !_facesNotFound.Contains(p.Path)).Take(Batch).ToList();
+                if (todo.Count == 0)
+                    return;
+                var found = 0;
+                foreach (var (path, orientation) in todo)
+                {
+                    // What the user asked for goes first.
+                    while (IsBusy)
+                        await Task.Delay(2000);
+                    if (!_settings.FindPeopleAutomatically)
+                        return;
+                    try
+                    {
+                        found += await LookForFacesAsync(path, orientation);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or ArgumentException)
+                    {
+                        _facesNotFound.Add(path); // tried again next time the app starts
+                    }
+                }
+                if (found > 0)
+                {
+                    ForgetMatcher();
+                    FacesChanged?.Invoke();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidDataException)
+        {
+            // The models could not be loaded; Find people says why when the user asks.
+            _faceAnalyzer?.Dispose();
+            _faceAnalyzer = null;
+        }
+        finally
+        {
+            _findingNewFaces = false;
+        }
     }
 
     /// <summary>A square around the face with some room, as the face's thumbnail.</summary>
