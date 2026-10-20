@@ -110,11 +110,31 @@ public sealed partial class MainViewModel
             (!NotOnOneDriveOnly || !IsOn(CloudService.OneDrive, p.Path))).ToList();
     }
 
-    private PhotoItemViewModel NewPhotoItem(IndexedPhoto photo) => new(photo)
+    // The tile for a photo is kept from one search to the next, with its thumbnail, so changing a filter
+    // in a large library doesn't load every thumbnail again.
+    private readonly Dictionary<string, PhotoItemViewModel> _photoItems = new(StringComparer.OrdinalIgnoreCase);
+
+    private PhotoItemViewModel NewPhotoItem(IndexedPhoto photo)
     {
-        IsOnGoogle = IsOn(CloudService.GooglePhotos, photo.Path),
-        IsOnOneDrive = IsOn(CloudService.OneDrive, photo.Path),
-    };
+        if (_photoItems.TryGetValue(photo.Path, out var item))
+        {
+            // Only a real change is passed on: the info pane reloads whenever a shown photo changes.
+            if (!item.Photo.HasSameValues(photo))
+            {
+                var fileChanged = item.Photo.FileModifiedUtc != photo.FileModifiedUtc || item.Photo.FileSize != photo.FileSize;
+                item.Photo = photo;
+                if (fileChanged)
+                    item.ForgetThumbnail();
+            }
+        }
+        else
+        {
+            item = _photoItems[photo.Path] = new PhotoItemViewModel(photo);
+        }
+        item.IsOnGoogle = IsOn(CloudService.GooglePhotos, photo.Path);
+        item.IsOnOneDrive = IsOn(CloudService.OneDrive, photo.Path);
+        return item;
+    }
 
     /// <summary>Reads which photos are on each service (from the album files and the app's lists), and marks them in the grid.</summary>
     public async Task LoadCloudUploadsAsync()

@@ -430,14 +430,29 @@ public sealed partial class PhotoIndex : IDisposable
                 """);
             if (where.Count > 0)
                 sql.Append(" WHERE ").Append(string.Join(" AND ", where));
-            sql.Append(" ORDER BY ").Append(PhotoSort.OrderBy(query.Sort)).Append(';');
+            sql.Append(';');
             cmd.CommandText = sql.ToString();
 
             var results = new List<IndexedPhoto>();
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-                results.Add(ReadPhoto(reader));
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                    results.Add(ReadPhoto(reader));
+            }
+            PhotoSort.Sort(results, query.Sort);
             return results;
+        }
+    }
+
+    /// <summary>
+    /// Goes up with every change to the index, so counts worked out from it can be kept until it moves.
+    /// </summary>
+    public long ChangeCount
+    {
+        get
+        {
+            lock (_lock)
+                return Convert.ToInt64(Scalar("SELECT total_changes();"));
         }
     }
 

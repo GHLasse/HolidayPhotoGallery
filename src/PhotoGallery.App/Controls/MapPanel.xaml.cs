@@ -79,8 +79,16 @@ public sealed partial class MapPanel : UserControl
             if (photo.Location is { } at)
                 list.Add(new JsonObject { ["path"] = photo.Path, ["name"] = Path.GetFileName(photo.Path), ["lat"] = at.Latitude, ["lon"] = at.Longitude });
         }
+        // The same markers again (a filter that changed nothing on the map) aren't redrawn: with tens of
+        // thousands of photos that takes the map a moment.
+        var markers = list.ToJsonString();
+        if (markers == _shownMarkers && !fitAll)
+            return;
+        _shownMarkers = markers;
         Post(new JsonObject { ["type"] = "photos", ["photos"] = list, ["fitAll"] = fitAll });
     }
+
+    private string? _shownMarkers;
 
     /// <summary>Highlights the selected photos, and with <paramref name="fit"/> moves the map to them.</summary>
     public void ShowSelection(IReadOnlyList<PhotoItemViewModel> selection, bool fit)

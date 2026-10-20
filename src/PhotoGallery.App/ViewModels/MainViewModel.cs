@@ -462,11 +462,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             TakenTo = TakenTo?.Date,
         };
 
-        var (photos, tags, autoTagNames, cameras, people, dates, places) = await Task.Run(() =>
-            (_index.Search(query), _index.GetTagCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(query.Folder),
-             _index.GetPeopleCounts(), _index.GetDateCounts(), _index.GetPlaceCounts()));
+        var (photos, counts) = await Task.Run(() => (_index.Search(query), LibraryCounts(query.Folder)));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
+        var (tags, autoTagNames, cameras, people, dates, places) = counts;
 
         photos = FilterByCloud(photos);
         Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
@@ -479,6 +478,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _countText = photos.Count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", photos.Count);
         if (!IsBusy)
             StatusText = _countText;
+    }
+
+    private sealed record Counts(
+        IReadOnlyList<(string Tag, int Count)> Tags, IReadOnlySet<string> AutoTagNames, IReadOnlyList<(string Camera, int Count)> Cameras,
+        IReadOnlyList<(string Name, int Count)> People, IReadOnlyList<DateCount> Dates, IReadOnlyList<PlaceCount> Places);
+
+    private sealed record KeptCounts(long Change, string? Folder, Counts Counts);
+
+    private KeptCounts? _counts; // set from the search's thread; one reference, so it is read whole
+
+    // The filter lists count the whole library, so they only need counting again after the index changed
+    // (or, for the cameras, in another folder). Saves a good part of every search in a large library.
+    private Counts LibraryCounts(string? folder)
+    {
+        var change = _index.ChangeCount;
+        if (_counts is { } kept && kept.Change == change && string.Equals(kept.Folder, folder, StringComparison.OrdinalIgnoreCase))
+            return kept.Counts;
+        var counts = new Counts(_index.GetTagCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(folder),
+                                _index.GetPeopleCounts(), _index.GetDateCounts(), _index.GetPlaceCounts());
+        _counts = new KeptCounts(change, folder, counts);
+        return counts;
     }
 
     private void UpdateTags(IReadOnlyList<(string Tag, int Count)> tags)

@@ -647,8 +647,8 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (!args.InRecycleQueue && args.Item is PhotoItemViewModel item)
-            _ = item.EnsureThumbnailAsync();
+        if (args.Item is PhotoItemViewModel item)
+            item.SetShown(!args.InRecycleQueue);
     }
 
     private async void PhotoGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -170,7 +170,9 @@ function start() {
         markers.clear();
         for (const p of m.photos) {
           // Clicking a photo selects it instead of moving the pin.
-          const marker = L.circleMarker([p.lat, p.lon], { ...normal, bubblingMouseEvents: false }).bindTooltip(p.name);
+          const marker = L.circleMarker([p.lat, p.lon], { ...normal, bubblingMouseEvents: false });
+          // The name is attached on first hover: tens of thousands of tooltips up front slow the map down.
+          marker.once("mouseover", () => marker.bindTooltip(p.name).openTooltip());
           marker.on("click", ev => {
             send({ type: "select", path: p.path, add: ev.originalEvent.ctrlKey });
           });

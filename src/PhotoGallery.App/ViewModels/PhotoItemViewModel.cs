@@ -109,20 +109,98 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     /// <summary>0 until the thumbnail has loaded, so it fades in instead of popping up.</summary>
     public double ThumbnailShown => _thumbnail is null ? 0 : 1;
 
+    // ---- Thumbnails in a large library ----
+    // Loaded a few at a time, newest request first, so the tiles on screen come before the ones scrolled
+    // past; a tile scrolled away before its turn is skipped. Only the most recently loaded thumbnails are
+    // kept, so scrolling through tens of thousands of photos doesn't fill the memory.
+
+    private const int Loaders = 6;
+    private const int KeptThumbnails = 1500;
+    private static readonly Stack<PhotoItemViewModel> Waiting = new();
+    private static readonly LinkedList<PhotoItemViewModel> Loaded = new();
+    private static int _loading;
+    private LinkedListNode<PhotoItemViewModel>? _loadedNode;
+    private int _shown;
+
+    /// <summary>A grid or strip shows this tile now (or stopped showing it): its thumbnail is loaded or kept.</summary>
+    public void SetShown(bool shown)
+    {
+        _shown = Math.Max(0, _shown + (shown ? 1 : -1));
+        if (shown)
+            EnsureThumbnail();
+    }
+
     /// <summary>Loads the thumbnail the first time the tile scrolls into view.</summary>
-    public async Task EnsureThumbnailAsync()
+    private void EnsureThumbnail()
     {
         if (_thumbnailRequested)
             return;
         _thumbnailRequested = true;
+        Waiting.Push(this);
+        _ = LoadWaitingAsync();
+    }
+
+    private static async Task LoadWaitingAsync()
+    {
+        if (_loading >= Loaders)
+            return;
+        _loading++;
         try
         {
-            Thumbnail = await ImageLoader.LoadShellThumbnailAsync(Path, ThumbnailSize);
+            while (Waiting.TryPop(out var item))
+            {
+                if (item._shown == 0)
+                {
+                    item._thumbnailRequested = false; // asked for again when it scrolls back into view
+                    continue;
+                }
+                try
+                {
+                    item.Thumbnail = await ImageLoader.LoadShellThumbnailAsync(item.Path, ThumbnailSize);
+                    item.Keep();
+                }
+                catch (Exception)
+                {
+                    // Unreadable file or missing codec: the tile keeps its placeholder.
+                }
+            }
         }
-        catch (Exception)
+        finally
         {
-            // Unreadable file or missing codec: the tile keeps its placeholder.
+            _loading--;
         }
+    }
+
+    // Notes the thumbnail as the newest, and lets go of the oldest ones no tile shows.
+    private void Keep()
+    {
+        if (_loadedNode is not null)
+            Loaded.Remove(_loadedNode);
+        _loadedNode = Loaded.AddLast(this);
+        for (var node = Loaded.First; Loaded.Count > KeptThumbnails && node is not null;)
+        {
+            var next = node.Next;
+            if (node.Value._shown == 0)
+                node.Value.Forget();
+            node = next;
+        }
+    }
+
+    /// <summary>The file changed: the thumbnail is loaded again when the tile is next shown.</summary>
+    public void ForgetThumbnail()
+    {
+        Forget();
+        if (_shown > 0)
+            EnsureThumbnail();
+    }
+
+    private void Forget()
+    {
+        if (_loadedNode is not null)
+            Loaded.Remove(_loadedNode);
+        _loadedNode = null;
+        _thumbnailRequested = false;
+        Thumbnail = null;
     }
 
     /// <summary>Re-decodes the thumbnail from the file, e.g. after it was rotated.</summary>
@@ -132,6 +210,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
         try
         {
             Thumbnail = await ImageLoader.DecodeAsync(Path, ThumbnailSize);
+            Keep();
         }
         catch (Exception)
         {
