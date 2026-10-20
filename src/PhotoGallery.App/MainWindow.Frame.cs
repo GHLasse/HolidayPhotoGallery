@@ -56,6 +56,8 @@ public sealed partial class MainWindow
         Root.PreviewKeyDown += Root_PreviewKeyDown;
 
         // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
+        // Hidden: WinUI would otherwise make a tooltip naming the keys, and it has no name for , and . (it crashed).
+        Root.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         AddAccelerator((VirtualKey)188, VirtualKeyModifiers.Control, () => RotateLeft_Click(this, new RoutedEventArgs()));
         AddAccelerator((VirtualKey)190, VirtualKeyModifiers.Control, () => RotateRight_Click(this, new RoutedEventArgs()));
         SetUpFilterFolding();
