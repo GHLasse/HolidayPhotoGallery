@@ -8,13 +8,11 @@ namespace PhotoGallery.App.Controls;
 
 /// <summary>
 /// The "made by AI" mark on auto tags: one large and two small four-pointed sparkles, drawn in code so it
-/// stays sharp at any size. It is painted in the text colour of its own light or dark mode, checked whenever
-/// it appears or the mode changes: following the surrounding text through bindings kept it black in dark
-/// mode (in the info pane and in Settings).
+/// stays sharp at any size, painted in the text colour of its light or dark mode (<see cref="ThemeInk"/>).
 /// </summary>
 public sealed partial class AiSparkle : UserControl
 {
-    private readonly List<Microsoft.UI.Xaml.Shapes.Path> _stars = [];
+    private readonly List<Shape> _stars = [];
 
     public AiSparkle()
     {
@@ -29,18 +27,6 @@ public sealed partial class AiSparkle : UserControl
             canvas.Children.Add(star);
         }
         Content = new Viewbox { Child = canvas };
-        Loaded += (_, _) => Paint();
-        ActualThemeChanged += (_, _) => Paint();
-    }
-
-    private void Paint()
-    {
-        // WinUI's primary text colours: white in dark mode, near-black in light mode.
-        var colour = ActualTheme == ElementTheme.Dark
-            ? Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)
-            : Windows.UI.Color.FromArgb(0xE4, 0x00, 0x00, 0x00);
-        var brush = new SolidColorBrush(colour);
-        foreach (var star in _stars)
-            star.Fill = brush;
+        ThemeInk.Follow(this, _stars);
     }
 }

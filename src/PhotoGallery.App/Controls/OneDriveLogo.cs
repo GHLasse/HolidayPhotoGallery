@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -9,7 +8,7 @@ namespace PhotoGallery.App.Controls;
 
 /// <summary>
 /// The OneDrive cloud, drawn in code and filled like <see cref="GooglePhotosLogo"/>: three round puffs on a
-/// rounded base, in the text colour (its Foreground), so both marks fit the theme and palette the same way.
+/// rounded base, in the text colour of its light or dark mode (<see cref="ThemeInk"/>), like the other marks.
 /// </summary>
 public sealed partial class OneDriveLogo : UserControl
 {
@@ -23,7 +22,7 @@ public sealed partial class OneDriveLogo : UserControl
     public OneDriveLogo()
     {
         var cloud = new Microsoft.UI.Xaml.Shapes.Path { Data = (Geometry)XamlBindingHelper.ConvertValue(typeof(Geometry), Cloud) };
-        cloud.SetBinding(Shape.FillProperty, new Binding { Source = this, Path = new PropertyPath(nameof(Foreground)) });
         Content = new Viewbox { Child = new Canvas { Width = 24, Height = 24, Children = { cloud } } };
+        ThemeInk.Follow(this, [cloud]);
     }
 }
