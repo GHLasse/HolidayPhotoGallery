@@ -41,6 +41,10 @@ public sealed partial class MainWindow
             ImageSource = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon-40.png"))),
         };
 
+        AppTitleBar.Loaded += (_, _) => StyleTitleBar();
+        foreach (var tab in ModeBar.Items)
+            tab.SizeChanged += (_, _) => WidenTabMark(tab);
+
         // Selected here rather than in XAML, where it would switch workspaces before the window is built.
         _syncingWorkspace = true;
         ModeBar.SelectedItem = LibraryTab;
@@ -313,6 +317,24 @@ public sealed partial class MainWindow
 
     // Flag and Reject in the info pane show their words while they fit beside the stars, else only icons
     // (the German words are long). Measured with the words, so they come back when the pane widens.
+    // The title bar's own name is caption-sized (12 px); like Outlook's, the app's name reads larger.
+    private void StyleTitleBar()
+    {
+        foreach (var text in Descendants(AppTitleBar).OfType<TextBlock>().Where(t => t.Text == AppTitleBar.Title))
+        {
+            text.FontSize = 14;
+            text.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+        }
+    }
+
+    // The line under the chosen workspace is a short 16 px dash by default; like Outlook's it runs under
+    // most of the word. The template's dash is its only thin rectangle.
+    private static void WidenTabMark(SelectorBarItem tab)
+    {
+        foreach (var mark in Descendants(tab).OfType<Microsoft.UI.Xaml.Shapes.Rectangle>().Where(r => (double.IsNaN(r.Height) ? r.ActualHeight : r.Height) is > 0 and <= 4))
+            mark.Width = Math.Max(16, tab.ActualWidth - 28);
+    }
+
     private void SetUpRatingRow()
     {
         if (RatingRow.Parent is not FrameworkElement area)
