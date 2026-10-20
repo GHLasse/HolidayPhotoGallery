@@ -79,7 +79,7 @@
                     </AppBarButton.Icon>
                 </AppBarButton>
                 <AppBarButton Label="Auto-tag" Click="AutoTag_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
-                              ToolTipService.ToolTip="Recognise what is in the selected photos on this PC and add tags from your tag list, as Auto/…">
+                              ToolTipService.ToolTip="Recognise what is in the selected photos on this PC and add tags from your tag list, as ai/…">
                     <AppBarButton.Icon>
                         <FontIcon Glyph="&#xE8EC;" />
                     </AppBarButton.Icon>
@@ -106,7 +106,7 @@
                 </AppBarButton>
                 <CommandBar.SecondaryCommands>
                     <AppBarButton Label="Remove auto tags" Click="RemoveAutoTags_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
-                                  ToolTipService.ToolTip="Remove the Auto/… tags from the selected photos; your own tags stay">
+                                  ToolTipService.ToolTip="Remove the ai/… tags from the selected photos; your own tags stay">
                         <AppBarButton.Icon>
                             <FontIcon Glyph="&#xE74D;" />
                         </AppBarButton.Icon>
@@ -385,9 +385,21 @@
                         </MenuFlyoutItem>
                     </MenuFlyout>
                 </GridView.ContextFlyout>
+                <!-- The slot size follows the zoom slider (MainWindow.Zoom.cs); the tiles stretch to fill it. -->
+                <GridView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsWrapGrid Orientation="Horizontal" ItemWidth="184" ItemHeight="184" />
+                    </ItemsPanelTemplate>
+                </GridView.ItemsPanel>
+                <GridView.ItemContainerStyle>
+                    <Style TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                    </Style>
+                </GridView.ItemContainerStyle>
                 <GridView.ItemTemplate>
                     <DataTemplate x:DataType="vm:PhotoItemViewModel">
-                        <Grid Width="180" Height="180" CornerRadius="4"
+                        <Grid CornerRadius="4"
                               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                               ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
                             <FontIcon Glyph="&#xEB9F;" FontSize="32" Opacity="0.3" />
@@ -578,6 +590,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             <!-- A running Google Photos upload; it doesn't block anything else. -->
@@ -588,6 +601,22 @@
             </StackPanel>
             <ProgressBar Grid.Column="2" IsIndeterminate="True" VerticalAlignment="Center"
                          Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+            <!-- Zoom for the photo tiles; Ctrl + mouse wheel over the grid does the same. -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
+                        Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
+                <Button Click="ZoomOut_Click" Padding="4" Background="Transparent" BorderThickness="0"
+                        ToolTipService.ToolTip="Smaller photos (Ctrl + mouse wheel)">
+                    <FontIcon Glyph="&#xE949;" FontSize="12" />
+                </Button>
+                <Slider Width="140" VerticalAlignment="Center" StepFrequency="1"
+                        Minimum="96" Maximum="320"
+                        Value="{x:Bind ViewModel.TileSize, Mode=TwoWay}" IsThumbToolTipEnabled="False"
+                        ToolTipService.ToolTip="Photo size" />
+                <Button Click="ZoomIn_Click" Padding="4" Background="Transparent" BorderThickness="0"
+                        ToolTipService.ToolTip="Larger photos (Ctrl + mouse wheel)">
+                    <FontIcon Glyph="&#xE948;" FontSize="12" />
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Full-size viewer, shown over everything -->

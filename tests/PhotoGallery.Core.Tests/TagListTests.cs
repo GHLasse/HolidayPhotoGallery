@@ -35,4 +35,17 @@ public class TagListTests
 
         Assert.Equal([("Beach", 1), ("Italy", 3), ("Rome", 1)], counts);
     }
+
+    [Fact]
+    public void Rename_renames_merges_and_deletes_tags_and_groups()
+    {
+        Assert.Equal(["Familie", "Strand"], TagList.Rename(["Family", "Strand"], "family", "Familie"));
+        // Renamed onto a tag the photo already has: the two merge.
+        Assert.Equal(["Strand"], TagList.Rename(["Beach", "Strand"], "Beach", "Strand"));
+        // A group moves with all its tags.
+        Assert.Equal(["Rom", "ai/Meer", "ai/Berge"], TagList.Rename(["Rom", "Auto/Meer", "Auto/Berge"], "Auto", "ai"));
+        Assert.Equal(["Rom"], TagList.Rename(["Rom", "ai/Meer"], "ai", null));
+        // "Autos" is not in the "Auto" group.
+        Assert.Null(TagList.Rename(["Autos", "Rom"], "Auto", null));
+    }
 }

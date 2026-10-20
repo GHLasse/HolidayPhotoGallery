@@ -40,11 +40,11 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         var bare = _photos.CopySample(".jpg", "bare");
         await service.WriteAsync(tagged, new MetadataChanges
         {
-            Tags = ["Italy", "Auto/Beach"],
+            Tags = ["Italy", "ai/Beach"],
             Location = new GeoPosition(41.9, 12.5),
             People = [new PersonTag("Anna", new FaceBox(0, 0, 1, 1))],
         });
-        await service.WriteAsync(autoOnly, new MetadataChanges { Tags = ["Auto/Beach"] });
+        await service.WriteAsync(autoOnly, new MetadataChanges { Tags = ["Auto/Beach", "ai/Sea"] });
 
         await indexer.SyncFolderAsync(_photos.Path);
 
@@ -53,6 +53,14 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutPeople = true }));
         Assert.Equal(new[] { autoOnly, bare }.Order(), Find(new PhotoQuery { WithoutLocation = true }));
         Assert.Empty(Find(new PhotoQuery { WithoutTags = true, Tags = ["Italy"] }));
+
+        // The tag overview lists the "ai" group too, counting each photo once.
+        var overview = _index!.GetTagOverview();
+        Assert.Contains(new TagCount("ai", 2, true), overview);
+        Assert.Contains(new TagCount("ai/Beach", 1, false), overview);
+        Assert.Contains(new TagCount("Auto", 1, true), overview);
+        Assert.Equal(new[] { autoOnly, tagged }.Order(), _index.PathsWithTag("ai"));
+        Assert.Equal([tagged], _index.PathsWithTag("Italy"));
     }
 
     [ExifToolFact]

@@ -124,6 +124,19 @@ public sealed class PhotoEditServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task A_quarter_turn_turns_the_people_with_the_photo()
+    {
+        var path = _temp.CopySample(".jpg");
+        await Metadata.WriteAsync(path, new MetadataChanges { People = [new("Anna", new FaceBox(0, 0, 0.1, 0.2))] });
+
+        await Editor.SaveEditAsync(path, ".jpg", 80, 100, FreshImage(".jpg"), turn: 6);
+
+        // Turned clockwise, the top-left corner becomes the top-right one.
+        var box = Assert.Single((await Metadata.ReadAsync(path)).People).Box;
+        Assert.Equal((0.8, 0.0, 0.2, 0.1), (Math.Round(box.X, 4), Math.Round(box.Y, 4), Math.Round(box.Width, 4), Math.Round(box.Height, 4)));
+    }
+
+    [ExifToolFact]
     public async Task A_failed_encode_leaves_the_photo_untouched()
     {
         var path = _temp.CopySample(".jpg");

@@ -7,6 +7,9 @@ using PhotoGallery.Core.Tagging;
 
 namespace PhotoGallery.Core.Library;
 
+/// <summary>A tag, or a tag group (<see cref="IsGroup"/>), and how many photos have it.</summary>
+public sealed record TagCount(string Tag, int Count, bool IsGroup);
+
 /// <summary>
 /// A SQLite index of the photos in the library, used only to search and sort quickly.
 /// It holds nothing that is not also in the files, so it can be deleted and rebuilt at any time.
@@ -302,8 +305,12 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.WithoutTags)
             {
-                where.Add("NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag NOT LIKE $autoTags ESCAPE '\\')");
-                cmd.Parameters.AddWithValue("$autoTags", EscapeLike(AutoTags.Parent + "/") + "%");
+                var notAuto = AutoTags.Prefixes.Select((prefix, i) =>
+                {
+                    cmd.Parameters.AddWithValue($"$autoTags{i}", EscapeLike(prefix) + "%");
+                    return $"t.tag NOT LIKE $autoTags{i} ESCAPE '\\'";
+                });
+                where.Add($"NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND {string.Join(" AND ", notAuto)})");
             }
 
             if (query.WithoutPeople)
@@ -397,6 +404,44 @@ public sealed partial class PhotoIndex : IDisposable
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
                 result.Add((reader.GetString(0), reader.GetInt32(1)));
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Every tag with how many photos have it, and every tag group (the "ai" in "ai/beach") with how many
+    /// photos have a tag in it; groups are listed before their tags.
+    /// </summary>
+    public IReadOnlyList<TagCount> GetTagOverview()
+    {
+        var tags = GetTagCounts();
+        var groups = tags.SelectMany(t => GroupsOf(t.Tag)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var result = tags.Select(t => new TagCount(t.Tag, t.Count, false))
+            .Concat(groups.Select(g => new TagCount(g, PathsWithTag(g, groupOnly: true).Count, true)));
+        return result.OrderBy(t => t.Tag, StringComparer.CurrentCultureIgnoreCase).ThenByDescending(t => t.IsGroup).ToList();
+    }
+
+    /// <summary>The groups a tag is in: "a/b/c" is in "a" and "a/b".</summary>
+    private static IEnumerable<string> GroupsOf(string tag)
+    {
+        for (var i = tag.IndexOf('/'); i > 0; i = tag.IndexOf('/', i + 1))
+            yield return tag[..i];
+    }
+
+    /// <summary>The photos with the tag or a tag under it ("tag/…"); with <paramref name="groupOnly"/>, only those under it.</summary>
+    public IReadOnlyList<string> PathsWithTag(string tag, bool groupOnly = false)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            var match = groupOnly ? "t.tag LIKE $group ESCAPE '\\'" : "(t.tag = $tag OR t.tag LIKE $group ESCAPE '\\')";
+            cmd.CommandText = $"SELECT p.path FROM photos p WHERE EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND {match}) ORDER BY p.path;";
+            cmd.Parameters.AddWithValue("$tag", tag);
+            cmd.Parameters.AddWithValue("$group", EscapeLike(tag + "/") + "%");
+            var result = new List<string>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(reader.GetString(0));
             return result;
         }
     }

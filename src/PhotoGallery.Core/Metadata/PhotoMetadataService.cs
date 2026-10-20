@@ -249,9 +249,22 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-ExifIFD:OffsetTimeOriginal={offset ?? ""}");
             args.Add($"-XMP-exif:DateTimeOriginal={exif}{offset}");
             args.Add($"-XMP-photoshop:DateCreated={exif}{offset}");
+            if (changes.SyncOtherDates)
+            {
+                args.Add($"-ExifIFD:CreateDate={exif}");
+                args.Add($"-ExifIFD:OffsetTimeDigitized={offset ?? ""}");
+                args.Add($"-XMP-xmp:CreateDate={exif}{offset}");
+                args.Add($"-IFD0:ModifyDate={exif}");
+                args.Add($"-ExifIFD:OffsetTime={offset ?? ""}");
+                args.Add($"-XMP-xmp:ModifyDate={exif}{offset}");
+                // The file's own dates, which Explorer shows; only Windows keeps a creation date ExifTool can set.
+                args.Add($"-FileModifyDate={exif}{offset}");
+                if (OperatingSystem.IsWindows())
+                    args.Add($"-FileCreateDate={exif}{offset}");
+            }
         }
 
-        if (changes.ShiftCreateDateBy is { } shift && shift != TimeSpan.Zero)
+        if (changes.ShiftCreateDateBy is { } shift && shift != TimeSpan.Zero && !changes.SyncOtherDates)
         {
             // ExifTool's date shift syntax: "Y:M:D H:M:S", added with += or subtracted with -=.
             var abs = shift.Duration();

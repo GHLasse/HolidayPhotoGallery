@@ -36,6 +36,22 @@ public static class ImageMath
         return result;
     }
 
+    /// <summary>The image turned a quarter, clockwise or not; its width and height swap.</summary>
+    public static byte[] Rotate90(byte[] bgra, int width, int height, bool clockwise)
+    {
+        var result = new byte[bgra.Length];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                // The new image is height wide: clockwise, the left column becomes the top row.
+                var (nx, ny) = clockwise ? (height - 1 - y, x) : (y, width - 1 - x);
+                Buffer.BlockCopy(bgra, (y * width + x) * 4, result, (ny * height + nx) * 4, 4);
+            }
+        }
+        return result;
+    }
+
     /// <summary>
     /// Automatic contrast and brightness: stretches the brightness range so the darkest and lightest
     /// half percent become black and white, then lifts or lowers the mid-tones towards a balanced
