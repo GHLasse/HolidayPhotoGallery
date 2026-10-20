@@ -58,7 +58,8 @@ public sealed partial class MapPanel : UserControl
             Web.CoreWebView2.Settings.AreDevToolsEnabled = false;
             Web.CoreWebView2.Settings.IsStatusBarEnabled = false;
             Web.WebMessageReceived += Web_WebMessageReceived;
-            Web.Source = new Uri($"https://{HostName}/map.html");
+            // The map's labels follow the app's language (see map.html for which tiles that picks).
+            Web.Source = new Uri($"https://{HostName}/map.html?lang={Uri.EscapeDataString(Language)}");
         }
         catch (Exception ex)
         {

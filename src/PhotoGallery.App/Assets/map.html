@@ -31,6 +31,7 @@
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
+const lang = new URLSearchParams(location.search).get("lang") || "en";
 
 if (!window.L) {
   document.getElementById("offline").style.display = "flex";
@@ -44,10 +45,17 @@ function start() {
   try { saved = JSON.parse(localStorage.getItem("view")); } catch (e) { }
   const map = L.map("map", { zoomControl: true, worldCopyJump: true })
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(map);
+  // Labels in the app's language where a free map has them: German from the German OpenStreetMap
+  // map (German names, else the local name written in Latin letters), Chinese from the standard map
+  // (names as written locally), everything else from CARTO's map, which labels places in English or
+  // Latin letters, so a city in China reads "Chengdu", not 成都.
+  const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  const tiles =
+    lang === "de" ? ["https://tile.openstreetmap.de/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }]
+    : lang.startsWith("zh") ? ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }]
+    : ["https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+       { maxZoom: 19, subdomains: "abcd", attribution: osm + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' }];
+  L.tileLayer(tiles[0], tiles[1]).addTo(map);
   map.on("moveend", () => {
     const c = map.getCenter();
     try { localStorage.setItem("view", JSON.stringify({ lat: c.lat, lon: c.lng, zoom: map.getZoom() })); } catch (e) { }
@@ -99,7 +107,7 @@ function start() {
     showMessage("Searching…");
     try {
       const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(q) +
-                  "&accept-language=" + encodeURIComponent(navigator.language || "en");
+                  "&accept-language=" + encodeURIComponent(lang);
       const response = await fetch(url);
       const results = await response.json();
       if (!results.length) { showMessage("No place found for \"" + q + "\"."); return; }
