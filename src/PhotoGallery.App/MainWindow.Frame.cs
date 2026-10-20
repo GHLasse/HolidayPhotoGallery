@@ -148,7 +148,8 @@ public sealed partial class MainWindow
             if (!(IsViewerOpen ? _viewerDetails : !_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
                 InfoPane.Visibility = Visibility.Collapsed;
         });
-        TopBar.Visibility = _chromeHidden || viewer || _workspace == Workspace.People ? Visibility.Collapsed : Visibility.Visible;
+        // The filters work on the grid; the People page and the whole-library map have none.
+        TopBar.Visibility = _chromeHidden || viewer || _workspace is Workspace.People or Workspace.Map ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // Tab and Shift+Tab hide the panes, like Lightroom, wherever the focus is; only a text box keeps Tab.
