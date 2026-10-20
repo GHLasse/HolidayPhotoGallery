@@ -185,9 +185,9 @@ public sealed partial class MainWindow
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
                 return;
             var text = sender.Text.Trim();
-            sender.ItemsSource = text.Length == 0
-                ? null
-                : ViewModel.KnownNames.Where(n => n.Contains(text, StringComparison.CurrentCultureIgnoreCase)).Take(8).ToList();
+            ShowSuggestions(sender, text.Length == 0
+                ? []
+                : ViewModel.KnownNames.Where(n => n.Contains(text, StringComparison.CurrentCultureIgnoreCase)).Take(8).ToList());
         };
         box.SuggestionChosen += (sender, args) => sender.Text = args.SelectedItem as string ?? sender.Text;
         box.QuerySubmitted += async (sender, args) =>

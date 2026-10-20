@@ -55,12 +55,33 @@ public sealed partial class MainWindow
         }
         var typed = text.Trim();
         var shown = new HashSet<string>(ViewModel.Editor.Tags.Where(b => b.IsOnAll).Select(b => b.Tag), StringComparer.OrdinalIgnoreCase);
-        sender.ItemsSource = typed.Length == 0
-            ? null
+        ShowSuggestions(sender, typed.Length == 0
+            ? []
             : ViewModel.Tags.OrderByDescending(t => t.Count).Select(t => t.Tag) // most used first
                 .Where(t => t.Contains(typed, StringComparison.CurrentCultureIgnoreCase) && !shown.Contains(t))
                 .Take(8)
-                .ToList();
+                .ToList());
+    }
+
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<AutoSuggestBox, System.Collections.ObjectModel.ObservableCollection<string>> _suggestions = new();
+
+    /// <summary>
+    /// Shows suggestions under a box. Each box keeps one list that is changed in place: giving a box a new
+    /// list while its suggestions are open can fail inside WinUI (E_FAIL from ItemsSource) and crash the app.
+    /// </summary>
+    private void ShowSuggestions(AutoSuggestBox box, IReadOnlyList<string> items)
+    {
+        if (!_suggestions.TryGetValue(box, out var list))
+        {
+            list = [];
+            _suggestions.Add(box, list);
+            box.ItemsSource = list;
+        }
+        if (items.SequenceEqual(list))
+            return;
+        list.Clear();
+        foreach (var item in items)
+            list.Add(item);
     }
 
     private void TagBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>
@@ -71,7 +92,7 @@ public sealed partial class MainWindow
         var text = args.ChosenSuggestion as string ?? args.QueryText;
         ViewModel.Editor.AddTags(TagList.Parse(text));
         sender.Text = "";
-        sender.ItemsSource = null;
+        ShowSuggestions(sender, []);
     }
 
     // ---- Filter bar ----
