@@ -185,7 +185,7 @@ public sealed partial class MainWindow
     /// A theme brush for UI built in code: the palette's own when it has one, otherwise WinUI's for the
     /// window's light or dark mode. Looked up carefully, so a missing one only loses its colour.
     /// </summary>
-    private static Brush? ThemeBrush(string key)
+    internal static Brush? ThemeBrush(string key)
     {
         if (s_paletteBrushes.TryGetValue(key, out var own))
             return own;
