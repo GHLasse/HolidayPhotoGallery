@@ -128,7 +128,7 @@ public sealed partial class MainWindow
 
     private const int TopPeopleCount = 5;
     // Fixed size: growing on hover changed the bar's height and width while the filters were folding.
-    private const double FaceSize = 28;
+    private const double FilterFaceSize = 28;
     private readonly Dictionary<string, byte[]?> _latestFaces = new(StringComparer.CurrentCultureIgnoreCase);
     private int _topPeopleVersion;
 
@@ -153,8 +153,8 @@ public sealed partial class MainWindow
         {
             var face = new Ellipse
             {
-                Width = FaceSize,
-                Height = FaceSize,
+                Width = FilterFaceSize,
+                Height = FilterFaceSize,
                 StrokeThickness = person.IsSelected ? 3 : 0,
                 Stroke = ThemeBrush("AccentFillColorDefaultBrush"),
                 Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
@@ -170,7 +170,7 @@ public sealed partial class MainWindow
                 MinHeight = 0,
                 Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
                 BorderThickness = new Thickness(0),
-                CornerRadius = new CornerRadius(FaceSize / 2),
+                CornerRadius = new CornerRadius(FilterFaceSize / 2),
             };
             var tip = person.IsSelected
                 ? Tr("{0} ({1} photos). Click to stop filtering by them.", person.Tag, person.CountText)
