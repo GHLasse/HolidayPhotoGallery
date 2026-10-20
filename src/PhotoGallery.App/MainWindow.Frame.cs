@@ -274,6 +274,48 @@ public sealed partial class MainWindow
             await ViewModel.ToggleFlagAsync([item]);
     }
 
+    // A click on the one selected photo deselects it, so the info pane can go away again (Esc does too).
+    private PhotoItemViewModel? _pressedSelected;
+
+    private void SetUpClickToDeselect()
+    {
+        // handledEventsToo: the grid's items take these events for their own selection handling.
+        PhotoGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
+        {
+            _pressedSelected = null;
+            var point = e.GetCurrentPoint(PhotoGrid);
+            if (!point.Properties.IsLeftButtonPressed || e.KeyModifiers != VirtualKeyModifiers.None)
+                return;
+            if (ClickedPhoto(e.OriginalSource) is { } item && PhotoGrid.SelectedItems.Count == 1 && ReferenceEquals(PhotoGrid.SelectedItems[0], item))
+                _pressedSelected = item;
+        }), true);
+        PhotoGrid.AddHandler(UIElement.TappedEvent, new TappedEventHandler((_, e) =>
+        {
+            var item = _pressedSelected;
+            _pressedSelected = null;
+            if (item is not null && ReferenceEquals(ClickedPhoto(e.OriginalSource), item) &&
+                PhotoGrid.SelectedItems.Count == 1 && ReferenceEquals(PhotoGrid.SelectedItems[0], item))
+            {
+                App.Trace("selection: click on the selected photo clears it");
+                PhotoGrid.SelectedItems.Clear();
+            }
+        }), true);
+    }
+
+    // The photo whose tile was clicked, unless the click was on one of the tile's own buttons (stars, flag, tick).
+    private PhotoItemViewModel? ClickedPhoto(object source)
+    {
+        for (var element = source as DependencyObject; element is not null && element != PhotoGrid;
+             element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
+        {
+            if (element is Microsoft.UI.Xaml.Controls.Primitives.ButtonBase)
+                return null;
+            if (element is GridViewItem { Content: PhotoItemViewModel item })
+                return item;
+        }
+        return null;
+    }
+
     // Adds the photo to the selection without Ctrl, or takes it out.
     private void TileCheck_Click(object sender, RoutedEventArgs e)
     {

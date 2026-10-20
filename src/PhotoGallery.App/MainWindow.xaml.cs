@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
 
         SetUpZoom();
         SetUpTimeline();
+        SetUpClickToDeselect();
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
@@ -681,6 +682,12 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (e.Key == VirtualKey.Escape && PhotoGrid.SelectedItems.Count > 0)
+        {
+            PhotoGrid.SelectedItems.Clear();
+            e.Handled = true;
+            return;
+        }
         if (e.Key != VirtualKey.Enter)
             return;
         var selected = SelectedPhotos;
