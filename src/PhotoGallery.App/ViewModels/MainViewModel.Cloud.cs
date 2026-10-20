@@ -44,7 +44,7 @@ public sealed partial class MainViewModel
     public static void OpenInBrowser(Uri uri) =>
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
 
-    /// <summary>What the running upload is doing, for the status bar; empty when nothing uploads.</summary>
+    /// <summary>What the running upload is doing, for the progress ring in the title bar; empty when nothing uploads.</summary>
     public string UploadText
     {
         get => _uploadText;
@@ -166,7 +166,7 @@ public sealed partial class MainViewModel
 
     public bool IsSignedIn(CloudService service) => service == CloudService.GooglePhotos ? IsGoogleSignedIn : IsOneDriveSignedIn;
 
-    /// <summary>Runs in the background: the app stays usable, and the status bar shows how far it got.</summary>
+    /// <summary>Runs in the background: the app stays usable, and the title bar shows how far it got.</summary>
     private async Task UploadAsync(CloudService service, IReadOnlyList<(string? Album, List<UploadPhoto> Photos)> groups,
         (CloudAlbumLink Link, string Name)? into = null)
     {

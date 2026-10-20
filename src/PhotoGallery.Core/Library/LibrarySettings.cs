@@ -44,6 +44,11 @@ public sealed class LibrarySettings
     /// <summary>The size of the photo tiles in the grid, in pixels (the zoom slider in the status bar).</summary>
     public int ThumbnailSize { get; set; } = 180;
 
+    /// <summary>Widths of the folder pane and the info pane, as last dragged.</summary>
+    public double NavPaneWidth { get; set; } = 260;
+
+    public double InfoPaneWidth { get; set; } = 320;
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 

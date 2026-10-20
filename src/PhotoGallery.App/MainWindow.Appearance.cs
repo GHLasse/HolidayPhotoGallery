@@ -52,12 +52,12 @@ public sealed partial class MainWindow
         var shades = dark ? s_darkShades : s_lightShades;
         s_paletteBrushes = shades is null ? [] : Brushes(shades);
 
-        // A palette washes the window with its colour and the toolbar and status bar a little more;
-        // the Windows accent colour keeps the Mica background. The viewer keeps its neutral background.
+        // A palette washes the window with its colour and the title bar and toolbar a little more; the
+        // Windows accent colour keeps the Mica background. The photos and the viewer stay on neutral surfaces.
         Root.Background = shades is null ? null : new SolidColorBrush(ToColor(shades.WindowBackground));
         var bars = shades is null ? null : new SolidColorBrush(ToColor(shades.BarBackground));
+        AppTitleBar.Background = bars;
         TopBar.Background = bars;
-        StatusBar.Background = bars;
 
         // Badges and faces are built in code, with the brushes of the moment.
         ShowTagBadges();

@@ -82,6 +82,16 @@ public sealed partial class MainViewModel
         SelectedPeople = People.Where(t => t.IsSelected).Select(t => t.Tag).ToList();
     }
 
+    /// <summary>Shows only the photos of one person (from the People workspace).</summary>
+    public void ShowOnlyPerson(TagFilterViewModel person)
+    {
+        _isUpdatingPeople = true;
+        foreach (var p in People)
+            p.IsSelected = ReferenceEquals(p, person);
+        _isUpdatingPeople = false;
+        SelectedPeople = [person.Tag];
+    }
+
     public void ClearPeopleFilter()
     {
         _isUpdatingPeople = true;
@@ -92,7 +102,7 @@ public sealed partial class MainViewModel
             SelectedPeople = [];
     }
 
-    /// <summary>Downloads the face models once (about 39 MB), showing progress in the status bar.</summary>
+    /// <summary>Downloads the face models once (about 39 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadFaceModelAsync()
     {
         IsBusy = true;

@@ -118,7 +118,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The messages shown as banners at the top of the window, newest first.</summary>
     public ObservableCollection<Notice> Notices { get; } = [];
 
-    /// <summary>A result for the user, shown as a blue banner; the status bar goes back to the photo count.</summary>
+    /// <summary>A result for the user, shown as a blue banner; the filter row goes back to the photo count.</summary>
     public void Inform(string message) => Notify(message, NoticeSeverity.Info);
 
     /// <summary>A result with an Undo button on its banner.</summary>
@@ -947,7 +947,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _labelVectors = null;
     }
 
-    /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the status bar.</summary>
+    /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadTagModelAsync()
     {
         IsBusy = true;

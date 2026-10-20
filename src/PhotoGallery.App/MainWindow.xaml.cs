@@ -40,6 +40,7 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new SizeInt32(1500, 950));
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+        SetUpFrame();
 
         // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
         RotateLeftButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)188 });
@@ -90,7 +91,13 @@ public sealed partial class MainWindow : Window
             else if (e.PropertyName is nameof(MainViewModel.FavouriteApps))
                 _ = ShowFavouriteAppsAsync();
             else if (e.PropertyName is nameof(MainViewModel.PeopleByName))
+            {
                 _ = ShowTopPeopleAsync();
+                if (_workspace == Workspace.People)
+                    _ = ShowPeoplePageAsync();
+            }
+            else if (e.PropertyName is nameof(MainViewModel.IsAlbumView))
+                OnAlbumViewChanged();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
                 ShowFilterBadges();
@@ -188,6 +195,7 @@ public sealed partial class MainWindow : Window
     {
         FolderTree.SelectedItem = null;
         ClearBrowseTrees();
+        LeavePeopleWorkspace();
         ViewModel.IsAlbumView = false;
         ViewModel.SelectedFolder = null;
     }
@@ -200,6 +208,7 @@ public sealed partial class MainWindow : Window
         FolderTree.SelectedItem = null;
         PlaceTree.SelectedItem = null;
         ViewModel.SelectedPlace = null;
+        LeavePeopleWorkspace();
         ViewModel.ShowDate(node);
     }
 
@@ -210,6 +219,7 @@ public sealed partial class MainWindow : Window
         FolderTree.SelectedItem = null;
         DateTree.SelectedItem = null;
         ViewModel.ClearDateFromTree();
+        LeavePeopleWorkspace();
         ViewModel.ShowPlace(node);
     }
 
@@ -347,7 +357,7 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 OpenCompare(selected);
                 break;
-            case VirtualKey.M:
+            case VirtualKey.M when _workspace == Workspace.Library:
                 e.Handled = true;
                 MapToggle.IsChecked = MapToggle.IsChecked != true;
                 Map_Click(MapToggle, new RoutedEventArgs());
@@ -369,6 +379,8 @@ public sealed partial class MainWindow : Window
     {
         var full = AppWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen;
         AppWindow.SetPresenter(full ? Microsoft.UI.Windowing.AppWindowPresenterKind.Default : Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+        // Full screen has no window buttons, so the title bar goes too.
+        AppTitleBar.Visibility = full ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private bool _showingShortcuts;
@@ -382,6 +394,9 @@ public sealed partial class MainWindow : Window
             (Tr("E or Enter"), Tr("Show the photo large (Enter with several photos: compare them)")),
             ("C", Tr("Compare the selected photos")),
             ("M", Tr("Show or hide the map")),
+            ("Tab", Tr("Hide or show the side panes (while the photos have the focus)")),
+            ("Shift+Tab", Tr("Hide or show the side panes and the toolbar")),
+            ("Ctrl+E", Tr("Search")),
             ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
             ("P", Tr("Flag or unflag the selected photos")),
             ("X", Tr("Reject the selected photos, or take the mark off")),
@@ -471,37 +486,51 @@ public sealed partial class MainWindow : Window
 
     private void ShowNotices()
     {
-        NoticePanel.Children.Clear();
-        foreach (var notice in ViewModel.Notices)
+        // Bars already shown stay, so only a new one slides in and the others move up when one goes.
+        var notices = ViewModel.Notices.ToList();
+        foreach (var old in NoticePanel.Children.OfType<InfoBar>().Where(b => b.Tag is not Notice n || !notices.Contains(n)).ToList())
+            NoticePanel.Children.Remove(old);
+        for (var i = 0; i < notices.Count; i++)
         {
-            var bar = new InfoBar
-            {
-                Message = notice.Message,
-                IsOpen = true,
-                Severity = notice.Severity switch
-                {
-                    NoticeSeverity.Error => InfoBarSeverity.Error,
-                    NoticeSeverity.Warning => InfoBarSeverity.Warning,
-                    _ => InfoBarSeverity.Informational,
-                },
-            };
-            // Informational bars are grey by default; Lasse asked for blue ones.
-            if (notice.Severity == NoticeSeverity.Info && ThemeBrush("SystemFillColorAttentionBackgroundBrush") is { } blue)
-                bar.Background = blue;
-            bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
-            if (notice.Undo is { } undo)
-            {
-                var button = new Button { Content = Tr("Undo") };
-                button.Click += async (_, _) =>
-                {
-                    ViewModel.CloseNotice(notice);
-                    await undo();
-                };
-                bar.ActionButton = button;
-            }
-            NoticePanel.Children.Add(bar);
+            var at = NoticePanel.Children.ToList().FindIndex(c => ReferenceEquals((c as FrameworkElement)?.Tag, notices[i]));
+            if (at == i)
+                continue;
+            if (at >= 0)
+                NoticePanel.Children.RemoveAt(at);
+            NoticePanel.Children.Insert(i, NoticeBar(notices[i]));
         }
-        NoticePanel.Margin = new Thickness(12, 0, 12, ViewModel.Notices.Count > 0 ? 8 : 0);
+        NoticePanel.Margin = new Thickness(12, 0, 12, notices.Count > 0 ? 8 : 0);
+    }
+
+    private InfoBar NoticeBar(Notice notice)
+    {
+        var bar = new InfoBar
+        {
+            Tag = notice,
+            Message = notice.Message,
+            IsOpen = true,
+            Severity = notice.Severity switch
+            {
+                NoticeSeverity.Error => InfoBarSeverity.Error,
+                NoticeSeverity.Warning => InfoBarSeverity.Warning,
+                _ => InfoBarSeverity.Informational,
+            },
+        };
+        // Informational bars are grey by default; Lasse asked for blue ones.
+        if (notice.Severity == NoticeSeverity.Info && ThemeBrush("SystemFillColorAttentionBackgroundBrush") is { } blue)
+            bar.Background = blue;
+        bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
+        if (notice.Undo is { } undo)
+        {
+            var button = new Button { Content = Tr("Undo") };
+            button.Click += async (_, _) =>
+            {
+                ViewModel.CloseNotice(notice);
+                await undo();
+            };
+            bar.ActionButton = button;
+        }
+        return bar;
     }
 
     private void FolderTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
@@ -509,6 +538,7 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItem is FolderNodeViewModel folder)
         {
             ClearBrowseTrees();
+            LeavePeopleWorkspace();
             ViewModel.IsAlbumView = false;
             ViewModel.SelectedFolder = folder;
         }
@@ -552,16 +582,7 @@ public sealed partial class MainWindow : Window
 
     private bool IsMapOpen => MapView.Visibility == Visibility.Visible;
 
-    private async void Map_Click(object sender, RoutedEventArgs e)
-    {
-        var open = MapToggle.IsChecked == true;
-        MapColumn.Width = open ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        MapView.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        if (!open)
-            return;
-        await MapView.StartAsync();
-        RefreshMap(fit: true);
-    }
+    private async void Map_Click(object sender, RoutedEventArgs e) => await ApplyMapLayoutAsync();
 
     private async void AddPlaceNames_Click(object sender, RoutedEventArgs e) => await ViewModel.AddPlaceNamesAsync(SelectedPhotos);
 

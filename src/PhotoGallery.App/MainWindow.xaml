@@ -12,17 +12,81 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+        <!-- The side panes are resized with the splitters between them (widths kept in the settings). -->
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" />
+            <ColumnDefinition x:Name="NavColumn" Width="260" />
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="320" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition x:Name="InfoColumn" Width="320" />
         </Grid.ColumnDefinitions>
 
-        <!-- Toolbar: commands, search and filters -->
-        <Grid x:Name="TopBar" Grid.Row="0" Grid.ColumnSpan="3" Padding="12,8" ColumnSpacing="8" RowSpacing="4">
+        <!-- The app's own title bar: the workspaces, search, background work and settings. -->
+        <TitleBar x:Name="AppTitleBar" Grid.Row="0" Grid.ColumnSpan="5" Height="48" Title="Holiday Photo Gallery"
+                  IsBackButtonVisible="False" IsPaneToggleButtonVisible="False">
+            <TitleBar.Content>
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <SelectorBar x:Name="ModeBar" VerticalAlignment="Center" SelectionChanged="ModeBar_SelectionChanged">
+                    <SelectorBarItem x:Name="LibraryTab" Text="{local:Loc Text='Library'}"
+                                     ToolTipService.ToolTip="{local:Loc Text='Your photos with the folder, date and place trees'}" />
+                    <SelectorBarItem x:Name="MapTab" Text="{local:Loc Text='Map'}"
+                                     ToolTipService.ToolTip="{local:Loc Text='All photos shown on a big map'}" />
+                    <SelectorBarItem x:Name="PeopleTab" Text="{local:Loc Text='People'}"
+                                     ToolTipService.ToolTip="{local:Loc Text='Everyone named in your photos'}" />
+                    <SelectorBarItem x:Name="AlbumsTab" Text="{local:Loc Text='Albums'}"
+                                     ToolTipService.ToolTip="{local:Loc Text='Your trips and events as albums. Right-click a folder to make it an album.'}" />
+                </SelectorBar>
+                <AutoSuggestBox x:Name="SearchBox" Grid.Column="1" MaxWidth="360" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                PlaceholderText="{local:Loc Text='Search names, captions and tags (Ctrl+E)'}"
+                                QueryIcon="Find"
+                                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                    <AutoSuggestBox.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="E" Invoked="SearchAccelerator_Invoked" />
+                    </AutoSuggestBox.KeyboardAccelerators>
+                </AutoSuggestBox>
+            </Grid>
+            </TitleBar.Content>
+            <TitleBar.RightHeader>
+                <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,0,4,0" VerticalAlignment="Center">
+                    <!-- Long work (tagging, finding people, uploads) runs in the background; the ring opens the details. -->
+                    <Button Padding="8" Background="Transparent" BorderThickness="0"
+                            Visibility="{x:Bind local:Ui.VisibleIfAny(ViewModel.IsBusy, ViewModel.IsUploading), Mode=OneWay}"
+                            ToolTipService.ToolTip="{x:Bind ViewModel.StatusText, Mode=OneWay}">
+                        <ProgressRing Width="16" Height="16" Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                      IsActive="{x:Bind local:Ui.Any(ViewModel.IsBusy, ViewModel.IsUploading), Mode=OneWay}" />
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <StackPanel Spacing="8" MaxWidth="320">
+                                    <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}">
+                                        <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" TextWrapping="Wrap" />
+                                        <ProgressBar IsIndeterminate="True" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ViewModel.IsUploading, Mode=OneWay}">
+                                        <TextBlock Text="{x:Bind ViewModel.UploadText, Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                        <HyperlinkButton Content="{local:Loc Text='Stop'}" Padding="4,0" Click="CancelUpload_Click" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button Padding="8" Background="Transparent" BorderThickness="0" Click="Settings_Click"
+                            AutomationProperties.Name="{local:Loc Text='Settings'}"
+                            ToolTipService.ToolTip="{local:Loc Text='Settings for tagging and cropping, and the keyboard shortcuts'}">
+                        <FontIcon Glyph="&#xE713;" FontSize="16" />
+                    </Button>
+                </StackPanel>
+            </TitleBar.RightHeader>
+        </TitleBar>
+
+        <!-- Toolbar and filters -->
+        <Grid x:Name="TopBar" Grid.Row="1" Grid.ColumnSpan="5" Padding="12,0,12,8" ColumnSpacing="8" RowSpacing="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -31,7 +95,8 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <CommandBar Grid.Column="0" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="False" Background="Transparent">
+            <CommandBar x:Name="Toolbar" Grid.Column="0" Grid.ColumnSpan="2" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True"
+                        HorizontalAlignment="Left" Background="Transparent">
                 <AppBarButton Icon="Add" Label="{local:Loc Text='Add folder'}" Click="AddFolder_Click" ToolTipService.ToolTip="{local:Loc Text='Add a folder to the library'}" />
                 <AppBarButton Icon="Refresh" Label="{local:Loc Text='Rescan'}" Click="Rescan_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}" ToolTipService.ToolTip="{local:Loc Text='Look for new, changed and deleted photos'}" />
                 <AppBarSeparator />
@@ -99,11 +164,6 @@
                         </MenuFlyout>
                     </AppBarButton.Flyout>
                 </AppBarButton>
-                <AppBarButton Label="{local:Loc Text='Settings'}" Click="Settings_Click" ToolTipService.ToolTip="{local:Loc Text='Settings for tagging and cropping, and the keyboard shortcuts'}">
-                    <AppBarButton.Icon>
-                        <FontIcon Glyph="&#xE713;" />
-                    </AppBarButton.Icon>
-                </AppBarButton>
                 <CommandBar.SecondaryCommands>
                     <AppBarButton Label="{local:Loc Text='Remove auto tags'}" Click="RemoveAutoTags_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
                                   ToolTipService.ToolTip="{local:Loc Text='Remove the tags auto-tagging added to the selected photos; your own tags stay'}">
@@ -113,12 +173,14 @@
                     </AppBarButton>
                 </CommandBar.SecondaryCommands>
             </CommandBar>
-            <!-- One filter bar: everything that narrows the grid, wrapping onto a second line when the window is narrow. -->
-            <controls:WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
-                <AutoSuggestBox Width="260" VerticalAlignment="Center"
-                                PlaceholderText="{local:Loc Text='Search names, captions and tags'}"
-                                QueryIcon="Find"
-                                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <!-- One filter bar: everything that narrows the grid, wrapping onto a second line when the window is narrow;
+                 the photo count and the photo size at its right end. -->
+            <Grid x:Name="FilterRow" Grid.Row="1" Grid.ColumnSpan="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <controls:WrapPanel Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
                 <DropDownButton VerticalAlignment="Center" ToolTipService.ToolTip="{local:Loc Text='Only photos with all the ticked tags'}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE8EC;" FontSize="14" />
@@ -266,13 +328,41 @@
                 <!-- The ticked tags and people as badges, each with × to drop it from the filter. -->
                 <controls:WrapPanel x:Name="FilterBadges" VerticalAlignment="Center" />
             </controls:WrapPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top" Margin="0,4,0,0">
+                <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" VerticalAlignment="Center" MaxWidth="320"
+                           TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <!-- Zoom for the photo tiles; Ctrl + mouse wheel over the grid does the same. -->
+                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
+                            Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
+                    <Button Click="ZoomOut_Click" Padding="4" Background="Transparent" BorderThickness="0"
+                            ToolTipService.ToolTip="{local:Loc Text='Smaller photos (Ctrl + mouse wheel)'}">
+                        <FontIcon Glyph="&#xE949;" FontSize="12" />
+                    </Button>
+                    <Slider Width="120" VerticalAlignment="Center" StepFrequency="1" Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                            Minimum="96" Maximum="320"
+                            Value="{x:Bind ViewModel.TileSize, Mode=TwoWay}" IsThumbToolTipEnabled="False"
+                            ToolTipService.ToolTip="{local:Loc Text='Photo size'}" />
+                    <Button Click="ZoomIn_Click" Padding="4" Background="Transparent" BorderThickness="0"
+                            ToolTipService.ToolTip="{local:Loc Text='Larger photos (Ctrl + mouse wheel)'}">
+                        <FontIcon Glyph="&#xE948;" FontSize="12" />
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+            </Grid>
         </Grid>
 
         <!-- Messages as banners, newest first; filled from code when ViewModel.Notices changes. -->
-        <StackPanel x:Name="NoticePanel" Grid.Row="1" Grid.ColumnSpan="3" Margin="12,0,12,0" Spacing="4" />
+        <StackPanel x:Name="NoticePanel" Grid.Row="2" Grid.ColumnSpan="5" Margin="12,0,12,0" Spacing="4">
+            <StackPanel.ChildrenTransitions>
+                <TransitionCollection>
+                    <EntranceThemeTransition FromVerticalOffset="-24" IsStaggeringEnabled="False" />
+                    <RepositionThemeTransition />
+                </TransitionCollection>
+            </StackPanel.ChildrenTransitions>
+        </StackPanel>
 
         <!-- Navigation: folders (tags and people are in the filter bar) -->
-        <Grid Grid.Row="2" Grid.Column="0" Padding="8,0,0,8" RowSpacing="4">
+        <Grid x:Name="NavPane" Grid.Row="3" Grid.Column="0" Padding="8,0,0,8" RowSpacing="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -285,13 +375,6 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE91B;" FontSize="16" />
                         <TextBlock Text="{local:Loc Text='All photos'}" />
-                    </StackPanel>
-                </Button>
-                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="Albums_Click"
-                        ToolTipService.ToolTip="{local:Loc Text='Your trips and events as albums. Right-click a folder to make it an album.'}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE8B9;" FontSize="16" />
-                        <TextBlock Text="{local:Loc Text='Albums'}" />
                     </StackPanel>
                 </Button>
             </StackPanel>
@@ -378,14 +461,19 @@
                     ToolTipService.ToolTip="{local:Loc Text='Stops showing this folder. No files are deleted.'}" />
         </Grid>
 
-        <!-- Photo grid -->
-        <Grid Grid.Row="2" Grid.Column="1" Margin="8,0,8,8" RowSpacing="4" ColumnSpacing="8">
+        <controls:PaneSplitter x:Name="NavSplitter" Grid.Row="3" Grid.Column="1" />
+
+        <!-- Photo grid, on a neutral surface the palette never tints, so colours in the photos read true. -->
+        <Grid x:Name="PhotoArea" Grid.Row="3" Grid.Column="2" Padding="8,8,8,0" RowSpacing="4" ColumnSpacing="8"
+              Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,1,1,0" CornerRadius="8,8,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
+                <!-- The grid; empty in the Map workspace, where the map takes the whole width. -->
+                <ColumnDefinition x:Name="GridColumn" Width="*" />
                 <!-- The map, next to the grid like in Geosetter; opened with the Map button. -->
                 <ColumnDefinition x:Name="MapColumn" Width="0" />
             </Grid.ColumnDefinitions>
@@ -447,11 +535,17 @@
                 </GridView.ItemContainerStyle>
                 <GridView.ItemTemplate>
                     <DataTemplate x:DataType="vm:PhotoItemViewModel">
-                        <Grid CornerRadius="4"
+                        <Grid CornerRadius="6"
                               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                              ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
+                              ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}"
+                              PointerEntered="Tile_PointerEntered" PointerExited="Tile_PointerExited" PointerCanceled="Tile_PointerExited">
                             <FontIcon Glyph="&#xEB9F;" FontSize="32" Opacity="0.3" />
-                            <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4,4,4,24" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
+                            <Grid Opacity="{x:Bind ThumbnailShown, Mode=OneWay}">
+                                <Grid.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.167" />
+                                </Grid.OpacityTransition>
+                                <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" Margin="4,4,4,24" Opacity="{x:Bind ThumbnailOpacity, Mode=OneWay}" />
+                            </Grid>
                             <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="4" CornerRadius="4"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind FlagVisibility, Mode=OneWay}"
                                     ToolTipService.ToolTip="{local:Loc Text='Flagged'}">
@@ -500,7 +594,8 @@
                     <DataTemplate x:DataType="vm:AlbumViewModel">
                         <Grid Width="220" Height="210" CornerRadius="6"
                               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                              ToolTipService.ToolTip="{x:Bind Folder}">
+                              ToolTipService.ToolTip="{x:Bind Folder}"
+                              PointerEntered="Tile_PointerEntered" PointerExited="Tile_PointerExited" PointerCanceled="Tile_PointerExited">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="Auto" />
@@ -560,8 +655,43 @@
             <controls:MapPanel x:Name="MapView" Grid.Row="1" Grid.Column="1" Visibility="Collapsed" />
         </Grid>
 
+        <!-- The People workspace: everyone named, biggest first. Filled from code (MainWindow.Modes.cs). -->
+        <Grid x:Name="PeoplePage" Grid.Row="3" Grid.Column="2" Visibility="Collapsed" Padding="16,12,8,0" RowSpacing="12"
+              Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,1,1,0" CornerRadius="8,8,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <controls:WrapPanel>
+                <TextBlock Text="{local:Loc Text='People'}" Style="{ThemeResource SubtitleTextBlockStyle}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                <Button Click="FindPeopleInAll_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}"
+                        ToolTipService.ToolTip="{local:Loc Text='Find the people in your photos on this PC and name them'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE721;" FontSize="14" />
+                        <TextBlock Text="{local:Loc Text='Find people in all photos shown'}" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{ThemeResource AccentButtonStyle}" Click="NamePeople_Click" IsEnabled="{x:Bind local:Ui.Not(ViewModel.IsBusy), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8EC;" FontSize="14" />
+                        <TextBlock Text="{local:Loc Text='Name the people found…'}" />
+                    </StackPanel>
+                </Button>
+            </controls:WrapPanel>
+            <ScrollViewer Grid.Row="1">
+                <StackPanel Spacing="12" Padding="0,0,8,16">
+                    <TextBlock x:Name="PeopleEmptyHint" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed"
+                               Text="{local:Loc Text='Nobody is named yet. Find the people in your photos, then name the faces found.'}" />
+                    <controls:WrapPanel x:Name="PeopleCards" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <controls:PaneSplitter x:Name="InfoSplitter" Grid.Row="3" Grid.Column="3" />
+
         <!-- Metadata panel -->
-        <ScrollViewer Grid.Row="2" Grid.Column="2" Padding="8,0,16,8">
+        <ScrollViewer x:Name="InfoPane" Grid.Row="3" Grid.Column="4" Padding="8,0,16,8">
             <StackPanel Spacing="12">
                 <TextBlock Text="{x:Bind ViewModel.Editor.Summary, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                 <TextBlock Text="{x:Bind ViewModel.Editor.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
@@ -643,43 +773,8 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Status bar -->
-        <Grid x:Name="StatusBar" Grid.Row="3" Grid.ColumnSpan="3" Padding="12,4" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="200" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            <!-- A running Google Photos upload; it doesn't block anything else. -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ViewModel.IsUploading, Mode=OneWay}">
-                <ProgressRing IsActive="{x:Bind ViewModel.IsUploading, Mode=OneWay}" Width="16" Height="16" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
-                <TextBlock Text="{x:Bind ViewModel.UploadText, Mode=OneWay}" VerticalAlignment="Center" />
-                <HyperlinkButton Content="{local:Loc Text='Stop'}" Padding="4,0" Click="CancelUpload_Click" />
-            </StackPanel>
-            <ProgressBar Grid.Column="2" IsIndeterminate="True" VerticalAlignment="Center" Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                         Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
-            <!-- Zoom for the photo tiles; Ctrl + mouse wheel over the grid does the same. -->
-            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
-                        Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
-                <Button Click="ZoomOut_Click" Padding="4" Background="Transparent" BorderThickness="0"
-                        ToolTipService.ToolTip="{local:Loc Text='Smaller photos (Ctrl + mouse wheel)'}">
-                    <FontIcon Glyph="&#xE949;" FontSize="12" />
-                </Button>
-                <Slider Width="140" VerticalAlignment="Center" StepFrequency="1" Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                        Minimum="96" Maximum="320"
-                        Value="{x:Bind ViewModel.TileSize, Mode=TwoWay}" IsThumbToolTipEnabled="False"
-                        ToolTipService.ToolTip="{local:Loc Text='Photo size'}" />
-                <Button Click="ZoomIn_Click" Padding="4" Background="Transparent" BorderThickness="0"
-                        ToolTipService.ToolTip="{local:Loc Text='Larger photos (Ctrl + mouse wheel)'}">
-                    <FontIcon Glyph="&#xE948;" FontSize="12" />
-                </Button>
-            </StackPanel>
-        </Grid>
-
-        <!-- Full-size viewer, shown over everything -->
-        <Grid x:Name="ViewerLayer" Grid.RowSpan="4" Grid.ColumnSpan="3" Visibility="Collapsed"
+        <!-- Full-size viewer, shown over everything but the title bar -->
+        <Grid x:Name="ViewerLayer" Grid.Row="1" Grid.RowSpan="3" Grid.ColumnSpan="5" Visibility="Collapsed"
               Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -790,6 +885,6 @@
         </Grid>
 
         <!-- Compare view for picking the best photos -->
-        <controls:CompareView x:Name="CompareLayer" Grid.RowSpan="4" Grid.ColumnSpan="3" Visibility="Collapsed" />
+        <controls:CompareView x:Name="CompareLayer" Grid.Row="1" Grid.RowSpan="3" Grid.ColumnSpan="5" Visibility="Collapsed" />
     </Grid>
 </Window>

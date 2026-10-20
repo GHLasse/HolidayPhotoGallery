@@ -9,5 +9,9 @@ public static class Ui
 
     public static bool Not(bool value) => !value;
 
+    public static bool Any(bool a, bool b) => a || b;
+
+    public static Visibility VisibleIfAny(bool a, bool b) => a || b ? Visibility.Visible : Visibility.Collapsed;
+
     public static bool IsRootFolder(ViewModels.FolderNodeViewModel? folder) => folder?.IsRoot == true;
 }

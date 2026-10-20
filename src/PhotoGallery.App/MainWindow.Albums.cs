@@ -21,12 +21,6 @@ public sealed partial class MainWindow
             ViewModel.AlbumSortIndex = AlbumSortCombo.SelectedIndex;
     }
 
-    private void Albums_Click(object sender, RoutedEventArgs e)
-    {
-        FolderTree.SelectedItem = null;
-        ViewModel.IsAlbumView = true;
-    }
-
     private void AlbumGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (!args.InRecycleQueue && args.Item is AlbumViewModel album)

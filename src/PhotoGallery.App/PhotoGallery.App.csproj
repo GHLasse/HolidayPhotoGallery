@@ -60,6 +60,7 @@
     <None Remove="Assets\AppIcon.ico" />
     <Content Remove="Assets\AppIcon.ico" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppIcon-40.png" CopyToOutputDirectory="PreserveNewest" />
     <!-- The built-in languages (see PhotoGallery.Core.Localization.Strings); template.json lists every text. -->
     <None Remove="Languages\*.json" />
     <Content Include="Languages\*.json" CopyToOutputDirectory="PreserveNewest" />

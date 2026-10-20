@@ -6,7 +6,7 @@ using Windows.System;
 
 namespace PhotoGallery.App;
 
-/// <summary>Zooming the photo grid: the slider in the status bar, its − and + buttons, and Ctrl + mouse wheel.</summary>
+/// <summary>Zooming the photo grid: the slider in the filter row, its − and + buttons, and Ctrl + mouse wheel.</summary>
 public sealed partial class MainWindow
 {
     private const double ZoomStep = 28;

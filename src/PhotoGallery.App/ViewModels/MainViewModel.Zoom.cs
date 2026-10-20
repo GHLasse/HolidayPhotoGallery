@@ -1,6 +1,6 @@
 namespace PhotoGallery.App.ViewModels;
 
-/// <summary>The size of the photo tiles: the zoom slider in the status bar, and Ctrl + mouse wheel.</summary>
+/// <summary>The size of the photo tiles: the zoom slider in the filter row, and Ctrl + mouse wheel.</summary>
 public sealed partial class MainViewModel
 {
     /// <summary>The tile size in pixels; kept in the settings, so the grid opens at the same size.</summary>

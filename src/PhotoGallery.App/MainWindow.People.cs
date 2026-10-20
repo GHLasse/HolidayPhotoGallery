@@ -209,7 +209,7 @@ public sealed partial class MainWindow
         box = NameBox(name =>
         {
             box!.Text = "";
-            // Written in the background; the status bar shows how far it is.
+            // Written in the background; the filter row shows how far it is.
             _ = ViewModel.AddPersonAsync(photos, name);
             return Task.CompletedTask;
         });
@@ -430,7 +430,7 @@ public sealed partial class MainWindow
                 problem.Text = name.Length == 0 ? Tr("Type a name first.") : Tr("Every face is left out.");
                 return;
             }
-            // The names are written in the background (the status bar shows how far it is), so the next
+            // The names are written in the background (the filter row shows how far it is), so the next
             // faces come up at once and Done closes the dialog straight away.
             _ = ViewModel.NameFacesAsync(chosen, name);
             Next(name);

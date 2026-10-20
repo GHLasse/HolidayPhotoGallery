@@ -85,8 +85,15 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     public ImageSource? Thumbnail
     {
         get => _thumbnail;
-        private set => SetProperty(ref _thumbnail, value);
+        private set
+        {
+            if (SetProperty(ref _thumbnail, value))
+                OnPropertyChanged(nameof(ThumbnailShown));
+        }
     }
+
+    /// <summary>0 until the thumbnail has loaded, so it fades in instead of popping up.</summary>
+    public double ThumbnailShown => _thumbnail is null ? 0 : 1;
 
     /// <summary>Loads the thumbnail the first time the tile scrolls into view.</summary>
     public async Task EnsureThumbnailAsync()
