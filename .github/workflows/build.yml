@@ -165,13 +165,19 @@ jobs:
               continue
             }
             "Start $run`: app exited with code $($p.ExitCode)"
-            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 30 }
+            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 60 }
             Start-Sleep -Seconds 10
             $dump = Get-ChildItem $dumps -Filter *.dmp | Sort-Object LastWriteTime | Select-Object -Last 1
             $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
             if ($dump -and (Test-Path $cdb)) {
               "===== crash analysis of $($dump.Name)"
-              & $cdb -z $dump.FullName -lines -c ".symfix $env:RUNNER_TEMP\symbols; .reload; !analyze -v; q" 2>&1 | Select-Object -Last 250
+              $analysis = & $cdb -z $dump.FullName -lines -c ".sympath srv*$env:RUNNER_TEMP\symbols*https://msdl.microsoft.com/download/symbols; .reload; !analyze -v; q" 2>&1
+              $analysis | Select-Object -Last 250
+              # WinUI errors arrive as a "stowed" exception: list its stack with names, and its error record.
+              if (($analysis -join "`n") -match 'dt (0x[0-9a-f]+) combase!STOWED_EXCEPTION_INFORMATION_V2 -r; dps (0x[0-9a-f]+) L(0x[0-9a-f]+)') {
+                "===== stowed exception"
+                & $cdb -z $dump.FullName -lines -c ".sympath srv*$env:RUNNER_TEMP\symbols*https://msdl.microsoft.com/download/symbols; .reload /f Microsoft.UI.Xaml.dll; .reload /f combase.dll; dt $($Matches[1]) combase!STOWED_EXCEPTION_INFORMATION_V2 -r; dps $($Matches[2]) L$($Matches[3]); q" 2>&1 | Select-Object -Last 160
+              }
             } else {
               "No dump found in $dumps"
             }

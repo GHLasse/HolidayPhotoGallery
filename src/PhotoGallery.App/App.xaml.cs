@@ -43,6 +43,25 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Notes a step of the first half minute in startup.log, so a crash inside WinUI (which leaves no
+    /// exception of ours) shows what the app was doing just before.
+    /// </summary>
+    internal static void TraceStartup(string step)
+    {
+        if (_startup.Elapsed > TimeSpan.FromSeconds(30))
+            return;
+        try
+        {
+            Directory.CreateDirectory(LibrarySettings.DefaultDataFolder);
+            File.AppendAllText(Path.Combine(LibrarySettings.DefaultDataFolder, "startup.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} {step}{Environment.NewLine}");
+        }
+        catch (IOException)
+        {
+        }
+    }
+
     // Keeps a record of crashes, since a WinUI app otherwise just disappears.
     private static void LogCrash(object? exception)
     {

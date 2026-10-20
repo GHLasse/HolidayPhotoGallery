@@ -81,6 +81,7 @@ public sealed partial class MainWindow
         var moreNow = MoreFiltersPanel.Children.OfType<FrameworkElement>();
         if (!inBar.SequenceEqual(barNow) || !inMore.SequenceEqual(moreNow))
         {
+            App.TraceStartup("filters: moving " + string.Join(", ", inMore.Select(f => f.Name)) + " into More filters");
             foreach (var filter in _filtersInOrder)
             {
                 FilterBarPanel.Children.Remove(filter);
@@ -98,5 +99,6 @@ public sealed partial class MainWindow
                 filter.HorizontalAlignment = HorizontalAlignment.Left;
         }
         MoreFiltersButton.Visibility = inMore.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        App.TraceStartup($"filters: {available:0} px, {inMore.Count} folded");
     }
 }

@@ -82,6 +82,7 @@ public sealed partial class MainWindow
         SelectionCommands.DefaultLabelPosition = width >= SelectionBarLabelsWidth
             ? CommandBarDefaultLabelPosition.Right
             : CommandBarDefaultLabelPosition.Collapsed;
+        App.TraceStartup($"window: {width:0} px wide");
         var narrow = width < FoldNavBelowWidth;
         if (narrow == _narrow)
             return;
@@ -108,6 +109,7 @@ public sealed partial class MainWindow
         var nav = panes && !_navFolded;
         var rail = panes && _navFolded;
         var info = panes && InfoShown;
+        App.TraceStartup($"chrome: nav {nav}, rail {rail}, info {info}, animate {animate}");
 
         NavPane.Visibility = NavSplitter.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
         NavRail.Visibility = rail ? Visibility.Visible : Visibility.Collapsed;
@@ -187,6 +189,7 @@ public sealed partial class MainWindow
     private void OnSelectionChromeChanged()
     {
         var count = PhotoGrid.SelectedItems.Count;
+        App.TraceStartup($"selection: {count}");
         var has = count > 0;
         if (has != _hadSelection)
         {
