@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window
             RefreshMap(fit: false);
         };
         MapView.PhotoClicked += MapPhotoClicked;
+        MapView.PhotoOpened += MapPhotoOpened;
         MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
@@ -129,6 +130,18 @@ public sealed partial class MainWindow : Window
         Root.ActualThemeChanged += Root_ActualThemeChanged;
         ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
         _ = ViewModel.InitializeAsync();
+        Root.Loaded += async (_, _) => await StartOnAlbumsAsync();
+    }
+
+    // The app opens on the albums, the way into the trips; without any albums yet, on all photos.
+    private async Task StartOnAlbumsAsync()
+    {
+        await ViewModel.LoadAlbumsAsync();
+        if (ViewModel.Albums.Count > 0 && _workspace == Workspace.Library && ViewModel.SelectedFolder is null)
+        {
+            ClearBrowseTrees();
+            ShowWorkspace(Workspace.Albums);
+        }
     }
 
     // The list always goes in before the index; a combo box throws when given an index it doesn't have.
@@ -784,6 +797,7 @@ public sealed partial class MainWindow : Window
             var all = await ViewModel.PhotosWithLocationAsync();
             if (version != _mapVersion)
                 return;
+            _mapPhotos = all;
             MapView.ShowPhotos(all, fitAll: fit && SelectedPhotos.Count == 0);
         }
         else
@@ -791,6 +805,24 @@ public sealed partial class MainWindow : Window
             MapView.ShowPhotos(ViewModel.Photos);
         }
         MapView.ShowSelection(SelectedPhotos, fit);
+    }
+
+    // The photos on the whole-library map, for opening one from its bubble.
+    private List<IndexedPhoto> _mapPhotos = [];
+
+    // Clicking the picture in a dot's bubble opens the photo, and the viewer walks the photos on the map.
+    private void MapPhotoOpened(string path)
+    {
+        if (IsViewerOpen)
+            return;
+        if (ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } shown)
+        {
+            OpenViewer(shown);
+            return;
+        }
+        var items = _mapPhotos.OrderBy(p => p.DateTaken?.Local ?? DateTime.MaxValue).Select(p => new PhotoItemViewModel(p)).ToList();
+        if (items.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
+            OpenViewer(item, items);
     }
 
     private void MapPhotoClicked(string path, bool addToSelection)
@@ -934,11 +966,11 @@ public sealed partial class MainWindow : Window
 
     private bool IsViewerOpen => ViewerLayer.Visibility == Visibility.Visible && !_viewerClosing;
 
-    private void OpenViewer(PhotoItemViewModel item)
+    private void OpenViewer(PhotoItemViewModel item, List<PhotoItemViewModel>? items = null)
     {
         App.Trace("viewer: open");
         var tile = TileImageBounds(item); // before the viewer covers it
-        _viewerItems = ViewModel.Photos.ToList();
+        _viewerItems = items ?? ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
         ApplyChrome(animate: false); // the details or the map stay beside the photo
