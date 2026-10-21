@@ -130,6 +130,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; The wizard's pictures, only unpacked to Setup's temporary folder.
 Source: "art\bmp\*.bmp"; DestDir: "{tmp}\art"; Flags: dontcopy
 Source: "art\png\ready-check.png"; DestDir: "{tmp}\art"; Flags: dontcopy
+Source: "art\png\ready-empty.png"; DestDir: "{tmp}\art"; Flags: dontcopy
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -173,6 +174,10 @@ function SetTimer(Wnd: Longint; IDEvent, Elapse: Longint; TimerFunc: Longword): 
   external 'SetTimer@user32.dll stdcall';
 function KillTimer(Wnd: Longint; IDEvent: Longword): BOOL;
   external 'KillTimer@user32.dll stdcall';
+function GetDC(Wnd: HWND): Longint;
+  external 'GetDC@user32.dll stdcall';
+function ReleaseDC(Wnd: HWND; DC: Longint): Integer;
+  external 'ReleaseDC@user32.dll stdcall';
 function TickCount: DWORD;
   external 'GetTickCount@kernel32.dll stdcall';
 
@@ -191,6 +196,7 @@ var
   Black, White, Shadow, Strip, PanelBuffer, FlyBuffer: TBitmap;
   WelcomeImage, MapImage, SuitcaseImage, FlyImage, IslandImage: TBitmapImage;
   PackFolderValue, PackDesktopValue: TNewStaticText;
+  PackFolderCheck, PackStartMenuCheck, PackDesktopCheck: TBitmapImage;
   DesktopCheck: TNewCheckBox;
   ShownTicks: Integer;
   FlyTarget, FlyShown: Double;
@@ -326,7 +332,15 @@ begin
   SetStretchBltMode(DC, HALFTONE);
   SetBrushOrgEx(DC, 0, 0, 0);
   StretchBlt(DC, 0, 0, W, H, Src.Canvas.Handle, (Src.Width - CropW) div 2, (Src.Height - CropH) div 2, CropW, CropH, SRCCOPY);
-  Image.Invalidate;
+  // Copy the frame straight onto the page: Invalidate would erase the page to white first, which
+  // flickers. The image's own bitmap still holds the frame for when Windows repaints the page.
+  if Image.Parent.Showing then
+  begin
+    DC := GetDC(Image.Parent.Handle);
+    BitBlt(DC, Image.Left, Image.Top, W, H, Image.Bitmap.Canvas.Handle, 0, 0, SRCCOPY);
+    ReleaseDC(Image.Parent.Handle, DC);
+  end else
+    Image.Invalidate;
 end;
 
 // 1 · Welcome: the plane bobs above the sunset, the sea flows.
@@ -392,7 +406,7 @@ begin
       Opacity := Round(255 * P / 0.3);
   end else
     Blend(PanelBuffer, PinX - 72, PinY - 32, MapPulse[((T - 1200) div 150) mod 16], 255);
-  Blend(PanelBuffer, PinX - 52, PinY - 100 + Lift, MapPin, Opacity);
+  Blend(PanelBuffer, PinX - 52, PinY - 136 + Lift, MapPin, Opacity);
   Present(MapImage, PanelBuffer);
 end;
 
@@ -508,14 +522,12 @@ begin
   Result := Y + Lbl.Height + ScaleY(24);
 end;
 
-procedure AddPackRow(X, Y, W: Integer; const Title: String; var Value: TNewStaticText);
+procedure AddPackRow(X, Y, W: Integer; const Title: String; var Value: TNewStaticText; var Check: TBitmapImage);
 var
-  Check: TBitmapImage;
   Lbl: TNewStaticText;
 begin
   Check := MakeImage(WizardForm.ReadyPage, X, Y + ScaleY(1), ScaleX(20), ScaleY(20));
   Check.Stretch := True;
-  Check.PngImage.LoadFromFile(ExpandConstant('{tmp}\art\ready-check.png'));
   Lbl := MakeText(WizardForm.ReadyPage, Title, X + ScaleX(32), Y, W - ScaleX(32), 10, True, INK);
   Value := MakeText(WizardForm.ReadyPage, '', X + ScaleX(32), Y + Lbl.Height + ScaleY(1), W - ScaleX(32), 9, False, MUTED_INK);
 end;
@@ -576,12 +588,14 @@ begin
   WizardForm.ReadyMemo.Visible := False;
   SuitcaseImage := MakeImage(WizardForm.ReadyPage, 0, 0, PanelW, PageH);
   Y := MakeIntro(WizardForm.ReadyPage, CustomMessage('PackTitle'), CustomMessage('PackText'), X, ScaleY(40), W);
-  AddPackRow(X, Y, W, CustomMessage('PackFolder'), PackFolderValue);
-  Y := Y + ScaleY(58);
-  AddPackRow(X, Y, W, CustomMessage('PackStartMenu'), Unused);
+  AddPackRow(X, Y, W, CustomMessage('PackFolder'), PackFolderValue, PackFolderCheck);
+  // One line, so a long folder path doesn't run into the next row.
+  PackFolderValue.WordWrap := False;
+  Y := Y + ScaleY(46);
+  AddPackRow(X, Y, W, CustomMessage('PackStartMenu'), Unused, PackStartMenuCheck);
   Unused.Caption := '{#AppName}';
   Y := Y + ScaleY(46);
-  AddPackRow(X, Y, W, CustomMessage('PackDesktop'), PackDesktopValue);
+  AddPackRow(X, Y, W, CustomMessage('PackDesktop'), PackDesktopValue, PackDesktopCheck);
 
   // 4 · Taking you to your destination: the flight on top, progress below.
   FlyH := PageW * 340 div 718;
@@ -622,11 +636,18 @@ begin
     // Setup shows its own summary again on every visit.
     WizardForm.ReadyMemo.Visible := False;
     PackFolderValue.Caption := WizardDirValue;
-    PackFolderValue.AdjustHeight;
+    // Packed items get a tick, ones left out an empty ring.
+    PackFolderCheck.PngImage.LoadFromFile(ExpandConstant('{tmp}\art\ready-check.png'));
+    PackStartMenuCheck.PngImage.LoadFromFile(ExpandConstant('{tmp}\art\ready-check.png'));
     if DesktopCheck.Checked then
-      PackDesktopValue.Caption := CustomMessage('Yes')
-    else
+    begin
+      PackDesktopValue.Caption := CustomMessage('Yes');
+      PackDesktopCheck.PngImage.LoadFromFile(ExpandConstant('{tmp}\art\ready-check.png'));
+    end else
+    begin
       PackDesktopValue.Caption := CustomMessage('No');
+      PackDesktopCheck.PngImage.LoadFromFile(ExpandConstant('{tmp}\art\ready-empty.png'));
+    end;
   end;
   if CurPageID = wpInstalling then
   begin

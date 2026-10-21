@@ -70,7 +70,7 @@ add('map-flat', 228, 260, `<g transform="translate(-26 -131)">
     <circle r="1.6" fill="#14213D"/>
   </g></g>`);
 // Pin: 52x54 box, tip at (26, 50).
-add('map-pin', 52, 54, `<g transform="translate(26 50)">${pin}</g>`, true);
+add('map-pin', 52, 72, `<g transform="translate(26 68)">${pin}</g>`, true);
 // Pulse ring around the pin's tip: 16 frames, 72x32 box centred on the tip.
 for (let f = 0; f < 16; f++) {
   const p = f / 16, s = 0.4 + 1.4 * p, o = 0.9 * (1 - p);
@@ -110,6 +110,7 @@ function suitcase(ticks) {
 for (let n = 0; n <= 3; n++) add(`ready-${n}`, 280, 508, suitcase(n));
 // Tick for the packing list beside the suitcase (loaded as PNG by the page itself).
 add('ready-check', 22, 22, `<circle cx="11" cy="11" r="11" fill="#16788F"/><path d="M6.5 11.2l3 3 6-6.4" stroke="#FFFFFF" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`, true);
+add('ready-empty', 22, 22, `<circle cx="11" cy="11" r="9.8" fill="none" stroke="#9AA3B2" stroke-width="2.2"/>`, true);
 
 // ---- 4 · Installing: sky, rising sun, contrail (revealed up to the plane), sea strip, plane at several angles.
 const FLIGHT = 'M -30 250 Q 330 60 690 150';
