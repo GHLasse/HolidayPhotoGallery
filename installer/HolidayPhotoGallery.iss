@@ -345,17 +345,16 @@ end;
 
 // 1 · Welcome: the plane bobs above the sunset, the sea flows.
 procedure DrawWelcome(T: Integer);
-var
-  Bob: Integer;
 begin
   Copy(PanelBuffer, 0, 0, WelcomeSky);
   Sea(PanelBuffer, 700, WelcomeSea, 560, T);
-  Bob := Round(6 * (1 - Cos(2 * Pi * T / 4000)));
-  Blend(PanelBuffer, 424 - 64, 248 - 64 - Bob, WelcomePlane, 255);
+  // The plane stays at the tip of its contrail; only the sea moves.
+  Blend(PanelBuffer, 424 - 64, 248 - 64, WelcomePlane, 255);
   Present(WelcomeImage, PanelBuffer);
 end;
 
-// 2 · Map: the paper map folds in and out every 6 s; its three panels, the pin and the pulse follow.
+// 2 · Map: the paper map lies still and every 7 s quickly folds in and opens again; its three
+// panels, the pin and the pulse follow.
 procedure DrawMap(T: Integer);
 var
   K, W, A, P: Double;
@@ -363,9 +362,23 @@ var
   I, PinX, PinY, Lift, Opacity, Shade: Integer;
   Tint: TBitmap;
 begin
-  K := (1 - Cos(2 * Pi * T / 6000)) / 2;
-  W := 114 - 14 * K;
-  A := 7 + 7 * K;
+  K := 0;
+  if T >= 2500 then
+  begin
+    // 0.9 s fold: in, a short hold, and out again, each eased.
+    P := ((T - 2500) mod 7000) / 350.0;
+    if P < 1 then
+      K := P * P * (3 - 2 * P)
+    else if P < 1.6 then
+      K := 1
+    else if P < 2.6 then
+    begin
+      P := 2.6 - P;
+      K := P * P * (3 - 2 * P);
+    end;
+  end;
+  W := 114 - 18 * K;
+  A := 7 + 9 * K;
   Xs[0] := 140 - W;
   Xs[1] := 140 - W / 3;
   Xs[2] := 140 + W / 3;

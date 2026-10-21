@@ -20,8 +20,8 @@ What the installer does:
 Setup tells a small travel story in the colours of the app icon, drawn and animated by the script itself
 (the [Code] section) from layers in `art/`:
 
-1. Welcome: a sunset over the sea with the plane flying over it.
-2. Where should we go? (install folder and desktop shortcut): a paper map that gently folds, with a pin
+1. Welcome: a sunset over a flowing sea with the plane and its contrail.
+2. Where should we go? (install folder and desktop shortcut): a paper map that now and then folds, with a pin
    dropping on it.
 3. All packed? (ready to install): a teal suitcase whose luggage tag ticks off app folder, Start menu entry
    and desktop shortcut.
