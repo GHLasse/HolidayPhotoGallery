@@ -1180,8 +1180,8 @@
                         </StackPanel>
                     </ToggleButton>
                     <Button x:Name="ViewerRepairButton" Click="ViewerRepair_Click"
-                            AutomationProperties.Name="{local:Loc Text='Repair damaged photo'}"
-                            ToolTipService.ToolTip="{local:Loc Text='Repair damaged photo: a file that lost its end shows a grey area'}">
+                            AutomationProperties.Name="{local:Loc Text='Repair damaged file'}"
+                            ToolTipService.ToolTip="{local:Loc Text='Repair damaged file'}">
                         <FontIcon Glyph="&#xE90F;" FontSize="16" />
                     </Button>
                     <Button x:Name="ViewerUndoButton" Click="ViewerUndo_Click" IsEnabled="False" ToolTipService.ToolTip="{local:Loc Text='Undo the last saved edit of this photo'}">

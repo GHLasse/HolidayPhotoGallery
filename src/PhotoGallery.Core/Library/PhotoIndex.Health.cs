@@ -11,10 +11,11 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 SELECT p.path, p.file_mtime FROM photos p
-                WHERE NOT EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.file_mtime = p.file_mtime)
+                WHERE NOT EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.file_mtime = p.file_mtime AND c.level >= $level)
                 ORDER BY p.id DESC LIMIT $limit;
                 """;
             cmd.Parameters.AddWithValue("$limit", limit);
+            cmd.Parameters.AddWithValue("$level", FileCheck.Level);
             var result = new List<(string, DateTime)>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -30,13 +31,14 @@ public sealed partial class PhotoIndex
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO file_checks (photo_id, health, file_mtime)
-                SELECT id, $health, $mtime FROM photos WHERE path = $path
-                ON CONFLICT (photo_id) DO UPDATE SET health = excluded.health, file_mtime = excluded.file_mtime;
+                INSERT INTO file_checks (photo_id, health, file_mtime, level)
+                SELECT id, $health, $mtime, $level FROM photos WHERE path = $path
+                ON CONFLICT (photo_id) DO UPDATE SET health = excluded.health, file_mtime = excluded.file_mtime, level = excluded.level;
                 """;
             cmd.Parameters.AddWithValue("$path", path);
             cmd.Parameters.AddWithValue("$health", (int)health);
             cmd.Parameters.AddWithValue("$mtime", fileModifiedUtc.Ticks);
+            cmd.Parameters.AddWithValue("$level", FileCheck.Level);
             cmd.ExecuteNonQuery();
         }
     }

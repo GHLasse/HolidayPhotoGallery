@@ -111,3 +111,61 @@ public class PhotoRepairFromCopyTests
         Assert.Equal(copy, filled);
     }
 }
+
+public class PhotoRepairBreakTests
+{
+    private const int W = 320, H = 240;
+
+    // A smooth picture with some noise, like a photo.
+    private static byte[] Picture()
+    {
+        var random = new Random(9);
+        var p = new byte[W * H * 4];
+        for (var y = 0; y < H; y++)
+        {
+            for (var x = 0; x < W; x++)
+            {
+                var i = (y * W + x) * 4;
+                (p[i], p[i + 1], p[i + 2], p[i + 3]) = ((byte)(60 + x / 4 + random.Next(6)), (byte)(80 + y / 4 + random.Next(6)), (byte)(100 + random.Next(6)), 255);
+            }
+        }
+        return p;
+    }
+
+    // What a broken JPEG looks like: from block (x, y) on, everything is darker and bluer.
+    private static byte[] Broken(int breakX, int breakY, int block = 16)
+    {
+        var p = Picture();
+        for (var y = breakY; y < H; y++)
+        {
+            for (var x = y < breakY + block ? breakX : 0; x < W; x++)
+            {
+                var i = (y * W + x) * 4;
+                (p[i], p[i + 1], p[i + 2]) = ((byte)(p[i] + 30), (byte)(p[i + 1] - 25), (byte)(p[i + 2] - 40));
+            }
+        }
+        return p;
+    }
+
+    [Fact]
+    public void Finds_where_the_colours_break()
+    {
+        var damage = PhotoRepair.Find(Broken(160, 112), W, H)!;
+        Assert.Equal(DamagedEdge.Bottom, damage.Edge);
+        Assert.Equal(112, damage.Kept);
+        Assert.Equal(new ColourBreak(160, 16), damage.Break);
+    }
+
+    [Fact]
+    public void A_smooth_photo_has_no_break() => Assert.Null(PhotoRepair.Find(Picture(), W, H));
+
+    [Fact]
+    public void Fills_everything_from_the_break_on()
+    {
+        var broken = Broken(160, 112);
+        var damage = PhotoRepair.Find(broken, W, H)!;
+        var copy = Picture();
+        var filled = PhotoRepair.Fill(broken, W, H, damage, copy, W, H)!;
+        Assert.Equal(copy, filled);
+    }
+}

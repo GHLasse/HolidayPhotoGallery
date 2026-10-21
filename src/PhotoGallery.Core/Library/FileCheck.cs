@@ -13,15 +13,27 @@ public enum FileHealth
 
     /// <summary>The file doesn't start like a picture at all, e.g. it was overwritten with zeros.</summary>
     Unreadable = 2,
+
+    /// <summary>
+    /// The picture data is damaged partway (a JPEG whose blocks don't add up): from there on the decoder lost
+    /// step, which shows as wrong colours or blocks shifted sideways.
+    /// </summary>
+    Garbled = 3,
 }
 
 /// <summary>
 /// A quick check of a photo file's structure, without decoding the picture: JPEG data must reach its end
-/// marker, PNG its last chunk, and WebP, HEIC and AVIF their stated sizes. Damage inside the picture data
-/// (a few flipped bits) can't be seen this way; that takes decoding.
+/// marker, PNG its last chunk, and WebP, HEIC and AVIF their stated sizes. A JPEG's picture data is read
+/// too (<see cref="JpegScan"/>), which finds most flipped bits inside it; some only show in the picture.
 /// </summary>
 public static class FileCheck
 {
+    /// <summary>
+    /// Raised when the check learns to find more: files checked at a lower level are checked again (2: JPEG
+    /// picture data).
+    /// </summary>
+    public const int Level = 2;
+
     public static FileHealth Check(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16, FileOptions.SequentialScan);
@@ -29,6 +41,15 @@ public static class FileCheck
     }
 
     public static FileHealth Check(Stream stream, string extension)
+    {
+        var health = CheckStructure(stream, extension);
+        if (health != FileHealth.Whole || extension is not (".jpg" or ".jpeg" or ".jpe"))
+            return health;
+        stream.Position = 0;
+        return JpegScan.Check(stream) is { Damaged: true } ? FileHealth.Garbled : FileHealth.Whole;
+    }
+
+    private static FileHealth CheckStructure(Stream stream, string extension)
     {
         var head = new byte[Math.Min(4096, stream.Length)];
         stream.ReadExactly(head);

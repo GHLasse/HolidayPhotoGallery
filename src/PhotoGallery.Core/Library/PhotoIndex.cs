@@ -126,10 +126,14 @@ public sealed partial class PhotoIndex : IDisposable
             CREATE TABLE IF NOT EXISTS file_checks (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
                 health INTEGER NOT NULL,
-                file_mtime INTEGER NOT NULL
+                file_mtime INTEGER NOT NULL,
+                level INTEGER NOT NULL DEFAULT 1
             );
             PRAGMA user_version = {SchemaVersion};
             """);
+        // Checks saved before the level was kept count as level 1, so those files are checked again.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'level';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE file_checks ADD COLUMN level INTEGER NOT NULL DEFAULT 1;");
     }
 
     /// <summary>Path → (size, modified time) for every indexed file under a folder, to spot changes.</summary>

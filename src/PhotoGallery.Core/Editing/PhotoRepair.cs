@@ -20,7 +20,20 @@ public sealed record PhotoDamage(DamagedEdge Edge, int Kept, int Length, byte Fi
 {
     /// <summary>How much of the photo was lost, from 0 to 1.</summary>
     public double LostShare => 1 - (double)Kept / Length;
+
+    /// <summary>
+    /// Set when the picture data broke partway instead of ending early (see <see cref="ColourBreak"/>): from there
+    /// on the colours are wrong, not grey.
+    /// </summary>
+    public ColourBreak? Break { get; init; }
 }
+
+/// <summary>
+/// Where a JPEG's picture data broke: a flipped bit makes the decoder lose step, and every block after it comes
+/// out with wrong brightness and colours (often also shifted sideways). Counted as in <see cref="PhotoDamage"/>:
+/// the row of blocks starting at row Kept is damaged from <see cref="X"/> on, and everything below it.
+/// </summary>
+public sealed record ColourBreak(int X, int BlockHeight);
 
 /// <summary>
 /// Saves photos whose file lost its end (a broken copy or a failing card): Windows draws the lost part as a
@@ -34,8 +47,11 @@ public static class PhotoRepair
     private const int MinBand = 8;       // one row of JPEG blocks
     private const int PartialRun = 16;   // a partly lost row of blocks ends in a flat run at least this long
 
-    /// <summary>The lost part of an upright photo (8-bit BGRA), or null when nothing looks lost.</summary>
-    public static PhotoDamage? Find(byte[] bgra, int width, int height)
+    /// <summary>
+    /// The lost part of an upright photo (8-bit BGRA), or null when nothing looks lost. <paramref name="orientation"/>
+    /// is the photo's EXIF orientation, which says which way the rows of its file run.
+    /// </summary>
+    public static PhotoDamage? Find(byte[] bgra, int width, int height, int orientation = 1)
     {
         PhotoDamage? worst = null;
         foreach (var edge in Enum.GetValues<DamagedEdge>())
@@ -47,8 +63,35 @@ public static class PhotoRepair
             if (worst is null || damage.LostShare > worst.LostShare)
                 worst = damage;
         }
-        return worst;
+        if (worst is not null)
+            return worst;
+
+        // No grey: maybe the colours go wrong partway. The break runs along the file's rows, which lie along
+        // the edge that the camera's turn put at the bottom of the stored picture.
+        DamagedEdge? stored = orientation switch
+        {
+            1 => DamagedEdge.Bottom,
+            3 => DamagedEdge.Top,
+            6 => DamagedEdge.Left,
+            8 => DamagedEdge.Right,
+            _ => null, // mirrored: the blocks run the other way; rare enough to leave out
+        };
+        if (stored is not { } bottom)
+            return null;
+        var rows = new EdgeView(bottom, width, height);
+        return FindBreak(bgra, rows) is { } broken
+            ? new PhotoDamage(bottom, broken.Y, rows.Height, 0) { Break = new ColourBreak(broken.X, broken.BlockHeight) }
+            : null;
     }
+
+    /// <summary>
+    /// The colour break in a picture as stored in its file (8-bit BGRA, not turned upright), or null. Used by the
+    /// background check, which decodes the file without turning it.
+    /// </summary>
+    public static PhotoDamage? FindBreakInStored(byte[] bgra, int width, int height) =>
+        FindBreak(bgra, new EdgeView(DamagedEdge.Bottom, width, height)) is { } found
+            ? new PhotoDamage(DamagedEdge.Bottom, found.Y, height, 0) { Break = new ColourBreak(found.X, found.BlockHeight) }
+            : null;
 
     /// <summary>The whole part of the photo; returns the pixels, their size and the part kept as fractions.</summary>
     public static (byte[] Pixels, int Width, int Height, double X, double Y, double W, double H) Crop(
@@ -143,7 +186,10 @@ public static class PhotoRepair
             for (var x = 0; x < view.Width; x++)
             {
                 var i = view.Index(x, y);
-                if (IsFill(result, i, damage.Fill))
+                var lost = damage.Break is { } broken
+                    ? y >= damage.Kept + broken.BlockHeight || x >= broken.X
+                    : IsFill(result, i, damage.Fill);
+                if (lost)
                     Buffer.BlockCopy(scaled, i, result, i, 4);
             }
         }
@@ -163,6 +209,118 @@ public static class PhotoRepair
         image.CopyPixelDataTo(result);
         return (result, w, h);
     }
+
+    // JPEG blocks: 16 × 16 for most cameras (colour stored at half size both ways), 16 × 8, or 8 × 8.
+    private static readonly (int Width, int Height)[] BlockSizes = [(16, 16), (16, 8), (8, 8)];
+
+    // A break shows as a step in colour along the borders between blocks, the same step all along: in the
+    // row of blocks where it happened from the break to the right edge, and in the next row from the left
+    // edge to the break (the blocks above those are still right). Real edges in a photo rarely line up with
+    // the blocks like that, all the way across.
+    private static (int X, int Y, int BlockHeight)? FindBreak(byte[] p, EdgeView view)
+    {
+        (int X, int Y, int BlockHeight)? first = null;
+        foreach (var (bw, bh) in BlockSizes)
+        {
+            var (rows, columns) = (view.Height / bh, view.Width / bw);
+            if (rows < 4 || columns < 8)
+                continue;
+            var below = BorderSteps(p, view, bh, bw, 1);
+            for (var r = 1; r < rows - 1; r++)
+            {
+                var steps = below;
+                below = BorderSteps(p, view, bh, bw, r + 1);
+                if (first is { } found && r * bh >= found.Y)
+                    break;
+                if (Run(steps, fromRight: true) is not { } right)
+                    continue;
+                var at = columns - right;
+                if (at < 3 || Run(below, fromRight: false) is not { } left || Math.Abs(left - at) > 2)
+                    continue;
+                first = (at * bw, r * bh, bh);
+                break;
+            }
+        }
+        return first;
+    }
+
+    // The colour step across the border above block row r, per block (the median along it), with the slope
+    // on both sides taken out so a smooth change in the photo doesn't count.
+    private static float[][] BorderSteps(byte[] p, EdgeView view, int bh, int bw, int r)
+    {
+        var columns = view.Width / bw;
+        var result = new float[columns][];
+        var y = r * bh;
+        if (y < 2 || y + 1 >= view.Height)
+        {
+            for (var c = 0; c < columns; c++)
+                result[c] = new float[3];
+            return result;
+        }
+        var values = new float[bw];
+        for (var c = 0; c < columns; c++)
+        {
+            var step = new float[3];
+            for (var ch = 0; ch < 3; ch++)
+            {
+                for (var k = 0; k < bw; k++)
+                {
+                    var x = c * bw + k;
+                    float a1 = p[view.Index(x, y - 2) + ch], a0 = p[view.Index(x, y - 1) + ch];
+                    float b0 = p[view.Index(x, y) + ch], b1 = p[view.Index(x, y + 1) + ch];
+                    values[k] = b0 - a0 - (a0 - a1 + (b1 - b0)) / 2;
+                }
+                Array.Sort(values);
+                step[ch] = (values[bw / 2 - 1] + values[bw / 2]) / 2;
+            }
+            result[c] = step;
+        }
+        return result;
+    }
+
+    // How many blocks from one edge share the same clear colour step, or null when too few do: the longest
+    // stretch from the edge where most steps agree with the stretch's median and the last one does too. A few
+    // garbled blocks (where the decoder lost step) are allowed.
+    private static int? Run(float[][] steps, bool fromRight)
+    {
+        const int MinStep = 8;
+        var n = steps.Length;
+        float[] At(int i) => steps[fromRight ? n - 1 - i : i];
+        var sorted = new[] { new List<float>(n), new List<float>(n), new List<float>(n) };
+        var median = new float[3];
+        int? best = null;
+        for (var length = 1; length <= n; length++)
+        {
+            var step = At(length - 1);
+            for (var ch = 0; ch < 3; ch++)
+            {
+                var list = sorted[ch];
+                var at = list.BinarySearch(step[ch]);
+                list.Insert(at < 0 ? ~at : at, step[ch]);
+                median[ch] = length % 2 == 1 ? list[length / 2] : (list[length / 2 - 1] + list[length / 2]) / 2;
+            }
+            var size = Size(median);
+            if (length < 3 || size < MinStep)
+                continue;
+            var tolerance = Math.Max(5, 0.4f * size);
+            if (Distance(step, median) > tolerance)
+                continue;
+            var agree = 0;
+            for (var i = 0; i < length; i++)
+            {
+                if (Distance(At(i), median) <= tolerance)
+                    agree++;
+            }
+            if (agree >= 0.6 * length)
+                best = length;
+        }
+        return best;
+    }
+
+    private static float Size(float[] step) => Math.Max(Math.Abs(step[0]), Math.Max(Math.Abs(step[1]), Math.Abs(step[2])));
+
+    private static float Distance(float[] a, float[] b) =>
+        Math.Max(Math.Abs(a[0] - b[0]), Math.Max(Math.Abs(a[1] - b[1]), Math.Abs(a[2] - b[2])));
 
     private static (int Kept, byte Fill)? FindAtBottom(byte[] p, EdgeView view)
     {

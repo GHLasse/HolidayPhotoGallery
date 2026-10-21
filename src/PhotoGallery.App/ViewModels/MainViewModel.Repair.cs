@@ -10,11 +10,18 @@ namespace PhotoGallery.App.ViewModels;
 /// <summary>
 /// A photo looked at for repair: its pixels at full size (null when they can't be read at all), the part that
 /// was lost (null when none shows), the preview stored in its file (if any) and what the file check found.
+/// <see cref="DamagedFrom"/> is how far down the picture data is known to be damaged at the latest (0 to 1, as
+/// stored in the file), and <see cref="CanMend"/> says the file can be mended without touching the picture.
 /// </summary>
-public sealed record DamagedPhoto(DecodedImage? Image, PhotoDamage? Damage, byte[]? Preview, FileHealth Health);
+public sealed record DamagedPhoto(DecodedImage? Image, PhotoDamage? Damage, byte[]? Preview, FileHealth Health)
+{
+    public double? DamagedFrom { get; init; }
+
+    public bool CanMend { get; init; }
+}
 
 /// <summary>Ways to repair a photo, as offered in the repair wizard.</summary>
-public enum RepairWay { FillFromPreview, FillFromCopy, ReplaceWithCopy, Crop }
+public enum RepairWay { Mend, FillFromPreview, FillFromCopy, ReplaceWithCopy, Crop }
 
 /// <summary>
 /// A repaired photo, not saved yet: its pixels, the part of the old one kept when cropped, and the file to take
@@ -22,6 +29,9 @@ public enum RepairWay { FillFromPreview, FillFromCopy, ReplaceWithCopy, Crop }
 /// </summary>
 public sealed record RepairedPhoto(DecodedImage Image, FaceBox? Kept, string? MetadataFrom = null)
 {
+    /// <summary>Only the file is mended (see <see cref="FileMend"/>); the picture stays as it is.</summary>
+    public bool MendOnly { get; init; }
+
     /// <summary>How the repair was made, when worth telling (e.g. which AI model ran where, and how long).</summary>
     public string? Note { get; init; }
 }
@@ -116,9 +126,21 @@ public sealed partial class MainViewModel
             {
                 // Not even a broken picture: only a copy can help.
             }
-            var damage = image is null ? null : await Task.Run(() => PhotoRepair.Find(image.Pixels, image.Width, image.Height));
+            var damage = image is null ? null : await Task.Run(() => PhotoRepair.Find(image.Pixels, image.Width, image.Height, item.Photo.Orientation));
+            double? damagedFrom = null;
+            var canMend = false;
+            try
+            {
+                if (health == FileHealth.Garbled)
+                    damagedFrom = await Task.Run(() => JpegScan.Check(item.Path)?.DamagedFrom);
+                else if (health == FileHealth.CutOff)
+                    canMend = await Task.Run(() => FileMend.CanMend(item.Path));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
             byte[]? preview = null;
-            if (_metadata is not null && damage is not null)
+            if (_metadata is not null && (damage is not null || health == FileHealth.Garbled))
             {
                 try
                 {
@@ -128,7 +150,7 @@ public sealed partial class MainViewModel
                 {
                 }
             }
-            return new DamagedPhoto(image, damage, preview, health);
+            return new DamagedPhoto(image, damage, preview, health) { DamagedFrom = damagedFrom, CanMend = canMend };
         }
         finally
         {
@@ -171,6 +193,8 @@ public sealed partial class MainViewModel
             };
             switch (way)
             {
+                case RepairWay.Mend when damaged is { Image: { } image, CanMend: true }:
+                    return new RepairedPhoto(image, null) { MendOnly = true };
                 case RepairWay.Crop when damaged is { Image: { } image, Damage: { } damage }:
                 {
                     var crop = await Task.Run(() => PhotoRepair.Crop(image.Pixels, image.Width, image.Height, damage));
@@ -231,6 +255,13 @@ public sealed partial class MainViewModel
         StatusText = Tr("Repairing {0}…", item.FileName);
         try
         {
+            if (repaired.MendOnly)
+            {
+                await Task.Run(() => FileMend.Mend(path));
+                await AfterFileReplacedAsync(item, path, path);
+                Inform(Tr("Mended {0}. The file as it was is in the hidden .originals folder.", item.FileName));
+                return true;
+            }
             // A JPEG stays a JPEG; formats the app can't write are saved as JPEG.
             var extension = Path.GetExtension(path);
             if (!ImageEncoder.CanEncode(extension))
