@@ -242,10 +242,12 @@ public sealed partial class MainViewModel
 
     public void SaveFindPeopleAutomatically(bool on)
     {
-        if (on == _settings.FindPeopleAutomatically)
-            return;
-        _settings.FindPeopleAutomatically = on;
-        _settings.Save(SettingsPath);
+        if (on != _settings.FindPeopleAutomatically)
+        {
+            _settings.FindPeopleAutomatically = on;
+            _settings.Save(SettingsPath);
+        }
+        // Also when it was on already but the face models only came just now.
         if (on)
             _ = FindFacesInNewPhotosAsync();
     }
@@ -253,8 +255,8 @@ public sealed partial class MainViewModel
     /// <summary>
     /// Looks for faces in every photo not looked at yet, one at a time and quietly, pausing while the app
     /// is busy with something the user asked for. Runs after each check of the folders, so new photos get
-    /// their faces without anyone pressing Find people. Needs the face models, downloaded the first time
-    /// Find people is used.
+    /// their faces without anyone pressing Find people. Needs the face models, downloaded by Find people or
+    /// when this is turned on in Settings.
     /// </summary>
     public async Task FindFacesInNewPhotosAsync()
     {

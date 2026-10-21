@@ -1218,7 +1218,7 @@ public sealed partial class MainWindow : Window
         {
             OnContent = Tr("On"),
             OffContent = Tr("Off"),
-            Header = Tr("Look for people in new photos by itself (once Find people has been used)"),
+            Header = Tr("Look for people in new photos by itself"),
             IsOn = ViewModel.FindPeopleAutomatically,
         };
         var gallery = new StackPanel
@@ -1235,6 +1235,12 @@ public sealed partial class MainWindow : Window
                 },
                 autoAdvance,
                 findPeople,
+                new TextBlock
+                {
+                    Text = Tr("Photos not looked at yet are searched quietly whenever nothing else is running. Turning this on downloads the face models first if they aren't there yet."),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+                },
             },
         };
 
@@ -1485,7 +1491,10 @@ public sealed partial class MainWindow : Window
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
-        ViewModel.SaveFindPeopleAutomatically(findPeople.IsOn);
+        // The search in the background needs the face models: ask for them now (Settings has closed), and
+        // leave it off if they aren't wanted, so the setting never says on while nothing happens.
+        var findPeopleOn = findPeople.IsOn && !MainViewModel.IsFaceModelInstalled ? await EnsureFaceModelAsync() : findPeople.IsOn;
+        ViewModel.SaveFindPeopleAutomatically(findPeopleOn);
         ViewModel.SaveDetailKeys(detailBoxes.Where(d => d.Box.IsChecked == true).Select(d => d.Key).ToList());
         _ = ShowMoreDetailsAsync();
         ViewModel.SaveFavouriteApps(chosenApps());
