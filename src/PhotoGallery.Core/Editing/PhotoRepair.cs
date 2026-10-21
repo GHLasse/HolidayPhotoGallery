@@ -79,29 +79,67 @@ public static class PhotoRepair
         using (image)
         {
             image.Mutate(x => x.RotateFlip(RotationOf(orientation), FlipOf(orientation)));
-            // Cameras often pad the preview to 16:9 or crop it a little; only a preview of nearly the
-            // photo's shape lines up with it.
-            var photoShape = (double)width / height;
-            var previewShape = (double)image.Width / image.Height;
-            if (Math.Abs(photoShape / previewShape - 1) > 0.04)
-                return null;
-            image.Mutate(x => x.Resize(width, height, KnownResamplers.Bicubic));
-            var scaled = new byte[width * height * 4];
-            image.CopyPixelDataTo(scaled);
-
-            var result = (byte[])bgra.Clone();
-            var view = new EdgeView(damage.Edge, width, height);
-            for (var y = damage.Kept; y < view.Height; y++)
-            {
-                for (var x = 0; x < view.Width; x++)
-                {
-                    var i = view.Index(x, y);
-                    if (IsFill(result, i, damage.Fill))
-                        Buffer.BlockCopy(scaled, i, result, i, 4);
-                }
-            }
-            return result;
+            return Fill(bgra, width, height, damage, image);
         }
+    }
+
+    /// <summary>
+    /// Fills the lost part from another copy of the photo, upright (8-bit BGRA): a backup, or a smaller copy
+    /// from a cloud service or a message. Returns null when the copy doesn't have the photo's shape.
+    /// </summary>
+    public static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, byte[] copy, int copyWidth, int copyHeight)
+    {
+        using var image = Image.LoadPixelData<Bgra32>(copy, copyWidth, copyHeight);
+        return Fill(bgra, width, height, damage, image);
+    }
+
+    /// <summary>True when a copy of <paramref name="copyWidth"/> × <paramref name="copyHeight"/> has the photo's shape.</summary>
+    public static bool SameShape(int width, int height, int copyWidth, int copyHeight) =>
+        // Cameras often pad their preview to 16:9 or crop it a little; only one of nearly the photo's
+        // shape lines up with it.
+        Math.Abs((double)width / height / ((double)copyWidth / copyHeight) - 1) <= 0.04;
+
+    private static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, Image<Bgra32> source)
+    {
+        if (!SameShape(width, height, source.Width, source.Height))
+            return null;
+        var upscaled = (double)width / source.Width;
+        source.Mutate(x =>
+        {
+            x.Resize(width, height, KnownResamplers.Lanczos3);
+            // A small preview blown up is soft; a little sharpening brings back some edges.
+            if (upscaled > 2)
+                x.GaussianSharpen((float)Math.Min(2.5, upscaled / 3));
+        });
+        var scaled = new byte[width * height * 4];
+        source.CopyPixelDataTo(scaled);
+
+        var result = (byte[])bgra.Clone();
+        var view = new EdgeView(damage.Edge, width, height);
+        for (var y = damage.Kept; y < view.Height; y++)
+        {
+            for (var x = 0; x < view.Width; x++)
+            {
+                var i = view.Index(x, y);
+                if (IsFill(result, i, damage.Fill))
+                    Buffer.BlockCopy(scaled, i, result, i, 4);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>The picture scaled down to fit <paramref name="size"/> pixels, for showing before and after.</summary>
+    public static (byte[] Pixels, int Width, int Height) Shrink(byte[] bgra, int width, int height, int size)
+    {
+        var scale = Math.Min(1, (double)size / Math.Max(width, height));
+        if (scale >= 1)
+            return (bgra, width, height);
+        var (w, h) = (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
+        using var image = Image.LoadPixelData<Bgra32>(bgra, width, height);
+        image.Mutate(x => x.Resize(w, h));
+        var result = new byte[w * h * 4];
+        image.CopyPixelDataTo(result);
+        return (result, w, h);
     }
 
     private static (int Kept, byte Fill)? FindAtBottom(byte[] p, EdgeView view)

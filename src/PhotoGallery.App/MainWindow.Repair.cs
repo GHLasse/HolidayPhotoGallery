@@ -1,0 +1,203 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using PhotoGallery.App.Imaging;
+using PhotoGallery.App.ViewModels;
+using PhotoGallery.Core.Editing;
+using PhotoGallery.Core.Library;
+using Windows.Storage.Pickers;
+using static PhotoGallery.Core.Localization.Strings;
+
+namespace PhotoGallery.App;
+
+/// <summary>
+/// The repair wizard for a damaged photo: what is wrong with it, how to rescue it (the preview stored in the
+/// file, another copy of the photo, or cropping), and then before and after side by side, to keep the rescue
+/// or not. Nothing is saved until "Keep the repair".
+/// </summary>
+public sealed partial class MainWindow
+{
+    private const int CompareSize = 360;
+
+    private async void ViewerRepair_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewerItem is not { } item || WaitsForBusyWork())
+            return;
+        ViewerProgress.IsActive = true;
+        ViewModel.ErrorMessage = null;
+        var damaged = await ViewModel.FindDamageAsync(item);
+        var copies = await ViewModel.FindCopiesAsync(item);
+        ViewerProgress.IsActive = false;
+
+        string? copyPath = copies.FirstOrDefault();
+        RepairedPhoto? repaired = null;
+
+        // ---- Page 1: what is wrong, and how to rescue it ----
+        var lost = damaged.Damage is { } d
+            ? Tr("About {0:P0} of this photo was lost: the end of its file is missing, and the lost part shows grey.", d.LostShare)
+            : damaged.Image is null
+                ? Tr("This file can't be read as a picture at all. Only another copy of the photo can bring it back.")
+                : damaged.Health != FileHealth.Whole
+                    ? Tr("The file is damaged, but no lost area shows in the picture. If it looks wrong, replace it with another copy.")
+                    : Tr("No damage found in this file. If the photo looks wrong anyway, you can replace it with another copy.");
+        var fromPreview = Way(Tr("Fill the lost part from the small preview the camera stored in the file"),
+                              damaged.Damage is not null && damaged.Preview is not null);
+        var fromCopy = Way(Tr("Fill the lost part from another copy of this photo"), damaged.Damage is not null);
+        var replace = Way(Tr("Replace the photo with another copy of it"), true);
+        var crop = Way(Tr("Crop the photo to the part that is undamaged"), damaged.Damage is not null);
+        var copyText = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+        var chooseCopy = new Button { Content = Tr("Choose a copy…") };
+        var copyRow = new StackPanel { Spacing = 6, Margin = new Thickness(28, 0, 0, 0) };
+        copyRow.Children.Add(copyText);
+        copyRow.Children.Add(chooseCopy);
+        void ShowCopy() => copyText.Text = copyPath is null
+            ? Tr("For example a backup, a copy from Google Photos or OneDrive, or one you sent to someone. A smaller copy is fine for filling: it is scaled up.")
+            : copies.Contains(copyPath)
+                ? Tr("Found in your library: {0}", copyPath)
+                : copyPath;
+        ShowCopy();
+        chooseCopy.Click += async (_, _) =>
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
+            foreach (var type in new[] { ".jpg", ".jpeg", ".heic", ".heif", ".png", ".webp", ".tif", ".tiff", ".gif" })
+                picker.FileTypeFilter.Add(type);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            if (await picker.PickSingleFileAsync() is { } file)
+            {
+                copyPath = file.Path;
+                ShowCopy();
+            }
+        };
+        // The best way that needs no further choice: the preview, a copy found in the library, else cropping.
+        var first = new[] { fromPreview, copyPath is null ? null : fromCopy, crop }.FirstOrDefault(r => r is { IsEnabled: true }) ?? replace;
+        first.IsChecked = true;
+
+        var choosePage = new StackPanel { Spacing = 8 };
+        choosePage.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Text = lost });
+        choosePage.Children.Add(fromPreview);
+        if (damaged.Damage is not null && damaged.Preview is null)
+            choosePage.Children.Add(Hint(Tr("This file has no preview stored in it.")));
+        choosePage.Children.Add(fromCopy);
+        choosePage.Children.Add(replace);
+        choosePage.Children.Add(copyRow);
+        choosePage.Children.Add(crop);
+        choosePage.Children.Add(Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder.")));
+
+        // ---- Page 2: before and after ----
+        var before = new Image { MaxWidth = CompareSize, MaxHeight = CompareSize, Stretch = Stretch.Uniform };
+        var after = new Image { MaxWidth = CompareSize, MaxHeight = CompareSize, Stretch = Stretch.Uniform };
+        var comparePage = new Grid { ColumnSpacing = 12, RowSpacing = 6 };
+        comparePage.ColumnDefinitions.Add(new ColumnDefinition());
+        comparePage.ColumnDefinitions.Add(new ColumnDefinition());
+        comparePage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        comparePage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        comparePage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        AddAt(comparePage, new TextBlock { Text = Tr("Before"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }, 0, 0);
+        AddAt(comparePage, new TextBlock { Text = Tr("After"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }, 0, 1);
+        AddAt(comparePage, before, 1, 0);
+        AddAt(comparePage, after, 1, 1);
+        var compareHint = Hint(Tr("Keep the repair to save it over the damaged photo, or go back and try another way."));
+        Grid.SetColumnSpan(compareHint, 2);
+        AddAt(comparePage, compareHint, 2, 0);
+
+        var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("SystemFillColorCriticalBrush") };
+        var body = new StackPanel { Spacing = 12, MinWidth = 2 * CompareSize + 12 };
+        body.Children.Add(choosePage);
+        body.Children.Add(problem);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Repair damaged photo"),
+            Content = new ScrollViewer { Content = body, MaxHeight = 600 },
+            PrimaryButtonText = Tr("Next"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        dialog.Resources["ContentDialogMaxWidth"] = 2.0 * CompareSize + 120;
+        ShowBefore();
+
+        dialog.PrimaryButtonClick += async (_, args) =>
+        {
+            if (repaired is not null)
+                return; // "Keep the repair": the dialog closes and the repair is saved below
+            args.Cancel = true;
+            var way = fromPreview.IsChecked == true ? RepairWay.FillFromPreview
+                : fromCopy.IsChecked == true ? RepairWay.FillFromCopy
+                : replace.IsChecked == true ? RepairWay.ReplaceWithCopy
+                : RepairWay.Crop;
+            if ((way is RepairWay.FillFromCopy or RepairWay.ReplaceWithCopy) && copyPath is null)
+            {
+                problem.Text = Tr("Choose a copy of the photo first.");
+                return;
+            }
+            var deferral = args.GetDeferral();
+            dialog.IsPrimaryButtonEnabled = false;
+            problem.Text = "";
+            ViewModel.ErrorMessage = null;
+            var result = await ViewModel.BuildRepairAsync(item, damaged, way, copyPath);
+            dialog.IsPrimaryButtonEnabled = true;
+            if (result is null)
+            {
+                problem.Text = ViewModel.ErrorMessage ?? Tr("This way can't repair the photo. Try another one.");
+                ViewModel.ErrorMessage = null;
+            }
+            else
+            {
+                repaired = result;
+                after.Source = await SmallSourceAsync(result.Image);
+                body.Children.Remove(choosePage);
+                body.Children.Insert(0, comparePage);
+                dialog.PrimaryButtonText = Tr("Keep the repair");
+                dialog.SecondaryButtonText = Tr("Back");
+            }
+            deferral.Complete();
+        };
+        dialog.SecondaryButtonClick += (_, args) =>
+        {
+            args.Cancel = true;
+            repaired = null;
+            body.Children.Remove(comparePage);
+            body.Children.Insert(0, choosePage);
+            dialog.PrimaryButtonText = Tr("Next");
+            dialog.SecondaryButtonText = "";
+        };
+
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || repaired is null)
+            return;
+        ViewerProgress.IsActive = true;
+        var saved = await ViewModel.SaveRepairAsync(item, repaired);
+        ViewerProgress.IsActive = false;
+        if (saved)
+            await ShowViewerImageAsync();
+
+        async void ShowBefore()
+        {
+            if (damaged.Image is { } image)
+                before.Source = await SmallSourceAsync(image);
+        }
+
+        RadioButton Way(string text, bool possible) => new()
+        {
+            Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap },
+            GroupName = "repair",
+            IsEnabled = possible,
+        };
+    }
+
+    private static TextBlock Hint(string text) =>
+        new() { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+
+    private static void AddAt(Grid grid, FrameworkElement element, int row, int column)
+    {
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+        grid.Children.Add(element);
+    }
+
+    // Before and after are shown small; a full-size picture would only cost memory here.
+    private static async Task<ImageSource> SmallSourceAsync(DecodedImage image)
+    {
+        var (pixels, width, height) = await Task.Run(() => PhotoRepair.Shrink(image.Pixels, image.Width, image.Height, CompareSize * 2));
+        return await ImageLoader.ToImageSourceAsync(new DecodedImage(pixels, width, height));
+    }
+}

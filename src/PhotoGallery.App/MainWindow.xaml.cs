@@ -1518,69 +1518,6 @@ public sealed partial class MainWindow : Window
             await ShowViewerImageAsync();
     }
 
-    // A photo whose file lost its end: filled from the preview stored in the file, or cropped.
-    private async void ViewerRepair_Click(object sender, RoutedEventArgs e)
-    {
-        if (ViewerItem is not { } item || WaitsForBusyWork())
-            return;
-        ViewerProgress.IsActive = true;
-        ViewModel.ErrorMessage = null;
-        var damaged = await ViewModel.FindDamageAsync(item);
-        ViewerProgress.IsActive = false;
-        if (damaged is null)
-        {
-            if (ViewModel.ErrorMessage is null)
-                ViewModel.Inform(Tr("{0} looks whole: no damaged part found.", item.FileName));
-            return;
-        }
-
-        var fill = new RadioButton
-        {
-            Content = Tr("Fill the lost part from the small preview stored in the photo (blurry there, but the picture is whole)"),
-            GroupName = "repair",
-            IsChecked = damaged.Preview is not null,
-            IsEnabled = damaged.Preview is not null,
-        };
-        var crop = new RadioButton
-        {
-            Content = Tr("Crop the photo to the part that is undamaged"),
-            GroupName = "repair",
-            IsChecked = damaged.Preview is null,
-        };
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Text = Tr("About {0:P0} of this photo was lost: the end of its file is missing.", damaged.Damage.LostShare),
-        });
-        panel.Children.Add(fill);
-        panel.Children.Add(crop);
-        if (damaged.Preview is null)
-            panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Text = Tr("This file has no preview to fill it from.") });
-        panel.Children.Add(new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
-            Text = Tr("The damaged file is kept in the hidden .originals folder, so you can undo this."),
-        });
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Root.XamlRoot,
-            Title = Tr("Repair damaged photo"),
-            Content = panel,
-            PrimaryButtonText = Tr("Repair"),
-            CloseButtonText = Tr("Cancel"),
-            DefaultButton = ContentDialogButton.Primary,
-        };
-        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
-            return;
-        ViewerProgress.IsActive = true;
-        var repaired = await ViewModel.RepairAsync(item, damaged, fill: fill.IsChecked == true);
-        ViewerProgress.IsActive = false;
-        if (repaired)
-            await ShowViewerImageAsync();
-    }
-
     private async void ViewerUndo_Click(object sender, RoutedEventArgs e)
     {
         if (ViewerItem is not { } item)

@@ -91,3 +91,23 @@ public class PhotoRepairTests
         Assert.Null(PhotoRepair.Fill(photo, W, H, PhotoRepair.Find(photo, W, H)!, stream.ToArray(), orientation: 1));
     }
 }
+
+public class PhotoRepairFromCopyTests
+{
+    [Fact]
+    public void A_full_size_copy_fills_the_lost_part_exactly()
+    {
+        const int W = 64, H = 48;
+        var copy = new byte[W * H * 4];
+        new Random(6).NextBytes(copy);
+        for (var i = 3; i < copy.Length; i += 4)
+            copy[i] = 255;
+        var damaged = (byte[])copy.Clone();
+        for (var i = 30 * W * 4; i < damaged.Length; i += 4)
+            (damaged[i], damaged[i + 1], damaged[i + 2]) = (128, 128, 128);
+
+        var damage = PhotoRepair.Find(damaged, W, H)!;
+        var filled = PhotoRepair.Fill(damaged, W, H, damage, copy, W, H);
+        Assert.Equal(copy, filled);
+    }
+}

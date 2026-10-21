@@ -50,4 +50,21 @@ public sealed partial class PhotoIndex
                 WHERE c.health <> 0 AND c.file_mtime = p.file_mtime;
                 """));
     }
+
+    /// <summary>Other photos in the library with this file name: maybe copies of a damaged one.</summary>
+    public IReadOnlyList<string> FindByFileName(string fileName, string except)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT path FROM photos WHERE file_name = $name AND path <> $except ORDER BY path LIMIT 20;";
+            cmd.Parameters.AddWithValue("$name", fileName);
+            cmd.Parameters.AddWithValue("$except", except);
+            var result = new List<string>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(r.GetString(0));
+            return result;
+        }
+    }
 }
