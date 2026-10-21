@@ -135,6 +135,16 @@ public sealed partial class MainWindow
         UploadOneDrivePhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to OneDrive", photos.Count) : Tr("Upload to OneDrive");
     }
 
+    // The viewer's menu: the photo being looked at is the grid's selection.
+    private void ViewerMoreMenu_Opening(object sender, object e)
+    {
+        var album = ViewerItem is { } photo ? ViewModel.FindAlbumFor(photo.Path) : null;
+        ViewerAlbumCoverItem.IsEnabled = album is not null;
+        ViewerAlbumCoverItem.Text = album is null
+            ? Tr("Use as album cover (select one photo in an album)")
+            : Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album));
+    }
+
     private async void UseAsAlbumCover_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedPhotos is [var photo])

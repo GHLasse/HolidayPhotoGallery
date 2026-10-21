@@ -1214,10 +1214,86 @@
                             <TextBlock Text="{local:Loc Text='Open with…'}" />
                         </StackPanel>
                     </Button>
-                    <ToggleButton x:Name="ViewerDetailsButton" IsChecked="True" Click="ViewerDetails_Click"
-                                  ToolTipService.ToolTip="{local:Loc Text='Show or hide the details beside the photo (I)'}">
-                        <FontIcon Glyph="&#xE946;" FontSize="16" />
-                    </ToggleButton>
+                    <!-- What the grid's selection bar and right-click menu offer, for the photo being looked at
+                         (it is the grid's selection while the viewer is open). -->
+                    <Button AutomationProperties.Name="{local:Loc Text='More actions'}"
+                            ToolTipService.ToolTip="{local:Loc Text='More actions'}">
+                        <FontIcon Glyph="&#xE712;" FontSize="16" />
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight" Opening="ViewerMoreMenu_Opening">
+                            <MenuFlyoutItem x:Name="ViewerShowInFolderItem" Text="{local:Loc Text='Show in folder'}" Click="ShowInFolderMenu_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE838;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="ViewerAlbumCoverItem" Text="{local:Loc Text='Use as album cover'}" Click="UseAsAlbumCover_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8B9;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="{local:Loc Text='Upload to Google Photos'}" Click="UploadPhotosToGoogle_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE898;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Upload to OneDrive'}" Click="UploadPhotosToOneDrive_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE753;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="{local:Loc Text='Place names'}" Click="AddPlaceNames_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE707;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Auto-tag'}" Click="AutoTag_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8EC;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Remove auto tags'}" Click="RemoveAutoTags_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE74D;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Find people'}" Click="FindPeople_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE721;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Add a person…'}" Click="AddPerson_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8FA;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Shift dates'}" Click="ShiftDates_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xEC92;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                    <!-- Like the switch above the grid: the details (I), the map (M) or nothing beside the photo. -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ToggleButton x:Name="ViewerInfoToggle" IsChecked="True" Click="ViewerSidePane_Click" CornerRadius="4,0,0,4" BorderThickness="1,1,0,1"
+                                      AutomationProperties.Name="{local:Loc Text='Details'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Show the details beside the photo (I)'}">
+                            <FontIcon Glyph="&#xE946;" FontSize="16" />
+                        </ToggleButton>
+                        <ToggleButton x:Name="ViewerMapToggle" Click="ViewerSidePane_Click" CornerRadius="0" BorderThickness="1,1,0,1"
+                                      AutomationProperties.Name="{local:Loc Text='Map'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Show where the photo was taken, and place it on the map (M)'}">
+                            <FontIcon Glyph="&#xE707;" FontSize="16" />
+                        </ToggleButton>
+                        <ToggleButton x:Name="ViewerPaneOffToggle" Click="ViewerSidePane_Click" CornerRadius="0,4,4,0"
+                                      AutomationProperties.Name="{local:Loc Text='No side pane'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Nothing beside the photo, so it gets the whole width'}">
+                            <FontIcon Glyph="&#xE89F;" FontSize="16" />
+                        </ToggleButton>
+                    </StackPanel>
                     <AppBarSeparator />
                     <Button x:Name="ViewerCloseButton" Click="ViewerClose_Click" ToolTipService.ToolTip="{local:Loc Text='Back to the gallery (Esc)'}">
                         <SymbolIcon Symbol="Cancel" />

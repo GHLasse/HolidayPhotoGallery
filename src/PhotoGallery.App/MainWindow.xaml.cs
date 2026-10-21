@@ -394,6 +394,11 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 ToggleViewerDetails();
             }
+            else if (e.Key == VirtualKey.M)
+            {
+                e.Handled = true;
+                ToggleViewerMap();
+            }
             return;
         }
 
@@ -784,6 +789,16 @@ public sealed partial class MainWindow : Window
         var item = ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase));
         if (item is null)
             return;
+        // Beside the viewer, a marker shows its photo there.
+        if (IsViewerOpen)
+        {
+            if (!IsEditing && _viewerItems.IndexOf(item) is >= 0 and var index && index != _viewerIndex)
+            {
+                _viewerIndex = index;
+                _ = ShowViewerImageAsync();
+            }
+            return;
+        }
         _selectingFromMap = true;
         if (addToSelection)
         {
@@ -917,7 +932,9 @@ public sealed partial class MainWindow : Window
         _viewerItems = ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
-        ApplyChrome(animate: false); // the details stay beside the photo
+        SyncViewerPaneSwitch();
+        ApplyChrome(animate: false); // the details or the map stay beside the photo
+        _ = StartViewerMapAsync();
         StartOpenMotion(item, tile);
         ShowViewerControls();
         // Move focus off the grid, which would otherwise take the arrow keys for itself.

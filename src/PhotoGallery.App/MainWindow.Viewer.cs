@@ -246,27 +246,54 @@ public sealed partial class MainWindow
         _ = ShowViewerImageAsync();
     }
 
-    // ---- Details beside the viewer ----
+    // ---- Details or map beside the viewer ----
 
-    private bool _viewerDetails = true;
+    // The viewer has its own switch, like the one above the grid: details (I), map (M) or nothing.
+    private SidePane _viewerPane = SidePane.Info;
 
-    private void ViewerDetails_Click(object sender, RoutedEventArgs e) => ToggleViewerDetails();
+    // The whole-library map already fills the Map page, so there the viewer has no map beside it.
+    private bool ViewerMapBeside => _viewerPane == SidePane.Map && _workspace != Workspace.Map;
 
-    private void ToggleViewerDetails()
+    private void ViewerSidePane_Click(object sender, RoutedEventArgs e) =>
+        _ = SetViewerPaneAsync(sender == ViewerMapToggle ? SidePane.Map : sender == ViewerPaneOffToggle ? SidePane.Off : SidePane.Info);
+
+    private void ToggleViewerDetails() => _ = SetViewerPaneAsync(_viewerPane == SidePane.Info ? SidePane.Off : SidePane.Info);
+
+    private void ToggleViewerMap() => _ = SetViewerPaneAsync(_viewerPane == SidePane.Map ? SidePane.Info : SidePane.Map);
+
+    private async Task SetViewerPaneAsync(SidePane pane)
     {
-        _viewerDetails = !_viewerDetails;
-        ViewerDetailsButton.IsChecked = _viewerDetails;
+        _viewerPane = pane;
+        SyncViewerPaneSwitch();
         ApplyChrome();
+        await StartViewerMapAsync();
+    }
+
+    private void SyncViewerPaneSwitch()
+    {
+        ViewerInfoToggle.IsChecked = _viewerPane == SidePane.Info;
+        ViewerMapToggle.IsChecked = _viewerPane == SidePane.Map;
+        ViewerPaneOffToggle.IsChecked = _viewerPane == SidePane.Off;
+        ViewerMapToggle.IsEnabled = _workspace != Workspace.Map;
+    }
+
+    // The map loads the first time it is shown; then it shows the photo being looked at.
+    private async Task StartViewerMapAsync()
+    {
+        if (!IsViewerOpen || !ViewerMapBeside)
+            return;
+        await MapView.StartAsync();
+        RefreshMap(fit: true);
     }
 
     /// <summary>
-    /// With the viewer open the info pane stays at the right, full height, and the viewer takes the rest;
+    /// With the viewer open the info pane or the map stays at the right, full height, and the viewer takes the rest;
     /// otherwise the viewer covers the whole window.
     /// </summary>
     private void PlaceInfoBesideViewer(bool beside)
     {
         Grid.SetColumnSpan(ViewerLayer, beside ? 3 : 5);
-        foreach (var pane in new FrameworkElement[] { InfoSplitter, InfoPane })
+        foreach (var pane in new FrameworkElement[] { InfoSplitter, InfoPane, MapSplitter, MapView })
         {
             Grid.SetRow(pane, beside ? 1 : 3);
             Grid.SetRowSpan(pane, beside ? 3 : 1);

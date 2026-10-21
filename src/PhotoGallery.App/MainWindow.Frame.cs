@@ -149,10 +149,10 @@ public sealed partial class MainWindow
 
         // The map beside the grid and the info pane share the right-hand column: one or the other.
         var viewer = IsViewerOpen;
-        var map = MapBeside && !_chromeHidden && !viewer;
+        var map = viewer ? ViewerMapBeside : MapBeside && !_chromeHidden;
         var full = _workspace == Workspace.Map;
-        info = viewer ? _viewerDetails && PhotoGrid.SelectedItems.Count > 0 : info && !map;
-        PlaceInfoBesideViewer(viewer && info);
+        info = viewer ? _viewerPane == SidePane.Info && PhotoGrid.SelectedItems.Count > 0 : info && !map;
+        PlaceInfoBesideViewer(viewer && (info || map));
         InfoSplitter.Visibility = info ? Visibility.Visible : Visibility.Collapsed;
         MapSplitter.Visibility = map ? Visibility.Visible : Visibility.Collapsed;
         if (info)
@@ -165,7 +165,7 @@ public sealed partial class MainWindow
         AnimateColumn(InfoColumn, width, animate, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
-            if (!(IsViewerOpen ? _viewerDetails : !_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
+            if (!(IsViewerOpen ? _viewerPane == SidePane.Info : !_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
                 InfoPane.Visibility = Visibility.Collapsed;
         }, content: [InfoPane]);
         // The filters work on the grid; the People page and the whole-library map have none.
