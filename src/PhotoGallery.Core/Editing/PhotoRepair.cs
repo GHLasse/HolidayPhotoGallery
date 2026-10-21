@@ -4,6 +4,11 @@ using SixLabors.ImageSharp.Processing;
 
 namespace PhotoGallery.Core.Editing;
 
+/// <summary>
+/// Scales a picture (8-bit BGRA) up and returns the new pixels and size, e.g. with <see cref="Upscaler"/>.
+/// </summary>
+public delegate (byte[] Pixels, int Width, int Height) UpscalePicture(byte[] bgra, int width, int height);
+
 /// <summary>Which edge of the upright photo the damage runs to.</summary>
 public enum DamagedEdge { Bottom, Top, Left, Right }
 
@@ -65,7 +70,8 @@ public static class PhotoRepair
     /// stored the way the photo's pixels are, so turned with <paramref name="orientation"/>). Returns null when
     /// the preview can't be read or doesn't have the photo's shape.
     /// </summary>
-    public static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, byte[] preview, int orientation)
+    public static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, byte[] preview, int orientation,
+                               UpscalePicture? upscale = null)
     {
         Image<Bgra32> image;
         try
@@ -79,7 +85,7 @@ public static class PhotoRepair
         using (image)
         {
             image.Mutate(x => x.RotateFlip(RotationOf(orientation), FlipOf(orientation)));
-            return Fill(bgra, width, height, damage, image);
+            return Fill(bgra, width, height, damage, image, upscale);
         }
     }
 
@@ -87,11 +93,18 @@ public static class PhotoRepair
     /// Fills the lost part from another copy of the photo, upright (8-bit BGRA): a backup, or a smaller copy
     /// from a cloud service or a message. Returns null when the copy doesn't have the photo's shape.
     /// </summary>
-    public static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, byte[] copy, int copyWidth, int copyHeight)
+    public static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, byte[] copy, int copyWidth, int copyHeight,
+                               UpscalePicture? upscale = null)
     {
         using var image = Image.LoadPixelData<Bgra32>(copy, copyWidth, copyHeight);
-        return Fill(bgra, width, height, damage, image);
+        return Fill(bgra, width, height, damage, image, upscale);
     }
+
+    /// <summary>
+    /// True when a fill source of <paramref name="sourceWidth"/> pixels is small enough for the photo that
+    /// scaling it up with AI is worth it (at least 1.5 times smaller).
+    /// </summary>
+    public static bool NeedsUpscaling(int width, int sourceWidth) => width >= 1.5 * sourceWidth;
 
     /// <summary>True when a copy of <paramref name="copyWidth"/> × <paramref name="copyHeight"/> has the photo's shape.</summary>
     public static bool SameShape(int width, int height, int copyWidth, int copyHeight) =>
@@ -99,10 +112,19 @@ public static class PhotoRepair
         // shape lines up with it.
         Math.Abs((double)width / height / ((double)copyWidth / copyHeight) - 1) <= 0.04;
 
-    private static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, Image<Bgra32> source)
+    private static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, Image<Bgra32> source, UpscalePicture? upscale)
     {
         if (!SameShape(width, height, source.Width, source.Height))
             return null;
+        if (upscale is not null && NeedsUpscaling(width, source.Width))
+        {
+            // AI draws the detail a plain resize can't; the rest of the way is a resize as usual.
+            var pixels = new byte[source.Width * source.Height * 4];
+            source.CopyPixelDataTo(pixels);
+            var (big, bigWidth, bigHeight) = upscale(pixels, source.Width, source.Height);
+            using var larger = Image.LoadPixelData<Bgra32>(big, bigWidth, bigHeight);
+            return Fill(bgra, width, height, damage, larger, null);
+        }
         var upscaled = (double)width / source.Width;
         source.Mutate(x =>
         {

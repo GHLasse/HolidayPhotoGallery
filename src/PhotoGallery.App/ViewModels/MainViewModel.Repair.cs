@@ -20,11 +20,59 @@ public enum RepairWay { FillFromPreview, FillFromCopy, ReplaceWithCopy, Crop }
 /// A repaired photo, not saved yet: its pixels, the part of the old one kept when cropped, and the file to take
 /// the tags and other details from when the damaged file can't be read.
 /// </summary>
-public sealed record RepairedPhoto(DecodedImage Image, FaceBox? Kept, string? MetadataFrom = null);
+public sealed record RepairedPhoto(DecodedImage Image, FaceBox? Kept, string? MetadataFrom = null)
+{
+    /// <summary>How the repair was made, when worth telling (e.g. which AI model ran where, and how long).</summary>
+    public string? Note { get; init; }
+}
+
+/// <summary>
+/// AI upscaling would take long on this PC: about <see cref="Estimate"/>. The repair wizard asks before it
+/// starts such a job.
+/// </summary>
+public sealed class SlowUpscaleException(TimeSpan estimate, bool onGraphicsCard) : Exception
+{
+    public TimeSpan Estimate { get; } = estimate;
+
+    public bool OnGraphicsCard { get; } = onGraphicsCard;
+}
 
 /// <summary>Repairing damaged photos (see <see cref="PhotoRepair"/> and <see cref="FileCheck"/>).</summary>
 public sealed partial class MainViewModel
 {
+    // Jobs longer than this are only started once the user has seen how long they take.
+    private static readonly TimeSpan SlowUpscale = TimeSpan.FromSeconds(60);
+
+    public bool UpscaleOnProcessorOnly => _settings.UpscaleOnProcessorOnly;
+
+    public void SaveUpscaleOnProcessorOnly(bool processorOnly)
+    {
+        _settings.UpscaleOnProcessorOnly = processorOnly;
+        _settings.Save(SettingsPath);
+    }
+
+    public static bool IsUpscaleModelInstalled(UpscaleQuality quality) =>
+        UpscaleModel.IsInstalled(UpscaleModel.DefaultFolder(DataFolder, quality), quality);
+
+    /// <summary>Downloads an upscaling model once; false with <see cref="ErrorMessage"/> saying why.</summary>
+    public async Task<bool> DownloadUpscaleModelAsync(UpscaleQuality quality, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await UpscaleModel.DownloadAsync(UpscaleModel.DefaultFolder(DataFolder, quality), quality, progress, cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            ErrorMessage = Tr("The AI model could not be downloaded ({0}). Check the internet connection and try again.", ex.Message);
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Copies of the photo elsewhere in the library (the same file name), if they are whole.</summary>
     public Task<IReadOnlyList<string>> FindCopiesAsync(PhotoItemViewModel item) => Task.Run(() =>
         (IReadOnlyList<string>)_index.FindByFileName(item.FileName, item.Path)
@@ -93,12 +141,34 @@ public sealed partial class MainViewModel
     /// The repaired photo, not saved yet, or null with <see cref="ErrorMessage"/> saying why. <paramref name="copyPath"/>
     /// is the other copy of the photo for <see cref="RepairWay.FillFromCopy"/> and <see cref="RepairWay.ReplaceWithCopy"/>.
     /// </summary>
-    public async Task<RepairedPhoto?> BuildRepairAsync(PhotoItemViewModel item, DamagedPhoto damaged, RepairWay way, string? copyPath)
+    /// <remarks>
+    /// With <paramref name="upscale"/>, a fill source much smaller than the photo is first scaled up with that AI
+    /// model (already downloaded). A job that would take long throws <see cref="SlowUpscaleException"/> before it
+    /// starts, unless <paramref name="evenIfSlow"/>.
+    /// </remarks>
+    public async Task<RepairedPhoto?> BuildRepairAsync(PhotoItemViewModel item, DamagedPhoto damaged, RepairWay way, string? copyPath,
+                                                       UpscaleQuality? upscale = null, bool evenIfSlow = false,
+                                                       IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         IsBusy = true;
         StatusText = Tr("Repairing {0}…", item.FileName);
+        Upscaler? upscaler = null;
+        string? note = null;
         try
         {
+            UpscalePicture? ai = upscale is not { } quality ? null : (pixels, width, height) =>
+            {
+                upscaler ??= Upscaler.Load(UpscaleModel.ModelPath(UpscaleModel.DefaultFolder(DataFolder, quality), quality), UpscaleOnProcessorOnly);
+                var estimate = upscaler.TimeTile() * Upscaler.TileCount(width, height);
+                if (estimate > SlowUpscale && !evenIfSlow)
+                    throw new SlowUpscaleException(estimate, upscaler.OnGraphicsCard);
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var big = upscaler.Upscale(pixels, width, height, progress, cancellationToken);
+                note = Tr("Detail brought back with AI in {2:N0} s ({0}, {1}).",
+                          quality == UpscaleQuality.Best ? Tr("best quality") : Tr("fast"),
+                          upscaler.OnGraphicsCard ? Tr("graphics card") : Tr("processor"), watch.Elapsed.TotalSeconds);
+                return (big, width * UpscaleModel.Scale, height * UpscaleModel.Scale);
+            };
             switch (way)
             {
                 case RepairWay.Crop when damaged is { Image: { } image, Damage: { } damage }:
@@ -108,9 +178,9 @@ public sealed partial class MainViewModel
                 }
                 case RepairWay.FillFromPreview when damaged is { Image: { } image, Damage: { } damage, Preview: { } preview }:
                 {
-                    var pixels = await Task.Run(() => PhotoRepair.Fill(image.Pixels, image.Width, image.Height, damage, preview, item.Photo.Orientation));
+                    var pixels = await Task.Run(() => PhotoRepair.Fill(image.Pixels, image.Width, image.Height, damage, preview, item.Photo.Orientation, ai), cancellationToken);
                     if (pixels is not null)
-                        return new RepairedPhoto(image with { Pixels = pixels }, null);
+                        return new RepairedPhoto(image with { Pixels = pixels }, null) { Note = note };
                     ErrorMessage = Tr("The preview stored in {0} has another shape than the photo, so it can't fill it. Try a copy, or crop.", item.FileName);
                     return null;
                 }
@@ -119,9 +189,9 @@ public sealed partial class MainViewModel
                     var copy = await ImageLoader.DecodePixelsAsync(copyPath, uint.MaxValue);
                     if (way == RepairWay.ReplaceWithCopy || damaged is not { Image: { } image, Damage: { } damage })
                         return new RepairedPhoto(copy, null, damaged.Health == FileHealth.Unreadable ? copyPath : null);
-                    var pixels = await Task.Run(() => PhotoRepair.Fill(image.Pixels, image.Width, image.Height, damage, copy.Pixels, copy.Width, copy.Height));
+                    var pixels = await Task.Run(() => PhotoRepair.Fill(image.Pixels, image.Width, image.Height, damage, copy.Pixels, copy.Width, copy.Height, ai), cancellationToken);
                     if (pixels is not null)
-                        return new RepairedPhoto(image with { Pixels = pixels }, null);
+                        return new RepairedPhoto(image with { Pixels = pixels }, null) { Note = note };
                     ErrorMessage = Tr("{0} has another shape than the photo, so it can't fill it. Is it a copy of the same photo, maybe cropped?", Path.GetFileName(copyPath));
                     return null;
                 }
@@ -134,8 +204,18 @@ public sealed partial class MainViewModel
             ErrorMessage = Tr("Could not read {0}: {1}", Path.GetFileName(copyPath ?? item.Path), ex.Message);
             return null;
         }
+        catch (Microsoft.ML.OnnxRuntime.OnnxRuntimeException ex)
+        {
+            ErrorMessage = Tr("AI upscaling failed: {0}. Try it without AI, or turn on “Use only the processor” in Settings › Editing.", ex.Message);
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
         finally
         {
+            upscaler?.Dispose();
             IsBusy = false;
             StatusText = _countText;
         }

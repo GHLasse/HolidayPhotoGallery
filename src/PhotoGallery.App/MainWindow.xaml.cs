@@ -1234,10 +1234,18 @@ public sealed partial class MainWindow : Window
 
         var favourites = FavouriteAppsSettings(out var chosenApps);
 
-        var cropping = new StackPanel
+        var processorOnly = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Use only the processor for AI upscaling"),
+            IsOn = ViewModel.UpscaleOnProcessorOnly,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+
+        var croppingPanel = new StackPanel
         {
             Spacing = 12,
-            Visibility = Visibility.Collapsed,
             Children =
             {
                 crop,
@@ -1253,7 +1261,20 @@ public sealed partial class MainWindow : Window
                     Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere."),
                     TextWrapping = TextWrapping.Wrap,
                 },
+                processorOnly,
+                new TextBlock
+                {
+                    Text = Tr("Repairing a damaged photo can bring back detail with AI. It runs on the graphics card when there is one; turn this on if it fails there or the result looks wrong."),
+                    TextWrapping = TextWrapping.Wrap,
+                },
             },
+        };
+        var cropping = new ScrollViewer
+        {
+            MaxHeight = 480,
+            Padding = new Thickness(0, 0, 12, 0),
+            Visibility = Visibility.Collapsed,
+            Content = croppingPanel,
         };
 
         // Appearance tab
@@ -1448,6 +1469,8 @@ public sealed partial class MainWindow : Window
         ViewModel.SaveFavouriteApps(chosenApps());
         if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
+        if (processorOnly.IsOn != ViewModel.UpscaleOnProcessorOnly)
+            ViewModel.SaveUpscaleOnProcessorOnly(processorOnly.IsOn);
     }
 
     private void UpdateEditBar()

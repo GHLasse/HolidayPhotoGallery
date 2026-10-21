@@ -26,6 +26,9 @@ public sealed class LibrarySettings
     /// <summary>Whether a photo is copied to the hidden .originals folder before it is opened in another app.</summary>
     public bool BackUpBeforeOpenWith { get; set; } = true;
 
+    /// <summary>AI upscaling runs on the processor even when a graphics card could do it (see Editing.Upscaler).</summary>
+    public bool UpscaleOnProcessorOnly { get; set; }
+
     /// <summary>The order the photo grid starts in for every folder (a <see cref="PhotoSort"/> key).</summary>
     public string PhotoSort { get; set; } = Library.PhotoSort.Oldest;
 

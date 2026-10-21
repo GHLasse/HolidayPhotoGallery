@@ -58,6 +58,16 @@ jobs:
           done
           ls -l "$dir"
           echo "PHOTOGALLERY_FACE_MODEL=$dir" >> "$GITHUB_ENV"
+      # The fast upscaling model (about 5 MB), so the tests scale a real picture up.
+      - name: Download upscaling model
+        run: |
+          dir="$RUNNER_TEMP/upscale-model"
+          mkdir -p "$dir"
+          curl -sSfL --retry 3 -o "$dir/model.zip" https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/real_esrgan_general_x4v3/releases/v0.64.0/real_esrgan_general_x4v3-onnx-float.zip
+          echo "fc094329b24a00c936ebc1cc4c51bc59633e7dc36f4a553344342171cbd3c7cf  $dir/model.zip" | sha256sum -c
+          unzip -o -j -q "$dir/model.zip" '*.onnx' '*.data' -d "$dir"
+          ls -l "$dir"
+          echo "PHOTOGALLERY_UPSCALE_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 

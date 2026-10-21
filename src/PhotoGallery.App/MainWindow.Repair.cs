@@ -72,6 +72,37 @@ public sealed partial class MainWindow
         var first = new[] { fromPreview, copyPath is null ? null : fromCopy, crop }.FirstOrDefault(r => r is { IsEnabled: true }) ?? replace;
         first.IsChecked = true;
 
+        // AI upscaling (Real-ESRGAN) for the two ways that fill from a smaller picture.
+        var useAi = new CheckBox
+        {
+            Content = new TextBlock { Text = Tr("Bring back detail with AI when the preview or copy is much smaller than the photo"), TextWrapping = TextWrapping.Wrap },
+            IsChecked = true,
+        };
+        var aiQuality = new ComboBox { MinWidth = 260 };
+        aiQuality.Items.Add(Tr("Fast"));
+        aiQuality.Items.Add(Tr("Best quality (much slower)"));
+        aiQuality.SelectedIndex = 0;
+        var aiDownload = Hint("");
+        var aiRow = new StackPanel { Spacing = 6, Margin = new Thickness(28, 0, 0, 0), Children = { useAi, aiQuality, aiDownload } };
+        UpscaleQuality ChosenQuality() => aiQuality.SelectedIndex == 1 ? UpscaleQuality.Best : UpscaleQuality.Fast;
+        void ShowAi()
+        {
+            var fills = fromPreview.IsChecked == true || fromCopy.IsChecked == true;
+            aiRow.Visibility = fills ? Visibility.Visible : Visibility.Collapsed;
+            aiQuality.IsEnabled = useAi.IsChecked == true;
+            var quality = ChosenQuality();
+            aiDownload.Text = useAi.IsChecked == true && !MainViewModel.IsUpscaleModelInstalled(quality)
+                ? Tr("The AI model is downloaded once (about {0:N0} MB) and runs on this PC; the photo never leaves it.", UpscaleModel.DownloadSize(quality) / 1_000_000.0)
+                : "";
+            aiDownload.Visibility = aiDownload.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        foreach (var way in new[] { fromPreview, fromCopy, replace, crop })
+            way.Checked += (_, _) => ShowAi();
+        useAi.Checked += (_, _) => ShowAi();
+        useAi.Unchecked += (_, _) => ShowAi();
+        aiQuality.SelectionChanged += (_, _) => ShowAi();
+        ShowAi();
+
         var choosePage = new StackPanel { Spacing = 8 };
         choosePage.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Text = lost });
         choosePage.Children.Add(fromPreview);
@@ -81,6 +112,7 @@ public sealed partial class MainWindow
         choosePage.Children.Add(replace);
         choosePage.Children.Add(copyRow);
         choosePage.Children.Add(crop);
+        choosePage.Children.Add(aiRow);
         choosePage.Children.Add(Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder.")));
 
         // ---- Page 2: before and after ----
@@ -92,6 +124,7 @@ public sealed partial class MainWindow
         comparePage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         comparePage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         comparePage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        comparePage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         AddAt(comparePage, new TextBlock { Text = Tr("Before"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }, 0, 0);
         AddAt(comparePage, new TextBlock { Text = Tr("After"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }, 0, 1);
         AddAt(comparePage, before, 1, 0);
@@ -99,11 +132,18 @@ public sealed partial class MainWindow
         var compareHint = Hint(Tr("Keep the repair to save it over the damaged photo, or go back and try another way."));
         Grid.SetColumnSpan(compareHint, 2);
         AddAt(comparePage, compareHint, 2, 0);
+        var aiNote = Hint("");
+        Grid.SetColumnSpan(aiNote, 2);
+        AddAt(comparePage, aiNote, 3, 0);
 
         var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("SystemFillColorCriticalBrush") };
+        var working = Hint("");
         var body = new StackPanel { Spacing = 12, MinWidth = 2 * CompareSize + 12 };
         body.Children.Add(choosePage);
+        body.Children.Add(working);
         body.Children.Add(problem);
+        using var closing = new CancellationTokenSource();
+        UpscaleQuality? slowAccepted = null; // the user saw how long it takes and pressed Next again
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
@@ -114,6 +154,7 @@ public sealed partial class MainWindow
             DefaultButton = ContentDialogButton.Primary,
         };
         dialog.Resources["ContentDialogMaxWidth"] = 2.0 * CompareSize + 120;
+        dialog.Closing += (_, _) => closing.Cancel();
         ShowBefore();
 
         dialog.PrimaryButtonClick += async (_, args) =>
@@ -134,23 +175,57 @@ public sealed partial class MainWindow
             dialog.IsPrimaryButtonEnabled = false;
             problem.Text = "";
             ViewModel.ErrorMessage = null;
-            var result = await ViewModel.BuildRepairAsync(item, damaged, way, copyPath);
-            dialog.IsPrimaryButtonEnabled = true;
-            if (result is null)
+            UpscaleQuality? quality = useAi.IsChecked == true && way is RepairWay.FillFromPreview or RepairWay.FillFromCopy ? ChosenQuality() : null;
+            try
             {
-                problem.Text = ViewModel.ErrorMessage ?? Tr("This way can't repair the photo. Try another one.");
-                ViewModel.ErrorMessage = null;
+                if (quality is { } q && !MainViewModel.IsUpscaleModelInstalled(q))
+                {
+                    var download = new Progress<double>(p => working.Text = Tr("Downloading the AI model… {0:P0}", p));
+                    if (!await ViewModel.DownloadUpscaleModelAsync(q, download, closing.Token))
+                    {
+                        problem.Text = closing.IsCancellationRequested ? "" : ViewModel.ErrorMessage ?? "";
+                        ViewModel.ErrorMessage = null;
+                        return;
+                    }
+                    ShowAi();
+                }
+                working.Text = quality is null ? "" : Tr("Bringing back detail with AI…");
+                var aiProgress = new Progress<double>(p => working.Text = Tr("Bringing back detail with AI… {0:P0}", p));
+                var result = await ViewModel.BuildRepairAsync(item, damaged, way, copyPath, quality, evenIfSlow: quality is not null && quality == slowAccepted,
+                                                              aiProgress, closing.Token);
+                if (closing.IsCancellationRequested)
+                    return;
+                if (result is null)
+                {
+                    problem.Text = ViewModel.ErrorMessage ?? Tr("This way can't repair the photo. Try another one.");
+                    ViewModel.ErrorMessage = null;
+                }
+                else
+                {
+                    repaired = result;
+                    after.Source = await SmallSourceAsync(result.Image);
+                    aiNote.Text = result.Note ?? "";
+                    body.Children.Remove(choosePage);
+                    body.Children.Insert(0, comparePage);
+                    dialog.PrimaryButtonText = Tr("Keep the repair");
+                    dialog.SecondaryButtonText = Tr("Back");
+                }
             }
-            else
+            catch (SlowUpscaleException slow)
             {
-                repaired = result;
-                after.Source = await SmallSourceAsync(result.Image);
-                body.Children.Remove(choosePage);
-                body.Children.Insert(0, comparePage);
-                dialog.PrimaryButtonText = Tr("Keep the repair");
-                dialog.SecondaryButtonText = Tr("Back");
+                // Say how long it would take and let the user choose: the fast model, no AI, or wait.
+                slowAccepted = quality;
+                var device = slow.OnGraphicsCard ? Tr("graphics card") : Tr("processor");
+                problem.Text = quality == UpscaleQuality.Best
+                    ? Tr("With the best-quality model this takes about {0} on this PC ({1}); the fast model takes about a tenth of that. Choose Fast, or press Next again to wait.", Duration(slow.Estimate), device)
+                    : Tr("AI upscaling takes about {0} on this PC ({1}). Press Next again to wait, or turn off AI.", Duration(slow.Estimate), device);
             }
-            deferral.Complete();
+            finally
+            {
+                working.Text = "";
+                dialog.IsPrimaryButtonEnabled = true;
+                deferral.Complete();
+            }
         };
         dialog.SecondaryButtonClick += (_, args) =>
         {
@@ -183,6 +258,10 @@ public sealed partial class MainWindow
             IsEnabled = possible,
         };
     }
+
+    private static string Duration(TimeSpan time) => time.TotalSeconds >= 90
+        ? Tr("{0:N0} minutes", Math.Round(time.TotalMinutes))
+        : Tr("{0:N0} seconds", Math.Max(1, Math.Round(time.TotalSeconds)));
 
     private static TextBlock Hint(string text) =>
         new() { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };

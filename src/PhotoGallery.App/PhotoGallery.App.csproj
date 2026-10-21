@@ -29,6 +29,8 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- ONNX Runtime with DirectML: AI upscaling (and the other models) can use any DirectX 12 graphics card. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.9169" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
   </ItemGroup>
