@@ -1065,9 +1065,21 @@
                     <StackPanel Spacing="6">
                         <TextBlock Text="{local:Loc Text='Tags'}" />
                         <controls:WrapPanel x:Name="TagBadges" />
-                        <AutoSuggestBox x:Name="TagBox" PlaceholderText="{local:Loc Text='Add a tag'}" QueryIcon="Add"
-                                        TextChanged="TagBox_TextChanged" SuggestionChosen="TagBox_SuggestionChosen"
-                                        QuerySubmitted="TagBox_QuerySubmitted" />
+                        <!-- Auto-tag right where the tags are typed, like the selection bar's button. -->
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <AutoSuggestBox x:Name="TagBox" PlaceholderText="{local:Loc Text='Add a tag'}" QueryIcon="Add"
+                                            TextChanged="TagBox_TextChanged" SuggestionChosen="TagBox_SuggestionChosen"
+                                            QuerySubmitted="TagBox_QuerySubmitted" />
+                            <Button Grid.Column="1" Click="AutoTag_Click" VerticalAlignment="Stretch" local:Busy.Gate="True"
+                                    AutomationProperties.Name="{local:Loc Text='Auto-tag'}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list'}">
+                                <FontIcon Glyph="&#xE8EC;" FontSize="16" />
+                            </Button>
+                        </Grid>
                         <TextBlock x:Name="TagHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <!-- Filled from code with one row per face (MainWindow.People.cs); only for a single photo. -->

@@ -718,7 +718,13 @@ public sealed partial class MainWindow : Window
             if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadTagModelAsync())
                 return;
         }
+        // Unsaved edits in the panel would otherwise be written over the new tags afterwards.
+        if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
+            return;
         await ViewModel.AutoTagAsync(photos);
+        // The details pane shows the new tags at once.
+        if (!ViewModel.Editor.IsDirty)
+            ViewModel.Editor.Load(SelectedPhotos);
     }
 
     private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e)
