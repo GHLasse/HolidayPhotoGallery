@@ -102,12 +102,21 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
         private set
         {
             if (SetProperty(ref _thumbnail, value))
+            {
                 OnPropertyChanged(nameof(ThumbnailShown));
+                OnPropertyChanged(nameof(PlaceholderOpacity));
+            }
         }
     }
 
     /// <summary>0 until the thumbnail has loaded, so it fades in instead of popping up.</summary>
     public double ThumbnailShown => _thumbnail is null ? 0 : 1;
+
+    /// <summary>
+    /// The picture icon shows only while the thumbnail loads; a panorama leaves most of the tile empty, and the
+    /// icon behind it looked as if the photo hadn't loaded.
+    /// </summary>
+    public double PlaceholderOpacity => _thumbnail is null ? 0.3 : 0;
 
     // ---- Thumbnails in a large library ----
     // Loaded a few at a time, newest request first, so the tiles on screen come before the ones scrolled

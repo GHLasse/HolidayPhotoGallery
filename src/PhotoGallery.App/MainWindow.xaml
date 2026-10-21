@@ -665,7 +665,7 @@
                               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                               ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}"
                               PointerEntered="Tile_PointerEntered" PointerExited="Tile_PointerExited" PointerCanceled="Tile_PointerExited">
-                            <FontIcon Glyph="&#xEB9F;" FontSize="32" Opacity="0.3" />
+                            <FontIcon Glyph="&#xEB9F;" FontSize="32" Opacity="{x:Bind PlaceholderOpacity, Mode=OneWay}" />
                             <Grid Opacity="{x:Bind ThumbnailShown, Mode=OneWay}">
                                 <Grid.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.167" />
