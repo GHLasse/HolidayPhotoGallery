@@ -223,11 +223,19 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-            choco install innosetup -y --no-progress | Out-Null
-            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          }
+          # The animated pages need Inno Setup 6.7 or later (PNG images); the version is pinned by hash.
+          $innoUrl = 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe'
+          $innoHash = '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732'
+          Invoke-WebRequest $innoUrl -OutFile "$env:RUNNER_TEMP\innosetup.exe"
+          if ((Get-FileHash "$env:RUNNER_TEMP\innosetup.exe" -Algorithm SHA256).Hash -ne $innoHash) { throw 'Inno Setup download does not match the pinned hash' }
+          $innoDir = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          Start-Process "$env:RUNNER_TEMP\innosetup.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=$innoDir" -Wait
+          $iscc = Join-Path $innoDir 'ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "Inno Setup not installed in $innoDir" }
+          # Artwork: the committed PNG layers become the bitmaps Setup draws with.
+          python -m pip install --quiet pillow
+          python installer/art/png2bmp.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $source = Resolve-Path src/PhotoGallery.App/bin/x64/Release/net10.0-windows10.0.19041.0/win-x64
           & $iscc "/DAppVersion=$env:APP_VERSION" "/DSourceDir=$source" "/DOutputDir=$PWD\installer-output" installer\HolidayPhotoGallery.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
