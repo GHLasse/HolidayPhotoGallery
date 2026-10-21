@@ -85,6 +85,29 @@ public sealed partial class PhotoIndex
         }
     }
 
+    /// <summary>
+    /// Photos the face finder has not looked at yet, newest added first, so new photos can be looked at
+    /// in the background. The orientation is the photo's EXIF orientation.
+    /// </summary>
+    public IReadOnlyList<(string Path, int Orientation)> GetNotFaceScanned(int limit)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT p.path, p.orientation FROM photos p
+                WHERE NOT EXISTS (SELECT 1 FROM face_scans s WHERE s.photo_id = p.id)
+                ORDER BY p.id DESC LIMIT $limit;
+                """;
+            cmd.Parameters.AddWithValue("$limit", limit);
+            var result = new List<(string, int)>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add((r.GetString(0), r.GetInt32(1)));
+            return result;
+        }
+    }
+
     /// <summary>The faces found on one photo, left to right.</summary>
     public IReadOnlyList<FoundFace> GetFaces(string path) => QueryFaces("p.path = $path", ("$path", path));
 

@@ -16,9 +16,17 @@ public sealed partial class MainWindow
     private const double FaceSize = 48;
     private int _peopleVersion;
 
-    private async void FindPeople_Click(object sender, RoutedEventArgs e) => await FindPeopleAsync(SelectedPhotos);
+    private async void FindPeople_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await FindPeopleAsync(SelectedPhotos);
+    }
 
-    private async void FindPeopleInAll_Click(object sender, RoutedEventArgs e) => await FindPeopleAsync(ViewModel.Photos.ToList());
+    private async void FindPeopleInAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await FindPeopleAsync(ViewModel.Photos.ToList());
+    }
 
     private async Task FindPeopleAsync(IReadOnlyList<PhotoItemViewModel> photos)
     {
@@ -185,9 +193,9 @@ public sealed partial class MainWindow
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
                 return;
             var text = sender.Text.Trim();
-            sender.ItemsSource = text.Length == 0
-                ? null
-                : ViewModel.KnownNames.Where(n => n.Contains(text, StringComparison.CurrentCultureIgnoreCase)).Take(8).ToList();
+            ShowSuggestions(sender, text.Length == 0
+                ? []
+                : ViewModel.KnownNames.Where(n => n.Contains(text, StringComparison.CurrentCultureIgnoreCase)).Take(8).ToList());
         };
         box.SuggestionChosen += (sender, args) => sender.Text = args.SelectedItem as string ?? sender.Text;
         box.QuerySubmitted += async (sender, args) =>
@@ -209,7 +217,7 @@ public sealed partial class MainWindow
         box = NameBox(name =>
         {
             box!.Text = "";
-            // Written in the background; the status bar shows how far it is.
+            // Written in the background; the filter row shows how far it is.
             _ = ViewModel.AddPersonAsync(photos, name);
             return Task.CompletedTask;
         });
@@ -321,6 +329,8 @@ public sealed partial class MainWindow
 
     private async void NamePeople_Click(object sender, RoutedEventArgs e)
     {
+        if (WaitsForBusyWork())
+            return;
         var groups = await ViewModel.GroupUnnamedFacesAsync();
         if (groups.Count == 0)
         {
@@ -346,8 +356,9 @@ public sealed partial class MainWindow
         nameBox.Header = Tr("Who is this?");
         nameBox.PlaceholderText = Tr("Name");
         var problem = new TextBlock { Foreground = ThemeBrush("SystemFillColorCriticalBrush") ?? new SolidColorBrush(Microsoft.UI.Colors.Firebrick), TextWrapping = TextWrapping.Wrap };
-        var hide = new HyperlinkButton { Content = Tr("Not people to name: hide these faces"), Padding = new Thickness(0) };
-        var toggles = new List<(ToggleButton Toggle, FoundFace Face)>();
+        var hide = new Button { Content = Tr("Hide these faces"), Margin = new Thickness(0, 8, 0, 0) };
+        ToolTipService.SetToolTip(hide, Tr("Not people to name: hide these faces"));
+        var toggles = new List<(FaceChoice Choice, FoundFace Face)>();
 
         var dialog = new ContentDialog
         {
@@ -388,18 +399,16 @@ public sealed partial class MainWindow
             toggles.Clear();
             foreach (var face in group.Faces.Skip(start).Take(Shown))
             {
-                var toggle = new ToggleButton { IsChecked = true, Padding = new Thickness(2), Content = FacePicture(face.Thumbnail, 56) };
-                toggle.Checked += (_, _) => toggle.Opacity = 1;
-                toggle.Unchecked += (_, _) => toggle.Opacity = 0.35;
-                ToolTipService.SetToolTip(toggle, PhotoToolTip(face.Path));
-                faces.Children.Add(toggle);
-                toggles.Add((toggle, face));
+                var choice = new FaceChoice(FacePicture(face.Thumbnail, 56));
+                ToolTipService.SetToolTip(choice.Element, PhotoToolTip(face.Path));
+                faces.Children.Add(choice.Element);
+                toggles.Add((choice, face));
             }
             nameBox.Text = lastName ?? group.Suggestion?.Name ?? "";
             problem.Text = "";
         }
 
-        IReadOnlyList<FoundFace> Chosen() => [.. toggles.Where(t => t.Toggle.IsChecked == true).Select(t => t.Face)];
+        IReadOnlyList<FoundFace> Chosen() => [.. toggles.Where(t => t.Choice.IsChosen).Select(t => t.Face)];
 
         // The next page of this group, keeping the name just used, or else the next group.
         void Next(string? name = null)
@@ -430,7 +439,7 @@ public sealed partial class MainWindow
                 problem.Text = name.Length == 0 ? Tr("Type a name first.") : Tr("Every face is left out.");
                 return;
             }
-            // The names are written in the background (the status bar shows how far it is), so the next
+            // The names are written in the background (the filter row shows how far it is), so the next
             // faces come up at once and Done closes the dialog straight away.
             _ = ViewModel.NameFacesAsync(chosen, name);
             Next(name);
@@ -450,5 +459,55 @@ public sealed partial class MainWindow
 
         Show();
         await dialog.ShowThemedAsync();
+    }
+}
+
+/// <summary>
+/// A face in the naming dialog: chosen faces have a round outline in the design colour, left-out ones
+/// fade. Click or Space switches it.
+/// </summary>
+internal sealed class FaceChoice
+{
+    public FaceChoice(Border picture)
+    {
+        Element = new Border
+        {
+            Width = 64,
+            Height = 64,
+            Padding = new Thickness(2),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(32),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            Child = picture,
+            IsTabStop = true,
+            UseSystemFocusVisuals = true,
+        };
+        Element.Tapped += (_, _) => Switch();
+        Element.KeyDown += (_, e) =>
+        {
+            if (e.Key is Windows.System.VirtualKey.Space or Windows.System.VirtualKey.Enter)
+            {
+                Switch();
+                e.Handled = true;
+            }
+        };
+        Paint();
+    }
+
+    public Border Element { get; }
+
+    public bool IsChosen { get; private set; } = true;
+
+    private void Switch()
+    {
+        IsChosen = !IsChosen;
+        Paint();
+    }
+
+    private void Paint()
+    {
+        Element.BorderBrush = IsChosen ? MainWindow.ThemeBrush("AccentFillColorDefaultBrush") : null;
+        Element.Opacity = IsChosen ? 1 : 0.35;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Element, IsChosen ? Tr("Face, included") : Tr("Face, left out"));
     }
 }

@@ -93,6 +93,44 @@ public static class EditHistory
         Save(newPath, steps);
     }
 
+    /// <summary>
+    /// Carries the photo's backups along when it is moved or copied to another folder (after the photo itself),
+    /// so undo and revert still work there. A copy gets copies of the backups.
+    /// </summary>
+    public static void Transfer(string oldPath, string newPath, bool copy)
+    {
+        var steps = Load(oldPath);
+        if (steps.Count == 0)
+            return;
+        var oldFolder = Path.Combine(Path.GetDirectoryName(oldPath)!, FolderName);
+        var newFolder = EnsureFolder(Path.GetDirectoryName(newPath)!);
+        var stem = Path.GetFileNameWithoutExtension(newPath);
+        var moved = new List<Step>();
+        var n = 0;
+        foreach (var step in steps)
+        {
+            var source = Path.Combine(oldFolder, step.Backup);
+            if (!File.Exists(source))
+                continue;
+            string backup;
+            do
+                backup = $"{stem}.{n++}{Path.GetExtension(step.Backup)}";
+            while (File.Exists(Path.Combine(newFolder, backup)));
+            if (copy)
+                File.Copy(source, Path.Combine(newFolder, backup));
+            else
+                File.Move(source, Path.Combine(newFolder, backup));
+            // The newest step names the photo as it is now, which may have a new name in the new folder.
+            moved.Add(new Step(backup, step.FileName == Path.GetFileName(oldPath) ? Path.GetFileName(newPath) : step.FileName));
+        }
+        Save(newPath, moved);
+        if (copy)
+            return;
+        Save(oldPath, []);
+        if (Directory.Exists(oldFolder) && !Directory.EnumerateFileSystemEntries(oldFolder).Any())
+            Directory.Delete(oldFolder);
+    }
+
     /// <summary>Puts back the version before the last edit and returns the photo's path, which may differ.</summary>
     public static string Undo(string path) => Restore(path, keep: Load(path).Count - 1);
 

@@ -49,6 +49,8 @@ public sealed partial class MainWindow
 
     private void CancelUpload_Click(object sender, RoutedEventArgs e) => ViewModel.CancelUpload();
 
+    private void StopBusy_Click(object sender, RoutedEventArgs e) => ViewModel.StopBusyWork();
+
     /// <summary>Opens the service's Settings tab when nobody is signed in yet; true when uploading can go ahead.</summary>
     private async Task<bool> EnsureSignedInAsync(CloudService service)
     {

@@ -85,3 +85,6 @@ Metadata handling uses [ExifTool](https://exiftool.org) by Phil Harvey.
 Faces are found with [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) (MIT licence)
 and recognised with [SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface) (Apache 2.0),
 both from the OpenCV model zoo and downloaded on first use.
+Damaged photos are repaired with help from [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) by Xintao Wang et al.
+(BSD 3-clause licence), in the ONNX versions from [Qualcomm AI Hub](https://huggingface.co/qualcomm),
+downloaded on first use and run with [ONNX Runtime](https://onnxruntime.ai) and DirectML.

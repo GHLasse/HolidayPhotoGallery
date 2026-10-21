@@ -44,7 +44,7 @@ public sealed partial class MainViewModel
     public static void OpenInBrowser(Uri uri) =>
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
 
-    /// <summary>What the running upload is doing, for the status bar; empty when nothing uploads.</summary>
+    /// <summary>What the running upload is doing, for the progress ring in the title bar; empty when nothing uploads.</summary>
     public string UploadText
     {
         get => _uploadText;
@@ -110,11 +110,31 @@ public sealed partial class MainViewModel
             (!NotOnOneDriveOnly || !IsOn(CloudService.OneDrive, p.Path))).ToList();
     }
 
-    private PhotoItemViewModel NewPhotoItem(IndexedPhoto photo) => new(photo)
+    // The tile for a photo is kept from one search to the next, with its thumbnail, so changing a filter
+    // in a large library doesn't load every thumbnail again.
+    private readonly Dictionary<string, PhotoItemViewModel> _photoItems = new(StringComparer.OrdinalIgnoreCase);
+
+    private PhotoItemViewModel NewPhotoItem(IndexedPhoto photo)
     {
-        IsOnGoogle = IsOn(CloudService.GooglePhotos, photo.Path),
-        IsOnOneDrive = IsOn(CloudService.OneDrive, photo.Path),
-    };
+        if (_photoItems.TryGetValue(photo.Path, out var item))
+        {
+            // Only a real change is passed on: the info pane reloads whenever a shown photo changes.
+            if (!item.Photo.HasSameValues(photo))
+            {
+                var fileChanged = item.Photo.FileModifiedUtc != photo.FileModifiedUtc || item.Photo.FileSize != photo.FileSize;
+                item.Photo = photo;
+                if (fileChanged)
+                    item.ForgetThumbnail();
+            }
+        }
+        else
+        {
+            item = _photoItems[photo.Path] = new PhotoItemViewModel(photo);
+        }
+        item.IsOnGoogle = IsOn(CloudService.GooglePhotos, photo.Path);
+        item.IsOnOneDrive = IsOn(CloudService.OneDrive, photo.Path);
+        return item;
+    }
 
     /// <summary>Reads which photos are on each service (from the album files and the app's lists), and marks them in the grid.</summary>
     public async Task LoadCloudUploadsAsync()
@@ -124,7 +144,7 @@ public sealed partial class MainViewModel
         {
             (state.LooseUploads, state.Uploaded) = await Task.Run(() =>
             {
-                var loose = state.LooseUploads ?? CloudUpload.LoadLooseUploads(state.LooseUploadsFile);
+                var loose = state.LooseUploads ?? LoadLooseUploads(service, state, roots);
                 return (loose, CloudUpload.UploadedPaths(service, roots, loose.Keys));
             });
         }
@@ -166,7 +186,7 @@ public sealed partial class MainViewModel
 
     public bool IsSignedIn(CloudService service) => service == CloudService.GooglePhotos ? IsGoogleSignedIn : IsOneDriveSignedIn;
 
-    /// <summary>Runs in the background: the app stays usable, and the status bar shows how far it got.</summary>
+    /// <summary>Runs in the background: the app stays usable, and the title bar shows how far it got.</summary>
     private async Task UploadAsync(CloudService service, IReadOnlyList<(string? Album, List<UploadPhoto> Photos)> groups,
         (CloudAlbumLink Link, string Name)? into = null)
     {
@@ -199,11 +219,11 @@ public sealed partial class MainViewModel
                     var before = done;
                     var progress = new Progress<UploadProgress>(p =>
                         UploadText = Tr("Uploading to {0}: {1} of {2}…", name, before + list.Count - p.Total + p.Done, total));
-                    state.LooseUploads ??= CloudUpload.LoadLooseUploads(state.LooseUploadsFile);
+                    state.LooseUploads ??= LoadLooseUploads(service, state, _settings.Folders.ToList());
                     var loose = state.LooseUploads;
                     var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose, into));
                     if (album is null && result.Uploaded > 0)
-                        SaveLooseUploads(state);
+                        SaveLooseUploads(service, state);
                     done += list.Count;
                     uploaded += result.Uploaded;
                     already += result.AlreadyThere;
@@ -250,10 +270,25 @@ public sealed partial class MainViewModel
             SignOutOfOneDrive();
     }
 
-    private void SaveLooseUploads(CloudState state)
+    // The app's own list, and the hidden lists in the photos' folders, which survive losing the app's data.
+    private static Dictionary<string, string> LoadLooseUploads(CloudService service, CloudState state, IReadOnlyList<string> roots)
+    {
+        var loose = CloudUpload.LoadLooseUploads(state.LooseUploadsFile);
+        var inFolders = UploadFile.Find(service, roots);
+        // Lists from before the folder files existed are copied into the folders once.
+        var missing = loose.Where(u => !inFolders.ContainsKey(u.Key) && File.Exists(u.Key)).ToDictionary();
+        if (missing.Count > 0)
+            UploadFile.Save(service, missing);
+        foreach (var (path, id) in inFolders)
+            loose.TryAdd(path, id);
+        return loose;
+    }
+
+    private void SaveLooseUploads(CloudService service, CloudState state)
     {
         try
         {
+            UploadFile.Save(service, state.LooseUploads!);
             CloudUpload.SaveLooseUploads(state.LooseUploadsFile, state.LooseUploads!);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

@@ -122,8 +122,18 @@ public sealed partial class PhotoIndex : IDisposable
                 ignored INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS ix_faces_photo ON faces(photo_id);
+            -- What the quick check of each file found (FileHealth), for the file as it was then.
+            CREATE TABLE IF NOT EXISTS file_checks (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                health INTEGER NOT NULL,
+                file_mtime INTEGER NOT NULL,
+                level INTEGER NOT NULL DEFAULT 1
+            );
             PRAGMA user_version = {SchemaVersion};
             """);
+        // Checks saved before the level was kept count as level 1, so those files are checked again.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'level';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE file_checks ADD COLUMN level INTEGER NOT NULL DEFAULT 1;");
     }
 
     /// <summary>Path → (size, modified time) for every indexed file under a folder, to spot changes.</summary>
@@ -280,6 +290,25 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>Follows a photo that was moved, keeping what was found in it (faces) and its index entry.</summary>
+    public void Move(IndexedPhoto photo, string newPath)
+    {
+        lock (_lock)
+        {
+            using var tx = _connection.BeginTransaction();
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "DELETE FROM photos WHERE path = $new; UPDATE photos SET path = $new WHERE path = $old;";
+                cmd.Parameters.AddWithValue("$old", photo.Path);
+                cmd.Parameters.AddWithValue("$new", newPath);
+                cmd.ExecuteNonQuery();
+            }
+            UpsertOne(photo.MovedTo(newPath), tx);
+            tx.Commit();
+        }
+    }
+
     /// <summary>Forgets every photo under a folder, e.g. when it is removed from the library.</summary>
     public void RemoveFolder(string rootFolder)
     {
@@ -331,6 +360,9 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.WithoutDate)
                 where.Add("p.date_taken IS NULL");
+
+            if (query.DamagedOnly)
+                where.Add("EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
 
             if (query.WithoutPlace)
                 where.Add("(p.country IS NULL OR p.country = '')");
@@ -411,14 +443,29 @@ public sealed partial class PhotoIndex : IDisposable
                 """);
             if (where.Count > 0)
                 sql.Append(" WHERE ").Append(string.Join(" AND ", where));
-            sql.Append(" ORDER BY ").Append(PhotoSort.OrderBy(query.Sort)).Append(';');
+            sql.Append(';');
             cmd.CommandText = sql.ToString();
 
             var results = new List<IndexedPhoto>();
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-                results.Add(ReadPhoto(reader));
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                    results.Add(ReadPhoto(reader));
+            }
+            PhotoSort.Sort(results, query.Sort);
             return results;
+        }
+    }
+
+    /// <summary>
+    /// Goes up with every change to the index, so counts worked out from it can be kept until it moves.
+    /// </summary>
+    public long ChangeCount
+    {
+        get
+        {
+            lock (_lock)
+                return Convert.ToInt64(Scalar("SELECT total_changes();"));
         }
     }
 

@@ -20,11 +20,12 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// <paramref name="crop"/> is the part of the upright photo that was kept, if it was cropped; the people
     /// named in the photo are moved with it, and dropped when they were cut off. <paramref name="turn"/> is the
     /// EXIF orientation of a quarter turn applied to the upright photo (6 clockwise, 8 the other way), so
-    /// the people turn with it.
+    /// the people turn with it. <paramref name="metadataFrom"/> is the file to take the metadata from when the
+    /// photo's own file can't be read (a copy that replaces it); by default the photo itself.
     /// </summary>
     public async Task<string> SaveEditAsync(string path, string extension, int width, int height,
                                             Func<string, Task> writeImage, FaceBox? crop = null, int turn = 1,
-                                            CancellationToken cancellationToken = default)
+                                            string? metadataFrom = null, CancellationToken cancellationToken = default)
     {
         if (File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
@@ -40,8 +41,11 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         try
         {
             await writeImage(temp).ConfigureAwait(false);
-            await metadata.CopyMetadataAsync(path, temp, width, height, cancellationToken).ConfigureAwait(false);
-            await MovePeopleAsync(path, temp, crop, turn, cancellationToken).ConfigureAwait(false);
+            await metadata.CopyMetadataAsync(metadataFrom ?? path, temp, width, height, cancellationToken).ConfigureAwait(false);
+            await MovePeopleAsync(metadataFrom ?? path, temp, crop, turn, cancellationToken).ConfigureAwait(false);
+            // A full disk or a failing drive can leave the new file short; then the photo stays as it was.
+            if (Library.FileCheck.Check(temp) != Library.FileHealth.Whole)
+                throw new IOException(Tr("The edited file of {0} came out damaged, so the photo was left as it was. Is the disk full or failing?", Path.GetFileName(path)));
 
             EditHistory.BackUp(path);
             File.Move(temp, newPath, overwrite: true);

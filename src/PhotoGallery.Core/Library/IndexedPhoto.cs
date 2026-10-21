@@ -46,6 +46,26 @@ public sealed record IndexedPhoto
 
     public string FileName => System.IO.Path.GetFileName(Path);
 
+    /// <summary>
+    /// The same values, lists included (the record's own equality compares the lists by reference, so two
+    /// reads of an unchanged photo from the index are never equal).
+    /// </summary>
+    public bool HasSameValues(IndexedPhoto other) =>
+        this with { Tags = other.Tags, AutoTags = other.AutoTags, People = other.People } == other &&
+        Tags.SequenceEqual(other.Tags) && AutoTags.SequenceEqual(other.AutoTags) && People.SequenceEqual(other.People);
+
+    /// <summary>The same photo at another place (moved or copied there), with that file's time.</summary>
+    public IndexedPhoto MovedTo(string path)
+    {
+        var file = new FileInfo(path);
+        return this with
+        {
+            Path = file.FullName,
+            Folder = file.DirectoryName!,
+            FileModifiedUtc = file.Exists ? file.LastWriteTimeUtc : FileModifiedUtc,
+        };
+    }
+
     public static IndexedPhoto From(FileInfo file, PhotoMetadata metadata) => new()
     {
         Path = file.FullName,

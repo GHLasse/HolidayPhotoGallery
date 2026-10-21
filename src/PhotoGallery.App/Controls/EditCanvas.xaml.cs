@@ -12,6 +12,8 @@ namespace PhotoGallery.App.Controls;
 /// inside it and resized by its corners, optionally held to a fixed ratio, with golden ratio lines
 /// inside to compose by. The crop is reported as
 /// fractions of the photo's width and height, so it applies to the full-size file as well.
+/// The mouse wheel (with or without Ctrl) zooms in and out around the pointer; zoomed in, the photo
+/// is dragged around, and a double-click goes back to fitting it.
 /// </summary>
 public sealed partial class EditCanvas : UserControl
 {
@@ -26,10 +28,18 @@ public sealed partial class EditCanvas : UserControl
     private Point? _moveStart;
     private Rect _cropAtMoveStart;
 
+    private const double MaxZoom = 8;     // times the fitted size
+    private Point? _panStart;
+    private Point _panFrom;
+    private bool _zoomedIn;
+
     public EditCanvas()
     {
         InitializeComponent();
     }
+
+    /// <summary>Raised the first time a photo is zoomed in past its fitted size, to load it sharper.</summary>
+    public event EventHandler? ZoomedIn;
 
     public ImageSource? Source
     {
@@ -42,6 +52,7 @@ public sealed partial class EditCanvas : UserControl
     {
         _pixelWidth = Math.Max(1, width);
         _pixelHeight = Math.Max(1, height);
+        ResetZoom();
         Layout();
         ResetCrop();
     }
@@ -53,7 +64,11 @@ public sealed partial class EditCanvas : UserControl
         {
             Overlay.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
             if (value)
+            {
+                // The crop frame works on the whole photo.
+                ResetZoom();
                 ResetCrop();
+            }
         }
     }
 
@@ -95,10 +110,111 @@ public sealed partial class EditCanvas : UserControl
         }
         _crop = new Rect(old.X * Frame.Width, old.Y * Frame.Height, old.Width * Frame.Width, old.Height * Frame.Height);
         Draw();
+        KeepInside();
+    }
+
+    // ---- Zoom ----
+
+    public void ResetZoom()
+    {
+        Zoom.ScaleX = Zoom.ScaleY = 1;
+        Zoom.TranslateX = Zoom.TranslateY = 0;
+        _zoomedIn = false;
+        EndPan();
+    }
+
+    private void Host_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (IsCropping)
+            return;
+        var point = e.GetCurrentPoint(Host);
+        var steps = point.Properties.MouseWheelDelta / 120.0;
+        ZoomAt(point.Position, Math.Clamp(Zoom.ScaleX * Math.Pow(1.25, steps), 1, MaxZoom));
+        e.Handled = true;
+    }
+
+    // The point of the photo under the pointer stays under it.
+    private void ZoomAt(Point at, double scale)
+    {
+        var (left, top) = FrameOffset();
+        var x = (at.X - left - Zoom.TranslateX) / Zoom.ScaleX;
+        var y = (at.Y - top - Zoom.TranslateY) / Zoom.ScaleY;
+        Zoom.ScaleX = Zoom.ScaleY = scale;
+        Zoom.TranslateX = at.X - left - x * scale;
+        Zoom.TranslateY = at.Y - top - y * scale;
+        KeepInside();
+        if (scale > 1.01 && !_zoomedIn)
+        {
+            _zoomedIn = true;
+            ZoomedIn?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // Where the fitted photo sits in the space, before zooming.
+    private (double Left, double Top) FrameOffset() =>
+        ((Host.ActualWidth - Frame.Width) / 2, (Host.ActualHeight - Frame.Height) / 2);
+
+    // A zoomed photo always fills the space along a side where it is larger, and stays centred where it is not.
+    private void KeepInside()
+    {
+        if (double.IsNaN(Frame.Width))
+            return;
+        var (left, top) = FrameOffset();
+        Zoom.TranslateX = Fit(Zoom.TranslateX, Frame.Width * Zoom.ScaleX, Host.ActualWidth, left);
+        Zoom.TranslateY = Fit(Zoom.TranslateY, Frame.Height * Zoom.ScaleY, Host.ActualHeight, top);
+
+        static double Fit(double shift, double size, double space, double offset) =>
+            size <= space ? (space - size) / 2 - offset : Math.Clamp(shift, space - size - offset, -offset);
+    }
+
+    private void Host_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(Host);
+        if (IsCropping || Zoom.ScaleX <= 1 || !point.Properties.IsLeftButtonPressed)
+            return;
+        _panStart = point.Position;
+        _panFrom = new Point(Zoom.TranslateX, Zoom.TranslateY);
+        Host.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void Host_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_panStart is not { } start)
+            return;
+        var p = e.GetCurrentPoint(Host).Position;
+        Zoom.TranslateX = _panFrom.X + p.X - start.X;
+        Zoom.TranslateY = _panFrom.Y + p.Y - start.Y;
+        KeepInside();
+        e.Handled = true;
+    }
+
+    private void Host_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_panStart is null)
+            return;
+        EndPan();
+        Host.ReleasePointerCapture(e.Pointer);
+    }
+
+    private void Host_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => EndPan();
+
+    private void EndPan() => _panStart = null;
+
+    private void Host_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (IsCropping)
+            return;
+        if (Zoom.ScaleX > 1)
+            ResetZoom();
+        else
+            ZoomAt(e.GetPosition(Host), 2.5);
+        e.Handled = true;
     }
 
     private void Layout()
     {
+        Host.Clip = new RectangleGeometry { Rect = new Rect(0, 0, Host.ActualWidth, Host.ActualHeight) };
         var available = new Size(Math.Max(1, Host.ActualWidth), Math.Max(1, Host.ActualHeight));
         var scale = Math.Min(available.Width / _pixelWidth, available.Height / _pixelHeight);
         Frame.Width = Math.Max(1, _pixelWidth * scale);

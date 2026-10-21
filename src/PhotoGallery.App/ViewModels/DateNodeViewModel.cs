@@ -36,6 +36,11 @@ public sealed class DateNodeViewModel
         }
     }
 
+    /// <summary>"July 2024", "2024" or "No date", as the title above the grid.</summary>
+    public string Title => Year is not { } year ? Strings.Tr("No date")
+        : Month is { } month ? $"{MonthName(month)} {year.ToString(CultureInfo.CurrentCulture)}"
+        : year.ToString(CultureInfo.CurrentCulture);
+
     private static string MonthName(int month)
     {
         try

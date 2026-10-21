@@ -6,6 +6,9 @@
 <title>Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.20/leaflet-maplibre-gl.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
   body { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
@@ -27,10 +30,11 @@
 <script>
 // The page talks to the app through WebView2 messages:
 //   from the app: {type:"photos", photos:[{path,name,lat,lon}]}, {type:"selection", paths:[...], fit:true|false},
-//                 {type:"pin", lat, lon} (lat null removes the pin)
+//                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on}
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
+const lang = new URLSearchParams(location.search).get("lang") || "en";
 
 if (!window.L) {
   document.getElementById("offline").style.display = "flex";
@@ -39,15 +43,48 @@ if (!window.L) {
   start();
 }
 
+function addBaseMap(map, osm) {
+  const plain = () => L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }).addTo(map);
+  if (!L.maplibreGL || !window.maplibregl) { plain(); return; }
+  try {
+    const layer = L.maplibreGL({
+      style: "https://tiles.openfreemap.org/styles/liberty",
+      attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> ' + osm,
+    }).addTo(map);
+    const gl = layer.getMaplibreMap();
+    // The app's language first, then the name in Latin letters, then as written there.
+    const code = lang.split("-")[0];
+    const label = ["coalesce", ["get", "name:" + code], ["get", "name:latin"], ["get", "name"]];
+    gl.on("style.load", () => {
+      for (const l of gl.getStyle().layers) {
+        if (l.type !== "symbol") continue;
+        const field = gl.getLayoutProperty(l.id, "text-field");
+        if (field && JSON.stringify(field).includes("name")) gl.setLayoutProperty(l.id, "text-field", label);
+      }
+    });
+    // If the map's style hasn't loaded after a while (offline or blocked), use the plain map instead.
+    let loaded = false;
+    gl.once("style.load", () => loaded = true);
+    setTimeout(() => {
+      if (loaded) return;
+      map.removeLayer(layer);
+      plain();
+    }, 10000);
+  } catch (e) {
+    plain();
+  }
+}
+
 function start() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem("view")); } catch (e) { }
-  const map = L.map("map", { zoomControl: true, worldCopyJump: true })
+  const map = L.map("map", { zoomControl: true, worldCopyJump: true, preferCanvas: true })
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(map);
+  // Labels in the app's language: OpenFreeMap's free map (no key) carries every place's name in many
+  // languages, so a city in China reads "Chengdu" rather than 成都. Without WebGL or that map, the
+  // standard OpenStreetMap map shows the names as written locally.
+  const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  addBaseMap(map, osm);
   map.on("moveend", () => {
     const c = map.getCenter();
     try { localStorage.setItem("view", JSON.stringify({ lat: c.lat, lon: c.lng, zoom: map.getZoom() })); } catch (e) { }
@@ -83,7 +120,9 @@ function start() {
     if (notify) send({ type: "pin", lat, lon });
   }
 
-  map.on("click", e => setPin(e.latlng.lat, e.latlng.lng, true));
+  // Off while browsing the whole map (Map workspace): there are no photos picked to place there.
+  let placing = true;
+  map.on("click", e => { if (placing) setPin(e.latlng.lat, e.latlng.lng, true); });
 
   function showMessage(text) {
     const box = document.getElementById("message");
@@ -99,7 +138,7 @@ function start() {
     showMessage("Searching…");
     try {
       const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(q) +
-                  "&accept-language=" + encodeURIComponent(navigator.language || "en");
+                  "&accept-language=" + encodeURIComponent(lang);
       const response = await fetch(url);
       const results = await response.json();
       if (!results.length) { showMessage("No place found for \"" + q + "\"."); return; }
@@ -131,7 +170,9 @@ function start() {
         markers.clear();
         for (const p of m.photos) {
           // Clicking a photo selects it instead of moving the pin.
-          const marker = L.circleMarker([p.lat, p.lon], { ...normal, bubblingMouseEvents: false }).bindTooltip(p.name);
+          const marker = L.circleMarker([p.lat, p.lon], { ...normal, bubblingMouseEvents: false });
+          // The name is attached on first hover: tens of thousands of tooltips up front slow the map down.
+          marker.once("mouseover", () => marker.bindTooltip(p.name).openTooltip());
           marker.on("click", ev => {
             send({ type: "select", path: p.path, add: ev.originalEvent.ctrlKey });
           });
@@ -139,12 +180,17 @@ function start() {
           markers.set(p.path, marker);
         }
         restyle();
+        if (m.fitAll && markers.size)
+          map.fitBounds(L.latLngBounds([...markers.values()].map(x => x.getLatLng())), { padding: [40, 40], maxZoom: 12 });
       } else if (m.type === "selection") {
         selected = new Set(m.paths);
         restyle();
         if (m.fit) fitSelection();
       } else if (m.type === "pin") {
         setPin(m.lat, m.lon, false);
+      } else if (m.type === "placing") {
+        placing = m.on;
+        if (!placing) setPin(null);
       }
     });
   }

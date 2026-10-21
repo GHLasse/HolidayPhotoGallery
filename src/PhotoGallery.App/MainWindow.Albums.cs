@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using PhotoGallery.App.ViewModels;
 using static PhotoGallery.Core.Localization.Strings;
 
@@ -19,12 +20,6 @@ public sealed partial class MainWindow
     {
         if (AlbumSortCombo.SelectedIndex >= 0)
             ViewModel.AlbumSortIndex = AlbumSortCombo.SelectedIndex;
-    }
-
-    private void Albums_Click(object sender, RoutedEventArgs e)
-    {
-        FolderTree.SelectedItem = null;
-        ViewModel.IsAlbumView = true;
     }
 
     private void AlbumGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -111,6 +106,19 @@ public sealed partial class MainWindow
             await ViewModel.RenameAlbumAsync(folder, box.Text);
     }
 
+    // Like File Explorer: right-clicking a photo outside the selection selects just that photo; inside the
+    // selection, the menu is for all of it. The mouse is handled when the button goes down (SetUpClickToDeselect);
+    // this is for the menu key and Shift+F10, and raised before the menu opens.
+    private void PhotoGrid_ContextRequested(UIElement sender, ContextRequestedEventArgs e) => SelectForMenu(e.OriginalSource);
+
+    private void SelectForMenu(object source)
+    {
+        if (ClickedPhoto(source) is not { } photo || PhotoGrid.SelectedItems.Contains(photo))
+            return;
+        PhotoGrid.SelectedItems.Clear();
+        PhotoGrid.SelectedItem = photo;
+    }
+
     private void PhotoMenu_Opening(object sender, object e)
     {
         var photos = SelectedPhotos;
@@ -125,6 +133,16 @@ public sealed partial class MainWindow
         UploadPhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to Google Photos", photos.Count) : Tr("Upload to Google Photos");
         UploadOneDrivePhotosItem.IsEnabled = photos.Count > 0;
         UploadOneDrivePhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to OneDrive", photos.Count) : Tr("Upload to OneDrive");
+    }
+
+    // The viewer's menu: the photo being looked at is the grid's selection.
+    private void ViewerMoreMenu_Opening(object sender, object e)
+    {
+        var album = ViewerItem is { } photo ? ViewModel.FindAlbumFor(photo.Path) : null;
+        ViewerAlbumCoverItem.IsEnabled = album is not null;
+        ViewerAlbumCoverItem.Text = album is null
+            ? Tr("Use as album cover (select one photo in an album)")
+            : Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album));
     }
 
     private async void UseAsAlbumCover_Click(object sender, RoutedEventArgs e)

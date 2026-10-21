@@ -17,8 +17,10 @@ public sealed partial class MainViewModel
         get => _selectedPlace;
         set
         {
-            if (SetProperty(ref _selectedPlace, value))
-                _ = SearchAsync();
+            if (!SetProperty(ref _selectedPlace, value))
+                return;
+            OnPropertyChanged(nameof(HeaderText));
+            _ = SearchAsync();
         }
     }
 

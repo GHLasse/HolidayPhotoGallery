@@ -8,6 +8,7 @@ public sealed partial class MainViewModel
 {
     private bool _withoutDate;
     private bool _dateFromTree;
+    private string? _dateTitle;
     private IReadOnlyList<DateCount> _dateCounts = [];
 
     public ObservableCollection<DateNodeViewModel> Dates { get; } = [];
@@ -29,6 +30,8 @@ public sealed partial class MainViewModel
         IsAlbumView = false;
         SelectedFolder = null;
         _dateFromTree = true;
+        _dateTitle = node.Title;
+        OnPropertyChanged(nameof(HeaderText));
         WithoutDate = node.IsNoDate;
         if (node.IsNoDate)
         {
@@ -47,6 +50,8 @@ public sealed partial class MainViewModel
         if (!_dateFromTree)
             return;
         _dateFromTree = false;
+        _dateTitle = null;
+        OnPropertyChanged(nameof(HeaderText));
         WithoutDate = false;
         TakenFrom = null;
         TakenTo = null;

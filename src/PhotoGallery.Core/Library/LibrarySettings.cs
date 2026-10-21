@@ -26,11 +26,17 @@ public sealed class LibrarySettings
     /// <summary>Whether a photo is copied to the hidden .originals folder before it is opened in another app.</summary>
     public bool BackUpBeforeOpenWith { get; set; } = true;
 
+    /// <summary>AI upscaling runs on the processor even when a graphics card could do it (see Editing.Upscaler).</summary>
+    public bool UpscaleOnProcessorOnly { get; set; }
+
     /// <summary>The order the photo grid starts in for every folder (a <see cref="PhotoSort"/> key).</summary>
     public string PhotoSort { get; set; } = Library.PhotoSort.Oldest;
 
     /// <summary>Editing or shifting the date taken also sets the file's other dates (see MetadataChanges.SyncOtherDates).</summary>
     public bool KeepDatesInSync { get; set; } = true;
+
+    /// <summary>New photos are looked at for faces in the background, once the face models are downloaded.</summary>
+    public bool FindPeopleAutomatically { get; set; } = true;
 
     /// <summary>After a rating, flag or reject in the viewer, move on to the next photo.</summary>
     public bool AutoAdvance { get; set; }
@@ -44,8 +50,25 @@ public sealed class LibrarySettings
     /// <summary>The size of the photo tiles in the grid, in pixels (the zoom slider in the status bar).</summary>
     public int ThumbnailSize { get; set; } = 180;
 
+    /// <summary>Widths of the folder pane and the info pane, as last dragged.</summary>
+    public double NavPaneWidth { get; set; } = 260;
+
+    public double InfoPaneWidth { get; set; } = 320;
+
+    /// <summary>Width of the map beside the grid (the Map button in the Library), as last dragged.</summary>
+    public double MapPaneWidth { get; set; } = 520;
+
+    /// <summary>True when the folder pane was folded into its strip of icons.</summary>
+    public bool NavPaneFolded { get; set; }
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
+
+    /// <summary>The details "More details" in the info pane shows (<see cref="Metadata.PhotoDetails"/> keys); null for the defaults.</summary>
+    public List<string>? DetailKeys { get; set; }
+
+    /// <summary>Whether "More details" in the info pane was left open.</summary>
+    public bool MoreDetailsOpen { get; set; }
 
     /// <summary>The user's own Google Cloud client, when they use one instead of the app's built-in one.</summary>
     public string? GoogleClientId { get; set; }

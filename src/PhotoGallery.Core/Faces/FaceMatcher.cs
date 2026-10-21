@@ -21,7 +21,7 @@ public sealed class FaceMatcher
     public FaceMatcher(IEnumerable<(string Name, float[] Embedding)> named)
     {
         foreach (var group in named.GroupBy(n => n.Name.Trim(), StringComparer.CurrentCultureIgnoreCase))
-            _people.Add((group.First().Name.Trim(), group.Take(MaxFacesPerPerson).Select(g => g.Embedding).ToList()));
+            _people.Add((group.First().Name.Trim(), Spread(group.Select(g => g.Embedding).ToList())));
     }
 
     public bool IsEmpty => _people.Count == 0;
@@ -36,7 +36,9 @@ public sealed class FaceMatcher
             if (skip.Contains(name))
                 continue;
             // The closest of a person's faces counts: people look different from photo to photo.
-            var similarity = faces.Max(f => FaceAnalyzer.Similarity(f, embedding));
+            var similarity = double.MinValue;
+            foreach (var face in faces)
+                similarity = Math.Max(similarity, Dot(face, embedding));
             if (similarity >= FaceAnalyzer.SamePerson && similarity > (best?.Similarity ?? 0))
                 best = new NameSuggestion(name, similarity);
         }
@@ -49,7 +51,10 @@ public sealed class FaceMatcher
     /// </summary>
     public static IReadOnlyList<IReadOnlyList<int>> Group(IReadOnlyList<float[]> faces)
     {
-        var groups = new List<(List<int> Members, float[] Sum)>();
+        // Each group keeps the sum of its faces and, ready for comparing, that sum scaled to length 1
+        // (worked out again only when a face joins): with thousands of faces, scaling every group again
+        // for every face took minutes.
+        var groups = new List<(List<int> Members, float[] Sum, float[] Average)>();
         for (var i = 0; i < faces.Count; i++)
         {
             var face = faces[i];
@@ -57,7 +62,7 @@ public sealed class FaceMatcher
             var bestSimilarity = GroupSimilarity;
             for (var g = 0; g < groups.Count; g++)
             {
-                var similarity = FaceAnalyzer.Similarity(Normalized(groups[g].Sum), face);
+                var similarity = Dot(groups[g].Average, face);
                 if (similarity >= bestSimilarity)
                 {
                     bestGroup = g;
@@ -66,20 +71,45 @@ public sealed class FaceMatcher
             }
             if (bestGroup < 0)
             {
-                groups.Add(([i], (float[])face.Clone()));
+                groups.Add(([i], (float[])face.Clone(), Normalized(face)));
                 continue;
             }
-            groups[bestGroup].Members.Add(i);
-            var sum = groups[bestGroup].Sum;
+            var (members, sum, _) = groups[bestGroup];
+            members.Add(i);
             for (var k = 0; k < sum.Length; k++)
                 sum[k] += face[k];
+            groups[bestGroup] = (members, sum, Normalized(sum));
         }
         return groups.OrderByDescending(g => g.Members.Count).Select(g => (IReadOnlyList<int>)g.Members).ToList();
     }
 
+    /// <summary>The same as <see cref="FaceAnalyzer.Similarity"/>, several numbers at a time.</summary>
+    internal static double Dot(float[] a, float[] b)
+    {
+        var length = Math.Min(a.Length, b.Length);
+        var sums = System.Numerics.Vector<float>.Zero;
+        var width = System.Numerics.Vector<float>.Count;
+        var i = 0;
+        for (; i <= length - width; i += width)
+            sums += new System.Numerics.Vector<float>(a, i) * new System.Numerics.Vector<float>(b, i);
+        double sum = System.Numerics.Vector.Sum(sums);
+        for (; i < length; i++)
+            sum += a[i] * b[i];
+        return sum;
+    }
+
+    // Faces from all of a person's photos, not just the first ones, so every newly named face can help.
+    private static List<float[]> Spread(List<float[]> faces)
+    {
+        if (faces.Count <= MaxFacesPerPerson)
+            return faces;
+        var step = (faces.Count - 1) / (double)(MaxFacesPerPerson - 1);
+        return Enumerable.Range(0, MaxFacesPerPerson).Select(i => faces[(int)(i * step)]).ToList();
+    }
+
     private static float[] Normalized(float[] v)
     {
-        var length = MathF.Sqrt(v.Sum(x => x * x));
-        return length == 0 ? v : v.Select(x => x / length).ToArray();
+        var length = (float)Math.Sqrt(Dot(v, v));
+        return length == 0 ? (float[])v.Clone() : v.Select(x => x / length).ToArray();
     }
 }

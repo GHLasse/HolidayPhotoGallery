@@ -58,7 +58,8 @@ public sealed partial class MapPanel : UserControl
             Web.CoreWebView2.Settings.AreDevToolsEnabled = false;
             Web.CoreWebView2.Settings.IsStatusBarEnabled = false;
             Web.WebMessageReceived += Web_WebMessageReceived;
-            Web.Source = new Uri($"https://{HostName}/map.html");
+            // The map's labels follow the app's language (see map.html for which tiles that picks).
+            Web.Source = new Uri($"https://{HostName}/map.html?lang={Uri.EscapeDataString(Language)}");
         }
         catch (Exception ex)
         {
@@ -67,16 +68,27 @@ public sealed partial class MapPanel : UserControl
     }
 
     /// <summary>Shows a marker for every photo in the list that has a GPS position.</summary>
-    public void ShowPhotos(IEnumerable<PhotoItemViewModel> photos)
+    public void ShowPhotos(IEnumerable<PhotoItemViewModel> photos) => ShowPhotos(photos.Select(p => p.Photo), fitAll: false);
+
+    /// <summary>Shows a marker for every photo with a GPS position; <paramref name="fitAll"/> zooms out to show them all.</summary>
+    public void ShowPhotos(IEnumerable<IndexedPhoto> photos, bool fitAll)
     {
         var list = new JsonArray();
         foreach (var photo in photos)
         {
-            if (photo.Photo.Location is { } at)
-                list.Add(new JsonObject { ["path"] = photo.Path, ["name"] = photo.FileName, ["lat"] = at.Latitude, ["lon"] = at.Longitude });
+            if (photo.Location is { } at)
+                list.Add(new JsonObject { ["path"] = photo.Path, ["name"] = Path.GetFileName(photo.Path), ["lat"] = at.Latitude, ["lon"] = at.Longitude });
         }
-        Post(new JsonObject { ["type"] = "photos", ["photos"] = list });
+        // The same markers again (a filter that changed nothing on the map) aren't redrawn: with tens of
+        // thousands of photos that takes the map a moment.
+        var markers = list.ToJsonString();
+        if (markers == _shownMarkers && !fitAll)
+            return;
+        _shownMarkers = markers;
+        Post(new JsonObject { ["type"] = "photos", ["photos"] = list, ["fitAll"] = fitAll });
     }
+
+    private string? _shownMarkers;
 
     /// <summary>Highlights the selected photos, and with <paramref name="fit"/> moves the map to them.</summary>
     public void ShowSelection(IReadOnlyList<PhotoItemViewModel> selection, bool fit)
@@ -106,6 +118,19 @@ public sealed partial class MapPanel : UserControl
             ? Tr("Pin: {0:0.00000}, {1:0.00000}", at.Latitude, at.Longitude)
             : Tr("Click the map or search for a place to set a pin.");
         UpdateButtons();
+    }
+
+    /// <summary>Whether the pin and the Assign and Remove buttons are offered; not while browsing the whole map.</summary>
+    public bool CanPlacePhotos
+    {
+        get => AssignRow.Visibility == Visibility.Visible;
+        set
+        {
+            AssignRow.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            Post(new JsonObject { ["type"] = "placing", ["on"] = value });
+            if (!value)
+                SetPin(null, tellMap: false);
+        }
     }
 
     private void UpdateButtons()

@@ -99,7 +99,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
 
-    public bool IsBusy { get => _isBusy; private set => SetProperty(ref _isBusy, value); }
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (value)
+                _stopRequested = false;
+            SetProperty(ref _isBusy, value);
+        }
+    }
+
+    private bool _stopRequested;
+
+    /// <summary>Stops the long job that is running after the photo it is on; what is done stays done.</summary>
+    public void StopBusyWork()
+    {
+        if (!IsBusy)
+            return;
+        _stopRequested = true;
+        StatusText = Tr("Stopping…");
+    }
 
     /// <summary>
     /// Setting a message shows it as a red banner; null does nothing, since banners close by themselves.
@@ -118,7 +138,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The messages shown as banners at the top of the window, newest first.</summary>
     public ObservableCollection<Notice> Notices { get; } = [];
 
-    /// <summary>A result for the user, shown as a blue banner; the status bar goes back to the photo count.</summary>
+    /// <summary>A result for the user, shown as a blue banner; the filter row goes back to the photo count.</summary>
     public void Inform(string message) => Notify(message, NoticeSeverity.Info);
 
     /// <summary>A result with an Undo button on its banner.</summary>
@@ -313,7 +333,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
         (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
-        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
+        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
         (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
 
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
@@ -379,6 +399,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
             foreach (var folder in folders)
             {
+                if (_stopRequested)
+                    break;
                 try
                 {
                     await _indexer.SyncFolderAsync(folder, progress);
@@ -397,6 +419,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await CheckReadOnlyAsync();
         if (IsAlbumView)
             await LoadAlbumsAsync();
+        _ = FindFacesInNewPhotosAsync();
+        _ = CheckFilesInBackgroundAsync();
     }
 
     private async Task SearchSoonAsync()
@@ -431,6 +455,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             WithoutPeople = WithoutPeople,
             WithoutLocation = WithoutLocation,
             WithoutDate = WithoutDate,
+            DamagedOnly = DamagedOnly,
             Country = SelectedPlace?.Country,
             City = SelectedPlace?.City,
             WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
@@ -439,11 +464,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             TakenTo = TakenTo?.Date,
         };
 
-        var (photos, tags, autoTagNames, cameras, people, dates, places) = await Task.Run(() =>
-            (_index.Search(query), _index.GetTagCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(query.Folder),
-             _index.GetPeopleCounts(), _index.GetDateCounts(), _index.GetPlaceCounts()));
+        var (photos, counts) = await Task.Run(() => (_index.Search(query), LibraryCounts(query.Folder)));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
+        var (tags, autoTagNames, cameras, people, dates, places) = counts;
 
         photos = FilterByCloud(photos);
         Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
@@ -456,6 +480,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _countText = photos.Count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", photos.Count);
         if (!IsBusy)
             StatusText = _countText;
+    }
+
+    private sealed record Counts(
+        IReadOnlyList<(string Tag, int Count)> Tags, IReadOnlySet<string> AutoTagNames, IReadOnlyList<(string Camera, int Count)> Cameras,
+        IReadOnlyList<(string Name, int Count)> People, IReadOnlyList<DateCount> Dates, IReadOnlyList<PlaceCount> Places);
+
+    private sealed record KeptCounts(long Change, string? Folder, Counts Counts);
+
+    private KeptCounts? _counts; // set from the search's thread; one reference, so it is read whole
+
+    // The filter lists count the whole library, so they only need counting again after the index changed
+    // (or, for the cameras, in another folder). Saves a good part of every search in a large library.
+    private Counts LibraryCounts(string? folder)
+    {
+        var change = _index.ChangeCount;
+        if (_counts is { } kept && kept.Change == change && string.Equals(kept.Folder, folder, StringComparison.OrdinalIgnoreCase))
+            return kept.Counts;
+        var counts = new Counts(_index.GetTagCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(folder),
+                                _index.GetPeopleCounts(), _index.GetDateCounts(), _index.GetPlaceCounts());
+        _counts = new KeptCounts(change, folder, counts);
+        return counts;
     }
 
     private void UpdateTags(IReadOnlyList<(string Tag, int Count)> tags)
@@ -589,6 +634,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < rotatable.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = rotatable[i];
                 if (rotatable.Count > 1)
                     StatusText = Tr("Rotating {0} of {1}…", i + 1, rotatable.Count);
@@ -760,6 +807,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < dated.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = dated[i];
                 StatusText = Tr("Shifting {0} of {1}…", i + 1, dated.Count);
                 try
@@ -806,6 +855,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < items.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = items[i];
                 StatusText = Tr("Saving the location of {0} of {1}…", i + 1, items.Count);
                 try
@@ -862,6 +913,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < located.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = located[i];
                 StatusText = Tr("Looking up the place of {0} of {1}…", i + 1, located.Count);
                 try
@@ -947,7 +1000,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _labelVectors = null;
     }
 
-    /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the status bar.</summary>
+    /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadTagModelAsync()
     {
         IsBusy = true;
@@ -1014,6 +1067,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
             for (var i = 0; i < items.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = items[i];
                 StatusText = Tr("Tagging {0} of {1}…", i + 1, items.Count);
                 try
@@ -1078,6 +1133,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             for (var i = 0; i < tagged.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var item = tagged[i];
                 StatusText = Tr("Removing auto tags from {0} of {1}…", i + 1, tagged.Count);
                 try

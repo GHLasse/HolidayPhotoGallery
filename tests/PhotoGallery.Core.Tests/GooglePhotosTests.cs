@@ -173,6 +173,13 @@ public class GooglePhotosTests
         Assert.Contains(Path.GetFullPath(inAlbum), uploaded);
         Assert.Contains(loose, uploaded);
         Assert.DoesNotContain(notUploaded, uploaded);
+
+        // The folder's own list survives losing the app's list.
+        Assert.Equal(0, UploadFile.Save(CloudService.GooglePhotos, looseUploads));
+        File.Delete(file);
+        var fromFolders = UploadFile.Find(CloudService.GooglePhotos, [temp.Path]);
+        Assert.Equal(looseUploads[loose], fromFolders[loose]);
+        Assert.Empty(UploadFile.Find(CloudService.OneDrive, [temp.Path]));
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Globalization;
 using PhotoGallery.Core.Localization;
+using PhotoGallery.Core.Library;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -56,4 +57,35 @@ public sealed partial class MainViewModel
         }
         _settings.Save(SettingsPath);
     }
+
+    /// <summary>
+    /// The photos with a GPS position for the Map workspace: those of the folder, month or place picked in the
+    /// left pane, or the whole library when nothing is picked. The filter bar is hidden there, so it has no say.
+    /// </summary>
+    public Task<List<IndexedPhoto>> PhotosWithLocationAsync()
+    {
+        var query = MapQuery();
+        return Task.Run(() => _index.Search(query).Where(p => p.Location is not null).ToList());
+    }
+
+    /// <summary>What the map shows, as text: when it changes, the map zooms to the new photos.</summary>
+    public string MapScope
+    {
+        get
+        {
+            var q = MapQuery();
+            return $"{q.Folder}|{q.Country}|{q.City}|{q.WithoutPlace}|{q.WithoutDate}|{q.TakenFrom:O}|{q.TakenTo:O}";
+        }
+    }
+
+    private PhotoQuery MapQuery() => new()
+    {
+        Folder = IsAlbumView ? null : SelectedFolder?.FullPath,
+        Country = SelectedPlace?.Country,
+        City = SelectedPlace?.City,
+        WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
+        WithoutDate = _dateFromTree && WithoutDate,
+        TakenFrom = _dateFromTree ? TakenFrom?.Date : null,
+        TakenTo = _dateFromTree ? TakenTo?.Date : null,
+    };
 }

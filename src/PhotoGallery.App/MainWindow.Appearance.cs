@@ -52,17 +52,20 @@ public sealed partial class MainWindow
         var shades = dark ? s_darkShades : s_lightShades;
         s_paletteBrushes = shades is null ? [] : Brushes(shades);
 
-        // A palette washes the window with its colour and the toolbar and status bar a little more;
-        // the Windows accent colour keeps the Mica background. The viewer keeps its neutral background.
+        // A palette washes the window with its colour and the title bar and toolbar a little more; the
+        // Windows accent colour keeps the Mica background. The photos and the viewer stay on neutral surfaces.
         Root.Background = shades is null ? null : new SolidColorBrush(ToColor(shades.WindowBackground));
         var bars = shades is null ? null : new SolidColorBrush(ToColor(shades.BarBackground));
+        AppTitleBar.Background = bars;
         TopBar.Background = bars;
-        StatusBar.Background = bars;
 
         // Badges and faces are built in code, with the brushes of the moment.
         ShowTagBadges();
         ShowFilterBadges();
         _ = ShowTopPeopleAsync();
+        RecolourTabMarks();
+        foreach (var tree in new[] { FolderTree, DateTree, PlaceTree })
+            RecolourTreeMark(tree);
     }
 
     // Dialogs and their popups are not inside Root, so each dialog gets the palette and mode as it opens.
@@ -122,6 +125,13 @@ public sealed partial class MainWindow
             ["SystemControlHighlightListAccentLowBrush"] = Solid(s.Fill, 0.6),
             ["SystemControlHighlightListAccentMediumBrush"] = Solid(s.Fill, 0.8),
             ["SystemControlHighlightListAccentHighBrush"] = Solid(s.Fill, 0.9),
+            ["SelectorBarItemPillFill"] = Solid(s.Fill),
+            // The line beside the chosen entry of a list, such as the tabs in Settings.
+            ["ListViewItemSelectionIndicatorBrush"] = Solid(s.Fill),
+            ["ListViewItemSelectionIndicatorPointerOverBrush"] = Solid(s.Fill),
+            ["ListViewItemSelectionIndicatorPressedBrush"] = Solid(s.Fill),
+            // The same line beside the chosen folder, date or place in the left pane.
+            ["TreeViewItemSelectionIndicatorForeground"] = Solid(s.Fill),
 
             // WinUI's controls read these, set once from the Windows accent colour, so they are replaced too.
             ["AccentButtonBackground"] = Solid(s.Fill),
@@ -175,7 +185,7 @@ public sealed partial class MainWindow
     /// A theme brush for UI built in code: the palette's own when it has one, otherwise WinUI's for the
     /// window's light or dark mode. Looked up carefully, so a missing one only loses its colour.
     /// </summary>
-    private static Brush? ThemeBrush(string key)
+    internal static Brush? ThemeBrush(string key)
     {
         if (s_paletteBrushes.TryGetValue(key, out var own))
             return own;
@@ -186,9 +196,14 @@ public sealed partial class MainWindow
     // The app's resources follow Windows' mode, not the one picked in Settings, so look in the right theme dictionary.
     private static object? FindInTheme(ResourceDictionary dictionary, string key)
     {
-        if (dictionary.ThemeDictionaries.TryGetValue(s_themeKey, out var theme) && theme is ResourceDictionary themed
-            && (themed.TryGetValue(key, out var found) || (found = FindInMerged(themed, key)) is not null))
-            return found;
+        // WinUI files its dark brushes under "Default", not "Dark"; missing that gave light-mode grey text
+        // (and black sparkles) in dark Settings.
+        foreach (var themeKey in s_themeKey == "Dark" ? new[] { "Dark", "Default" } : new[] { s_themeKey })
+        {
+            if (dictionary.ThemeDictionaries.TryGetValue(themeKey, out var theme) && theme is ResourceDictionary themed
+                && (themed.TryGetValue(key, out var found) || (found = FindInMerged(themed, key)) is not null))
+                return found;
+        }
         foreach (var merged in dictionary.MergedDictionaries)
         {
             if (FindInTheme(merged, key) is { } value)

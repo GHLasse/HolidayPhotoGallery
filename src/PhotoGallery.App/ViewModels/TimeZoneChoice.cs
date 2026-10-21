@@ -22,6 +22,12 @@ public sealed class TimeZoneChoice
 
     public string Display { get; }
 
+    /// <summary>What the closed box shows: just the offset, such as "UTC-06:00" ("UTC+01:00" for Berlin).</summary>
+    public string Short =>
+        _fixedOffset is { } offset ? $"UTC{DateTaken.FormatOffset(offset)}"
+        : _zone is not null ? (Display.StartsWith('(') && Display.IndexOf(')') is > 0 and var end ? Display[1..end] : Display)
+        : Display;
+
     public bool IsUnknown => _zone is null && _fixedOffset is null;
 
     /// <summary>The UTC offset for a photo taken at this local time, or null for "unknown".</summary>

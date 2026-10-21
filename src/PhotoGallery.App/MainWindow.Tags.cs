@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -55,12 +56,33 @@ public sealed partial class MainWindow
         }
         var typed = text.Trim();
         var shown = new HashSet<string>(ViewModel.Editor.Tags.Where(b => b.IsOnAll).Select(b => b.Tag), StringComparer.OrdinalIgnoreCase);
-        sender.ItemsSource = typed.Length == 0
-            ? null
+        ShowSuggestions(sender, typed.Length == 0
+            ? []
             : ViewModel.Tags.OrderByDescending(t => t.Count).Select(t => t.Tag) // most used first
                 .Where(t => t.Contains(typed, StringComparison.CurrentCultureIgnoreCase) && !shown.Contains(t))
                 .Take(8)
-                .ToList();
+                .ToList());
+    }
+
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<AutoSuggestBox, System.Collections.ObjectModel.ObservableCollection<string>> _suggestions = new();
+
+    /// <summary>
+    /// Shows suggestions under a box. Each box keeps one list that is changed in place: giving a box a new
+    /// list while its suggestions are open can fail inside WinUI (E_FAIL from ItemsSource) and crash the app.
+    /// </summary>
+    private void ShowSuggestions(AutoSuggestBox box, IReadOnlyList<string> items)
+    {
+        if (!_suggestions.TryGetValue(box, out var list))
+        {
+            list = [];
+            _suggestions.Add(box, list);
+            box.ItemsSource = list;
+        }
+        if (items.SequenceEqual(list))
+            return;
+        list.Clear();
+        foreach (var item in items)
+            list.Add(item);
     }
 
     private void TagBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>
@@ -71,15 +93,79 @@ public sealed partial class MainWindow
         var text = args.ChosenSuggestion as string ?? args.QueryText;
         ViewModel.Editor.AddTags(TagList.Parse(text));
         sender.Text = "";
-        sender.ItemsSource = null;
+        ShowSuggestions(sender, []);
     }
 
     // ---- Filter bar ----
+
+    // The list of everyone rolls down from the people group, as wide as it, as if the group opened up.
+    private void MorePeople_Click(object sender, RoutedEventArgs e)
+    {
+        var width = PeopleGroup.ActualWidth;
+        MorePeopleList.Width = Math.Max(240, width);
+        PeopleGroup.CornerRadius = new CornerRadius(ControlCorner, ControlCorner, 0, 0);
+        PeopleFlyout.Closed -= RestorePeopleCorners;
+        PeopleFlyout.Closed += RestorePeopleCorners;
+        PeopleFlyout.ShowAt(PeopleGroup, new FlyoutShowOptions { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft });
+    }
+
+    private void RestorePeopleCorners(object? sender, object e) => PeopleGroup.CornerRadius = new CornerRadius(ControlCorner);
+
+    // Typing in the list of everyone jumps to the names starting with what was typed, like File Explorer:
+    // quick letters add up ("ma" finds Maria), the same letter again goes on to the next name.
+    private string _peopleTyped = "";
+    private long _peopleTypedAt;
+
+    private void SetUpPeopleTyping()
+    {
+        MorePeopleList.CharacterReceived += (_, e) =>
+        {
+            if (char.IsControl(e.Character) || char.IsWhiteSpace(e.Character))
+                return;
+            e.Handled = true;
+            var now = Environment.TickCount64;
+            var typed = now - _peopleTypedAt < 1000 ? _peopleTyped + e.Character : e.Character.ToString();
+            _peopleTypedAt = now;
+            var people = ViewModel.PeopleByName;
+            if (people.Count == 0)
+                return;
+            // One letter pressed again moves on from the name already reached.
+            var again = typed.Length == 2 && char.ToUpperInvariant(typed[0]) == char.ToUpperInvariant(typed[1]);
+            if (again)
+                typed = typed[..1];
+            _peopleTyped = typed;
+            var current = FocusedPerson() is { } focused && MorePeopleList.ContainerFromItem(focused) is { } c ? MorePeopleList.IndexFromContainer(c) : -1;
+            var start = again || typed.Length == 1 ? current + 1 : Math.Max(0, current);
+            for (var i = 0; i < people.Count; i++)
+            {
+                var person = people[(start + i) % people.Count];
+                if (!person.Tag.StartsWith(typed, StringComparison.CurrentCultureIgnoreCase))
+                    continue;
+                MorePeopleList.ScrollIntoView(person, ScrollIntoViewAlignment.Leading);
+                MorePeopleList.UpdateLayout();
+                if (MorePeopleList.ContainerFromItem(person) is ListViewItem item &&
+                    Descendants(item).OfType<CheckBox>().FirstOrDefault() is { } box)
+                    box.Focus(FocusState.Keyboard);
+                return;
+            }
+        };
+    }
+
+    private object? FocusedPerson() =>
+        FocusManager.GetFocusedElement(MorePeopleList.XamlRoot) is FrameworkElement { DataContext: TagFilterViewModel person } ? person : null;
+
+    private const double ControlCorner = 4; // WinUI's ControlCornerRadius, as the other filters have
 
     private void ShowFilterBadges()
     {
         // The count on "Clear filters" points at filters set somewhere easy to overlook.
         var active = ViewModel.ActiveFilterCount;
+        var none = active > 0 && ViewModel.Photos.Count == 0 && !ViewModel.IsAlbumView;
+        NoMatchHint.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
+        if (none)
+            NoMatchText.Text = active == 1
+                ? Tr("No photos match the filter. Clear it to see the photos again?")
+                : Tr("No photos match these {0} filters. Clear them to see the photos again?", active);
         ClearFiltersButton.Content = active == 0 ? Tr("Clear filters") : Tr("Clear filters ({0})", active);
         ClearFiltersButton.IsEnabled = active > 0;
 
@@ -100,6 +186,9 @@ public sealed partial class MainWindow
         if (ViewModel.WithoutLocation)
             FilterBadges.Children.Add(Badge(Tr("No location"), false, outlined: false, Tr("Showing photos without a GPS position"),
                                             null, Tr("Stop filtering by no location"), () => ViewModel.WithoutLocation = false));
+        if (ViewModel.DamagedOnly)
+            FilterBadges.Children.Add(Badge(Tr("Damaged files"), false, outlined: false, Tr("Showing photos whose file is damaged"),
+                                            null, Tr("Stop filtering by damaged files"), () => ViewModel.DamagedOnly = false));
         if (ViewModel.OnGoogleOnly)
             FilterBadges.Children.Add(Badge(Tr("In Google Photos"), false, outlined: false, Tr("Showing photos uploaded to Google Photos"),
                                             null, Tr("Stop filtering by Google Photos"), () => ViewModel.OnGoogleOnly = false));
@@ -127,12 +216,9 @@ public sealed partial class MainWindow
     // ---- People in the filter bar: the five on the most photos as faces, everyone else under "More" ----
 
     private const int TopPeopleCount = 5;
-    private const double SmallFace = 28;
-    private const double LargeFace = 72;
+    // Fixed size: growing on hover changed the bar's height and width while the filters were folding.
+    private const double FilterFaceSize = 28;
     private readonly Dictionary<string, byte[]?> _latestFaces = new(StringComparer.CurrentCultureIgnoreCase);
-    private readonly List<Ellipse> _topFaces = [];
-    private Storyboard? _faceZoom;
-    private bool _isPointerOnPeople;
     private int _topPeopleVersion;
 
     /// <summary>Forgets the faces shown, e.g. after faces were named, so the newest ones are loaded.</summary>
@@ -151,24 +237,19 @@ public sealed partial class MainWindow
         if (version != _topPeopleVersion)
             return; // A newer refresh started while the faces were loading.
 
-        _faceZoom?.Stop();
         TopPeople.Children.Clear();
-        _topFaces.Clear();
-        var size = _isPointerOnPeople ? LargeFace : SmallFace;
         foreach (var person in top)
         {
-            // An ellipse filled with the face, so it stays round at any size while it grows.
             var face = new Ellipse
             {
-                Width = size,
-                Height = size,
+                Width = FilterFaceSize,
+                Height = FilterFaceSize,
                 StrokeThickness = person.IsSelected ? 3 : 0,
                 Stroke = ThemeBrush("AccentFillColorDefaultBrush"),
                 Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
             };
             if (_latestFaces[person.Tag] is { } thumbnail)
                 LoadFaceFill(face, thumbnail);
-            _topFaces.Add(face);
 
             var button = new Button
             {
@@ -178,7 +259,7 @@ public sealed partial class MainWindow
                 MinHeight = 0,
                 Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
                 BorderThickness = new Thickness(0),
-                CornerRadius = new CornerRadius(LargeFace / 2),
+                CornerRadius = new CornerRadius(FilterFaceSize / 2),
             };
             var tip = person.IsSelected
                 ? Tr("{0} ({1} photos). Click to stop filtering by them.", person.Tag, person.CountText)
@@ -200,54 +281,6 @@ public sealed partial class MainWindow
         {
             // A damaged thumbnail keeps the plain circle.
         }
-    }
-
-    // Pointing at the people grows the whole bar: all faces get bigger together, and shrink again on leaving.
-    private void PeopleGroup_PointerEntered(object sender, PointerRoutedEventArgs e) => ZoomFaces(true);
-
-    // Moving between faces also raises "exited" (from the face), so only shrink once the pointer is outside the group.
-    private void PeopleGroup_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(PeopleGroup).Position;
-        if (point.X > 0 && point.Y > 0 && point.X < PeopleGroup.ActualWidth && point.Y < PeopleGroup.ActualHeight)
-            return;
-        ZoomFaces(false);
-    }
-
-    private void ZoomFaces(bool large)
-    {
-        if (large == _isPointerOnPeople)
-            return;
-        _isPointerOnPeople = large;
-        _faceZoom?.Stop();
-        var size = large ? LargeFace : SmallFace;
-        var zoom = new Storyboard();
-        foreach (var face in _topFaces)
-        {
-            foreach (var property in new[] { "Width", "Height" })
-            {
-                // Width and Height change the layout, so they need a dependent (UI thread) animation.
-                var animation = new DoubleAnimation
-                {
-                    From = face.ActualWidth > 0 ? face.ActualWidth : face.Width,
-                    To = size,
-                    Duration = TimeSpan.FromMilliseconds(150),
-                    EnableDependentAnimation = true,
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-                };
-                Storyboard.SetTarget(animation, face);
-                Storyboard.SetTargetProperty(animation, property);
-                zoom.Children.Add(animation);
-            }
-        }
-        // The animation holds its end value; set it too, so the size stays when the storyboard is stopped.
-        zoom.Completed += (_, _) =>
-        {
-            foreach (var face in _topFaces)
-                face.Width = face.Height = size;
-        };
-        _faceZoom = zoom;
-        zoom.Begin();
     }
 
     // ---- The badge itself ----

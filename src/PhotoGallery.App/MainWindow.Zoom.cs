@@ -6,7 +6,7 @@ using Windows.System;
 
 namespace PhotoGallery.App;
 
-/// <summary>Zooming the photo grid: the slider in the status bar, its − and + buttons, and Ctrl + mouse wheel.</summary>
+/// <summary>Zooming the photo grid: the slider in the filter row, its − and + buttons, and Ctrl + mouse wheel.</summary>
 public sealed partial class MainWindow
 {
     private const double ZoomStep = 28;
@@ -21,16 +21,6 @@ public sealed partial class MainWindow
             if (e.PropertyName == nameof(ViewModel.TileSize))
                 ApplyTileSize();
         };
-    }
-
-    /// <summary>Sizes the grid's slots; the tiles stretch to fill them, and the slot keeps the 4-pixel gap between tiles.</summary>
-    private void ApplyTileSize()
-    {
-        if (PhotoGrid.ItemsPanelRoot is ItemsWrapGrid panel)
-        {
-            panel.ItemWidth = ViewModel.TileSize + 4;
-            panel.ItemHeight = ViewModel.TileSize + 4;
-        }
     }
 
     private void PhotoGrid_PointerWheelChanged(object sender, PointerRoutedEventArgs e)

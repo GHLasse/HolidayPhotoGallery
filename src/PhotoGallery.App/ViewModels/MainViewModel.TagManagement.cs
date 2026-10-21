@@ -45,6 +45,8 @@ public sealed partial class MainViewModel
         {
             for (var i = 0; i < paths.Count; i++)
             {
+                if (_stopRequested)
+                    break; // Stop in the progress details: what is done stays done
                 var path = paths[i];
                 StatusText = newName is null
                     ? Tr("Removing “{0}” from {1:N0} of {2:N0} photos…", tag, i + 1, paths.Count)

@@ -40,12 +40,15 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new SizeInt32(1500, 950));
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
-
-        // The classic Windows Live Photo Gallery shortcuts: Ctrl+, and Ctrl+. (no XAML name for these keys).
-        RotateLeftButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)188 });
-        RotateRightButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Modifiers = VirtualKeyModifiers.Control, Key = (VirtualKey)190 });
+        SetUpFrame();
 
         SetUpZoom();
+        SetUpTimeline();
+        SetUpClickToDeselect();
+        SetUpRatingRow();
+        SetUpPeopleTyping();
+        SetUpMoreDetails();
+        ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.RejectRequested += item => ViewModel.ToggleRejectAsync([item]);
@@ -67,6 +70,7 @@ public sealed partial class MainWindow : Window
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
         Closed += (_, _) => ViewModel.Dispose();
+        AppWindow.Closing += AppWindow_Closing;
         ViewModel.Editor.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MetadataEditorViewModel.TimeZones) or nameof(MetadataEditorViewModel.TimeZoneIndex))
@@ -90,9 +94,21 @@ public sealed partial class MainWindow : Window
             else if (e.PropertyName is nameof(MainViewModel.FavouriteApps))
                 _ = ShowFavouriteAppsAsync();
             else if (e.PropertyName is nameof(MainViewModel.PeopleByName))
+            {
                 _ = ShowTopPeopleAsync();
+                if (_workspace == Workspace.People)
+                    _ = ShowPeoplePageAsync();
+            }
+            else if (e.PropertyName is nameof(MainViewModel.IsAlbumView))
+            {
+                OnAlbumViewChanged();
+                ShowFilterBadges();
+            }
+            else if (e.PropertyName is nameof(MainViewModel.IsBusy) or nameof(MainViewModel.StatusText))
+                ApplyBusyGates();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
+                ShowPhotoGroups();
                 ShowFilterBadges();
                 _ = ShowTopPeopleAsync();
                 if (IsMapOpen)
@@ -176,18 +192,23 @@ public sealed partial class MainWindow : Window
             await ViewModel.AddFolderAsync(folder.Path);
     }
 
-    private async void RemoveFolder_Click(object sender, RoutedEventArgs e)
+    private async void RemoveFolderMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SelectedFolder is { IsRoot: true } folder)
+        if ((sender as FrameworkElement)?.Tag is FolderNodeViewModel { IsRoot: true } folder)
             await ViewModel.RemoveFolderAsync(folder);
     }
 
-    private async void Rescan_Click(object sender, RoutedEventArgs e) => await ViewModel.RescanAsync();
+    private async void Rescan_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WaitsForBusyWork())
+            await ViewModel.RescanAsync();
+    }
 
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
     {
         FolderTree.SelectedItem = null;
         ClearBrowseTrees();
+        LeavePeopleWorkspace();
         ViewModel.IsAlbumView = false;
         ViewModel.SelectedFolder = null;
     }
@@ -200,6 +221,7 @@ public sealed partial class MainWindow : Window
         FolderTree.SelectedItem = null;
         PlaceTree.SelectedItem = null;
         ViewModel.SelectedPlace = null;
+        LeavePeopleWorkspace();
         ViewModel.ShowDate(node);
     }
 
@@ -210,6 +232,7 @@ public sealed partial class MainWindow : Window
         FolderTree.SelectedItem = null;
         DateTree.SelectedItem = null;
         ViewModel.ClearDateFromTree();
+        LeavePeopleWorkspace();
         ViewModel.ShowPlace(node);
     }
 
@@ -221,14 +244,57 @@ public sealed partial class MainWindow : Window
         ViewModel.SelectedPlace = null;
     }
 
+    // Closing while a long job or an upload runs would cut it off half way, so the app asks first.
+    private bool _closeConfirmed;
+
+    private async void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (_closeConfirmed || !(ViewModel.IsBusy || ViewModel.IsUploading))
+            return;
+        args.Cancel = true;
+        var doing = string.Join(" ", new[] { ViewModel.IsBusy ? ViewModel.StatusText : "", ViewModel.IsUploading ? ViewModel.UploadText : "" }
+            .Where(t => t.Length > 0));
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Close while work is running?"),
+            Content = new TextBlock
+            {
+                Text = Tr("The app is still busy: {0} Closing it stops this; the photos already done keep their changes.", doing),
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = Tr("Close anyway"),
+            CloseButtonText = Tr("Keep working"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        ContentDialogResult answer;
+        try
+        {
+            answer = await dialog.ShowThemedAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return; // another dialog is open; the window stays
+        }
+        if (answer != ContentDialogResult.Primary)
+            return;
+        ViewModel.StopBusyWork();
+        ViewModel.CancelUpload();
+        _closeConfirmed = true;
+        Close();
+    }
+
     private void SortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (SortCombo.SelectedIndex >= 0)
             ViewModel.SortIndex = SortCombo.SelectedIndex;
     }
 
-    private void ClearFilters_Click(object sender, RoutedEventArgs e)
+    private void ClearFilters_Click(object sender, RoutedEventArgs e) => ClearAllFilters();
+
+    private void ClearAllFilters()
     {
+        ClearBrowseTrees(); // a month or place from the left pane is a filter too, and names the grid
         ViewModel.SearchText = "";
         ViewModel.MinRating = 0;
         ViewModel.FlaggedOnly = false;
@@ -237,6 +303,7 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
         ViewModel.WithoutDate = false;
+        ViewModel.DamagedOnly = false;
         ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;
@@ -317,6 +384,21 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 CloseViewer();
             }
+            else if (e.Key == VirtualKey.L)
+            {
+                e.Handled = true;
+                CycleViewerLights();
+            }
+            else if (e.Key == VirtualKey.I)
+            {
+                e.Handled = true;
+                ToggleViewerDetails();
+            }
+            else if (e.Key == VirtualKey.M)
+            {
+                e.Handled = true;
+                ToggleViewerMap();
+            }
             return;
         }
 
@@ -347,10 +429,13 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 OpenCompare(selected);
                 break;
-            case VirtualKey.M:
+            case VirtualKey.I:
                 e.Handled = true;
-                MapToggle.IsChecked = MapToggle.IsChecked != true;
-                Map_Click(MapToggle, new RoutedEventArgs());
+                ToggleInfoPane();
+                break;
+            case VirtualKey.M when _workspace == Workspace.Library:
+                e.Handled = true;
+                _ = SetSidePaneAsync(_sidePane == SidePane.Map ? SidePane.Info : SidePane.Map);
                 break;
         }
     }
@@ -369,6 +454,8 @@ public sealed partial class MainWindow : Window
     {
         var full = AppWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen;
         AppWindow.SetPresenter(full ? Microsoft.UI.Windowing.AppWindowPresenterKind.Default : Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+        // Full screen has no window buttons, so the title bar goes too.
+        AppTitleBar.Visibility = full ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private bool _showingShortcuts;
@@ -382,10 +469,16 @@ public sealed partial class MainWindow : Window
             (Tr("E or Enter"), Tr("Show the photo large (Enter with several photos: compare them)")),
             ("C", Tr("Compare the selected photos")),
             ("M", Tr("Show or hide the map")),
+            ("Tab", Tr("Hide or show the side panes")),
+            ("Shift+Tab", Tr("Hide or show the side panes and the filter bar")),
+            ("I", Tr("Show or hide the info pane")),
+            ("L", Tr("Dim the room around the photo in the viewer (press again for black)")),
+            ("Ctrl+E", Tr("Search")),
             ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
             ("P", Tr("Flag or unflag the selected photos")),
             ("X", Tr("Reject the selected photos, or take the mark off")),
             ("← →", Tr("Previous or next photo in the viewer and compare")),
+            (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
             ("Tab", Tr("Next photo in compare")),
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
             ("Ctrl+S", Tr("Save the changes in the info pane")),
@@ -447,6 +540,8 @@ public sealed partial class MainWindow : Window
 
     private async void RecycleRejected_Click(object sender, RoutedEventArgs e)
     {
+        if (WaitsForBusyWork())
+            return;
         var rejected = ViewModel.ShownRejectedPhotos;
         if (rejected.Count == 0)
             return;
@@ -464,44 +559,78 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Close,
         };
         if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
+        {
+            App.Trace($"recycle bin: {rejected.Count} rejected photos");
             await ViewModel.RecycleRejectedAsync();
+            App.Trace("recycle bin: done");
+        }
     }
 
     // ---- Banners ----
 
     private void ShowNotices()
     {
-        NoticePanel.Children.Clear();
-        foreach (var notice in ViewModel.Notices)
+        // Bars already shown stay, so only a new one slides in and the others move up when one goes.
+        var notices = ViewModel.Notices.ToList();
+        App.Trace($"banners: {notices.Count}");
+        foreach (var old in NoticePanel.Children.OfType<InfoBar>().Where(b => b.Tag is not Notice n || !notices.Contains(n)).ToList())
+            NoticePanel.Children.Remove(old);
+        for (var i = 0; i < notices.Count; i++)
         {
-            var bar = new InfoBar
-            {
-                Message = notice.Message,
-                IsOpen = true,
-                Severity = notice.Severity switch
-                {
-                    NoticeSeverity.Error => InfoBarSeverity.Error,
-                    NoticeSeverity.Warning => InfoBarSeverity.Warning,
-                    _ => InfoBarSeverity.Informational,
-                },
-            };
-            // Informational bars are grey by default; Lasse asked for blue ones.
-            if (notice.Severity == NoticeSeverity.Info && ThemeBrush("SystemFillColorAttentionBackgroundBrush") is { } blue)
-                bar.Background = blue;
-            bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
-            if (notice.Undo is { } undo)
-            {
-                var button = new Button { Content = Tr("Undo") };
-                button.Click += async (_, _) =>
-                {
-                    ViewModel.CloseNotice(notice);
-                    await undo();
-                };
-                bar.ActionButton = button;
-            }
-            NoticePanel.Children.Add(bar);
+            var at = NoticePanel.Children.ToList().FindIndex(c => ReferenceEquals((c as FrameworkElement)?.Tag, notices[i]));
+            if (at == i)
+                continue;
+            if (at >= 0)
+                NoticePanel.Children.RemoveAt(at);
+            NoticePanel.Children.Insert(i, NoticeBar(notices[i]));
         }
-        NoticePanel.Margin = new Thickness(12, 0, 12, ViewModel.Notices.Count > 0 ? 8 : 0);
+    }
+
+    private static Windows.UI.Color Blend(Windows.UI.Color top, Windows.UI.Color under)
+    {
+        var a = top.A / 255.0;
+        byte Mix(byte t, byte u) => (byte)Math.Round(t * a + u * (1 - a));
+        return Windows.UI.Color.FromArgb(255, Mix(top.R, under.R), Mix(top.G, under.G), Mix(top.B, under.B));
+    }
+
+    private InfoBar NoticeBar(Notice notice)
+    {
+        var bar = new InfoBar
+        {
+            Tag = notice,
+            Message = notice.Message,
+            IsOpen = true,
+            Severity = notice.Severity switch
+            {
+                NoticeSeverity.Error => InfoBarSeverity.Error,
+                NoticeSeverity.Warning => InfoBarSeverity.Warning,
+                _ => InfoBarSeverity.Informational,
+            },
+        };
+        // Informational bars are grey by default; Lasse asked for blue ones. The tints are see-through, and
+        // the bars float over the photos, so each is laid on the window's solid background colour.
+        var tint = ThemeBrush(notice.Severity switch
+        {
+            NoticeSeverity.Error => "SystemFillColorCriticalBackgroundBrush",
+            NoticeSeverity.Warning => "SystemFillColorCautionBackgroundBrush",
+            _ => "SystemFillColorAttentionBackgroundBrush",
+        });
+        if (tint is SolidColorBrush { Color: var top } && ThemeBrush("SolidBackgroundFillColorBaseBrush") is SolidColorBrush { Color: var under })
+            bar.Background = new SolidColorBrush(Blend(top, under));
+        bar.Shadow = new ThemeShadow();
+        bar.Translation = new System.Numerics.Vector3(0, 0, 16);
+        bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
+        if (notice.Undo is { } undo)
+        {
+            var button = new Button { Content = Tr("Undo") };
+            button.Click += async (_, _) =>
+            {
+                ViewModel.CloseNotice(notice);
+                await undo();
+            };
+            bar.ActionButton = button;
+        }
+        return bar;
     }
 
     private void FolderTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
@@ -509,6 +638,7 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItem is FolderNodeViewModel folder)
         {
             ClearBrowseTrees();
+            LeavePeopleWorkspace();
             ViewModel.IsAlbumView = false;
             ViewModel.SelectedFolder = folder;
         }
@@ -522,12 +652,15 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (!args.InRecycleQueue && args.Item is PhotoItemViewModel item)
-            _ = item.EnsureThumbnailAsync();
+        if (args.Item is PhotoItemViewModel item)
+            item.SetShown(!args.InRecycleQueue);
     }
 
     private async void PhotoGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // Before the info pane slides in or out and the grid reflows: the clicked photo stays where it is.
+        RememberAnchor(e.AddedItems.OfType<PhotoItemViewModel>().LastOrDefault());
+        OnSelectionChromeChanged();
         if (_handlingSelection)
             return;
         _handlingSelection = true;
@@ -552,23 +685,18 @@ public sealed partial class MainWindow : Window
 
     private bool IsMapOpen => MapView.Visibility == Visibility.Visible;
 
-    private async void Map_Click(object sender, RoutedEventArgs e)
+    private async void AddPlaceNames_Click(object sender, RoutedEventArgs e)
     {
-        var open = MapToggle.IsChecked == true;
-        MapColumn.Width = open ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        MapView.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        if (!open)
-            return;
-        await MapView.StartAsync();
-        RefreshMap(fit: true);
+        if (!WaitsForBusyWork())
+            await ViewModel.AddPlaceNamesAsync(SelectedPhotos);
     }
-
-    private async void AddPlaceNames_Click(object sender, RoutedEventArgs e) => await ViewModel.AddPlaceNamesAsync(SelectedPhotos);
 
     // ---- Auto-tagging ----
 
     private async void AutoTag_Click(object sender, RoutedEventArgs e)
     {
+        if (WaitsForBusyWork())
+            return;
         var photos = SelectedPhotos;
         if (photos.Count == 0)
         {
@@ -593,11 +721,66 @@ public sealed partial class MainWindow : Window
         await ViewModel.AutoTagAsync(photos);
     }
 
-    private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e) => await ViewModel.RemoveAutoTagsAsync(SelectedPhotos);
-
-    private void RefreshMap(bool fit)
+    private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e)
     {
-        MapView.ShowPhotos(ViewModel.Photos);
+        if (!WaitsForBusyWork())
+            await ViewModel.RemoveAutoTagsAsync(SelectedPhotos);
+    }
+
+    // ---- Buttons that wait while a long job runs (Busy.Gate) ----
+
+    private readonly Dictionary<FrameworkElement, object?> _gateTips = [];
+
+    // Faded, with a tooltip that says why; disabled buttons show no tooltip at all.
+    private void ApplyBusyGates()
+    {
+        var busy = ViewModel.IsBusy;
+        var why = Tr("Waits until the app has finished: {0} You can stop that with the circle at the top right.", ViewModel.StatusText);
+        Busy.Gated.RemoveAll(w => !w.TryGetTarget(out _));
+        foreach (var weak in Busy.Gated)
+        {
+            if (!weak.TryGetTarget(out var element))
+                continue;
+            if (!_gateTips.ContainsKey(element))
+                _gateTips[element] = ToolTipService.GetToolTip(element);
+            element.Opacity = busy ? 0.4 : 1;
+            ToolTipService.SetToolTip(element, busy ? why : _gateTips[element]);
+        }
+    }
+
+    /// <summary>True, with a banner saying why, when a long job is running and this has to wait for it.</summary>
+    private bool WaitsForBusyWork()
+    {
+        if (!ViewModel.IsBusy)
+            return false;
+        ViewModel.Warn(Tr("Waits until the app has finished: {0} You can stop that with the circle at the top right.", ViewModel.StatusText));
+        return true;
+    }
+
+    private int _mapVersion;
+
+    // Beside the grid the map shows the grid's photos, to place them; the Map workspace shows the whole
+    // library, where you have been, whatever folder or album is open.
+    private string? _mapScope;
+
+    private async void RefreshMap(bool fit)
+    {
+        var version = ++_mapVersion;
+        if (_workspace == Workspace.Map)
+        {
+            // Picking a folder, month or place in the left pane narrows the map, and it zooms to them.
+            var scope = ViewModel.MapScope;
+            fit |= scope != _mapScope;
+            _mapScope = scope;
+            var all = await ViewModel.PhotosWithLocationAsync();
+            if (version != _mapVersion)
+                return;
+            MapView.ShowPhotos(all, fitAll: fit && SelectedPhotos.Count == 0);
+        }
+        else
+        {
+            MapView.ShowPhotos(ViewModel.Photos);
+        }
         MapView.ShowSelection(SelectedPhotos, fit);
     }
 
@@ -606,6 +789,16 @@ public sealed partial class MainWindow : Window
         var item = ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase));
         if (item is null)
             return;
+        // Beside the viewer, a marker shows its photo there.
+        if (IsViewerOpen)
+        {
+            if (!IsEditing && _viewerItems.IndexOf(item) is >= 0 and var index && index != _viewerIndex)
+            {
+                _viewerIndex = index;
+                _ = ShowViewerImageAsync();
+            }
+            return;
+        }
         _selectingFromMap = true;
         if (addToSelection)
         {
@@ -644,6 +837,12 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (e.Key == VirtualKey.Escape && PhotoGrid.SelectedItems.Count > 0)
+        {
+            PhotoGrid.SelectedItems.Clear();
+            e.Handled = true;
+            return;
+        }
         if (e.Key != VirtualKey.Enter)
             return;
         var selected = SelectedPhotos;
@@ -724,13 +923,20 @@ public sealed partial class MainWindow : Window
 
     // ---- Viewer ----
 
-    private bool IsViewerOpen => ViewerLayer.Visibility == Visibility.Visible;
+    private bool IsViewerOpen => ViewerLayer.Visibility == Visibility.Visible && !_viewerClosing;
 
     private void OpenViewer(PhotoItemViewModel item)
     {
+        App.Trace("viewer: open");
+        var tile = TileImageBounds(item); // before the viewer covers it
         _viewerItems = ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
+        SyncViewerPaneSwitch();
+        ApplyChrome(animate: false); // the details or the map stay beside the photo
+        _ = StartViewerMapAsync();
+        StartOpenMotion(item, tile);
+        ShowViewerControls();
         // Move focus off the grid, which would otherwise take the arrow keys for itself.
         ViewerCloseButton.Focus(FocusState.Programmatic);
         _ = ShowViewerImageAsync();
@@ -738,9 +944,10 @@ public sealed partial class MainWindow : Window
 
     private void CloseViewer()
     {
+        App.Trace("viewer: close");
         EndEdit();
-        ViewerLayer.Visibility = Visibility.Collapsed;
-        ViewerCanvas.Source = null;
+        StartCloseMotion();
+        ApplyChrome(animate: false);
         _viewerPixels = null;
         if (_viewerIndex < _viewerItems.Count)
         {
@@ -759,7 +966,11 @@ public sealed partial class MainWindow : Window
         EndEdit();
         var version = ++_viewerLoadVersion;
         var item = _viewerItems[_viewerIndex];
+        // The details beside the viewer show the photo being looked at.
+        if (PhotoGrid.SelectedItems.Count != 1 || !ReferenceEquals(PhotoGrid.SelectedItem, item))
+            PhotoGrid.SelectedItem = item;
         UpdateViewerTitle();
+        SyncViewerStrip();
         ViewerError.Text = "";
         ViewerProgress.IsActive = true;
         UpdateUndoButtons();
@@ -793,7 +1004,10 @@ public sealed partial class MainWindow : Window
         finally
         {
             if (version == _viewerLoadVersion)
+            {
                 ViewerProgress.IsActive = false;
+                OnViewerImageReady();
+            }
         }
     }
 
@@ -986,8 +1200,18 @@ public sealed partial class MainWindow : Window
         defaultSort.SelectedIndex = ViewModel.DefaultSortIndex;
         var autoAdvance = new ToggleSwitch
         {
+            // In the app's language; WinUI's own "On"/"Off" follow Windows.
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
             Header = Tr("Move to the next photo after rating it in the viewer (also after P and X)"),
             IsOn = ViewModel.AutoAdvance,
+        };
+        var findPeople = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Look for people in new photos by itself (once Find people has been used)"),
+            IsOn = ViewModel.FindPeopleAutomatically,
         };
         var gallery = new StackPanel
         {
@@ -1002,6 +1226,7 @@ public sealed partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                 },
                 autoAdvance,
+                findPeople,
             },
         };
 
@@ -1013,6 +1238,9 @@ public sealed partial class MainWindow : Window
 
         var backUp = new ToggleSwitch
         {
+            // In the app's language; WinUI's own "On"/"Off" follow Windows.
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
             Header = Tr("Keep a copy of a photo before opening it in another app"),
             IsOn = ViewModel.BackUpBeforeOpenWith,
             Margin = new Thickness(0, 12, 0, 0),
@@ -1020,10 +1248,18 @@ public sealed partial class MainWindow : Window
 
         var favourites = FavouriteAppsSettings(out var chosenApps);
 
-        var cropping = new StackPanel
+        var processorOnly = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Use only the processor for AI upscaling"),
+            IsOn = ViewModel.UpscaleOnProcessorOnly,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+
+        var croppingPanel = new StackPanel
         {
             Spacing = 12,
-            Visibility = Visibility.Collapsed,
             Children =
             {
                 crop,
@@ -1039,7 +1275,20 @@ public sealed partial class MainWindow : Window
                     Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere."),
                     TextWrapping = TextWrapping.Wrap,
                 },
+                processorOnly,
+                new TextBlock
+                {
+                    Text = Tr("Repairing a damaged photo can bring back detail with AI. It runs on the graphics card when there is one; turn this on if it fails there or the result looks wrong."),
+                    TextWrapping = TextWrapping.Wrap,
+                },
             },
+        };
+        var cropping = new ScrollViewer
+        {
+            MaxHeight = 480,
+            Padding = new Thickness(0, 0, 12, 0),
+            Visibility = Visibility.Collapsed,
+            Content = croppingPanel,
         };
 
         // Appearance tab
@@ -1075,25 +1324,84 @@ public sealed partial class MainWindow : Window
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
         var languagePage = LanguagePage(out var chosenLanguage);
 
+        // Which facts "More details" in the info pane shows, two columns of ticks.
+        var detailBoxes = new List<(string Key, CheckBox Box)>();
+        var detailGrid = new Grid { ColumnSpacing = 12 };
+        detailGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        detailGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var detailRows = (Core.Metadata.PhotoDetails.All.Count + 1) / 2;
+        for (var i = 0; i < detailRows; i++)
+            detailGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var i = 0; i < Core.Metadata.PhotoDetails.All.Count; i++)
+        {
+            var detail = Core.Metadata.PhotoDetails.All[i];
+            var box = new CheckBox { Content = detail.Label, IsChecked = ViewModel.DetailKeys.Contains(detail.Key), MinWidth = 0 };
+            Grid.SetRow(box, i % detailRows);
+            Grid.SetColumn(box, i / detailRows);
+            detailGrid.Children.Add(box);
+            detailBoxes.Add((detail.Key, box));
+        }
+
+        // App tab: how the gallery behaves, the details pane, and the language.
+        gallery.Visibility = languagePage.Visibility = Visibility.Visible;
+        var appPage = new ScrollViewer
+        {
+            MaxHeight = 480,
+            Padding = new Thickness(0, 0, 12, 0),
+            Visibility = Visibility.Collapsed,
+            Content = new StackPanel
+            {
+                Spacing = 16,
+                Children =
+                {
+                    gallery,
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    new TextBlock { Text = Tr("More details in the info pane"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
+                    detailGrid,
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    new TextBlock { Text = Tr("Language"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
+                    languagePage,
+                },
+            },
+        };
+
+        // Tags tab: your tags, and the list auto-tagging picks from, one at a time.
+        var ownTagsTab = new SelectorBarItem { Text = Tr("Your tags"), IsSelected = true };
+        var aiTagsTab = new SelectorBarItem { Text = Tr("AI tagging") };
+        var tagsBar = new SelectorBar { Items = { ownTagsTab, aiTagsTab }, Margin = new Thickness(-12, -8, 0, 4) };
+        tags.Visibility = Visibility.Visible;
+        var taggingScroller = new ScrollViewer { Content = tagging, Padding = new Thickness(0, 0, 12, 0), Visibility = Visibility.Collapsed };
+        tagsBar.SelectionChanged += (_, _) =>
+        {
+            var ai = tagsBar.SelectedItem == aiTagsTab;
+            tags.Visibility = ai ? Visibility.Collapsed : Visibility.Visible;
+            taggingScroller.Visibility = ai ? Visibility.Visible : Visibility.Collapsed;
+        };
+        var tagsPage = new Grid { Visibility = Visibility.Collapsed, MaxHeight = 520 };
+        tagsPage.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        tagsPage.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(tags, 1);
+        Grid.SetRow(taggingScroller, 1);
+        tagsPage.Children.Add(tagsBar);
+        tagsPage.Children.Add(tags);
+        tagsPage.Children.Add(taggingScroller);
+
         // The tabs are listed down the left side; the pages share one cell so the dialog keeps its size.
-        (string Text, Func<FrameworkElement> Icon, FrameworkElement Page)[] pages =
+        (string Text, string Glyph, FrameworkElement Page)[] pages =
         [
-            (Tr("Gallery"), () => new FontIcon { Glyph = "\uE8B9" }, gallery),
-            (Tr("Language"), () => new FontIcon { Glyph = "\uE774" }, languagePage),
-            (Tr("AI tagging"), () => new Controls.AiSparkle { Width = 16, Height = 16 }, tagging),
-            (Tr("Tags"), () => new FontIcon { Glyph = "\uE8EC" }, tags),
-            (Tr("Dates and places"), () => new FontIcon { Glyph = "\uE787" }, datesAndPlaces),
-            (Tr("Editing"), () => new FontIcon { Glyph = "\uE7A8" }, cropping),
-            (Tr("Appearance"), () => new FontIcon { Glyph = "\uE790" }, appearance),
-            (Tr("Linked apps"), () => new FontIcon { Glyph = "\uE753" }, linked),
-            (Tr("Keyboard"), () => new FontIcon { Glyph = "\uE765" }, keyboard),
+            (Tr("App"), "\uE8B9", appPage),
+            (Tr("Appearance"), "\uE790", appearance),
+            (Tr("Tags"), "\uE8EC", tagsPage),
+            (Tr("Dates and places"), "\uE787", datesAndPlaces),
+            (Tr("Editing"), "\uE7A8", cropping),
+            (Tr("Linked apps"), "\uE753", linked),
+            (Tr("Keyboard"), "\uE765", keyboard),
         ];
         var tabs = new ListView { SelectionMode = ListViewSelectionMode.Single, Width = 200 };
-        foreach (var (text, icon, _) in pages)
+        foreach (var (text, glyph, _) in pages)
         {
-            var symbol = icon();
-            symbol.Width = 16;
-            symbol.Height = 16;
+            // Sized by the font, not squeezed into a box, which cut the glyphs off at the right.
+            var symbol = new FontIcon { Glyph = glyph, FontSize = 16 };
             tabs.Items.Add(new ListViewItem
             {
                 Content = new StackPanel
@@ -1169,9 +1477,14 @@ public sealed partial class MainWindow : Window
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
+        ViewModel.SaveFindPeopleAutomatically(findPeople.IsOn);
+        ViewModel.SaveDetailKeys(detailBoxes.Where(d => d.Box.IsChecked == true).Select(d => d.Key).ToList());
+        _ = ShowMoreDetailsAsync();
         ViewModel.SaveFavouriteApps(chosenApps());
         if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
+        if (processorOnly.IsOn != ViewModel.UpscaleOnProcessorOnly)
+            ViewModel.SaveUpscaleOnProcessorOnly(processorOnly.IsOn);
     }
 
     private void UpdateEditBar()

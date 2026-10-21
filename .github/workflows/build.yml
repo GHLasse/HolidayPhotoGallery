@@ -66,6 +66,16 @@ jobs:
           done
           ls -l "$dir"
           echo "PHOTOGALLERY_FACE_MODEL=$dir" >> "$GITHUB_ENV"
+      # The fast upscaling model (about 5 MB), so the tests scale a real picture up.
+      - name: Download upscaling model
+        run: |
+          dir="$RUNNER_TEMP/upscale-model"
+          mkdir -p "$dir"
+          curl -sSfL --retry 3 -o "$dir/model.zip" https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/real_esrgan_general_x4v3/releases/v0.64.0/real_esrgan_general_x4v3-onnx-float.zip
+          echo "fc094329b24a00c936ebc1cc4c51bc59633e7dc36f4a553344342171cbd3c7cf  $dir/model.zip" | sha256sum -c
+          unzip -o -j -q "$dir/model.zip" '*.onnx' '*.data' -d "$dir"
+          ls -l "$dir"
+          echo "PHOTOGALLERY_UPSCALE_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 
@@ -183,13 +193,21 @@ jobs:
               continue
             }
             "Start $run`: app exited with code $($p.ExitCode)"
-            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 30 }
+            foreach ($log in Get-ChildItem $data -Filter *.log -ErrorAction SilentlyContinue) { "===== $($log.Name)"; Get-Content $log.FullName -Tail 120 }
             Start-Sleep -Seconds 10
             $dump = Get-ChildItem $dumps -Filter *.dmp | Sort-Object LastWriteTime | Select-Object -Last 1
             $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
             if ($dump -and (Test-Path $cdb)) {
               "===== crash analysis of $($dump.Name)"
-              & $cdb -z $dump.FullName -lines -c ".symfix $env:RUNNER_TEMP\symbols; .reload; !analyze -v; q" 2>&1 | Select-Object -Last 250
+              # The symbol path goes in -y: inside -c, .sympath would swallow the commands after it.
+              $symbols = "srv*$env:RUNNER_TEMP\symbols*https://msdl.microsoft.com/download/symbols"
+              $analysis = & $cdb -z $dump.FullName -lines -y $symbols -c ".reload; !analyze -v; q" 2>&1
+              $analysis | Select-Object -Last 250
+              # WinUI errors arrive as a "stowed" exception: list its stack with names, and its error record.
+              if (($analysis -join "`n") -match 'dt (0x[0-9a-f]+) combase!STOWED_EXCEPTION_INFORMATION_V2 -r; dps (0x[0-9a-f]+) L(0x[0-9a-f]+)') {
+                "===== stowed exception"
+                & $cdb -z $dump.FullName -lines -y $symbols -c ".reload /f Microsoft.UI.Xaml.dll; .reload /f combase.dll; dt $($Matches[1]) combase!STOWED_EXCEPTION_INFORMATION_V2 -r; dps $($Matches[2]) L$($Matches[3]); q" 2>&1 | Select-Object -Last 160
+              }
             } else {
               "No dump found in $dumps"
             }

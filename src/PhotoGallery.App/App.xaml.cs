@@ -16,29 +16,59 @@ public partial class App : Application
         ChildProcessGuard.Enable();
         UnhandledException += (_, e) => LogCrash(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash(e.ExceptionObject);
-        // WinUI can turn an error into an immediate crash without raising either event above, so every
-        // exception during startup is recorded; the log shows what was thrown just before a crash.
-        AppDomain.CurrentDomain.FirstChanceException += LogStartupException;
+        // WinUI can turn an error into an immediate crash without raising either event above, so the app
+        // keeps a log of what it did and what was thrown; its last lines show what led up to a crash.
+        StartActivityLog();
+        AppDomain.CurrentDomain.FirstChanceException += LogException;
         _startup.Start();
     }
 
     private static readonly System.Diagnostics.Stopwatch _startup = new();
-    private static int _startupExceptionCount;
+    private static readonly Lock _logLock = new();
+    private static int _exceptionCount;
 
-    private static void LogStartupException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+    private static string ActivityLog => Path.Combine(LibrarySettings.DefaultDataFolder, "activity.log");
+
+    // One log per run; the run before is kept as activity.old.log, e.g. to look at after a crash.
+    private static void StartActivityLog()
     {
-        if (_startup.Elapsed > TimeSpan.FromSeconds(30) || Interlocked.Increment(ref _startupExceptionCount) > 50)
-        {
-            AppDomain.CurrentDomain.FirstChanceException -= LogStartupException;
-            return;
-        }
         try
         {
             Directory.CreateDirectory(LibrarySettings.DefaultDataFolder);
-            File.AppendAllText(Path.Combine(LibrarySettings.DefaultDataFolder, "startup.log"),
-                $"{DateTime.Now:HH:mm:ss.fff} {e.Exception.GetType().FullName}: {e.Exception.Message}{Environment.NewLine}{Environment.StackTrace}{Environment.NewLine}{Environment.NewLine}");
+            if (File.Exists(ActivityLog))
+                File.Move(ActivityLog, Path.Combine(LibrarySettings.DefaultDataFolder, "activity.old.log"), overwrite: true);
+            File.Delete(Path.Combine(LibrarySettings.DefaultDataFolder, "startup.log")); // its old name
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    // During startup with the full call stack; later just what was thrown where, and not without end.
+    private static void LogException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+    {
+        var count = Interlocked.Increment(ref _exceptionCount);
+        if (count > 1000)
+            return;
+        var during = _startup.Elapsed < TimeSpan.FromSeconds(30) && count <= 50;
+        Write($"{e.Exception.GetType().FullName}: {e.Exception.Message}" +
+              (during ? Environment.NewLine + Environment.StackTrace : $" (in {e.Exception.TargetSite?.DeclaringType?.Name}.{e.Exception.TargetSite?.Name})"));
+    }
+
+    /// <summary>
+    /// Notes a step in activity.log (a window change, a pane sliding, banners), so a crash inside WinUI,
+    /// which leaves no exception of ours, shows what the app was doing just before.
+    /// </summary>
+    internal static void Trace(string step) => Write(step);
+
+    private static void Write(string text)
+    {
+        try
+        {
+            lock (_logLock)
+                File.AppendAllText(ActivityLog, $"{DateTime.Now:HH:mm:ss.fff} {text}{Environment.NewLine}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
     }
