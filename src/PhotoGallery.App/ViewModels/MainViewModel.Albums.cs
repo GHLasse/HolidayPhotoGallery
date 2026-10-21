@@ -39,7 +39,25 @@ public sealed partial class MainViewModel
         }
     }
 
-    public bool HasNoAlbums => IsAlbumView && Albums.Count == 0;
+    public bool HasNoAlbums => IsAlbumView && _loadedAlbums.Count == 0;
+
+    private string _albumFilter = "";
+
+    /// <summary>What is typed in the search box over the albums: only albums whose name has a word starting with it show.</summary>
+    public string AlbumFilter
+    {
+        get => _albumFilter;
+        set
+        {
+            if (SetProperty(ref _albumFilter, value))
+                ShowAlbums();
+        }
+    }
+
+    /// <summary>Says so when the search box leaves no album to show.</summary>
+    public string AlbumNoMatchText =>
+        IsAlbumView && _loadedAlbums.Count > 0 && Albums.Count == 0 && AlbumFilter.Trim() is { Length: > 0 } query
+            ? Tr("No album whose name starts with “{0}”.", query) : "";
 
     /// <summary>The title above the grid: "Albums", the album's name, the folder, the month or place picked in the
     /// left pane, or "All photos".</summary>
@@ -70,8 +88,15 @@ public sealed partial class MainViewModel
         ShowAlbums();
     }
 
-    private void ShowAlbums() =>
-        Albums = new ObservableCollection<AlbumViewModel>(Album.Sort(_loadedAlbums, _settings.AlbumSort).Select(a => new AlbumViewModel(a)));
+    private void ShowAlbums()
+    {
+        var query = AlbumFilter.Trim();
+        Albums = new ObservableCollection<AlbumViewModel>(Album.Sort(_loadedAlbums, _settings.AlbumSort)
+            .Where(a => query.Length == 0 || NameSearch.Matches(a.Name, query))
+            .Select(a => new AlbumViewModel(a)));
+        OnPropertyChanged(nameof(HasNoAlbums));
+        OnPropertyChanged(nameof(AlbumNoMatchText));
+    }
 
     /// <summary>Shows the album's photos, its subfolders included.</summary>
     public void OpenAlbum(AlbumViewModel album)

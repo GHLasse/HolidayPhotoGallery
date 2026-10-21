@@ -740,6 +740,8 @@
             <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Visibility="{x:Bind ViewModel.HasNoAlbums, Mode=OneWay}"
                        Text="{local:Loc Text='No albums yet. Right-click a folder on the left and choose &quot;Make this an album&quot;, or &quot;Make each subfolder an album&quot; for a folder with one subfolder per trip.'}" />
+            <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="{x:Bind ViewModel.AlbumNoMatchText, Mode=OneWay}" />
             <GridView x:Name="AlbumGrid" Grid.Row="1"
                       ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
                       Visibility="{x:Bind ViewModel.IsAlbumView, Mode=OneWay}"

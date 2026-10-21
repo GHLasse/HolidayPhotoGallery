@@ -138,9 +138,9 @@ public sealed partial class MainWindow
         FilterPeopleCards();
     }
 
-    // ---- The search box: photos in the Library, people on the People page, places on the Map page ----
+    // ---- The search box: photos in the Library, people on the People page, albums, places on the Map page ----
 
-    private string _peopleQuery = "", _mapQuery = "";
+    private string _peopleQuery = "", _mapQuery = "", _albumQuery = "";
     private bool _settingSearchText;
 
     // In the Library it searches the photos (names, captions and tags), a moment after typing stops.
@@ -153,6 +153,10 @@ public sealed partial class MainWindow
             case Workspace.People:
                 _peopleQuery = sender.Text;
                 FilterPeopleCards();
+                break;
+            case Workspace.Albums:
+                _albumQuery = sender.Text;
+                ViewModel.AlbumFilter = sender.Text;
                 break;
             case Workspace.Map:
                 _mapQuery = sender.Text;
@@ -198,7 +202,7 @@ public sealed partial class MainWindow
         var query = text.Trim();
         var places = query.Length == 0 ? [] : ViewModel.Places
             .SelectMany(country => country.Children.Prepend(country))
-            .Where(p => !p.IsNoPlace && NameMatches(p.Title, query))
+            .Where(p => !p.IsNoPlace && NameSearch.Matches(p.Title, query))
             .Select(p => p.City is null ? p.Country! : $"{p.City}, {p.Country}")
             .Select(name => new PlaceSuggestion(name, name))
             .Take(8)
@@ -227,6 +231,7 @@ public sealed partial class MainWindow
         {
             Workspace.People => _peopleQuery,
             Workspace.Map => _mapQuery,
+            Workspace.Albums => _albumQuery,
             _ => ViewModel.SearchText,
         };
         _settingSearchText = true;
@@ -244,18 +249,18 @@ public sealed partial class MainWindow
         {
             Workspace.People => Tr("Search people (Ctrl+E)"),
             Workspace.Map => Tr("Find a place (Ctrl+E)"),
+            Workspace.Albums => Tr("Search albums (Ctrl+E)"),
             _ => Tr("Search names, captions and tags (Ctrl+E)"),
         };
     }
 
-    // "li" finds Liam, Li Wang and Wei Ling: any part of the name that starts with what was typed.
     private void FilterPeopleCards()
     {
         var query = _peopleQuery.Trim();
         var shown = 0;
         foreach (var card in PeopleCards.Children.OfType<Button>())
         {
-            var match = query.Length == 0 || NameMatches(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(card), query);
+            var match = query.Length == 0 || NameSearch.Matches(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(card), query);
             card.Visibility = match ? Visibility.Visible : Visibility.Collapsed;
             if (match)
                 shown++;
@@ -263,17 +268,6 @@ public sealed partial class MainWindow
         var none = shown == 0 && query.Length > 0 && PeopleCards.Children.Count > 0;
         PeopleNoMatch.Text = none ? Tr("Nobody whose name starts with “{0}”.", query) : "";
         PeopleNoMatch.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    internal static bool NameMatches(string name, string query)
-    {
-        for (var i = name.IndexOf(query, StringComparison.CurrentCultureIgnoreCase); i >= 0;
-             i = i + 1 < name.Length ? name.IndexOf(query, i + 1, StringComparison.CurrentCultureIgnoreCase) : -1)
-        {
-            if (i == 0 || !char.IsLetterOrDigit(name[i - 1]))
-                return true;
-        }
-        return false;
     }
 
     private Button PersonCard(TagFilterViewModel person)
