@@ -106,12 +106,17 @@ public sealed partial class MainWindow
             await ViewModel.RenameAlbumAsync(folder, box.Text);
     }
 
-    // A right-click with nothing selected selects the photo under it, so the menu has something to act on.
-    // Raised before the menu opens.
-    private void PhotoGrid_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
+    // Like File Explorer: right-clicking a photo outside the selection selects just that photo; inside the
+    // selection, the menu is for all of it. The mouse is handled when the button goes down (SetUpClickToDeselect);
+    // this is for the menu key and Shift+F10, and raised before the menu opens.
+    private void PhotoGrid_ContextRequested(UIElement sender, ContextRequestedEventArgs e) => SelectForMenu(e.OriginalSource);
+
+    private void SelectForMenu(object source)
     {
-        if (PhotoGrid.SelectedItems.Count == 0 && ClickedPhoto(e.OriginalSource) is { } photo)
-            PhotoGrid.SelectedItem = photo;
+        if (ClickedPhoto(source) is not { } photo || PhotoGrid.SelectedItems.Contains(photo))
+            return;
+        PhotoGrid.SelectedItems.Clear();
+        PhotoGrid.SelectedItem = photo;
     }
 
     private void PhotoMenu_Opening(object sender, object e)

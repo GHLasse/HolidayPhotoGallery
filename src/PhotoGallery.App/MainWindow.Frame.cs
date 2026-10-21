@@ -495,6 +495,12 @@ public sealed partial class MainWindow
         {
             _pressedSelected = null;
             var point = e.GetCurrentPoint(PhotoGrid);
+            if (point.Properties.IsRightButtonPressed)
+            {
+                // Before the menu opens (on release): right-clicking outside the selection selects that photo.
+                SelectForMenu(e.OriginalSource);
+                return;
+            }
             if (!point.Properties.IsLeftButtonPressed || e.KeyModifiers != VirtualKeyModifiers.None)
                 return;
             if (ClickedPhoto(e.OriginalSource) is { } item && PhotoGrid.SelectedItems.Count == 1 && ReferenceEquals(PhotoGrid.SelectedItems[0], item))
