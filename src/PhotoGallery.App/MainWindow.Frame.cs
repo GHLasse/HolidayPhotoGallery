@@ -3,6 +3,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using PhotoGallery.App.ViewModels;
 using Windows.System;
@@ -283,51 +284,74 @@ public sealed partial class MainWindow
     }
 
     // The open tree gets the height the headings leave free, and scrolls within it. Measured, not counted:
-    // a fixed sum let a long tree run on under the Settings button. Whatever still doesn't fit (a very low
-    // window) is cut off at a line above Settings instead of being drawn over it.
+    // a fixed sum let a long tree run on under the Settings button. The room comes from the window's row,
+    // not from the pane: a pane whose content is taller than its row reports the content's height.
     private void LimitNavTrees()
     {
         var trees = new FrameworkElement[] { FoldersContent, DateTree, PlaceTree };
+        var height = Root.RowDefinitions[3].ActualHeight;
+        if (height <= 0)
+            return;
         double used = 0;
         var rows = 0;
         foreach (var child in NavPane.Children.OfType<FrameworkElement>())
         {
-            if (child.Visibility != Visibility.Visible || child == NavLine || trees.Contains(child))
+            if (child.Visibility != Visibility.Visible || child == NavFade || trees.Contains(child))
                 continue;
             used += child.ActualHeight > 0 ? child.ActualHeight : 36;
             rows++;
         }
-        var free = NavPane.ActualHeight - NavPane.Padding.Top - NavPane.Padding.Bottom - used - NavPane.RowSpacing * rows;
+        var free = height - NavPane.Padding.Top - NavPane.Padding.Bottom - used - NavPane.RowSpacing * rows;
         var room = Math.Max(72, free);
         foreach (var tree in trees)
             tree.MaxHeight = room;
 
-        var bottom = Math.Max(0, NavPane.ActualHeight - NavPane.Padding.Bottom);
+        // Whatever still doesn't fit (a very low window) is cut off above Settings, never drawn over it.
+        var bottom = Math.Max(0, height - NavPane.Padding.Bottom);
         NavPane.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, NavPane.ActualWidth), bottom) };
-        ShowNavLine();
+        ShowNavFade();
     }
 
-    private void ShowNavLine()
+    // The fade sits over the foot of the open tree while part of it is scrolled out of sight below.
+    private void ShowNavFade()
     {
         var open = new FrameworkElement[] { FoldersContent, DateTree, PlaceTree }.FirstOrDefault(t => t.Visibility == Visibility.Visible);
-        NavLine.Visibility = open is not null && TreeOverflows(open) ? Visibility.Visible : Visibility.Collapsed;
+        var more = open is not null && Descendants(open).OfType<ScrollViewer>().FirstOrDefault() is { } viewer
+                   && viewer.VerticalOffset < viewer.ScrollableHeight - 1;
+        if (more)
+        {
+            Grid.SetRow(NavFade, Grid.GetRow(open!));
+            var background = Root.Background is SolidColorBrush solid ? solid.Color
+                : (Root.ActualTheme == ElementTheme.Dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
+            NavFade.Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0, background.R, background.G, background.B), Offset = 0 },
+                    new GradientStop { Color = background, Offset = 1 },
+                },
+            };
+        }
+        NavFade.Visibility = more ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // Opening a branch can make a tree outgrow its room; the line follows.
+    // Opening a branch or scrolling changes what lies below; the fade follows.
     private void WatchNavTrees()
     {
+        Root.SizeChanged += (_, _) => LimitNavTrees();
         foreach (var tree in new FrameworkElement[] { FolderTree, DateTree, PlaceTree })
             tree.Loaded += (_, _) =>
             {
                 if (Descendants(tree).OfType<ScrollViewer>().FirstOrDefault() is { } viewer)
-                    viewer.RegisterPropertyChangedCallback(ScrollViewer.ScrollableHeightProperty, (_, _) => ShowNavLine());
-                ShowNavLine();
+                {
+                    viewer.RegisterPropertyChangedCallback(ScrollViewer.ScrollableHeightProperty, (_, _) => ShowNavFade());
+                    viewer.ViewChanged += (_, _) => ShowNavFade();
+                }
+                ShowNavFade();
             };
     }
-
-    // The tree has more than its room, so part of it scrolls below the line.
-    private static bool TreeOverflows(FrameworkElement content) =>
-        Descendants(content).OfType<ScrollViewer>().FirstOrDefault() is { ScrollableHeight: > 0 };
 
     private (FrameworkElement Content, FontIcon Chevron) NavSection(object heading) =>
         ReferenceEquals(heading, FoldersHeading) ? (FoldersContent, FoldersChevron)

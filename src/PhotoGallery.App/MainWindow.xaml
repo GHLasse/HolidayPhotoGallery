@@ -524,9 +524,8 @@
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
-            <!-- A line above Settings when the open tree runs on below it (MainWindow.Frame.cs). -->
-            <Border x:Name="NavLine" Grid.RowSpan="10" Height="1" VerticalAlignment="Bottom" Margin="4,0,4,0" Visibility="Collapsed"
-                    IsHitTestVisible="False" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            <!-- The open tree fades out at its foot while more of it lies below (MainWindow.Frame.cs). -->
+            <Border x:Name="NavFade" Grid.Row="4" Height="40" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False" />
         </Grid>
 
         <!-- The folded pane: a strip of icons; each opens the pane at its part. -->
