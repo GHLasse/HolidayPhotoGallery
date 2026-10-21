@@ -35,22 +35,27 @@ public sealed partial class MainWindow
             ViewModel.Warn(Tr("Select the photos to find people in."));
             return;
         }
-        if (!MainViewModel.IsFaceModelInstalled)
-        {
-            var dialog = new ContentDialog
-            {
-                XamlRoot = Root.XamlRoot,
-                Title = Tr("Download the face models?"),
-                Content = Tr("Finding and recognising people happens on this PC, so no photo is sent anywhere. ") +
-                          Tr("It needs two small face models (YuNet and SFace from OpenCV) of about {0:N0} MB together, which are downloaded once from GitHub and kept in the app's data folder.", FaceModel.DownloadSize / 1_000_000),
-                PrimaryButtonText = Tr("Download"),
-                CloseButtonText = Tr("Cancel"),
-                DefaultButton = ContentDialogButton.Primary,
-            };
-            if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadFaceModelAsync())
-                return;
-        }
+        if (!await EnsureFaceModelAsync())
+            return;
         await ViewModel.FindFacesAsync(photos);
+    }
+
+    /// <summary>Asks to download the face models when they aren't there yet; false when they still aren't.</summary>
+    private async Task<bool> EnsureFaceModelAsync()
+    {
+        if (MainViewModel.IsFaceModelInstalled)
+            return true;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Download the face models?"),
+            Content = Tr("Finding and recognising people happens on this PC, so no photo is sent anywhere. ") +
+                      Tr("It needs two small face models (YuNet and SFace from OpenCV) of about {0:N0} MB together, which are downloaded once from GitHub and kept in the app's data folder.", FaceModel.DownloadSize / 1_000_000),
+            PrimaryButtonText = Tr("Download"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary && await ViewModel.DownloadFaceModelAsync();
     }
 
     // ---- Info pane ----
