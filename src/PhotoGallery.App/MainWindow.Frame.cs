@@ -108,14 +108,31 @@ public sealed partial class MainWindow
         _navFolded || NavPane.Visibility != Visibility.Visible ? ViewModel.NavPaneWidth : NavColumn.Width.Value,
         InfoPane.Visibility != Visibility.Visible ? ViewModel.InfoPaneWidth : InfoColumn.Width.Value);
 
-    // The map takes the info pane's place: there is room for one or the other (I still shows it).
-    // The details only belong to the photo grid: not beside the People or Albums pages.
-    private bool InfoShown => _workspace is Workspace.Library or Workspace.Map &&
-                              (_infoForced ?? (_sidePane == SidePane.Info && PhotoGrid.SelectedItems.Count > 0 && !IsMapShown));
+    /// <summary>What the right-hand column shows: nothing, the strip of icons, the details or the map.</summary>
+    private enum RightPane { None, Rail, Info, Map }
 
-    private bool MapBeside => _workspace == Workspace.Library && MapToggle.IsChecked == true;
+    // The details and the map share the right-hand column, and fold to a strip of icons like the left pane.
+    // The details come with a selection and go with it (the strip stays); I shows them anyway until it changes.
+    // They only belong to the photos: not beside the People or Albums pages, nor over the whole-library map
+    // unless I asks for them. The viewer has a choice of its own (MainWindow.Viewer.cs).
+    private RightPane RightSide()
+    {
+        if (IsViewerOpen)
+            return _viewerFolded ? RightPane.Rail : ViewerMapBeside ? RightPane.Map : RightPane.Info;
+        if (_panesHidden || _chromeHidden || _workspace is not (Workspace.Library or Workspace.Map))
+            return RightPane.None;
+        if (_workspace == Workspace.Map)
+            return _infoForced == true ? RightPane.Info : RightPane.None;
+        if (_sideFolded)
+            return RightPane.Rail;
+        if (_sidePane == SidePane.Map)
+            return RightPane.Map;
+        return _infoForced ?? PhotoGrid.SelectedItems.Count > 0 ? RightPane.Info : RightPane.Rail;
+    }
 
-    private bool IsMapShown => _workspace == Workspace.Map || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
+    private bool MapBeside => _workspace == Workspace.Library && _sidePane == SidePane.Map && !_sideFolded;
+
+    private bool IsMapShown => _workspace == Workspace.Map || MapBeside;
 
     /// <summary>
     /// Shows, folds or hides the side panes and the top bar. A pane that goes away gives its width to the
@@ -126,8 +143,8 @@ public sealed partial class MainWindow
         var panes = !_panesHidden && !_chromeHidden;
         var nav = panes && !_navFolded;
         var rail = panes && _navFolded;
-        var info = panes && InfoShown;
-        App.Trace($"chrome: nav {nav}, rail {rail}, info {info}, animate {animate}");
+        var side = RightSide();
+        App.Trace($"chrome: nav {nav}, rail {rail}, right {side}, animate {animate}");
 
         // A pane going away keeps its content until it has slid out.
         void ShowNav()
@@ -147,27 +164,36 @@ public sealed partial class MainWindow
                       done: navGoes ? () => { if (_panesHidden || _chromeHidden) ShowNav(); } : null,
                       content: [NavPane, NavRail, SettingsButton]);
 
-        // The map beside the grid and the info pane share the right-hand column: one or the other.
+        // The map beside the photos and the details share the right-hand column: one or the other, or the strip.
         var viewer = IsViewerOpen;
-        var map = viewer ? ViewerMapBeside : MapBeside && !_chromeHidden;
         var full = _workspace == Workspace.Map;
-        info = viewer ? _viewerPane == SidePane.Info && PhotoGrid.SelectedItems.Count > 0 : info && !map;
-        PlaceInfoBesideViewer(viewer && (info || map));
+        var info = side == RightPane.Info;
+        var map = side == RightPane.Map;
+        var sideRail = side == RightPane.Rail;
+        PlaceInfoBesideViewer(viewer && side != RightPane.None);
         InfoSplitter.Visibility = info ? Visibility.Visible : Visibility.Collapsed;
         MapSplitter.Visibility = map ? Visibility.Visible : Visibility.Collapsed;
         if (info)
             InfoPane.Visibility = Visibility.Visible;
-        else if (map)
+        else if (map || sideRail)
             InfoPane.Visibility = Visibility.Collapsed;
-        MapView.Visibility = map || full ? Visibility.Visible : Visibility.Collapsed;
+        SideRail.Visibility = sideRail ? Visibility.Visible : Visibility.Collapsed;
+        // The switch sits above the pane; over the whole-library map there is nothing to switch to.
+        var header = (info || map) && (viewer || !full);
+        SidePaneHeader.Visibility = header ? Visibility.Visible : Visibility.Collapsed;
+        InfoPane.Margin = new Thickness(0, header ? SidePaneHeader.Height : 0, 0, 0);
+        MapView.Margin = new Thickness(0, map ? SidePaneHeader.Height : 0, 12, 12);
+        // Under the viewer the whole-library map would lie over the pane beside it, so it waits till the viewer closes.
+        MapView.Visibility = map || (full && !viewer) ? Visibility.Visible : Visibility.Collapsed;
+        SyncSideSwitch();
         var width = map ? Math.Min(ViewModel.MapPaneWidth, Math.Max(280, (PhotoArea.ActualWidth + InfoColumn.ActualWidth) * 0.7))
-                  : info ? ViewModel.InfoPaneWidth : 0;
+                  : info ? ViewModel.InfoPaneWidth : sideRail ? RailWidth : 0;
         AnimateColumn(InfoColumn, width, animate, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
-            if (!(IsViewerOpen ? _viewerPane == SidePane.Info : !_panesHidden && !_chromeHidden && InfoShown && !MapBeside))
+            if (RightSide() != RightPane.Info)
                 InfoPane.Visibility = Visibility.Collapsed;
-        }, content: [InfoPane]);
+        }, content: [InfoPane, SidePaneHeader, SideRail]);
         // The filters work on the grid; the People page and the whole-library map have none.
         TopBar.Visibility = _chromeHidden || viewer || _workspace is Workspace.People or Workspace.Map ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -544,38 +570,83 @@ public sealed partial class MainWindow
             PhotoGrid.SelectedItems.Add(item);
     }
 
-    // I switches between the details and nothing; with no photo selected it still shows the details.
-    private async void ToggleInfoPane()
+    // I shows the details, even with no photo selected, or folds them away.
+    private void ToggleInfoPane()
     {
-        var show = !InfoShown;
-        await SetSidePaneAsync(show ? SidePane.Info : SidePane.Off);
-        _infoForced = show ? true : null;
         _panesHidden = _chromeHidden = false;
+        if (RightSide() == RightPane.Info)
+        {
+            _sideFolded = true;
+            _infoForced = null;
+            ApplyChrome();
+        }
+        else
+            _ = SetSidePaneAsync(SidePane.Info);
+    }
+
+    /// <summary>The two things the right-hand pane can show, as chosen with the switch above it.</summary>
+    private enum SidePane { Info, Map }
+
+    // The details come and go with the selection; the map stays. Folded, the pane is a strip of icons.
+    private SidePane _sidePane = SidePane.Info;
+    private bool _sideFolded;
+
+    // The switch and the strip serve the viewer too while it is open.
+    private void SideInfo_Click(object sender, RoutedEventArgs e) => ShowRightPane(SidePane.Info);
+
+    private void SideMap_Click(object sender, RoutedEventArgs e) => ShowRightPane(SidePane.Map);
+
+    private void SideRailInfo_Click(object sender, RoutedEventArgs e) => ShowRightPane(SidePane.Info);
+
+    private void SideRailMap_Click(object sender, RoutedEventArgs e) => ShowRightPane(SidePane.Map);
+
+    private void UnfoldSidePane_Click(object sender, RoutedEventArgs e) =>
+        ShowRightPane(IsViewerOpen ? _viewerPane : _sidePane);
+
+    private void FoldSidePane_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsViewerOpen)
+            _viewerFolded = true;
+        else
+        {
+            _sideFolded = true;
+            _infoForced = null;
+        }
         ApplyChrome();
     }
 
-    /// <summary>What the pane right of the photos shows, as chosen with the switch above it.</summary>
-    private enum SidePane { Info, Map, Off }
+    private void ShowRightPane(SidePane pane)
+    {
+        if (IsViewerOpen)
+            _ = SetViewerPaneAsync(pane);
+        else
+            _ = SetSidePaneAsync(pane);
+    }
 
-    // The details come and go with the selection; the map stays; off keeps the photos at full width.
-    private SidePane _sidePane = SidePane.Info;
-
-    private async void SidePaneSwitch_Click(object sender, RoutedEventArgs e) =>
-        await SetSidePaneAsync(sender == MapToggle ? SidePane.Map : sender == PaneOffToggle ? SidePane.Off : SidePane.Info);
-
+    // Choosing one unfolds the pane; the details then show even with nothing selected.
     private async Task SetSidePaneAsync(SidePane pane)
     {
+        var mapBefore = MapBeside;
         _sidePane = pane;
-        var map = pane == SidePane.Map;
-        InfoToggle.IsChecked = pane == SidePane.Info;
-        PaneOffToggle.IsChecked = pane == SidePane.Off;
-        var mapChanged = MapToggle.IsChecked != map;
-        MapToggle.IsChecked = map;
-        _infoForced = null;
-        if (mapChanged)
+        _sideFolded = false;
+        _infoForced = pane == SidePane.Info ? true : null;
+        if (MapBeside != mapBefore)
             await ApplyMapLayoutAsync();
         else
             ApplyChrome();
+    }
+
+    // The thumb slides under the chosen icon, which turns the colour of text on the accent.
+    private void SyncSideSwitch()
+    {
+        var map = (IsViewerOpen ? _viewerPane : _sidePane) == SidePane.Map;
+        SideSwitchThumb.Translation = new System.Numerics.Vector3(map ? (float)SideMapButton.Width : 0, 0, 0);
+        SideInfoIconOn.Opacity = map ? 0 : 1;
+        SideInfoIconOff.Opacity = map ? 1 : 0;
+        SideMapIconOn.Opacity = map ? 1 : 0;
+        SideMapIconOff.Opacity = map ? 0 : 1;
+        // Beside the viewer over the whole-library map, the map is already there.
+        SideMapButton.IsEnabled = SideRailMapButton.IsEnabled = !(IsViewerOpen && _workspace == Workspace.Map);
     }
 
     // ---- Motion ----

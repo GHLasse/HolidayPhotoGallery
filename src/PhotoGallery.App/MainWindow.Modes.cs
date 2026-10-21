@@ -98,7 +98,7 @@ public sealed partial class MainWindow
     private async Task ApplyMapLayoutAsync()
     {
         var full = _workspace == Workspace.Map;
-        var open = full || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
+        var open = full || MapBeside;
         // Beside the grid the map sits in the info pane's column (ApplyChrome); in the Map workspace it
         // takes the photo area's place as well.
         Grid.SetColumn(MapView, full ? 2 : 4);
@@ -113,8 +113,6 @@ public sealed partial class MainWindow
         // The selection bar sits over the grid; in the Map workspace there is no grid to sit on.
         _selectionBarAllowed = !full && _workspace != Workspace.Albums;
         ShowSelectionBar(PhotoGrid.SelectedItems.Count > 0);
-        SidePaneSwitch.IsHitTestVisible = !full;
-        SidePaneSwitch.Opacity = full ? 0.4 : 1;
         if (!open)
             return;
         await MapView.StartAsync();

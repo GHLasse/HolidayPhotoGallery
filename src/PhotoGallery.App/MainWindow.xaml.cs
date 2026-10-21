@@ -435,7 +435,7 @@ public sealed partial class MainWindow : Window
                 break;
             case VirtualKey.M when _workspace == Workspace.Library:
                 e.Handled = true;
-                _ = SetSidePaneAsync(_sidePane == SidePane.Map ? SidePane.Info : SidePane.Map);
+                _ = SetSidePaneAsync(MapBeside ? SidePane.Info : SidePane.Map);
                 break;
         }
     }
@@ -938,7 +938,6 @@ public sealed partial class MainWindow : Window
         _viewerItems = ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
-        SyncViewerPaneSwitch();
         ApplyChrome(animate: false); // the details or the map stay beside the photo
         _ = StartViewerMapAsync();
         StartOpenMotion(item, tile);

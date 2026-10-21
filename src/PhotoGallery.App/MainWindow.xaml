@@ -306,26 +306,6 @@
                 <ComboBox x:Name="SortCombo" VerticalAlignment="Center" MinWidth="170"
                           ToolTipService.ToolTip="{local:Loc Text='Order of the photos in this folder. The default is set in Settings.'}"
                           SelectionChanged="SortCombo_SelectionChanged" />
-                <!-- What the pane right of the photos shows: the details (I), the map, like Geosetter (M), or nothing.
-                     Three buttons joined into one switch (MainWindow.Frame.cs). -->
-                <StackPanel x:Name="SidePaneSwitch" Orientation="Horizontal" VerticalAlignment="Center"
-                            Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
-                    <ToggleButton x:Name="InfoToggle" IsChecked="True" Click="SidePaneSwitch_Click" CornerRadius="4,0,0,4" BorderThickness="1,1,0,1"
-                                  AutomationProperties.Name="{local:Loc Text='Details'}"
-                                  ToolTipService.ToolTip="{local:Loc Text='Show the details of the selected photos beside them (I)'}">
-                        <FontIcon Glyph="&#xE946;" FontSize="14" />
-                    </ToggleButton>
-                    <ToggleButton x:Name="MapToggle" Click="SidePaneSwitch_Click" CornerRadius="0" BorderThickness="1,1,0,1"
-                                  AutomationProperties.Name="{local:Loc Text='Map'}"
-                                  ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
-                        <FontIcon Glyph="&#xE707;" FontSize="14" />
-                    </ToggleButton>
-                    <ToggleButton x:Name="PaneOffToggle" Click="SidePaneSwitch_Click" CornerRadius="0,4,4,0"
-                                  AutomationProperties.Name="{local:Loc Text='No side pane'}"
-                                  ToolTipService.ToolTip="{local:Loc Text='Nothing beside the photos, so they get the whole width'}">
-                        <FontIcon Glyph="&#xE89F;" FontSize="14" />
-                    </ToggleButton>
-                </StackPanel>
                 <!-- Zoom for the photo tiles; Ctrl + mouse wheel over the grid does the same. -->
                 <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
                             Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
@@ -1149,6 +1129,83 @@
         <controls:PaneSplitter x:Name="MapSplitter" Grid.Row="3" Grid.Column="3" Visibility="Collapsed" />
         <controls:MapPanel x:Name="MapView" Grid.Row="3" Grid.Column="4" Margin="0,0,12,12" Visibility="Collapsed" />
 
+        <!-- Above the right-hand pane: a switch whose blue thumb slides between the details (I) and the map (M),
+             and a button that folds the pane to a strip of icons, like the left one (MainWindow.Frame.cs).
+             It moves beside the viewer with the pane. -->
+        <Grid x:Name="SidePaneHeader" Grid.Row="3" Grid.Column="4" Height="40" VerticalAlignment="Top" Padding="8,0,12,0" Visibility="Collapsed">
+            <Grid x:Name="SideSwitch" Width="74" Height="32" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Grid.Resources>
+                    <!-- No hover or pressed fill of their own: the thumb shows which one is on. -->
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Grid.Resources>
+                <Border CornerRadius="16" BorderThickness="1" BorderBrush="{ThemeResource ToggleSwitchStrokeOff}" Background="{ThemeResource ToggleSwitchFillOff}" />
+                <Border x:Name="SideSwitchThumb" Width="34" Height="26" Margin="3,0,0,0" CornerRadius="13" HorizontalAlignment="Left"
+                        Background="{ThemeResource ToggleSwitchFillOn}">
+                    <Border.TranslationTransition>
+                        <Vector3Transition Duration="0:0:0.167" />
+                    </Border.TranslationTransition>
+                </Border>
+                <StackPanel Orientation="Horizontal" Margin="3,0">
+                    <Button x:Name="SideInfoButton" Click="SideInfo_Click" Width="34" Height="26" Padding="0" CornerRadius="13"
+                            Background="Transparent" BorderThickness="0"
+                            AutomationProperties.Name="{local:Loc Text='Details'}" ToolTipService.ToolTip="{local:Loc Text='Show the details of the selected photos (I)'}">
+                        <Grid>
+                            <FontIcon x:Name="SideInfoIconOff" Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                <FontIcon.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.167" />
+                                </FontIcon.OpacityTransition>
+                            </FontIcon>
+                            <FontIcon x:Name="SideInfoIconOn" Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Opacity="0">
+                                <FontIcon.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.167" />
+                                </FontIcon.OpacityTransition>
+                            </FontIcon>
+                        </Grid>
+                    </Button>
+                    <Button x:Name="SideMapButton" Click="SideMap_Click" Width="34" Height="26" Padding="0" CornerRadius="13"
+                            Background="Transparent" BorderThickness="0"
+                            AutomationProperties.Name="{local:Loc Text='Map'}" ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
+                        <Grid>
+                            <FontIcon x:Name="SideMapIconOff" Glyph="&#xE707;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                <FontIcon.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.167" />
+                                </FontIcon.OpacityTransition>
+                            </FontIcon>
+                            <FontIcon x:Name="SideMapIconOn" Glyph="&#xE707;" FontSize="14" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Opacity="0">
+                                <FontIcon.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.167" />
+                                </FontIcon.OpacityTransition>
+                            </FontIcon>
+                        </Grid>
+                    </Button>
+                </StackPanel>
+            </Grid>
+            <Button Style="{StaticResource NavRailButton}" HorizontalAlignment="Right" Click="FoldSidePane_Click"
+                    AutomationProperties.Name="{local:Loc Text='Fold the pane'}" ToolTipService.ToolTip="{local:Loc Text='Fold the pane'}">
+                <FontIcon Glyph="&#xE89F;" FontSize="16" />
+            </Button>
+        </Grid>
+
+        <!-- The folded right-hand pane: a strip of icons, each opens the pane again. -->
+        <StackPanel x:Name="SideRail" Grid.Row="3" Grid.Column="4" Visibility="Collapsed" Spacing="2" Padding="8,2,8,8" HorizontalAlignment="Center">
+            <Button Style="{StaticResource NavRailButton}" Click="UnfoldSidePane_Click"
+                    AutomationProperties.Name="{local:Loc Text='Unfold the pane'}" ToolTipService.ToolTip="{local:Loc Text='Unfold the pane'}">
+                <FontIcon Glyph="&#xE8A0;" FontSize="16" />
+            </Button>
+            <Button Style="{StaticResource NavRailButton}" Click="SideRailInfo_Click"
+                    AutomationProperties.Name="{local:Loc Text='Details'}" ToolTipService.ToolTip="{local:Loc Text='Show the details of the selected photos (I)'}">
+                <FontIcon Glyph="&#xE946;" FontSize="16" />
+            </Button>
+            <Button x:Name="SideRailMapButton" Style="{StaticResource NavRailButton}" Click="SideRailMap_Click"
+                    AutomationProperties.Name="{local:Loc Text='Map'}" ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
+                <FontIcon Glyph="&#xE707;" FontSize="16" />
+            </Button>
+        </StackPanel>
+
         <!-- Full-size viewer, shown over everything but the title bar -->
         <!-- The photo viewer. The controls fade away while the mouse rests (MainWindow.Viewer.cs); L dims the room. -->
         <!-- Messages as banners, newest first, floating over the top of the photos so nothing moves; filled
@@ -1288,24 +1345,6 @@
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
-                    <!-- Like the switch above the grid: the details (I), the map (M) or nothing beside the photo. -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <ToggleButton x:Name="ViewerInfoToggle" IsChecked="True" Click="ViewerSidePane_Click" CornerRadius="4,0,0,4" BorderThickness="1,1,0,1"
-                                      AutomationProperties.Name="{local:Loc Text='Details'}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Show the details beside the photo (I)'}">
-                            <FontIcon Glyph="&#xE946;" FontSize="16" />
-                        </ToggleButton>
-                        <ToggleButton x:Name="ViewerMapToggle" Click="ViewerSidePane_Click" CornerRadius="0" BorderThickness="1,1,0,1"
-                                      AutomationProperties.Name="{local:Loc Text='Map'}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Show where the photo was taken, and place it on the map (M)'}">
-                            <FontIcon Glyph="&#xE707;" FontSize="16" />
-                        </ToggleButton>
-                        <ToggleButton x:Name="ViewerPaneOffToggle" Click="ViewerSidePane_Click" CornerRadius="0,4,4,0"
-                                      AutomationProperties.Name="{local:Loc Text='No side pane'}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Nothing beside the photo, so it gets the whole width'}">
-                            <FontIcon Glyph="&#xE89F;" FontSize="16" />
-                        </ToggleButton>
-                    </StackPanel>
                     <AppBarSeparator />
                     <Button x:Name="ViewerCloseButton" Click="ViewerClose_Click" ToolTipService.ToolTip="{local:Loc Text='Back to the gallery (Esc)'}">
                         <SymbolIcon Symbol="Cancel" />
