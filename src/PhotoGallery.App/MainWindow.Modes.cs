@@ -62,6 +62,7 @@ public sealed partial class MainWindow
         var people = workspace == Workspace.People;
         PeoplePage.Visibility = people ? Visibility.Visible : Visibility.Collapsed;
         PhotoArea.Visibility = people ? Visibility.Collapsed : Visibility.Visible;
+        SyncSearchBox();
         ApplyChrome(); // the People page has no use for the filter bar
         await ApplyMapLayoutAsync();
         if (people)
@@ -134,6 +135,80 @@ public sealed partial class MainWindow
         PeopleEmptyHint.Visibility = people.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var person in people)
             PeopleCards.Children.Add(PersonCard(person));
+        FilterPeopleCards();
+    }
+
+    // ---- The search box on the People page: it finds people, as you type ----
+
+    private string _peopleQuery = "";
+    private bool _settingSearchText;
+
+    // Elsewhere the box searches the photos (names, captions and tags), a moment after typing stops.
+    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
+    {
+        if (_settingSearchText)
+            return;
+        if (_workspace == Workspace.People)
+        {
+            _peopleQuery = sender.Text;
+            FilterPeopleCards();
+        }
+        else
+            ViewModel.SearchText = sender.Text;
+    }
+
+    // Enter on the People page opens the first person found.
+    private void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs e)
+    {
+        if (_workspace == Workspace.People &&
+            PeopleCards.Children.OfType<Button>().FirstOrDefault(b => b.Visibility == Visibility.Visible) is { } card)
+            (card.Tag as Action)?.Invoke();
+    }
+
+    /// <summary>Puts the People page's search or the photos' search in the box, whichever the page uses.</summary>
+    private void SyncSearchBox()
+    {
+        var people = _workspace == Workspace.People;
+        var text = people ? _peopleQuery : ViewModel.SearchText;
+        _settingSearchText = true;
+        try
+        {
+            if (SearchBox.Text != text)
+                SearchBox.Text = text;
+        }
+        finally
+        {
+            _settingSearchText = false;
+        }
+        SearchBox.PlaceholderText = people ? Tr("Search people (Ctrl+E)") : Tr("Search names, captions and tags (Ctrl+E)");
+    }
+
+    // "li" finds Liam, Li Wang and Wei Ling: any part of the name that starts with what was typed.
+    private void FilterPeopleCards()
+    {
+        var query = _peopleQuery.Trim();
+        var shown = 0;
+        foreach (var card in PeopleCards.Children.OfType<Button>())
+        {
+            var match = query.Length == 0 || NameMatches(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(card), query);
+            card.Visibility = match ? Visibility.Visible : Visibility.Collapsed;
+            if (match)
+                shown++;
+        }
+        var none = shown == 0 && query.Length > 0 && PeopleCards.Children.Count > 0;
+        PeopleNoMatch.Text = none ? Tr("Nobody whose name starts with “{0}”.", query) : "";
+        PeopleNoMatch.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    internal static bool NameMatches(string name, string query)
+    {
+        for (var i = name.IndexOf(query, StringComparison.CurrentCultureIgnoreCase); i >= 0;
+             i = i + 1 < name.Length ? name.IndexOf(query, i + 1, StringComparison.CurrentCultureIgnoreCase) : -1)
+        {
+            if (i == 0 || !char.IsLetterOrDigit(name[i - 1]))
+                return true;
+        }
+        return false;
     }
 
     private Button PersonCard(TagFilterViewModel person)
@@ -179,7 +254,7 @@ public sealed partial class MainWindow
         button.PointerExited += Tile_PointerExited;
         // All of the person's photos, wherever they are: the folder, month or place browsed before and the
         // other filters are left behind.
-        button.Click += (_, _) =>
+        void Open()
         {
             FolderTree.SelectedItem = null;
             ClearAllFilters();
@@ -187,7 +262,9 @@ public sealed partial class MainWindow
             ViewModel.SelectedFolder = null;
             ViewModel.ShowOnlyPerson(person);
             ShowWorkspace(Workspace.Library);
-        };
+        }
+        button.Click += (_, _) => Open();
+        button.Tag = (Action)Open; // for Enter in the search box
         return button;
     }
 }

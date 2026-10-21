@@ -89,6 +89,8 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
+            else if (e.PropertyName is nameof(MainViewModel.SearchText))
+                SyncSearchBox();
             else if (e.PropertyName is nameof(MainViewModel.SortIndex))
                 SortCombo.SelectedIndex = ViewModel.SortIndex;
             else if (e.PropertyName is nameof(MainViewModel.FavouriteApps))

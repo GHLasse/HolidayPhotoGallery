@@ -75,8 +75,7 @@
                 </SelectorBar>
                 <AutoSuggestBox x:Name="SearchBox" Grid.Column="2" MaxWidth="320" HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                 PlaceholderText="{local:Loc Text='Search names, captions and tags (Ctrl+E)'}"
-                                QueryIcon="Find"
-                                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                QueryIcon="Find" TextChanged="SearchBox_TextChanged" QuerySubmitted="SearchBox_QuerySubmitted">
                     <AutoSuggestBox.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Control" Key="E" Invoked="SearchAccelerator_Invoked" />
                     </AutoSuggestBox.KeyboardAccelerators>
@@ -988,6 +987,7 @@
                 <StackPanel Spacing="12" Padding="0,0,8,16">
                     <TextBlock x:Name="PeopleEmptyHint" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed"
                                Text="{local:Loc Text='Nobody is named yet. Find the people in your photos, then name the faces found.'}" />
+                    <TextBlock x:Name="PeopleNoMatch" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
                     <controls:WrapPanel x:Name="PeopleCards" />
                 </StackPanel>
             </ScrollViewer>
