@@ -105,6 +105,15 @@ public sealed partial class MapPanel : UserControl
         UpdateButtons();
     }
 
+    /// <summary>The places found for a search (<see cref="FindPlace"/>), best first; the map went to the first.</summary>
+    public event Action<string, IReadOnlyList<string>>? PlacesFound;
+
+    /// <summary>Looks the place up on OpenStreetMap and goes there; <see cref="PlacesFound"/> tells what was found.</summary>
+    public void FindPlace(string query) => Post(new JsonObject { ["type"] = "find", ["q"] = query });
+
+    /// <summary>Goes to another of the places the last search found.</summary>
+    public void GoToPlace(int index) => Post(new JsonObject { ["type"] = "goto", ["index"] = index });
+
     private void SetPin(GeoPosition? position, bool tellMap)
     {
         _pin = position;
@@ -186,6 +195,10 @@ public sealed partial class MapPanel : UserControl
                 break;
             case "select":
                 PhotoClicked?.Invoke(message["path"]!.GetValue<string>(), message["add"]?.GetValue<bool>() == true);
+                break;
+            case "places":
+                PlacesFound?.Invoke(message["q"]?.GetValue<string>() ?? "",
+                    message["names"]?.AsArray().Select(n => n?.GetValue<string>() ?? "").ToList() ?? []);
                 break;
         }
     }

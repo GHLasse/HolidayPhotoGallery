@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window
             RefreshMap(fit: false);
         };
         MapView.PhotoClicked += MapPhotoClicked;
+        MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.

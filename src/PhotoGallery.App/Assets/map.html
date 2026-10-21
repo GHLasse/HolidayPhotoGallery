@@ -30,8 +30,9 @@
 <script>
 // The page talks to the app through WebView2 messages:
 //   from the app: {type:"photos", photos:[{path,name,lat,lon}]}, {type:"selection", paths:[...], fit:true|false},
-//                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on}
-//   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}
+//                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on},
+//                 {type:"find", q} (search for a place and go to the first found), {type:"goto", index} (another one found)
+//   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]}
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
 const lang = new URLSearchParams(location.search).get("lang") || "en";
@@ -130,30 +131,41 @@ function start() {
     box.style.display = text ? "block" : "none";
   }
 
-  // Place search through OpenStreetMap's Nominatim, one request per search as its usage policy asks.
-  document.getElementById("search").addEventListener("submit", async e => {
-    e.preventDefault();
-    const q = document.getElementById("query").value.trim();
+  // Place search through OpenStreetMap's Nominatim, one request per search as its usage policy asks (no
+  // search while typing). The app's own search box asks for it on the Map page, where this box is hidden.
+  let found = [];
+  async function findPlace(q) {
+    q = (q || "").trim();
     if (!q) return;
     showMessage("Searching…");
     try {
-      const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(q) +
+      const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=" + encodeURIComponent(q) +
                   "&accept-language=" + encodeURIComponent(lang);
       const response = await fetch(url);
-      const results = await response.json();
-      if (!results.length) { showMessage("No place found for \"" + q + "\"."); return; }
-      const r = results[0];
-      if (r.boundingbox) {
-        const b = r.boundingbox.map(Number);
-        map.fitBounds([[b[0], b[2]], [b[1], b[3]]], { maxZoom: 16 });
-      } else {
-        map.setView([+r.lat, +r.lon], 15);
-      }
-      setPin(+r.lat, +r.lon, true);
+      found = await response.json();
+      send({ type: "places", q, names: found.map(r => r.display_name) });
+      if (!found.length) { showMessage(placing ? "No place found for \"" + q + "\"." : ""); return; }
+      goTo(found[0]);
       showMessage("");
     } catch (err) {
       showMessage("The place search did not work. Check the internet connection.");
     }
+  }
+
+  function goTo(r) {
+    if (!r) return;
+    if (r.boundingbox) {
+      const b = r.boundingbox.map(Number);
+      map.fitBounds([[b[0], b[2]], [b[1], b[3]]], { maxZoom: 16 });
+    } else {
+      map.setView([+r.lat, +r.lon], 15);
+    }
+    if (placing) setPin(+r.lat, +r.lon, true);
+  }
+
+  document.getElementById("search").addEventListener("submit", e => {
+    e.preventDefault();
+    findPlace(document.getElementById("query").value);
   });
 
   function fitSelection() {
@@ -191,6 +203,12 @@ function start() {
       } else if (m.type === "placing") {
         placing = m.on;
         if (!placing) setPin(null);
+        // Over the whole library the app's search box finds places; beside the photos this one sets the pin.
+        document.getElementById("search").style.display = placing ? "flex" : "none";
+      } else if (m.type === "find") {
+        findPlace(m.q);
+      } else if (m.type === "goto") {
+        goTo(found[m.index]);
       }
     });
   }

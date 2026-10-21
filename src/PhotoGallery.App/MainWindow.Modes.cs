@@ -138,38 +138,97 @@ public sealed partial class MainWindow
         FilterPeopleCards();
     }
 
-    // ---- The search box on the People page: it finds people, as you type ----
+    // ---- The search box: photos in the Library, people on the People page, places on the Map page ----
 
-    private string _peopleQuery = "";
+    private string _peopleQuery = "", _mapQuery = "";
     private bool _settingSearchText;
 
-    // Elsewhere the box searches the photos (names, captions and tags), a moment after typing stops.
+    // In the Library it searches the photos (names, captions and tags), a moment after typing stops.
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
         if (_settingSearchText)
             return;
-        if (_workspace == Workspace.People)
+        switch (_workspace)
         {
-            _peopleQuery = sender.Text;
-            FilterPeopleCards();
+            case Workspace.People:
+                _peopleQuery = sender.Text;
+                FilterPeopleCards();
+                break;
+            case Workspace.Map:
+                _mapQuery = sender.Text;
+                if (e.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
+                    SuggestPlaces(sender.Text);
+                break;
+            default:
+                ViewModel.SearchText = sender.Text;
+                break;
         }
-        else
-            ViewModel.SearchText = sender.Text;
     }
 
-    // Enter on the People page opens the first person found.
+    // Enter on the People page opens the first person found; on the Map page it finds the place.
     private void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs e)
     {
         if (_workspace == Workspace.People &&
             PeopleCards.Children.OfType<Button>().FirstOrDefault(b => b.Visibility == Visibility.Visible) is { } card)
             (card.Tag as Action)?.Invoke();
+        else if (_workspace == Workspace.Map)
+        {
+            if (e.ChosenSuggestion is PlaceSuggestion { Found: { } index })
+                MapView.GoToPlace(index);
+            else if (e.ChosenSuggestion is PlaceSuggestion chosen)
+                MapView.FindPlace(chosen.Query);
+            else if (!string.IsNullOrWhiteSpace(e.QueryText))
+                MapView.FindPlace(e.QueryText);
+        }
     }
 
-    /// <summary>Puts the People page's search or the photos' search in the box, whichever the page uses.</summary>
+    /// <summary>
+    /// A place offered under the search box on the Map page: one of the places in the photos while typing,
+    /// or, after Enter, one of the places OpenStreetMap found (<see cref="Found"/> is its number).
+    /// </summary>
+    private sealed record PlaceSuggestion(string Text, string Query, int? Found = null)
+    {
+        public override string ToString() => Text;
+    }
+
+    // While typing, the countries and cities of the photos come up; OpenStreetMap is asked only on Enter,
+    // as its rules ask (no searching on every key).
+    private void SuggestPlaces(string text)
+    {
+        var query = text.Trim();
+        var places = query.Length == 0 ? [] : ViewModel.Places
+            .SelectMany(country => country.Children.Prepend(country))
+            .Where(p => !p.IsNoPlace && NameMatches(p.Title, query))
+            .Select(p => p.City is null ? p.Country! : $"{p.City}, {p.Country}")
+            .Select(name => new PlaceSuggestion(name, name))
+            .Take(8)
+            .ToList();
+        SearchBox.ItemsSource = places;
+    }
+
+    private void MapView_PlacesFound(string query, IReadOnlyList<string> names)
+    {
+        if (_workspace != Workspace.Map)
+            return;
+        if (names.Count == 0)
+        {
+            ViewModel.Warn(Tr("No place found for “{0}”.", query));
+            return;
+        }
+        // The map went to the first; the others stay offered in case another was meant.
+        SearchBox.ItemsSource = names.Count > 1 ? names.Select((name, i) => new PlaceSuggestion(name, query, i)).ToList() : null;
+        SearchBox.IsSuggestionListOpen = names.Count > 1;
+    }
+
+    /// <summary>Puts the search text of the page shown in the box, with a hint that says what it finds there.</summary>
     private void SyncSearchBox()
     {
-        var people = _workspace == Workspace.People;
-        var text = people ? _peopleQuery : ViewModel.SearchText;
+        var text = _workspace switch
+        {
+            Workspace.People => _peopleQuery,
+            Workspace.Map => _mapQuery,
+            _ => ViewModel.SearchText,
+        };
         _settingSearchText = true;
         try
         {
@@ -180,7 +239,13 @@ public sealed partial class MainWindow
         {
             _settingSearchText = false;
         }
-        SearchBox.PlaceholderText = people ? Tr("Search people (Ctrl+E)") : Tr("Search names, captions and tags (Ctrl+E)");
+        SearchBox.ItemsSource = null;
+        SearchBox.PlaceholderText = _workspace switch
+        {
+            Workspace.People => Tr("Search people (Ctrl+E)"),
+            Workspace.Map => Tr("Find a place (Ctrl+E)"),
+            _ => Tr("Search names, captions and tags (Ctrl+E)"),
+        };
     }
 
     // "li" finds Liam, Li Wang and Wei Ling: any part of the name that starts with what was typed.
