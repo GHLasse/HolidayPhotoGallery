@@ -246,7 +246,19 @@ public sealed partial class MainWindow
                 Height = 18,
                 Stroke = ThemeBrush("ControlStrokeColorDefaultBrush"),
                 StrokeThickness = 1,
-                Fill = new SolidColorBrush(p.Color is { } color ? ToColor(color) : (UiColor)Application.Current.Resources["SystemAccentColor"]),
+                Fill = p.Mix is { } mix
+                    // Half and half, like the installer's sea and sunset.
+                    ? new LinearGradientBrush
+                    {
+                        StartPoint = new Windows.Foundation.Point(0, 0),
+                        EndPoint = new Windows.Foundation.Point(1, 1),
+                        GradientStops =
+                        {
+                            new GradientStop { Color = ToColor(mix.Second), Offset = 0.5 },
+                            new GradientStop { Color = ToColor(mix.LightAccent), Offset = 0.5 },
+                        },
+                    }
+                    : new SolidColorBrush(p.Color is { } color ? ToColor(color) : (UiColor)Application.Current.Resources["SystemAccentColor"]),
             };
             palette.Items.Add(new StackPanel
             {

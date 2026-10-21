@@ -42,6 +42,17 @@ public class ColorPaletteTests
     }
 
     [Fact]
+    public void The_holiday_mix_keeps_its_own_window_and_bar_colours()
+    {
+        var light = ColorPalette.Find("holiday").ShadesFor(false)!;
+        var dark = ColorPalette.Find("holiday").ShadesFor(true)!;
+        Assert.Equal("#FFD9C4", light.BarBackground.ToString());
+        Assert.Equal("#14213D", dark.WindowBackground.ToString());
+        Assert.Equal(Rgb.White, light.TextOnFill); // on the teal
+        Assert.Equal(Rgb.Black, dark.TextOnFill); // on the coral
+    }
+
+    [Fact]
     public void The_windows_accent_needs_no_shades_and_unknown_keys_fall_back_to_it()
     {
         Assert.Null(ColorPalette.Find("windows").ShadesFor(true));
