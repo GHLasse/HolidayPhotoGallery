@@ -42,6 +42,9 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
             await writeImage(temp).ConfigureAwait(false);
             await metadata.CopyMetadataAsync(path, temp, width, height, cancellationToken).ConfigureAwait(false);
             await MovePeopleAsync(path, temp, crop, turn, cancellationToken).ConfigureAwait(false);
+            // A full disk or a failing drive can leave the new file short; then the photo stays as it was.
+            if (Library.FileCheck.Check(temp) != Library.FileHealth.Whole)
+                throw new IOException(Tr("The edited file of {0} came out damaged, so the photo was left as it was. Is the disk full or failing?", Path.GetFileName(path)));
 
             EditHistory.BackUp(path);
             File.Move(temp, newPath, overwrite: true);

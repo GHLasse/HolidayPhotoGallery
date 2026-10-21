@@ -273,6 +273,8 @@
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No tags (auto tags don’t count)'}" IsChecked="{x:Bind ViewModel.WithoutTags, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No people named'}" IsChecked="{x:Bind ViewModel.WithoutPeople, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No location'}" IsChecked="{x:Bind ViewModel.WithoutLocation, Mode=TwoWay}" />
+                                <MenuFlyoutSeparator />
+                                <ToggleMenuFlyoutItem Text="{local:Loc Text='Damaged files'}" IsChecked="{x:Bind ViewModel.DamagedOnly, Mode=TwoWay}" />
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>

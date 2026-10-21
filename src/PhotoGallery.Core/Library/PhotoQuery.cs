@@ -56,4 +56,7 @@ public sealed record PhotoQuery
 
     /// <summary>Inclusive: a date with no time covers that whole day.</summary>
     public DateTime? TakenTo { get; init; }
+
+    /// <summary>Only photos whose file the health check found damaged (<see cref="FileCheck"/>).</summary>
+    public bool DamagedOnly { get; init; }
 }

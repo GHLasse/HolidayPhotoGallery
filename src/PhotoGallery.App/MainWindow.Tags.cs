@@ -186,6 +186,9 @@ public sealed partial class MainWindow
         if (ViewModel.WithoutLocation)
             FilterBadges.Children.Add(Badge(Tr("No location"), false, outlined: false, Tr("Showing photos without a GPS position"),
                                             null, Tr("Stop filtering by no location"), () => ViewModel.WithoutLocation = false));
+        if (ViewModel.DamagedOnly)
+            FilterBadges.Children.Add(Badge(Tr("Damaged files"), false, outlined: false, Tr("Showing photos whose file is damaged"),
+                                            null, Tr("Stop filtering by damaged files"), () => ViewModel.DamagedOnly = false));
         if (ViewModel.OnGoogleOnly)
             FilterBadges.Children.Add(Badge(Tr("In Google Photos"), false, outlined: false, Tr("Showing photos uploaded to Google Photos"),
                                             null, Tr("Stop filtering by Google Photos"), () => ViewModel.OnGoogleOnly = false));

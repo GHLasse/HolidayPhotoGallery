@@ -303,6 +303,7 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
         ViewModel.WithoutDate = false;
+        ViewModel.DamagedOnly = false;
         ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;

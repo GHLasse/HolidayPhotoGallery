@@ -122,6 +122,12 @@ public sealed partial class PhotoIndex : IDisposable
                 ignored INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS ix_faces_photo ON faces(photo_id);
+            -- What the quick check of each file found (FileHealth), for the file as it was then.
+            CREATE TABLE IF NOT EXISTS file_checks (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                health INTEGER NOT NULL,
+                file_mtime INTEGER NOT NULL
+            );
             PRAGMA user_version = {SchemaVersion};
             """);
     }
@@ -350,6 +356,9 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.WithoutDate)
                 where.Add("p.date_taken IS NULL");
+
+            if (query.DamagedOnly)
+                where.Add("EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
 
             if (query.WithoutPlace)
                 where.Add("(p.country IS NULL OR p.country = '')");
