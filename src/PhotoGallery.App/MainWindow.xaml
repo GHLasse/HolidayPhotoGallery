@@ -301,10 +301,6 @@
                 </StackPanel>
             </Grid>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
-                <!-- Not a filter, so Clear filters leaves it alone. Filled from code (list before index). -->
-                <ComboBox x:Name="SortCombo" VerticalAlignment="Center" MinWidth="170"
-                          ToolTipService.ToolTip="{local:Loc Text='Order of the photos in this folder. The default is set in Settings.'}"
-                          SelectionChanged="SortCombo_SelectionChanged" />
                 <!-- Zoom for the photo tiles; Ctrl + mouse wheel over the grid does the same. -->
                 <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
                             Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
@@ -579,15 +575,21 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}" MaxWidth="480" VerticalAlignment="Center"
                            Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
                 <controls:WrapPanel x:Name="FilterBadges" Grid.Column="1" VerticalAlignment="Center" />
+                <!-- One sort box at the top right of the photos or albums, apart from the filters, which it isn't
+                     (Clear filters leaves it alone). Both are filled from code (list before index). -->
+                <ComboBox x:Name="SortCombo" Grid.Column="2" VerticalAlignment="Center" MinWidth="170"
+                          Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
+                          ToolTipService.ToolTip="{local:Loc Text='Order of the photos in this folder. The default is set in Settings.'}"
+                          SelectionChanged="SortCombo_SelectionChanged" />
+                <ComboBox x:Name="AlbumSortCombo" Grid.Column="2" VerticalAlignment="Center" MinWidth="170"
+                          Visibility="{x:Bind ViewModel.IsAlbumView, Mode=OneWay}"
+                          SelectionChanged="AlbumSortCombo_SelectionChanged" />
             </Grid>
-            <!-- Filled from code (list before index). -->
-            <ComboBox x:Name="AlbumSortCombo" HorizontalAlignment="Right" MinWidth="150"
-                      Visibility="{x:Bind ViewModel.IsAlbumView, Mode=OneWay}"
-                      SelectionChanged="AlbumSortCombo_SelectionChanged" />
             <GridView x:Name="PhotoGrid" Grid.Row="1" Padding="0,0,0,8" CanDragItems="True"
                       DragItemsStarting="PhotoGrid_DragItemsStarting" DragItemsCompleted="PhotoGrid_DragItemsCompleted"
                       Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
