@@ -306,13 +306,26 @@
                 <ComboBox x:Name="SortCombo" VerticalAlignment="Center" MinWidth="170"
                           ToolTipService.ToolTip="{local:Loc Text='Order of the photos in this folder. The default is set in Settings.'}"
                           SelectionChanged="SortCombo_SelectionChanged" />
-                <!-- The map beside the grid, like Geosetter (M). -->
-                <ToggleButton x:Name="MapToggle" VerticalAlignment="Center" Click="Map_Click"
-                              Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
-                              AutomationProperties.Name="{local:Loc Text='Map'}"
-                              ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
-                    <FontIcon Glyph="&#xE707;" FontSize="14" />
-                </ToggleButton>
+                <!-- What the pane right of the photos shows: the details (I), the map, like Geosetter (M), or nothing.
+                     Three buttons joined into one switch (MainWindow.Frame.cs). -->
+                <StackPanel x:Name="SidePaneSwitch" Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">
+                    <ToggleButton x:Name="InfoToggle" IsChecked="True" Click="SidePaneSwitch_Click" CornerRadius="4,0,0,4" BorderThickness="1,1,0,1"
+                                  AutomationProperties.Name="{local:Loc Text='Details'}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Show the details of the selected photos beside them (I)'}">
+                        <FontIcon Glyph="&#xE946;" FontSize="14" />
+                    </ToggleButton>
+                    <ToggleButton x:Name="MapToggle" Click="SidePaneSwitch_Click" CornerRadius="0" BorderThickness="1,1,0,1"
+                                  AutomationProperties.Name="{local:Loc Text='Map'}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
+                        <FontIcon Glyph="&#xE707;" FontSize="14" />
+                    </ToggleButton>
+                    <ToggleButton x:Name="PaneOffToggle" Click="SidePaneSwitch_Click" CornerRadius="0,4,4,0"
+                                  AutomationProperties.Name="{local:Loc Text='No side pane'}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Nothing beside the photos, so they get the whole width'}">
+                        <FontIcon Glyph="&#xE89F;" FontSize="14" />
+                    </ToggleButton>
+                </StackPanel>
                 <!-- Zoom for the photo tiles; Ctrl + mouse wheel over the grid does the same. -->
                 <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
                             Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}">

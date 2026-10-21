@@ -113,7 +113,8 @@ public sealed partial class MainWindow
         // The selection bar sits over the grid; in the Map workspace there is no grid to sit on.
         _selectionBarAllowed = !full && _workspace != Workspace.Albums;
         ShowSelectionBar(PhotoGrid.SelectedItems.Count > 0);
-        MapToggle.IsEnabled = !full;
+        SidePaneSwitch.IsHitTestVisible = !full;
+        SidePaneSwitch.Opacity = full ? 0.4 : 1;
         if (!open)
             return;
         await MapView.StartAsync();

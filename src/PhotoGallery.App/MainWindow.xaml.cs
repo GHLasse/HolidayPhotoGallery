@@ -430,8 +430,7 @@ public sealed partial class MainWindow : Window
                 break;
             case VirtualKey.M when _workspace == Workspace.Library:
                 e.Handled = true;
-                MapToggle.IsChecked = MapToggle.IsChecked != true;
-                Map_Click(MapToggle, new RoutedEventArgs());
+                _ = SetSidePaneAsync(_sidePane == SidePane.Map ? SidePane.Info : SidePane.Map);
                 break;
         }
     }
@@ -680,8 +679,6 @@ public sealed partial class MainWindow : Window
     // ---- Map ----
 
     private bool IsMapOpen => MapView.Visibility == Visibility.Visible;
-
-    private async void Map_Click(object sender, RoutedEventArgs e) => await ApplyMapLayoutAsync();
 
     private async void AddPlaceNames_Click(object sender, RoutedEventArgs e)
     {

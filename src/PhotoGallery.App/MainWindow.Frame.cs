@@ -111,7 +111,7 @@ public sealed partial class MainWindow
     // The map takes the info pane's place: there is room for one or the other (I still shows it).
     // The details only belong to the photo grid: not beside the People or Albums pages.
     private bool InfoShown => _workspace is Workspace.Library or Workspace.Map &&
-                              (_infoForced ?? (PhotoGrid.SelectedItems.Count > 0 && !IsMapShown));
+                              (_infoForced ?? (_sidePane == SidePane.Info && PhotoGrid.SelectedItems.Count > 0 && !IsMapShown));
 
     private bool MapBeside => _workspace == Workspace.Library && MapToggle.IsChecked == true;
 
@@ -538,11 +538,38 @@ public sealed partial class MainWindow
             PhotoGrid.SelectedItems.Add(item);
     }
 
-    private void ToggleInfoPane()
+    // I switches between the details and nothing; with no photo selected it still shows the details.
+    private async void ToggleInfoPane()
     {
-        _infoForced = !InfoShown;
+        var show = !InfoShown;
+        await SetSidePaneAsync(show ? SidePane.Info : SidePane.Off);
+        _infoForced = show ? true : null;
         _panesHidden = _chromeHidden = false;
         ApplyChrome();
+    }
+
+    /// <summary>What the pane right of the photos shows, as chosen with the switch above it.</summary>
+    private enum SidePane { Info, Map, Off }
+
+    // The details come and go with the selection; the map stays; off keeps the photos at full width.
+    private SidePane _sidePane = SidePane.Info;
+
+    private async void SidePaneSwitch_Click(object sender, RoutedEventArgs e) =>
+        await SetSidePaneAsync(sender == MapToggle ? SidePane.Map : sender == PaneOffToggle ? SidePane.Off : SidePane.Info);
+
+    private async Task SetSidePaneAsync(SidePane pane)
+    {
+        _sidePane = pane;
+        var map = pane == SidePane.Map;
+        InfoToggle.IsChecked = pane == SidePane.Info;
+        PaneOffToggle.IsChecked = pane == SidePane.Off;
+        var mapChanged = MapToggle.IsChecked != map;
+        MapToggle.IsChecked = map;
+        _infoForced = null;
+        if (mapChanged)
+            await ApplyMapLayoutAsync();
+        else
+            ApplyChrome();
     }
 
     // ---- Motion ----
