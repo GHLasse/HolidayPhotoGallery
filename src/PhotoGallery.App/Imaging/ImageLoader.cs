@@ -26,6 +26,22 @@ public static class ImageLoader
         return bitmap is null ? null : await ToImageSourceAsync(bitmap);
     }
 
+    /// <summary>The same thumbnail as a JPEG file's bytes, e.g. for the map's web page; null when Windows has none.</summary>
+    public static Task<byte[]?> LoadShellThumbnailJpegAsync(string path, uint size) => Task.Run(async () =>
+    {
+        using var bitmap = await ReadShellThumbnailAsync(path, size);
+        if (bitmap is null)
+            return null;
+        using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, stream);
+        encoder.SetSoftwareBitmap(SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore));
+        await encoder.FlushAsync();
+        var bytes = new byte[stream.Size];
+        stream.Seek(0);
+        await stream.AsStreamForRead().ReadExactlyAsync(bytes);
+        return (byte[]?)bytes;
+    });
+
     private static async Task<SoftwareBitmap?> ReadShellThumbnailAsync(string path, uint size)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);

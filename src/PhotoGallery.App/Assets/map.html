@@ -16,6 +16,8 @@
   #search input { flex: 1; padding: 6px 8px; border: 1px solid #8a8a8a; border-radius: 4px; font: inherit; font-size: 14px; }
   #search button { padding: 6px 10px; border: 1px solid #8a8a8a; border-radius: 4px; background: #fff; font: inherit; font-size: 14px; cursor: pointer; }
   #message { position: absolute; z-index: 1000; bottom: 24px; left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
+  .preview img { display: block; max-width: 240px; max-height: 240px; border-radius: 4px; cursor: pointer; }
+  .preview div { margin-top: 4px; font-size: 12px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
   #offline { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 14px; color: #555; }
 </style>
 </head>
@@ -32,7 +34,9 @@
 //   from the app: {type:"photos", photos:[{path,name,lat,lon}]}, {type:"selection", paths:[...], fit:true|false},
 //                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on},
 //                 {type:"find", q} (search for a place and go to the first found), {type:"goto", index} (another one found)
-//   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]}
+//                 {type:"preview", path, src} (the picture of the photo clicked on the whole-library map)
+//   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
+//                 {type:"open", path} (the picture in the preview was clicked)
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
 const lang = new URLSearchParams(location.search).get("lang") || "en";
@@ -174,6 +178,29 @@ function start() {
     else if (points.length > 1) map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
   }
 
+  // The picture of a photo clicked on the whole-library map, in a bubble above its dot.
+  let preview = null, previewPath = null;
+  function previewContent(name, src) {
+    const box = document.createElement("div");
+    box.className = "preview";
+    if (src) {
+      const img = document.createElement("img");
+      img.src = src;
+      img.title = name;
+      img.addEventListener("click", () => send({ type: "open", path: previewPath }));
+      box.appendChild(img);
+    }
+    const label = document.createElement("div");
+    label.textContent = name;
+    box.appendChild(label);
+    return box;
+  }
+  function showPreview(p, at) {
+    previewPath = p.path;
+    preview = L.popup({ offset: [0, -4], maxWidth: 260 }).setLatLng(at).setContent(previewContent(p.name, null)).openOn(map);
+    preview.photoName = p.name;
+  }
+
   if (host) {
     host.addEventListener("message", e => {
       const m = e.data;
@@ -187,6 +214,8 @@ function start() {
           marker.once("mouseover", () => marker.bindTooltip(p.name).openTooltip());
           marker.on("click", ev => {
             send({ type: "select", path: p.path, add: ev.originalEvent.ctrlKey });
+            // Over the whole library the photo itself shows above its dot; the app sends its picture.
+            if (!placing) showPreview(p, marker.getLatLng());
           });
           marker.addTo(photoLayer);
           markers.set(p.path, marker);
@@ -205,6 +234,9 @@ function start() {
         if (!placing) setPin(null);
         // Over the whole library the app's search box finds places; beside the photos this one sets the pin.
         document.getElementById("search").style.display = placing ? "flex" : "none";
+      } else if (m.type === "preview") {
+        if (preview && preview.isOpen() && m.path === previewPath && m.src)
+          preview.setContent(previewContent(preview.photoName, m.src));
       } else if (m.type === "find") {
         findPlace(m.q);
       } else if (m.type === "goto") {
