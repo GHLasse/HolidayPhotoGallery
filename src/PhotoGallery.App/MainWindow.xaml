@@ -627,6 +627,12 @@
                                 <FontIcon Glyph="&#xE753;" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="SharePhotosItem" Text="{local:Loc Text='Share…'}" Click="Share_Click"
+                                        ToolTipService.ToolTip="{local:Loc Text='Send the photos with another app or to a nearby PC, as Share does in File Explorer'}">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72D;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </GridView.ContextFlyout>
                 <!-- The slot size follows the zoom slider (MainWindow.Zoom.cs); the tiles stretch to fill it. -->
@@ -924,6 +930,7 @@
                             <MenuFlyout>
                                 <MenuFlyoutItem Text="{local:Loc Text='Upload to Google Photos'}" Click="UploadPhotosToGoogle_Click" />
                                 <MenuFlyoutItem Text="{local:Loc Text='Upload to OneDrive'}" Click="UploadPhotosToOneDrive_Click" />
+                                <MenuFlyoutItem Text="{local:Loc Text='Share…'}" Click="Share_Click" />
                             </MenuFlyout>
                         </AppBarButton.Flyout>
                     </AppBarButton>
@@ -1315,6 +1322,12 @@
                             <MenuFlyoutItem Text="{local:Loc Text='Upload to OneDrive'}" Click="UploadPhotosToOneDrive_Click">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE753;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Share…'}" Click="Share_Click"
+                                            ToolTipService.ToolTip="{local:Loc Text='Send the photos with another app or to a nearby PC, as Share does in File Explorer'}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE72D;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
