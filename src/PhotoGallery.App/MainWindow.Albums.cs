@@ -133,6 +133,7 @@ public sealed partial class MainWindow
         UploadPhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to Google Photos", photos.Count) : Tr("Upload to Google Photos");
         UploadOneDrivePhotosItem.IsEnabled = photos.Count > 0;
         UploadOneDrivePhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to OneDrive", photos.Count) : Tr("Upload to OneDrive");
+        SharePhotosItem.IsEnabled = photos.Count > 0;
     }
 
     // The viewer's menu: the photo being looked at is the grid's selection.

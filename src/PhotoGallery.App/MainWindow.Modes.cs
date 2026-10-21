@@ -62,6 +62,7 @@ public sealed partial class MainWindow
         var people = workspace == Workspace.People;
         PeoplePage.Visibility = people ? Visibility.Visible : Visibility.Collapsed;
         PhotoArea.Visibility = people ? Visibility.Collapsed : Visibility.Visible;
+        SyncSearchBox();
         ApplyChrome(); // the People page has no use for the filter bar
         await ApplyMapLayoutAsync();
         if (people)
@@ -98,7 +99,7 @@ public sealed partial class MainWindow
     private async Task ApplyMapLayoutAsync()
     {
         var full = _workspace == Workspace.Map;
-        var open = full || (_workspace == Workspace.Library && MapToggle.IsChecked == true);
+        var open = full || MapBeside;
         // Beside the grid the map sits in the info pane's column (ApplyChrome); in the Map workspace it
         // takes the photo area's place as well.
         Grid.SetColumn(MapView, full ? 2 : 4);
@@ -113,8 +114,6 @@ public sealed partial class MainWindow
         // The selection bar sits over the grid; in the Map workspace there is no grid to sit on.
         _selectionBarAllowed = !full && _workspace != Workspace.Albums;
         ShowSelectionBar(PhotoGrid.SelectedItems.Count > 0);
-        SidePaneSwitch.IsHitTestVisible = !full;
-        SidePaneSwitch.Opacity = full ? 0.4 : 1;
         if (!open)
             return;
         await MapView.StartAsync();
@@ -136,6 +135,139 @@ public sealed partial class MainWindow
         PeopleEmptyHint.Visibility = people.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var person in people)
             PeopleCards.Children.Add(PersonCard(person));
+        FilterPeopleCards();
+    }
+
+    // ---- The search box: photos in the Library, people on the People page, albums, places on the Map page ----
+
+    private string _peopleQuery = "", _mapQuery = "", _albumQuery = "";
+    private bool _settingSearchText;
+
+    // In the Library it searches the photos (names, captions and tags), a moment after typing stops.
+    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
+    {
+        if (_settingSearchText)
+            return;
+        switch (_workspace)
+        {
+            case Workspace.People:
+                _peopleQuery = sender.Text;
+                FilterPeopleCards();
+                break;
+            case Workspace.Albums:
+                _albumQuery = sender.Text;
+                ViewModel.AlbumFilter = sender.Text;
+                break;
+            case Workspace.Map:
+                _mapQuery = sender.Text;
+                if (e.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
+                    SuggestPlaces(sender.Text);
+                break;
+            default:
+                ViewModel.SearchText = sender.Text;
+                break;
+        }
+    }
+
+    // Enter on the People page opens the first person found; on the Map page it finds the place.
+    private void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs e)
+    {
+        if (_workspace == Workspace.People &&
+            PeopleCards.Children.OfType<Button>().FirstOrDefault(b => b.Visibility == Visibility.Visible) is { } card)
+            (card.Tag as Action)?.Invoke();
+        else if (_workspace == Workspace.Map)
+        {
+            if (e.ChosenSuggestion is PlaceSuggestion { Found: { } index })
+                MapView.GoToPlace(index);
+            else if (e.ChosenSuggestion is PlaceSuggestion chosen)
+                MapView.FindPlace(chosen.Query);
+            else if (!string.IsNullOrWhiteSpace(e.QueryText))
+                MapView.FindPlace(e.QueryText);
+        }
+    }
+
+    /// <summary>
+    /// A place offered under the search box on the Map page: one of the places in the photos while typing,
+    /// or, after Enter, one of the places OpenStreetMap found (<see cref="Found"/> is its number).
+    /// </summary>
+    private sealed record PlaceSuggestion(string Text, string Query, int? Found = null)
+    {
+        public override string ToString() => Text;
+    }
+
+    // While typing, the countries and cities of the photos come up; OpenStreetMap is asked only on Enter,
+    // as its rules ask (no searching on every key).
+    private void SuggestPlaces(string text)
+    {
+        var query = text.Trim();
+        var places = query.Length == 0 ? [] : ViewModel.Places
+            .SelectMany(country => country.Children.Prepend(country))
+            .Where(p => !p.IsNoPlace && NameSearch.Matches(p.Title, query))
+            .Select(p => p.City is null ? p.Country! : $"{p.City}, {p.Country}")
+            .Select(name => new PlaceSuggestion(name, name))
+            .Take(8)
+            .ToList();
+        SearchBox.ItemsSource = places;
+    }
+
+    private void MapView_PlacesFound(string query, IReadOnlyList<string> names)
+    {
+        if (_workspace != Workspace.Map)
+            return;
+        if (names.Count == 0)
+        {
+            ViewModel.Warn(Tr("No place found for “{0}”.", query));
+            return;
+        }
+        // The map went to the first; the others stay offered in case another was meant.
+        SearchBox.ItemsSource = names.Count > 1 ? names.Select((name, i) => new PlaceSuggestion(name, query, i)).ToList() : null;
+        SearchBox.IsSuggestionListOpen = names.Count > 1;
+    }
+
+    /// <summary>Puts the search text of the page shown in the box, with a hint that says what it finds there.</summary>
+    private void SyncSearchBox()
+    {
+        var text = _workspace switch
+        {
+            Workspace.People => _peopleQuery,
+            Workspace.Map => _mapQuery,
+            Workspace.Albums => _albumQuery,
+            _ => ViewModel.SearchText,
+        };
+        _settingSearchText = true;
+        try
+        {
+            if (SearchBox.Text != text)
+                SearchBox.Text = text;
+        }
+        finally
+        {
+            _settingSearchText = false;
+        }
+        SearchBox.ItemsSource = null;
+        SearchBox.PlaceholderText = _workspace switch
+        {
+            Workspace.People => Tr("Search people (Ctrl+E)"),
+            Workspace.Map => Tr("Find a place (Ctrl+E)"),
+            Workspace.Albums => Tr("Search albums (Ctrl+E)"),
+            _ => Tr("Search names, captions and tags (Ctrl+E)"),
+        };
+    }
+
+    private void FilterPeopleCards()
+    {
+        var query = _peopleQuery.Trim();
+        var shown = 0;
+        foreach (var card in PeopleCards.Children.OfType<Button>())
+        {
+            var match = query.Length == 0 || NameSearch.Matches(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(card), query);
+            card.Visibility = match ? Visibility.Visible : Visibility.Collapsed;
+            if (match)
+                shown++;
+        }
+        var none = shown == 0 && query.Length > 0 && PeopleCards.Children.Count > 0;
+        PeopleNoMatch.Text = none ? Tr("Nobody whose name starts with “{0}”.", query) : "";
+        PeopleNoMatch.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private Button PersonCard(TagFilterViewModel person)
@@ -181,7 +313,7 @@ public sealed partial class MainWindow
         button.PointerExited += Tile_PointerExited;
         // All of the person's photos, wherever they are: the folder, month or place browsed before and the
         // other filters are left behind.
-        button.Click += (_, _) =>
+        void Open()
         {
             FolderTree.SelectedItem = null;
             ClearAllFilters();
@@ -189,7 +321,9 @@ public sealed partial class MainWindow
             ViewModel.SelectedFolder = null;
             ViewModel.ShowOnlyPerson(person);
             ShowWorkspace(Workspace.Library);
-        };
+        }
+        button.Click += (_, _) => Open();
+        button.Tag = (Action)Open; // for Enter in the search box
         return button;
     }
 }

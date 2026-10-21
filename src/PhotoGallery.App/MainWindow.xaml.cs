@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window
             RefreshMap(fit: false);
         };
         MapView.PhotoClicked += MapPhotoClicked;
+        MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
@@ -89,6 +90,8 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.Cameras) or nameof(MainViewModel.CameraIndex))
                 SyncCameraCombo();
+            else if (e.PropertyName is nameof(MainViewModel.SearchText))
+                SyncSearchBox();
             else if (e.PropertyName is nameof(MainViewModel.SortIndex))
                 SortCombo.SelectedIndex = ViewModel.SortIndex;
             else if (e.PropertyName is nameof(MainViewModel.FavouriteApps))
@@ -435,7 +438,7 @@ public sealed partial class MainWindow : Window
                 break;
             case VirtualKey.M when _workspace == Workspace.Library:
                 e.Handled = true;
-                _ = SetSidePaneAsync(_sidePane == SidePane.Map ? SidePane.Info : SidePane.Map);
+                _ = SetSidePaneAsync(MapBeside ? SidePane.Info : SidePane.Map);
                 break;
         }
     }
@@ -718,7 +721,13 @@ public sealed partial class MainWindow : Window
             if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadTagModelAsync())
                 return;
         }
+        // Unsaved edits in the panel would otherwise be written over the new tags afterwards.
+        if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
+            return;
         await ViewModel.AutoTagAsync(photos);
+        // The details pane shows the new tags at once.
+        if (!ViewModel.Editor.IsDirty)
+            ViewModel.Editor.Load(SelectedPhotos);
     }
 
     private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e)
@@ -932,7 +941,6 @@ public sealed partial class MainWindow : Window
         _viewerItems = ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
-        SyncViewerPaneSwitch();
         ApplyChrome(animate: false); // the details or the map stay beside the photo
         _ = StartViewerMapAsync();
         StartOpenMotion(item, tile);
