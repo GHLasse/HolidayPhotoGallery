@@ -84,6 +84,49 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         Assert.Equal("1", (await _exifTool.RunAsync(["-s3", "-n", "-XMP-digiKam:PickLabel", path])).Output.Trim());
     }
 
+    [ExifToolTheory]
+    [InlineData(".jpg")]
+    [InlineData(".heic")]
+    public async Task Auto_tags_are_normal_tags_with_a_hidden_list_of_which_ones(string extension)
+    {
+        var path = _temp.CopySample(extension);
+        await Service.WriteAsync(path, new MetadataChanges { Tags = ["Italy", "beach", "sea"], AutoTags = ["beach", "sea"] });
+
+        var m = await Service.ReadAsync(path);
+        Assert.Equal(["beach", "Italy", "sea"], m.Tags.Order(StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(["beach", "sea"], m.AutoTags.Order(StringComparer.OrdinalIgnoreCase));
+        // Other programs only see the normal keywords.
+        Assert.Equal("Italy, beach, sea", (await _exifTool!.RunAsync(["-s3", "-XMP-dc:Subject", path])).Output.Trim());
+
+        // A tag removed elsewhere no longer counts as an auto tag.
+        await Service.WriteAsync(path, new MetadataChanges { Tags = ["Italy", "sea"] });
+        Assert.Equal(["sea"], (await Service.ReadAsync(path)).AutoTags);
+
+        await Service.WriteAsync(path, new MetadataChanges { AutoTags = [] });
+        Assert.Empty((await Service.ReadAsync(path)).AutoTags);
+    }
+
+    [ExifToolFact]
+    public async Task Rejecting_replaces_the_flag_and_keeps_the_stars()
+    {
+        var path = _temp.CopySample(".jpg");
+        await Service.WriteAsync(path, new MetadataChanges { Rating = 2, Flagged = true });
+
+        await Service.WriteAsync(path, new MetadataChanges { Rejected = true });
+        var rejected = await Service.ReadAsync(path);
+        Assert.Equal((true, false, 2), (rejected.Rejected, rejected.Flagged, rejected.Rating));
+
+        await Service.WriteAsync(path, new MetadataChanges { Rejected = false });
+        var back = await Service.ReadAsync(path);
+        Assert.Equal((false, false, 2), (back.Rejected, back.Flagged, back.Rating));
+
+        // Windows and Adobe write a reject as rating -1; taking the mark off clears it.
+        await _exifTool!.RunAsync(["-overwrite_original", "-XMP-xmp:Rating=-1", path]);
+        Assert.True((await Service.ReadAsync(path)).Rejected);
+        await Service.WriteAsync(path, new MetadataChanges { Rejected = false });
+        Assert.False((await Service.ReadAsync(path)).Rejected);
+    }
+
     [ExifToolFact]
     public async Task A_temp_file_left_by_an_interrupted_save_does_not_block_saving()
     {

@@ -157,7 +157,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
             _originalTags = counts.Select(c => c.Tag).ToList();
             // Tags on every photo first, then the rest, each in the order they appear.
             Tags = counts.Where(c => c.Count == items.Count).Concat(counts.Where(c => c.Count < items.Count))
-                         .Select(c => new TagBadge(c.Tag, c.Count, items.Count)).ToList();
+                         .Select(c => new TagBadge(c.Tag, c.Count, items.Count, IsAutoOnAll(photos, c.Tag))).ToList();
 
             var captions = photos.Select(p => p.Caption ?? "").Distinct().ToList();
             Caption = captions.Count == 1 ? captions[0] : "";
@@ -224,15 +224,24 @@ public sealed class MetadataEditorViewModel : ObservableObject
         }
 
         ValidationError = null;
+        IReadOnlyList<string>? tags = null, autoTags = null;
+        if (_tagsChanged)
+        {
+            tags = TagList.ApplyBadges(item.Photo.Tags,
+                                       removed: _originalTags.Except(_tags.Select(b => b.Tag), StringComparer.OrdinalIgnoreCase),
+                                       addToAll: _tags.Where(b => b.IsOnAll).Select(b => b.Tag));
+            // A tag the user gives the photo is theirs, even if auto-tagging had added it before.
+            var had = new HashSet<string>(item.Photo.Tags, StringComparer.OrdinalIgnoreCase);
+            var kept = item.Photo.AutoTags.Where(t => had.Contains(t) && tags.Contains(t, StringComparer.OrdinalIgnoreCase)).ToList();
+            if (kept.Count != item.Photo.AutoTags.Count)
+                autoTags = kept;
+        }
         changes = new MetadataChanges
         {
             Caption = _captionChanged ? Caption : null,
             Rating = _ratingChanged ? (Rating < 1 ? 0 : (int)Math.Round(Rating)) : null,
-            Tags = _tagsChanged
-                ? TagList.ApplyBadges(item.Photo.Tags,
-                                      removed: _originalTags.Except(_tags.Select(b => b.Tag), StringComparer.OrdinalIgnoreCase),
-                                      addToAll: _tags.Where(b => b.IsOnAll).Select(b => b.Tag))
-                : null,
+            Tags = tags,
+            AutoTags = autoTags,
             DateTaken = date,
         };
         return true;
@@ -249,6 +258,11 @@ public sealed class MetadataEditorViewModel : ObservableObject
         else if (_items is [var single])
             Details = DescribeSingle(single.Photo);
     }
+
+    /// <summary>Whether auto-tagging added the tag on every one of the photos that have it.</summary>
+    private static bool IsAutoOnAll(IReadOnlyList<Core.Library.IndexedPhoto> photos, string tag) =>
+        photos.Where(p => p.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+              .All(p => p.AutoTags.Contains(tag, StringComparer.OrdinalIgnoreCase));
 
     private void MarkChanged(ref bool flag)
     {

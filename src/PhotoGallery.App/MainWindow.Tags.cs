@@ -90,6 +90,13 @@ public sealed partial class MainWindow
         if (ViewModel.WithoutPeople)
             FilterBadges.Children.Add(Badge(Tr("No people"), false, outlined: false, Tr("Showing photos with nobody named"),
                                             null, Tr("Stop filtering by no people"), () => ViewModel.WithoutPeople = false));
+        if (ViewModel.SelectedPlace is { } place)
+            FilterBadges.Children.Add(Badge(place.IsNoPlace ? Tr("Unknown place") : place.City ?? place.Country!, false, outlined: false,
+                                            place.IsNoPlace ? Tr("Showing photos without place names") : Tr("Showing photos from {0}", place.City ?? place.Country),
+                                            null, Tr("Stop filtering by place"), () => ViewModel.SelectedPlace = null));
+        if (ViewModel.WithoutDate)
+            FilterBadges.Children.Add(Badge(Tr("No date"), false, outlined: false, Tr("Showing photos without a date taken"),
+                                            null, Tr("Stop filtering by no date"), () => ViewModel.WithoutDate = false));
         if (ViewModel.WithoutLocation)
             FilterBadges.Children.Add(Badge(Tr("No location"), false, outlined: false, Tr("Showing photos without a GPS position"),
                                             null, Tr("Stop filtering by no location"), () => ViewModel.WithoutLocation = false));
@@ -107,7 +114,7 @@ public sealed partial class MainWindow
                                             null, Tr("Stop filtering by OneDrive"), () => ViewModel.NotOnOneDriveOnly = false));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
-            FilterBadges.Children.Add(Badge(tag.Tag, AutoTags.IsAuto(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", tag.Tag),
+            FilterBadges.Children.Add(Badge(tag.Tag, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", tag.Tag),
                                             null, Tr("Stop filtering by {0}", tag.Tag), () => tag.IsSelected = false));
         }
         foreach (var person in ViewModel.People.Where(p => p.IsSelected).ToList())

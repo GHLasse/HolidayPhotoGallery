@@ -35,8 +35,10 @@ public sealed class FaceIndexTests : IAsyncLifetime
         return v.Select(x => x / length).ToArray();
     }
 
-    [Fact]
-    public void An_index_from_before_flags_keeps_its_faces()
+    [Theory]
+    [InlineData(5)]
+    [InlineData(6)]
+    public void An_index_from_before_flags_or_auto_tags_keeps_its_faces(int version)
     {
         var path = Path.Combine(_photos.Path, "a.jpg");
         _index!.Upsert([new IndexedPhoto { Path = path, Folder = _photos.Path }]);
@@ -46,7 +48,8 @@ public sealed class FaceIndexTests : IAsyncLifetime
         {
             db.Open();
             using var cmd = db.CreateCommand();
-            cmd.CommandText = "ALTER TABLE photos DROP COLUMN flagged; PRAGMA user_version = 5;";
+            cmd.CommandText = "ALTER TABLE photo_tags DROP COLUMN auto;" +
+                              (version == 5 ? "ALTER TABLE photos DROP COLUMN flagged;" : "") + $"PRAGMA user_version = {version};";
             cmd.ExecuteNonQuery();
         }
 

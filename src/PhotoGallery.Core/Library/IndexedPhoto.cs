@@ -20,9 +20,14 @@ public sealed record IndexedPhoto
 
     public bool Flagged { get; init; }
 
+    public bool Rejected { get; init; }
+
     public string? Caption { get; init; }
 
     public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>The tags auto-tagging added (a part of <see cref="Tags"/>).</summary>
+    public IReadOnlyList<string> AutoTags { get; init; } = [];
 
     public int Orientation { get; init; } = 1;
 
@@ -50,8 +55,10 @@ public sealed record IndexedPhoto
         DateTaken = metadata.DateTaken,
         Rating = metadata.Rating,
         Flagged = metadata.Flagged,
+        Rejected = metadata.Rejected,
         Caption = metadata.Caption,
         Tags = metadata.Tags,
+        AutoTags = metadata.AutoTags,
         Orientation = metadata.Orientation,
         Width = metadata.Width,
         Height = metadata.Height,

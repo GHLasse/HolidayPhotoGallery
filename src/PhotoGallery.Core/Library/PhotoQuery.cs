@@ -24,6 +24,9 @@ public sealed record PhotoQuery
 
     public bool FlaggedOnly { get; init; }
 
+    /// <summary>Only rejected photos, e.g. to check them before they go to the Recycle Bin.</summary>
+    public bool RejectedOnly { get; init; }
+
     /// <summary>Only photos with none of the user's own tags (auto tags don't count, they still need checking).</summary>
     public bool WithoutTags { get; init; }
 
@@ -32,6 +35,18 @@ public sealed record PhotoQuery
 
     /// <summary>Only photos without a GPS position, to place on the map.</summary>
     public bool WithoutLocation { get; init; }
+
+    /// <summary>Only photos without a date taken.</summary>
+    public bool WithoutDate { get; init; }
+
+    /// <summary>Only photos from this country (as written in the file's place names).</summary>
+    public string? Country { get; init; }
+
+    /// <summary>Only photos from this city.</summary>
+    public string? City { get; init; }
+
+    /// <summary>Only photos without a country in their place names.</summary>
+    public bool WithoutPlace { get; init; }
 
     /// <summary>Only photos from this camera (as in <see cref="IndexedPhoto.Camera"/>).</summary>
     public string? Camera { get; init; }

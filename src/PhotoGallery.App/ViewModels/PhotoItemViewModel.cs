@@ -29,6 +29,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
             {
                 OnPropertyChanged(nameof(Stars));
                 OnPropertyChanged(nameof(FlagVisibility));
+                OnPropertyChanged(nameof(RejectVisibility));
+                OnPropertyChanged(nameof(ThumbnailOpacity));
                 OnPropertyChanged(nameof(Tooltip));
             }
         }
@@ -58,6 +60,12 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
 
     public Microsoft.UI.Xaml.Visibility FlagVisibility =>
         Photo.Flagged ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility RejectVisibility =>
+        Photo.Rejected ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    /// <summary>Rejected photos are dimmed in the grid, like in Lightroom.</summary>
+    public double ThumbnailOpacity => Photo.Rejected ? 0.4 : 1;
 
     public string Tooltip
     {

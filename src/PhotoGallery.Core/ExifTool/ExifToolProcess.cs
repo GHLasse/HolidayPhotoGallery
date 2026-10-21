@@ -31,6 +31,9 @@ public sealed class ExifToolProcess : IAsyncDisposable, IDisposable
             StandardOutputEncoding = Utf8NoBom,
             StandardErrorEncoding = Utf8NoBom,
         };
+        // The config must come first; it teaches ExifTool the app's own XMP fields.
+        psi.ArgumentList.Add("-config");
+        psi.ArgumentList.Add(AppNamespace.WriteConfig());
         psi.ArgumentList.Add("-stay_open");
         psi.ArgumentList.Add("True");
         psi.ArgumentList.Add("-@");

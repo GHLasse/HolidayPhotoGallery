@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
         SetUpZoom();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
+        CompareLayer.RejectRequested += item => ViewModel.ToggleRejectAsync([item]);
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
 
@@ -186,8 +187,38 @@ public sealed partial class MainWindow : Window
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
     {
         FolderTree.SelectedItem = null;
+        ClearBrowseTrees();
         ViewModel.IsAlbumView = false;
         ViewModel.SelectedFolder = null;
+    }
+
+    // A year, month, country or city is a place to browse, like a folder: picking one replaces the others.
+    private void DateTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is not DateNodeViewModel node)
+            return;
+        FolderTree.SelectedItem = null;
+        PlaceTree.SelectedItem = null;
+        ViewModel.SelectedPlace = null;
+        ViewModel.ShowDate(node);
+    }
+
+    private void PlaceTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is not PlaceNodeViewModel node)
+            return;
+        FolderTree.SelectedItem = null;
+        DateTree.SelectedItem = null;
+        ViewModel.ClearDateFromTree();
+        ViewModel.ShowPlace(node);
+    }
+
+    private void ClearBrowseTrees()
+    {
+        DateTree.SelectedItem = null;
+        PlaceTree.SelectedItem = null;
+        ViewModel.ClearDateFromTree();
+        ViewModel.SelectedPlace = null;
     }
 
     private void SortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -201,9 +232,12 @@ public sealed partial class MainWindow : Window
         ViewModel.SearchText = "";
         ViewModel.MinRating = 0;
         ViewModel.FlaggedOnly = false;
+        ViewModel.RejectedOnly = false;
         ViewModel.WithoutTags = false;
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
+        ViewModel.WithoutDate = false;
+        ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;
         ViewModel.OnOneDriveOnly = false;
@@ -264,13 +298,19 @@ public sealed partial class MainWindow : Window
             {
                 e.Handled = true;
                 await ViewModel.SetRatingAsync(item, stars);
-                UpdateViewerTitle();
+                AfterMarkInViewer();
             }
             else if (e.Key == VirtualKey.P)
             {
                 e.Handled = true;
                 await ViewModel.ToggleFlagAsync([item]);
-                UpdateViewerTitle();
+                AfterMarkInViewer();
+            }
+            else if (e.Key == VirtualKey.X)
+            {
+                e.Handled = true;
+                await ViewModel.ToggleRejectAsync([item]);
+                AfterMarkInViewer();
             }
             else if (e.Key == VirtualKey.G)
             {
@@ -294,6 +334,10 @@ public sealed partial class MainWindow : Window
             case VirtualKey.P:
                 e.Handled = true;
                 await ViewModel.ToggleFlagAsync(selected);
+                break;
+            case VirtualKey.X:
+                e.Handled = true;
+                await ViewModel.ToggleRejectAsync(selected);
                 break;
             case VirtualKey.E when selected.Count > 0:
                 e.Handled = true;
@@ -340,6 +384,7 @@ public sealed partial class MainWindow : Window
             ("M", Tr("Show or hide the map")),
             ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
             ("P", Tr("Flag or unflag the selected photos")),
+            ("X", Tr("Reject the selected photos, or take the mark off")),
             ("← →", Tr("Previous or next photo in the viewer and compare")),
             ("Tab", Tr("Next photo in compare")),
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
@@ -395,6 +440,31 @@ public sealed partial class MainWindow : Window
     {
         var photos = SelectedPhotos;
         FlagButton.IsChecked = photos.Count > 0 && photos.All(p => p.Photo.Flagged);
+        RejectButton.IsChecked = photos.Count > 0 && photos.All(p => p.Photo.Rejected);
+    }
+
+    private async void Reject_Click(object sender, RoutedEventArgs e) => await ViewModel.ToggleRejectAsync(SelectedPhotos);
+
+    private async void RecycleRejected_Click(object sender, RoutedEventArgs e)
+    {
+        var rejected = ViewModel.ShownRejectedPhotos;
+        if (rejected.Count == 0)
+            return;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Move rejected photos to the Recycle Bin?"),
+            Content = new TextBlock
+            {
+                Text = Tr("{0:N0} rejected photo(s) shown here, with their earlier versions, go to the Recycle Bin. You can restore them from there until it is emptied.", rejected.Count),
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = Tr("Move to Recycle Bin"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
+            await ViewModel.RecycleRejectedAsync();
     }
 
     // ---- Banners ----
@@ -419,6 +489,16 @@ public sealed partial class MainWindow : Window
             if (notice.Severity == NoticeSeverity.Info && ThemeBrush("SystemFillColorAttentionBackgroundBrush") is { } blue)
                 bar.Background = blue;
             bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
+            if (notice.Undo is { } undo)
+            {
+                var button = new Button { Content = Tr("Undo") };
+                button.Click += async (_, _) =>
+                {
+                    ViewModel.CloseNotice(notice);
+                    await undo();
+                };
+                bar.ActionButton = button;
+            }
             NoticePanel.Children.Add(bar);
         }
         NoticePanel.Margin = new Thickness(12, 0, 12, ViewModel.Notices.Count > 0 ? 8 : 0);
@@ -428,6 +508,7 @@ public sealed partial class MainWindow : Window
     {
         if (args.InvokedItem is FolderNodeViewModel folder)
         {
+            ClearBrowseTrees();
             ViewModel.IsAlbumView = false;
             ViewModel.SelectedFolder = folder;
         }
@@ -721,7 +802,7 @@ public sealed partial class MainWindow : Window
     {
         if (ViewerItem is not { } item)
             return;
-        var marks = (item.Photo.Rating > 0 ? "   " + new string('★', item.Photo.Rating) : "") + (item.Photo.Flagged ? "   ⚑ " + Tr("Flagged") : "");
+        var marks = (item.Photo.Rating > 0 ? "   " + new string('★', item.Photo.Rating) : "") + (item.Photo.Flagged ? "   ⚑ " + Tr("Flagged") : "") + (item.Photo.Rejected ? "   ✕ " + Tr("Rejected") : "");
         ViewerTitle.Text = Tr("{0}   ({1} of {2}){3}", item.FileName, _viewerIndex + 1, _viewerItems.Count, marks);
     }
 
@@ -739,6 +820,17 @@ public sealed partial class MainWindow : Window
         if (_viewerIndex > 0)
         {
             _viewerIndex--;
+            _ = ShowViewerImageAsync();
+        }
+    }
+
+    // With auto-advance on (Settings › Gallery), a rating, flag or reject moves on to the next photo.
+    private void AfterMarkInViewer()
+    {
+        UpdateViewerTitle();
+        if (ViewModel.AutoAdvance && _viewerIndex < _viewerItems.Count - 1)
+        {
+            _viewerIndex++;
             _ = ShowViewerImageAsync();
         }
     }
@@ -877,7 +969,7 @@ public sealed partial class MainWindow : Window
             {
                 new TextBlock
                 {
-                    Text = Tr("Auto-tagging only uses tags from this list and writes them as ai/…, so you can tell them apart from your own tags and remove them together. Your own tags are never changed."),
+                    Text = Tr("Auto-tagging only uses tags from this list. They are written as normal tags that other apps show as usual, with a hidden note in the file, so this app can tell them apart from your own tags and remove them together. Your own tags are never changed."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 language,
@@ -892,6 +984,11 @@ public sealed partial class MainWindow : Window
         foreach (var (_, label) in PhotoSort.All)
             defaultSort.Items.Add(label);
         defaultSort.SelectedIndex = ViewModel.DefaultSortIndex;
+        var autoAdvance = new ToggleSwitch
+        {
+            Header = Tr("Move to the next photo after rating it in the viewer (also after P and X)"),
+            IsOn = ViewModel.AutoAdvance,
+        };
         var gallery = new StackPanel
         {
             Spacing = 12,
@@ -904,6 +1001,7 @@ public sealed partial class MainWindow : Window
                     Text = Tr("Each folder opens in this order. The order box in the filter bar changes it for the folder you are looking at."),
                     TextWrapping = TextWrapping.Wrap,
                 },
+                autoAdvance,
             },
         };
 
@@ -1070,6 +1168,7 @@ public sealed partial class MainWindow : Window
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
+        ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
         ViewModel.SaveFavouriteApps(chosenApps());
         if (backUp.IsOn != ViewModel.BackUpBeforeOpenWith)
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);

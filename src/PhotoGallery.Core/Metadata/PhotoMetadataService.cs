@@ -24,7 +24,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
         "-XMP-photoshop:Country", "-XMP-iptcCore:CountryCode", "-XMP-photoshop:State", "-XMP-photoshop:City", "-XMP-iptcCore:Location",
         "-IPTC:Country-PrimaryLocationName", "-IPTC:Province-State", "-IPTC:City", "-IPTC:Sub-location",
-        $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}",
+        $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}", $"-{AppNamespace.AutoTagsField}",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -209,6 +209,13 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        if (changes.AutoTags is { } autoTags)
+        {
+            args.Add($"-{AppNamespace.AutoTagsField}=");
+            foreach (var tag in TagList.Normalize(autoTags))
+                args.Add($"-{AppNamespace.AutoTagsField}={tag}");
+        }
+
         if (changes.Rating is { } rating)
         {
             rating = Math.Clamp(rating, 0, 5);
@@ -230,6 +237,18 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         // other programs can read. Unflagging only removes that value, so a reject mark from elsewhere stays.
         if (changes.Flagged is { } flagged)
             args.Add(flagged ? "-XMP-digiKam:PickLabel=3" : "-XMP-digiKam:PickLabel-=3");
+
+        // A reject is digiKam's pick label "rejected" (1), which replaces the flag; the star rating stays.
+        // Windows and Adobe write a reject as rating -1, so taking the mark off clears that too.
+        if (changes.Rejected is { } rejected)
+        {
+            if (rejected)
+                args.Add("-XMP-digiKam:PickLabel=1");
+            else if (changes.Rating is null)
+                args.AddRange(["-XMP-digiKam:PickLabel-=1", "-XMP-xmp:Rating-=-1", "-IFD0:Rating-=-1"]);
+            else
+                args.Add("-XMP-digiKam:PickLabel-=1");
+        }
 
         if (changes.Caption is { } caption)
         {
@@ -402,8 +421,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         {
             Path = path,
             Tags = TagList.Normalize(tags),
+            // Only tags the photo still has; the user may have removed one in another app.
+            AutoTags = TagList.Normalize(GetList(item, AppNamespace.AutoTagsField)
+                .Where(t => tags.Contains(t, StringComparer.OrdinalIgnoreCase))),
             Rating = Math.Clamp(rating, 0, 5),
             Flagged = GetNumber(item, "XMP-digiKam:PickLabel") == 3,
+            Rejected = GetNumber(item, "XMP-digiKam:PickLabel") == 1 || rating < 0,
             Caption = caption,
             DateTaken = ParseDateTaken(item),
             Orientation = Orientation.Normalize(orientation),

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Tagging;
 using static PhotoGallery.Core.Localization.Strings;
@@ -24,6 +25,8 @@ public sealed partial class MainWindow
         var list = new ListView { SelectionMode = ListViewSelectionMode.None };
         var working = new ProgressBar { IsIndeterminate = true, Visibility = Visibility.Collapsed, Foreground = ThemeBrush("AccentFillColorDefaultBrush") };
         var workingText = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+        var undo = new HyperlinkButton { Content = Tr("Undo"), Padding = new Thickness(0), Visibility = Visibility.Collapsed };
+        TagChange? lastChange = null;
         IReadOnlyList<TagCount> all = [];
 
         async Task ReloadAsync()
@@ -45,8 +48,14 @@ public sealed partial class MainWindow
         }
 
         // Rename or remove, writing into every photo; the list is disabled meanwhile and shows the progress.
-        async Task ChangeAsync(string tag, string? newName)
+        Task ChangeAsync(string tag, string? newName) => RunAsync(async () =>
         {
+            lastChange = await ViewModel.RenameTagEverywhereAsync(tag, newName);
+        });
+
+        async Task RunAsync(Func<Task> work)
+        {
+            undo.Visibility = Visibility.Collapsed;
             list.IsEnabled = false;
             search.IsEnabled = false;
             working.Visibility = Visibility.Visible;
@@ -58,7 +67,7 @@ public sealed partial class MainWindow
             ViewModel.PropertyChanged += Progress;
             try
             {
-                await ViewModel.RenameTagEverywhereAsync(tag, newName);
+                await work();
             }
             finally
             {
@@ -67,15 +76,22 @@ public sealed partial class MainWindow
                 workingText.Text = ViewModel.Notices.FirstOrDefault()?.Message ?? "";
                 list.IsEnabled = true;
                 search.IsEnabled = true;
+                undo.Visibility = lastChange is { Undone: false } ? Visibility.Visible : Visibility.Collapsed;
             }
             await ReloadAsync();
         }
+
+        undo.Click += async (_, _) =>
+        {
+            if (lastChange is { } change)
+                await RunAsync(() => ViewModel.UndoTagChangeAsync(change));
+        };
 
         FrameworkElement Row(TagCount tag)
         {
             UIElement icon = tag.IsGroup
                 ? new FontIcon { Glyph = "", FontSize = 14 }
-                : AutoTags.IsAuto(tag.Tag) ? new Controls.AiSparkle { Width = 14, Height = 14 } : new FontIcon { Glyph = "", FontSize = 14 };
+                : tag.IsAuto || AutoTags.IsAuto(tag.Tag) ? new Controls.AiSparkle { Width = 14, Height = 14 } : new FontIcon { Glyph = "", FontSize = 14 };
             var name = new TextBlock
             {
                 Text = tag.IsGroup ? Tr("{0} (group)", tag.Tag) : tag.Tag,
@@ -193,7 +209,7 @@ public sealed partial class MainWindow
         var intro = new TextBlock
         {
             Text = Tr("Rename, merge or remove tags in all your photos at once. Changes are written into the photos straight away. ") +
-                   Tr("A group such as “ai” holds the tags written as “ai/…”."),
+                   Tr("Tags with a sparkle were added by auto-tagging."),
             TextWrapping = TextWrapping.Wrap,
             Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
         };
@@ -201,12 +217,18 @@ public sealed partial class MainWindow
         Grid.SetRow(bar, 1);
         Grid.SetRow(list, 2);
         Grid.SetRow(working, 3);
-        Grid.SetRow(workingText, 4);
+        var result = new Grid { ColumnSpacing = 12 };
+        result.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        result.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(undo, 1);
+        result.Children.Add(workingText);
+        result.Children.Add(undo);
+        Grid.SetRow(result, 4);
         page.Children.Add(intro);
         page.Children.Add(bar);
         page.Children.Add(list);
         page.Children.Add(working);
-        page.Children.Add(workingText);
+        page.Children.Add(result);
         return page;
     }
 
