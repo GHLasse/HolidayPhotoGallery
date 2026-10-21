@@ -315,7 +315,7 @@ public sealed partial class MainWindow
     private void LimitNavTrees()
     {
         var trees = new FrameworkElement[] { FoldersContent, DateTree, PlaceTree };
-        var height = Root.RowDefinitions[3].ActualHeight;
+        var height = NavRowSizer.ActualHeight;
         if (height <= 0)
             return;
         double used = 0;
@@ -366,7 +366,9 @@ public sealed partial class MainWindow
     // Opening a branch or scrolling changes what lies below; the fade follows.
     private void WatchNavTrees()
     {
-        Root.SizeChanged += (_, _) => LimitNavTrees();
+        // The row also shrinks when the bars above it grow, without the window changing size; the pane itself
+        // doesn't notice when its content is taller than the row, so a filler of the row tells.
+        NavRowSizer.SizeChanged += (_, _) => LimitNavTrees();
         foreach (var tree in new FrameworkElement[] { FolderTree, DateTree, PlaceTree })
             tree.Loaded += (_, _) =>
             {

@@ -339,6 +339,8 @@
         <!-- Navigation: folders (tags and people are in the filter bar) -->
         <!-- The folder pane: All photos, Folders, Dates and Places, each under a heading with its icon. Folded,
              only the icons remain, in the same places (NavRail). -->
+        <!-- Fills the pane's row, so its height is known even when the pane's content is taller (MainWindow.Frame.cs). -->
+        <Border x:Name="NavRowSizer" Grid.Row="3" Grid.Column="0" IsHitTestVisible="False" />
         <Grid x:Name="NavPane" Grid.Row="3" Grid.Column="0" Padding="8,0,0,52" RowSpacing="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
