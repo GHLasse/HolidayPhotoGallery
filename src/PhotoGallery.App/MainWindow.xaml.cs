@@ -71,7 +71,11 @@ public sealed partial class MainWindow : Window
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
-        Closed += (_, _) => ViewModel.Dispose();
+        Closed += (_, _) =>
+        {
+            ViewModel.SaveLastPlace(CurrentPlace());
+            ViewModel.Dispose();
+        };
         AppWindow.Closing += AppWindow_Closing;
         ViewModel.Editor.PropertyChanged += (_, e) =>
         {
@@ -130,19 +134,53 @@ public sealed partial class MainWindow : Window
         Root.ActualThemeChanged += Root_ActualThemeChanged;
         ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
         _ = ViewModel.InitializeAsync();
-        Root.Loaded += async (_, _) => await StartOnAlbumsAsync();
+        Root.Loaded += (_, _) => OpenStartPage();
     }
 
-    // The app opens on the albums, the way into the trips; without any albums yet, on all photos.
-    private async Task StartOnAlbumsAsync()
+    // The start page chosen in Settings › App: the albums (the way into the trips), all photos with the
+    // folders open, or where the app was when it closed.
+    private void OpenStartPage()
     {
-        await ViewModel.LoadAlbumsAsync();
-        if (ViewModel.Albums.Count > 0 && _workspace == Workspace.Library && ViewModel.SelectedFolder is null)
+        var place = ViewModel.StartPage switch
         {
-            ClearBrowseTrees();
-            ShowWorkspace(Workspace.Albums);
+            "folders" => "folders",
+            "last" => ViewModel.LastPlace ?? "albums",
+            _ => "albums",
+        };
+        if (place.StartsWith("folder:", StringComparison.Ordinal) && place[7..] is var folder)
+        {
+            if (Directory.Exists(folder))
+                ViewModel.ShowFolder(folder);
+            return;
+        }
+        switch (place)
+        {
+            case "albums":
+                // With no albums yet the album view says how to make one, with a button to the folders.
+                ClearBrowseTrees();
+                ShowWorkspace(Workspace.Albums);
+                break;
+            case "folders":
+                SetNavFolded(false);
+                OpenNavSection(FoldersHeading, true);
+                break;
+            case "map":
+                ShowWorkspace(Workspace.Map);
+                break;
+            case "people":
+                ShowWorkspace(Workspace.People);
+                break;
         }
     }
+
+    // Where the app is, for the start page "Where I left off".
+    private string CurrentPlace() => _workspace switch
+    {
+        Workspace.Albums => "albums",
+        Workspace.Map => "map",
+        Workspace.People => "people",
+        _ => ViewModel.SelectedFolder is { } folder ? "folder:" + folder.FullPath : "all",
+    };
 
     // The list always goes in before the index; a combo box throws when given an index it doesn't have.
     private void SyncTimeZoneCombo()
@@ -1234,6 +1272,10 @@ public sealed partial class MainWindow : Window
         };
 
         // Gallery tab
+        var startPage = new ComboBox { Header = Tr("Open the app on"), MinWidth = 320 };
+        foreach (var (_, label) in MainViewModel.StartPages)
+            startPage.Items.Add(label);
+        startPage.SelectedIndex = ViewModel.StartPageIndex;
         var defaultSort = new ComboBox { Header = Tr("Order of the photos in every folder"), MinWidth = 320 };
         foreach (var (_, label) in PhotoSort.All)
             defaultSort.Items.Add(label);
@@ -1259,6 +1301,7 @@ public sealed partial class MainWindow : Window
             Visibility = Visibility.Collapsed,
             Children =
             {
+                startPage,
                 defaultSort,
                 new TextBlock
                 {
@@ -1520,6 +1563,8 @@ public sealed partial class MainWindow : Window
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
         if (crop.SelectedIndex >= 0)
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
+        if (startPage.SelectedIndex >= 0)
+            ViewModel.SaveStartPage(startPage.SelectedIndex);
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);

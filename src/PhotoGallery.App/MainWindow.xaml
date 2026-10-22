@@ -745,9 +745,15 @@
                         Content="{local:Loc Text='Clear filters'}" />
             </StackPanel>
             <!-- Album view: one tile per album, opened with a click. -->
-            <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Visibility="{x:Bind ViewModel.HasNoAlbums, Mode=OneWay}"
-                       Text="{local:Loc Text='No albums yet. Right-click a folder on the left and choose &quot;Make this an album&quot;, or &quot;Make each subfolder an album&quot; for a folder with one subfolder per trip.'}" />
+            <StackPanel Grid.Row="1" Spacing="12" Margin="24" MaxWidth="460"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="{x:Bind ViewModel.HasNoAlbums, Mode=OneWay}">
+                <FontIcon Glyph="&#xE8B9;" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="{local:Loc Text='No albums yet. Right-click a folder on the left and choose &quot;Make this an album&quot;, or &quot;Make each subfolder an album&quot; for a folder with one subfolder per trip.'}" />
+                <Button HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Click="RailFolders_Click"
+                        Content="{local:Loc Text='Show the folders'}" />
+            </StackPanel>
             <!-- Lies over the photos (declared after them), so it must never take the pointer: it stopped scrolling
                  and selecting in the grid. -->
             <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"

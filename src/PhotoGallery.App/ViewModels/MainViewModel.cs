@@ -204,6 +204,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>The choices for what the app opens on, as Settings lists them.</summary>
+    public static readonly (string Key, string Label)[] StartPages =
+        [("albums", Tr("The albums")), ("folders", Tr("All photos, with the folders open")), ("last", Tr("Where I left off"))];
+
+    public int StartPageIndex => Math.Max(0, Array.FindIndex(StartPages, p => p.Key == _settings.StartPage));
+
+    public string StartPage => StartPages[StartPageIndex].Key;
+
+    public string? LastPlace => _settings.LastPlace;
+
+    public void SaveStartPage(int index)
+    {
+        var key = StartPages[Math.Clamp(index, 0, StartPages.Length - 1)].Key;
+        if (key == _settings.StartPage)
+            return;
+        _settings.StartPage = key;
+        _settings.Save(SettingsPath);
+    }
+
+    /// <summary>Remembers where the app was, for opening there next time; saved as it closes.</summary>
+    public void SaveLastPlace(string place)
+    {
+        if (place == _settings.LastPlace)
+            return;
+        _settings.LastPlace = place;
+        _settings.Save(SettingsPath);
+    }
+
+    /// <summary>Shows a folder's photos, as when it is picked in the folder tree.</summary>
+    public void ShowFolder(string path)
+    {
+        IsAlbumView = false;
+        SelectedFolder = new FolderNodeViewModel(path, isRoot: _settings.Folders.Contains(path, StringComparer.OrdinalIgnoreCase));
+    }
+
     /// <summary>The order every folder starts in.</summary>
     public int DefaultSortIndex => PhotoSort.IndexOf(_settings.PhotoSort);
 
