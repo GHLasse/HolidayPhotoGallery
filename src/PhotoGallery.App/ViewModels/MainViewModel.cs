@@ -94,8 +94,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<PhotoItemViewModel> Photos
     {
         get => _photos;
-        private set => SetProperty(ref _photos, value);
+        private set
+        {
+            if (SetProperty(ref _photos, value))
+                OnPropertyChanged(nameof(ShownDetails));
+        }
     }
+
+    /// <summary>
+    /// What the info pane says about the folder, album, month or place shown while no photo is selected
+    /// (under <see cref="HeaderText"/>).
+    /// </summary>
+    public string ShownDetails => IsAlbumView
+        ? Albums.Count == 1 ? Tr("1 album") : Tr("{0:N0} albums", Albums.Count)
+        : ViewSummary.Describe(Photos.Select(p => p.Photo).ToList());
 
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
 

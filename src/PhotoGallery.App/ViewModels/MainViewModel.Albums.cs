@@ -24,6 +24,7 @@ public sealed partial class MainViewModel
                 return;
             OnPropertyChanged(nameof(HeaderText));
             OnPropertyChanged(nameof(HasNoAlbums));
+            OnPropertyChanged(nameof(ShownDetails));
             if (value)
                 _ = LoadAlbumsAsync();
         }
@@ -96,6 +97,7 @@ public sealed partial class MainViewModel
             .Select(a => new AlbumViewModel(a)));
         OnPropertyChanged(nameof(HasNoAlbums));
         OnPropertyChanged(nameof(AlbumNoMatchText));
+        OnPropertyChanged(nameof(ShownDetails));
     }
 
     /// <summary>Shows the album's photos, its subfolders included.</summary>

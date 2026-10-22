@@ -1021,7 +1021,16 @@
         <!-- Metadata panel -->
         <ScrollViewer x:Name="InfoPane" Grid.Row="3" Grid.Column="4" Padding="8,0,16,8">
             <StackPanel Spacing="12">
-                <TextBlock Text="{x:Bind ViewModel.Editor.Summary, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                <!-- With nothing selected: the folder, album, month or place shown, then "No photo selected". -->
+                <StackPanel Spacing="6" Visibility="{x:Bind local:Ui.Collapsed(ViewModel.Editor.HasSelection), Mode=OneWay}">
+                    <TextBlock Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.ShownDetails, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Margin="0,12,0,0" Text="{local:Loc Text='No photo selected'}" FontStyle="Italic"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="{x:Bind ViewModel.Editor.Summary, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap"
+                           Visibility="{x:Bind ViewModel.Editor.HasSelection, Mode=OneWay}" />
                 <TextBlock Text="{x:Bind ViewModel.Editor.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <!-- Camera, lens, exposure and author, read from the file when opened; which ones in Settings › App. -->
