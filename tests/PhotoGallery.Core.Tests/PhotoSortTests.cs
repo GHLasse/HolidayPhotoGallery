@@ -50,4 +50,15 @@ public sealed class PhotoSortTests : IDisposable
         Assert.Equal(0, PhotoSort.IndexOf("whatever"));
         Assert.Equal(2, PhotoSort.IndexOf(PhotoSort.FileName));
     }
+
+    [Fact]
+    public void No_camera_finds_the_photos_without_one()
+    {
+        _index.Upsert([new IndexedPhoto { Path = Path.Combine(_data.Path, "phone.jpg"), Folder = _data.Path, Camera = "Pixel 7" }]);
+
+        var without = _index.Search(new PhotoQuery { WithoutCamera = true }).Select(p => Path.GetFileName(p.Path));
+
+        Assert.DoesNotContain("phone.jpg", without);
+        Assert.Contains("b.jpg", without);
+    }
 }

@@ -48,7 +48,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string? _selectedCamera;
     private int _cameraIndex;
     private bool _isUpdatingCameras;
-    private List<CameraFilterViewModel> _cameras = [AllCameras];
+    private List<CameraFilterViewModel> _cameras = [AllCameras, NoCamera];
     private ReverseGeocoder? _geocoder;
     private readonly PhotoEditService? _photoEditor;
     private ImageTagger? _tagger;
@@ -77,6 +77,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>"All cameras" followed by the cameras in the current folder.</summary>
     private static readonly CameraFilterViewModel AllCameras = new(null, Tr("All cameras"));
+
+    // "No camera" is picked with a key no camera name can have.
+    private const string NoCameraKey = "\u0001";
+    private static readonly CameraFilterViewModel NoCamera = new(NoCameraKey, Tr("No camera"));
 
     /// <summary>"All cameras", then each camera in the current folder. Replaced as a whole, never edited.</summary>
     public List<CameraFilterViewModel> Cameras
@@ -521,7 +525,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Country = SelectedPlace?.Country,
             City = SelectedPlace?.City,
             WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
-            Camera = _selectedCamera,
+            Camera = _selectedCamera == NoCameraKey ? null : _selectedCamera,
+            WithoutCamera = _selectedCamera == NoCameraKey,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,
         };
@@ -599,15 +604,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void UpdateCameras(IReadOnlyList<(string Camera, int Count)> cameras)
     {
         var wanted = cameras.Select(c => new CameraFilterViewModel(c.Camera, $"{c.Camera} ({c.Count:N0})")).ToList();
-        if (wanted.SequenceEqual(Cameras.Skip(1)))
+        if (wanted.SequenceEqual(Cameras.Skip(2)))
             return;
 
         // Rebuilding the list resets the combo box, so the chosen camera is put back afterwards.
         _isUpdatingCameras = true;
         try
         {
-            Cameras = [AllCameras, .. wanted];
-            var index = _selectedCamera is null ? 0 : wanted.FindIndex(c => c.Camera == _selectedCamera) + 1;
+            Cameras = [AllCameras, NoCamera, .. wanted];
+            var index = _selectedCamera switch
+            {
+                null => 0,
+                NoCameraKey => 1,
+                var camera => wanted.FindIndex(c => c.Camera == camera) is >= 0 and var i ? i + 2 : 0,
+            };
             _cameraIndex = -1;
             CameraIndex = index;
         }
