@@ -446,10 +446,10 @@ public sealed partial class MainWindow
             _hadSelection = has;
             _infoForced = null; // I only holds until the selection comes or goes
             var version = ++_paneSlideVersion;
-            if (has && !IsViewerOpen)
+            if (!IsViewerOpen)
             {
-                // The details pane waits until a double-click could have happened: sliding in at once moved
-                // the tiles, so the second click of a double-click opened another photo (U-8).
+                // The details pane waits until a double-click could have happened: sliding in or out at once
+                // moved the tiles, so the second click of a double-click opened another photo (U-8).
                 _ = Task.Delay((int)GetDoubleClickTime()).ContinueWith(_ => DispatcherQueue.TryEnqueue(() =>
                 {
                     if (version == _paneSlideVersion)
@@ -586,7 +586,6 @@ public sealed partial class MainWindow
         // handledEventsToo: the grid's items take these events for their own selection handling.
         PhotoGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
         {
-            _pressedSelected = null;
             var point = e.GetCurrentPoint(PhotoGrid);
             if (point.Properties.IsRightButtonPressed)
             {
@@ -594,23 +593,25 @@ public sealed partial class MainWindow
                 SelectForMenu(e.OriginalSource);
                 return;
             }
-            if (!point.Properties.IsLeftButtonPressed || e.KeyModifiers != VirtualKeyModifiers.None)
+            if (!point.Properties.IsLeftButtonPressed)
                 return;
-            if (ClickedPhoto(e.OriginalSource) is { } item && PhotoGrid.SelectedItems.Count == 1 && ReferenceEquals(PhotoGrid.SelectedItems[0], item))
-                _pressedSelected = item;
-        }), true);
-        PhotoGrid.AddHandler(UIElement.TappedEvent, new TappedEventHandler((_, e) =>
-        {
-            var item = _pressedSelected;
-            _pressedSelected = null;
-            if (item is not null && ReferenceEquals(ClickedPhoto(e.OriginalSource), item) &&
-                PhotoGrid.SelectedItems.Count == 1 && ReferenceEquals(PhotoGrid.SelectedItems[0], item))
+            // A double-click opens the photo of its first click, even if the tiles moved in between (U-8).
+            if (ClickedPhoto(e.OriginalSource) is { } item &&
+                (_pressedSelected is null || Environment.TickCount64 - _pressedAt > GetDoubleClickTime()))
             {
-                App.Trace("selection: click on the selected photo clears it");
-                PhotoGrid.SelectedItems.Clear();
+                _pressedSelected = item;
+                _pressedAt = Environment.TickCount64;
             }
         }), true);
+        // A plain click on the only selected photo keeps it selected (Ctrl+click takes it out): clearing it
+        // folded the details pane away between the two clicks of a double-click.
     }
+
+    private long _pressedAt;
+
+    /// <summary>The photo the first click of a double-click went to, when that was just now.</summary>
+    private PhotoItemViewModel? FirstClickedPhoto() =>
+        Environment.TickCount64 - _pressedAt <= GetDoubleClickTime() * 2 ? _pressedSelected : null;
 
     // The photo whose tile was clicked, unless the click was on one of the tile's own buttons (stars, flag, tick).
     private PhotoItemViewModel? ClickedPhoto(object source)

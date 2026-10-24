@@ -909,7 +909,8 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is PhotoItemViewModel item)
+        var item = FirstClickedPhoto() ?? (e.OriginalSource as FrameworkElement)?.DataContext as PhotoItemViewModel;
+        if (item is not null)
             OpenViewer(item);
     }
 
