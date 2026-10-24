@@ -48,12 +48,14 @@ public sealed partial class MainWindow : Window
         SetUpRatingRow();
         SetUpPeopleTyping();
         SetUpMoreDetails();
+        SetUpAutoSave();
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.RejectRequested += item => ViewModel.ToggleRejectAsync([item]);
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
+        CompareLayer.OpenRequested += OpenFromCompare;
 
         MapView.AssignRequested += async (items, position) =>
         {
@@ -255,7 +257,7 @@ public sealed partial class MainWindow : Window
     private async void Rescan_Click(object sender, RoutedEventArgs e)
     {
         if (!WaitsForBusyWork())
-            await ViewModel.RescanAsync();
+            await ViewModel.RescanAndReportAsync();
     }
 
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
@@ -894,9 +896,6 @@ public sealed partial class MainWindow : Window
         PhotoGrid.ScrollIntoView(item);
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e) => await ViewModel.SaveEditsAsync();
-
-    private void Discard_Click(object sender, RoutedEventArgs e) => ViewModel.Editor.Revert();
 
     private void ShowInFolder_Click(object sender, RoutedEventArgs e)
     {
@@ -959,6 +958,17 @@ public sealed partial class MainWindow : Window
         if (shown.Count > 0)
             PhotoGrid.ScrollIntoView(shown[0]);
         PhotoGrid.Focus(FocusState.Programmatic);
+    }
+
+    // A double-clicked photo opens on its own in the viewer; closing the viewer comes back to compare as it was
+    // (the compare view is only hidden, so it keeps its photos, highlight and zoom).
+    private bool _viewerFromCompare;
+
+    private void OpenFromCompare(PhotoItemViewModel item)
+    {
+        CompareLayer.Visibility = Visibility.Collapsed;
+        _viewerFromCompare = true;
+        OpenViewer(item, [item]);
     }
 
     // With one photo shown, Left and Right step through the grid, so photos can be rated one after another.
@@ -1034,6 +1044,12 @@ public sealed partial class MainWindow : Window
             PhotoGrid.ScrollIntoView(current);
         }
         PhotoGrid.Focus(FocusState.Programmatic);
+        if (_viewerFromCompare)
+        {
+            _viewerFromCompare = false;
+            CompareLayer.Visibility = Visibility.Visible;
+            CompareLayer.FocusHighlighted();
+        }
     }
 
     private async Task ShowViewerImageAsync()
@@ -1098,13 +1114,33 @@ public sealed partial class MainWindow : Window
         ViewerTitle.Text = Tr("{0}   ({1} of {2}){3}", item.FileName, _viewerIndex + 1, _viewerItems.Count, marks);
     }
 
-    // Esc first leaves an edit, then the viewer.
-    private void ViewerClose_Click(object sender, RoutedEventArgs e)
+    // Esc first leaves an edit, asking whether to save it, then the viewer.
+    private async void ViewerClose_Click(object sender, RoutedEventArgs e)
     {
-        if (IsEditing)
-            CancelEdit();
-        else
+        if (!IsEditing)
+        {
             CloseViewer();
+            return;
+        }
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Save the edit?"),
+            Content = Tr("The photo is changed only when you save."),
+            PrimaryButtonText = Tr("Save"),
+            SecondaryButtonText = Tr("Discard"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        switch (await dialog.ShowThemedAsync())
+        {
+            case ContentDialogResult.Primary:
+                ViewerSaveEdit_Click(sender, e);
+                break;
+            case ContentDialogResult.Secondary:
+                CancelEdit();
+                break;
+        }
     }
 
     private void ViewerPrevious_Click(object sender, RoutedEventArgs e)

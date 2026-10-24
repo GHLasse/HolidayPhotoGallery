@@ -105,7 +105,7 @@ public sealed partial class MainViewModel
 
         if (failures.Count > 0)
             ErrorMessage = Tr("{0:N0} photo(s) could not be moved to the Recycle Bin.", failures.Count) + " " + string.Join(" ", failures.Take(3));
-        Inform(Tr("Moved {0:N0} rejected photo(s) to the Recycle Bin. You can restore them from there.", moved.Count));
+        Inform(Tr("Moved {0} to the Recycle Bin. You can restore them from there.", PhotoCount(moved.Count)));
         await SearchAsync();
         await RefreshTagsAsync();
     }

@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
+using Windows.Foundation;
 using Windows.System;
 using static PhotoGallery.Core.Localization.Strings;
 
@@ -42,6 +43,7 @@ public sealed partial class CompareView : UserControl
             (VirtualKey.P, VirtualKeyModifiers.None), (VirtualKey.X, VirtualKeyModifiers.None),
             (VirtualKey.Tab, VirtualKeyModifiers.None), (VirtualKey.Tab, VirtualKeyModifiers.Shift),
             (VirtualKey.Left, VirtualKeyModifiers.None), (VirtualKey.Right, VirtualKeyModifiers.None),
+            (VirtualKey.Up, VirtualKeyModifiers.None), (VirtualKey.Down, VirtualKeyModifiers.None),
         };
         for (var i = 0; i <= 5; i++)
         {
@@ -71,7 +73,8 @@ public sealed partial class CompareView : UserControl
     private bool HandlesKey(VirtualKey key) => key switch
     {
         VirtualKey.Escape or VirtualKey.G or VirtualKey.P or VirtualKey.X or VirtualKey.Tab => true,
-        VirtualKey.Left or VirtualKey.Right => _panes.Count == 1,
+        VirtualKey.Left or VirtualKey.Right => true,
+        VirtualKey.Up or VirtualKey.Down => _panes.Count == 4,
         _ => Stars(key) >= 0,
     };
 
@@ -94,6 +97,9 @@ public sealed partial class CompareView : UserControl
     public event Action<int>? NavigateRequested;
 
     public event Action? CloseRequested;
+
+    /// <summary>A photo was double-clicked, to see it on its own in the viewer.</summary>
+    public event Action<PhotoItemViewModel>? OpenRequested;
 
     public IReadOnlyList<PhotoItemViewModel> Photos => _panes.Select(p => p.Item).ToList();
 
@@ -137,18 +143,21 @@ public sealed partial class CompareView : UserControl
             ZoomMode = ZoomMode.Enabled,
             MinZoomFactor = 1,
             MaxZoomFactor = 8,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            // Hidden, not Auto: bars that appear on zooming in shrank the viewport, the photo shrank with it
+            // and left a white area in the pane. Hidden bars still scroll.
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
             HorizontalScrollMode = ScrollMode.Auto,
             VerticalScrollMode = ScrollMode.Auto,
             Content = image,
         };
         // At zoom 1 the photo fits the pane exactly; zooming in then shows real detail.
-        scroller.SizeChanged += (_, _) =>
+        scroller.SizeChanged += (_, e) =>
         {
-            image.Width = scroller.ViewportWidth;
-            image.Height = scroller.ViewportHeight;
+            image.Width = e.NewSize.Width;
+            image.Height = e.NewSize.Height;
         };
+        AddDragToPan(scroller);
 
         var rating = new RatingControl
         {
@@ -218,6 +227,11 @@ public sealed partial class CompareView : UserControl
                 host.Focus(FocusState.Programmatic);
         };
         host.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => SetActive(index, FocusState.Pointer)), handledEventsToo: true);
+        host.DoubleTapped += (_, e) =>
+        {
+            e.Handled = true;
+            OpenRequested?.Invoke(item);
+        };
         // Only the photo under the mouse leads; the others follow it. Without this, the
         // programmatic scrolling of the followers would echo back and fight the leader.
         scroller.PointerEntered += (_, _) => _driver = pane;
@@ -228,6 +242,39 @@ public sealed partial class CompareView : UserControl
                 await RaiseRatingAsync(pane, rating.Value < 1 ? 0 : (int)Math.Round(rating.Value));
         };
         return pane;
+    }
+
+    // A zoomed photo pans with the mouse held down; the others follow it, as they do when scrolling.
+    private void AddDragToPan(ScrollViewer scroller)
+    {
+        Point? start = null;
+        double startH = 0, startV = 0;
+        scroller.AddHandler(PointerPressedEvent, new PointerEventHandler((_, e) =>
+        {
+            var point = e.GetCurrentPoint(scroller);
+            if (scroller.ZoomFactor <= 1.01 || !point.Properties.IsLeftButtonPressed)
+                return;
+            start = point.Position;
+            (startH, startV) = (scroller.HorizontalOffset, scroller.VerticalOffset);
+            scroller.CapturePointer(e.Pointer);
+        }), handledEventsToo: true);
+        scroller.AddHandler(PointerMovedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (start is not { } from)
+                return;
+            var p = e.GetCurrentPoint(scroller).Position;
+            scroller.ChangeView(startH - (p.X - from.X), startV - (p.Y - from.Y), null, disableAnimation: true);
+            e.Handled = true;
+        }), handledEventsToo: true);
+        void End(object sender, PointerRoutedEventArgs e)
+        {
+            if (start is null)
+                return;
+            start = null;
+            scroller.ReleasePointerCapture(e.Pointer);
+        }
+        scroller.AddHandler(PointerReleasedEvent, new PointerEventHandler(End), handledEventsToo: true);
+        scroller.PointerCaptureLost += (_, _) => start = null;
     }
 
     private async Task LoadImagesAsync()
@@ -249,6 +296,13 @@ public sealed partial class CompareView : UserControl
                 pane.Status.Text = Tr("This photo cannot be shown. {0}", ex.Message);
             }
         }
+    }
+
+    /// <summary>Gives the highlighted photo the keyboard focus again, e.g. when coming back from the viewer.</summary>
+    public void FocusHighlighted()
+    {
+        if (_activeIndex < _panes.Count)
+            _panes[_activeIndex].Host.Focus(FocusState.Programmatic);
     }
 
     private void SetActive(int index, FocusState focus)
@@ -298,10 +352,18 @@ public sealed partial class CompareView : UserControl
 
     // PreviewKeyDown runs before the focused control sees the key, so the scroll viewer and
     // rating control can't swallow Tab, the arrows or the number keys.
-    private async void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e) => PreviewKey(e);
+
+    /// <summary>
+    /// Takes the compare keys before anything else sees them; the window passes on every key while compare is
+    /// open, so Tab moves the highlight wherever the focus is instead of moving the focus.
+    /// </summary>
+    public async void PreviewKey(KeyRoutedEventArgs e)
     {
-        if (_panes.Count == 0 || !HandlesKey(e.Key))
+        if (Visibility != Visibility.Visible || _panes.Count == 0 || e.Handled || !HandlesKey(e.Key))
             return;
+        if (e.Key == VirtualKey.Tab)
+            _panes[_activeIndex].Host.Focus(FocusState.Keyboard);
         e.Handled = true;
         _keyHandledByPreview = e.Key;
         DispatcherQueue.TryEnqueue(() => _keyHandledByPreview = null);
@@ -333,8 +395,14 @@ public sealed partial class CompareView : UserControl
             case VirtualKey.Tab:
                 SetActive((_activeIndex + (shift ? _panes.Count - 1 : 1)) % _panes.Count, FocusState.Keyboard);
                 return;
-            case VirtualKey.Left or VirtualKey.Right:
+            // With one photo the arrows go to the next or previous one; with more they move the highlight,
+            // Up and Down by a row of two.
+            case VirtualKey.Left or VirtualKey.Right when _panes.Count == 1:
                 NavigateRequested?.Invoke(key == VirtualKey.Left ? -1 : 1);
+                return;
+            case VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down:
+                var step = key switch { VirtualKey.Left => -1, VirtualKey.Right => 1, VirtualKey.Up => -2, _ => 2 };
+                SetActive(Math.Clamp(_activeIndex + step, 0, _panes.Count - 1), FocusState.Keyboard);
                 return;
         }
 

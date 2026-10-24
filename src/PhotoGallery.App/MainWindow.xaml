@@ -1140,17 +1140,9 @@
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                     <!-- Wraps when the pane is narrow or the words are long (German). -->
                     <controls:WrapPanel Spacing="8">
-                        <Button Style="{ThemeResource AccentButtonStyle}" Content="{local:Loc Text='Save'}" Click="Save_Click"
-                                IsEnabled="{x:Bind ViewModel.Editor.IsDirty, Mode=OneWay}"
-                                ToolTipService.ToolTip="{local:Loc Text='Write the changes into the files (Ctrl+S)'}">
-                            <Button.KeyboardAccelerators>
-                                <KeyboardAccelerator Modifiers="Control" Key="S" />
-                            </Button.KeyboardAccelerators>
-                        </Button>
-                        <Button Content="{local:Loc Text='Discard'}" Click="Discard_Click" IsEnabled="{x:Bind ViewModel.Editor.IsDirty, Mode=OneWay}" />
                         <Button Content="{local:Loc Text='Show in folder'}" Click="ShowInFolder_Click" IsEnabled="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}" />
                     </controls:WrapPanel>
-                    <TextBlock Text="{local:Loc Text='Changes are also saved when you select other photos.'}"
+                    <TextBlock Text="{local:Loc Text='Changes are saved as you make them: stars and tags at once, text when you leave the field or press Enter.'}"
                                TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </StackPanel>
