@@ -650,6 +650,7 @@
     "the file is empty.": "文件为空。",
     "The filters that don’t fit in the window": "窗口中放不下的筛选",
     "The folder keeps its name. Leave the box empty to use the folder's name.": "文件夹会保留其名称。将框留空可使用文件夹的名称。",
+    "The library folder {0} can't be found. Is the drive connected?": "找不到库文件夹 {0}。驱动器是否已连接？",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "地图无法启动：{0} 它需要 Microsoft Edge WebView2 Runtime，Windows 11 已包含该组件。",
     "The new language is used the next time the app starts.": "下次启动应用时将使用新语言。",
     "The other {0} photo(s) move by the same {1}.": "其他 {0} 张照片同样调整 {1}。",

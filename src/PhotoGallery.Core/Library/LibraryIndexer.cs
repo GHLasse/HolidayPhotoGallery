@@ -5,7 +5,7 @@ namespace PhotoGallery.Core.Library;
 public sealed record IndexProgress(string Folder, int Processed, int Total);
 
 /// <summary>What a scan changed in the index: new or changed files read, deleted files dropped.</summary>
-public sealed record IndexChanges(int Read, int Removed);
+public sealed record IndexChanges(int Read, int Removed, int OnDisk = 0, int Known = 0);
 
 /// <summary>
 /// Keeps the index in step with the folders on disk: new and changed files are read with ExifTool,
@@ -56,7 +56,7 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
 
             progress?.Report(new IndexProgress(rootFolder, Math.Min(i + BatchSize, toRead.Count), toRead.Count));
         }
-        return new IndexChanges(toRead.Count, removed.Count);
+        return new IndexChanges(toRead.Count, removed.Count, onDisk.Count, known.Count);
     }
 
     // One ExifTool call for the batch; when that fails (an odd value in one file, output that isn't valid

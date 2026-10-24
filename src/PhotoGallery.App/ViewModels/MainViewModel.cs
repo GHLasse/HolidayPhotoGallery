@@ -457,6 +457,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     var changes = await _indexer.SyncFolderAsync(folder, progress, fileFailed: (path, ex) =>
                         App.Trace($"Could not read the metadata of {path}: {ex}"));
                     (read, removed) = (read + changes.Read, removed + changes.Removed);
+                    App.Trace($"Rescan of \"{folder}\": exists {Directory.Exists(folder)}, {changes.OnDisk} photos on disk, {changes.Known} in the index");
+                    if (!Directory.Exists(folder))
+                        Warn(Tr("The library folder {0} can't be found. Is the drive connected?", folder));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

@@ -650,6 +650,7 @@
     "the file is empty.": "الملف فارغ.",
     "The filters that don’t fit in the window": "عوامل التصفية التي لا تتسع لها النافذة",
     "The folder keeps its name. Leave the box empty to use the folder's name.": "يحتفظ المجلد باسمه. اترك المربع فارغًا لاستخدام اسم المجلد.",
+    "The library folder {0} can't be found. Is the drive connected?": "تعذر العثور على مجلد المكتبة {0}. هل محرك الأقراص متصل؟",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "تعذّر بدء تشغيل الخريطة: {0} إنها تحتاج إلى Microsoft Edge WebView2 Runtime، المضمّن في Windows 11.",
     "The new language is used the next time the app starts.": "يتم استخدام اللغة الجديدة في المرة التالية التي يبدأ فيها التطبيق.",
     "The other {0} photo(s) move by the same {1}.": "تتم إزاحة {0} من الصور الأخرى بالمقدار نفسه {1}.",

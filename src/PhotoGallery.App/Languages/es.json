@@ -650,6 +650,7 @@
     "the file is empty.": "el archivo está vacío.",
     "The filters that don’t fit in the window": "Los filtros que no caben en la ventana",
     "The folder keeps its name. Leave the box empty to use the folder's name.": "La carpeta conserva su nombre. Deja el cuadro vacío para usar el nombre de la carpeta.",
+    "The library folder {0} can't be found. Is the drive connected?": "No se encuentra la carpeta de la biblioteca {0}. ¿Está conectada la unidad?",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "No se pudo iniciar el mapa: {0} Necesita Microsoft Edge WebView2 Runtime, que se incluye en Windows 11.",
     "The new language is used the next time the app starts.": "El nuevo idioma se usará la próxima vez que se inicie la aplicación.",
     "The other {0} photo(s) move by the same {1}.": "Las otras {0} foto(s) se desplazan la misma cantidad: {1}.",

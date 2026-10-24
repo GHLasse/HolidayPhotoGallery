@@ -650,6 +650,7 @@
     "the file is empty.": "",
     "The filters that don’t fit in the window": "",
     "The folder keeps its name. Leave the box empty to use the folder's name.": "",
+    "The library folder {0} can't be found. Is the drive connected?": "",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "",
     "The new language is used the next time the app starts.": "",
     "The other {0} photo(s) move by the same {1}.": "",

@@ -650,6 +650,7 @@
     "the file is empty.": "die Datei ist leer.",
     "The filters that don’t fit in the window": "Die Filter, die nicht ins Fenster passen",
     "The folder keeps its name. Leave the box empty to use the folder's name.": "Der Ordner behält seinen Namen. Lassen Sie das Feld leer, um den Namen des Ordners zu verwenden.",
+    "The library folder {0} can't be found. Is the drive connected?": "Der Bibliotheksordner {0} wurde nicht gefunden. Ist das Laufwerk angeschlossen?",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "Die Karte konnte nicht gestartet werden: {0} Sie benötigt die Microsoft Edge WebView2 Runtime, die in Windows 11 enthalten ist.",
     "The new language is used the next time the app starts.": "Die neue Sprache wird beim nächsten Start der App verwendet.",
     "The other {0} photo(s) move by the same {1}.": "Die übrigen {0} Foto(s) werden um dieselben {1} verschoben.",
