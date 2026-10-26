@@ -370,6 +370,7 @@
     "Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere.": "与应用本身的编辑一样，副本会放入照片旁边的隐藏 .originals 文件夹中，因此在其他位置编辑后，撤消和还原仍然有效。",
     "Like the arrow keys: move in the grid, previous or next photo in the viewer and compare": "与方向键相同：在网格中移动，在查看器和比较中切换上一张或下一张照片",
     "Linked apps": "关联的应用",
+    "Live Photo: its short clip is kept with it": "实况照片：其短片随照片一起保留",
     "Loading the apps…": "正在加载应用…",
     "Loading the face models…": "正在加载面部模型…",
     "Loading the photos…": "正在加载照片…",

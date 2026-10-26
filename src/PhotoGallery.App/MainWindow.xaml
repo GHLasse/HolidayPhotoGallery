@@ -780,6 +780,13 @@
                                     <TextBlock Text="{x:Bind DurationText, Mode=OneWay}" FontSize="11" />
                                 </StackPanel>
                             </Border>
+                            <!-- A Live Photo: its clip stays hidden with it, the tile says so. -->
+                            <Border IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,32"
+                                    Padding="5,2" CornerRadius="4" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    Visibility="{x:Bind LiveVisibility, Mode=OneTime}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Live Photo: its short clip is kept with it'}">
+                                <TextBlock Text="LIVE" FontSize="10" FontWeight="SemiBold" CharacterSpacing="80" />
+                            </Border>
                             <!-- The rating under the photo, like Windows Live Photo Gallery: the photo sits on it and never
                                  hides it. The file name only shows on hover. -->
                             <StackPanel x:Name="StarLine" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5">

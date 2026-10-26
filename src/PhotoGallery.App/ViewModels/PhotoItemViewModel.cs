@@ -67,6 +67,10 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     public Microsoft.UI.Xaml.Visibility VideoVisibility =>
         Photo.IsVideo ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
+    /// <summary>A Live Photo (its clip is hidden with it) shows "LIVE" on the tile, as on the iPhone.</summary>
+    public Microsoft.UI.Xaml.Visibility LiveVisibility =>
+        LivePhotos.Has(Path) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
     /// <summary>A video's length as 0:42 or 1:02:03; empty when it isn't known.</summary>
     public string DurationText => FormatDuration(Photo.Duration);
 
