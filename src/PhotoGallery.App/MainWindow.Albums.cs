@@ -190,6 +190,16 @@ public sealed partial class MainWindow
         PasteDetailsItem.Text = ViewModel.CopiedDetails is null ? Tr("Paste details…") : Tr("Paste details of {0}…", ViewModel.CopiedFrom);
     }
 
+    // The selection bar's "…" holds the right-click menu's actions for several photos too; it follows the same rules.
+    private void SelectionCommands_Opening(object? sender, object e)
+    {
+        var photos = SelectedPhotos;
+        BarPrivateButton.Label = SelectionIsPrivate(photos) ? Tr("Make public again") : Tr("Make private");
+        BarCopyDetailsButton.IsEnabled = photos.Count == 1;
+        BarPasteDetailsButton.IsEnabled = photos.Count > 0 && ViewModel.CopiedDetails is not null;
+        BarPasteDetailsButton.Label = ViewModel.CopiedDetails is null ? Tr("Paste details…") : Tr("Paste details of {0}…", ViewModel.CopiedFrom);
+    }
+
     // The viewer's menu: the photo being looked at is the grid's selection.
     private void ViewerMoreMenu_Opening(object sender, object e)
     {

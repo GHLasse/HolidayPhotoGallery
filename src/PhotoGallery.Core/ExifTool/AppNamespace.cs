@@ -31,18 +31,26 @@ public static class AppNamespace
         var folder = Path.Combine(Path.GetTempPath(), "HolidayPhotoGallery");
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "exiftool.config");
+        var temp = $"{path}.{Guid.NewGuid():N}";
         try
         {
             if (File.Exists(path) && File.ReadAllText(path) == Config)
                 return path;
             // Written aside and moved into place, so ExifTools starting at the same time never read half a file.
-            var temp = $"{path}.{Guid.NewGuid():N}";
             File.WriteAllText(temp, Config);
             File.Move(temp, path, overwrite: true);
         }
-        catch (IOException) when (File.Exists(path))
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && File.Exists(path))
         {
-            // Another ExifTool start wrote it at the same moment.
+            // Another ExifTool start wrote it, or is reading it, at the same moment (Windows then denies the
+            // move with "access denied"); that copy is this version's too.
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
         }
         return path;
     }
