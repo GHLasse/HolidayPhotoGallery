@@ -782,10 +782,6 @@
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <FontIcon Glyph="&#xE768;" FontSize="10" />
                                     <TextBlock Text="{x:Bind DurationText, Mode=OneWay}" FontSize="11" />
-                                    <TextBlock Text="·" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               Visibility="{x:Bind FrameRateVisibility, Mode=OneWay}" />
-                                    <TextBlock Text="{x:Bind FrameRateText, Mode=OneWay}" FontSize="11"
-                                               Visibility="{x:Bind FrameRateVisibility, Mode=OneWay}" />
                                 </StackPanel>
                             </Border>
                             <!-- A Live Photo: its clip stays hidden with it, the tile says so. -->
