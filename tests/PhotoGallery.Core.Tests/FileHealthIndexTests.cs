@@ -37,4 +37,28 @@ public sealed class FileHealthIndexTests : IDisposable
         Assert.Equal(0, _index.CountDamaged());
         Assert.Equal(["/photos/a.jpg"], _index.GetUnchecked(10).Select(p => p.Path));
     }
+    [Fact]
+    public void Misnamed_photos_are_kept_apart_from_damaged_ones_and_checked_again_once_renamed()
+    {
+        var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        _index.Upsert([Photo("a.jpg", then), Photo("b.png", then)]);
+        _index.SaveCheck("/photos/a.jpg", FileHealth.CutOff, then);
+        _index.SaveCheck("/photos/b.png", FileHealth.Misnamed, then);
+
+        Assert.Equal(1, _index.CountDamaged());
+        Assert.Equal(1, _index.CountMisnamed());
+        Assert.Equal(["/photos/a.jpg"], _index.Search(new PhotoQuery { DamagedOnly = true }).Select(p => p.Path));
+        Assert.Equal(["/photos/b.png"], _index.GetMisnamed().Select(p => p.Path));
+
+        // Moved to another folder under the same name: what the check found still holds.
+        var b = _index.GetMisnamed()[0];
+        _index.Move(b, "/other/b.png");
+        Assert.Equal(1, _index.CountMisnamed());
+
+        // Given the right extension: checked again, and no longer misnamed.
+        _index.Move(_index.GetMisnamed()[0], "/other/b.jpg");
+        Assert.Equal(0, _index.CountMisnamed());
+        Assert.Contains("/other/b.jpg", _index.GetUnchecked(10).Select(p => p.Path));
+    }
+
 }

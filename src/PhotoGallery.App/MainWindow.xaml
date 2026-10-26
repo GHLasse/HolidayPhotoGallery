@@ -292,6 +292,8 @@
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No location'}" IsChecked="{x:Bind ViewModel.WithoutLocation, Mode=TwoWay}" />
                                 <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='Damaged files'}" IsChecked="{x:Bind ViewModel.DamagedOnly, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="{local:Loc Text='Wrong file extension'}" IsChecked="{x:Bind ViewModel.MisnamedOnly, Mode=TwoWay}" />
+                                <MenuFlyoutItem Text="{local:Loc Text='Fix wrong file extensions'}" Click="FixMisnamed_Click" />
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>

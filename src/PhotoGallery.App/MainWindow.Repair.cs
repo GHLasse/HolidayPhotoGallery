@@ -19,6 +19,14 @@ public sealed partial class MainWindow
 {
     private const int CompareSize = 360;
 
+    // Missing › Fix wrong file extensions: renames every misnamed photo after its real format.
+    private async void FixMisnamed_Click(object sender, RoutedEventArgs e)
+    {
+        if (WaitsForBusyWork())
+            return;
+        await ViewModel.FixMisnamedAsync();
+    }
+
     private async void ViewerRepair_Click(object sender, RoutedEventArgs e)
     {
         if (ViewerItem is not { } item || WaitsForBusyWork())
