@@ -33,11 +33,13 @@ public sealed partial class MainWindow
 
     private async Task ReviewDuplicatesAsync(List<DuplicateGroup> groups)
     {
-        var copyDetails = new CheckBox { Content = Tr("First copy tags, rating, caption and place onto the photo kept"), IsChecked = true };
+        // A control can only sit in one dialog, so each group gets its own check box carrying the last choice.
+        var copy = true;
         var recycled = 0;
         for (var index = 0; index < groups.Count; index++)
         {
             var group = groups[index];
+            var copyDetails = new CheckBox { Content = Tr("First copy tags, rating, caption and place onto the photo kept"), IsChecked = copy };
             IndexedPhoto keep = group.Best;
             var cards = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
             foreach (var photo in group.Photos)
@@ -95,12 +97,13 @@ public sealed partial class MainWindow
             // Wide enough for four photos side by side.
             dialog.Resources["ContentDialogMaxWidth"] = 960.0;
             var answer = await dialog.ShowThemedAsync();
+            copy = copyDetails.IsChecked == true;
             if (answer == ContentDialogResult.None)
                 break;
             if (answer == ContentDialogResult.Secondary)
                 continue;
             var others = group.Photos.Where(p => p != keep).ToList();
-            if (await ViewModel.KeepOneAsync(keep, others, copyDetails.IsChecked == true))
+            if (await ViewModel.KeepOneAsync(keep, others, copy))
                 recycled += others.Count;
         }
         await ViewModel.DuplicatesHandledAsync(recycled);
