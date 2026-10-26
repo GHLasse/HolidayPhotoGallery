@@ -113,4 +113,48 @@ public class JpegScanTests
         jpeg[sof] = 0xC2;
         Assert.Null(Scan(jpeg));
     }
+
+    [Fact]
+    public void A_progressive_jpeg_without_its_end_mark_can_be_mended()
+    {
+        // Its data can't be followed, but once the end mark is added the file checks out.
+        var jpeg = Jpeg();
+        var sof = Array.FindIndex(jpeg, 2, b => b == 0xC0 || b == 0xC1);
+        jpeg[sof] = 0xC2;
+        var path = Path.Combine(Path.GetTempPath(), $"mend-{Guid.NewGuid():N}.jpg");
+        try
+        {
+            File.WriteAllBytes(path, jpeg[..^2]);
+            Assert.Equal(FileHealth.CutOff, FileCheck.Check(path));
+            Assert.True(FileMend.CanMend(path));
+
+            FileMend.Mend(path);
+            Assert.Equal(FileHealth.Whole, FileCheck.Check(path));
+            Assert.Equal(jpeg, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            foreach (var kept in Editing.EditHistory.FilesOf(path))
+                File.Delete(kept);
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_progressive_jpeg_cut_inside_a_segment_is_not_mended()
+    {
+        var jpeg = Jpeg();
+        var sof = Array.FindIndex(jpeg, 2, b => b == 0xC0 || b == 0xC1);
+        jpeg[sof] = 0xC2;
+        var path = Path.Combine(Path.GetTempPath(), $"mend-{Guid.NewGuid():N}.jpg");
+        try
+        {
+            File.WriteAllBytes(path, jpeg[..(sof + 4)]); // inside the frame header
+            Assert.False(FileMend.CanMend(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

@@ -11,7 +11,6 @@ public sealed partial class MainViewModel
 {
     private bool _checkingFiles;
     private bool _damagedOnly;
-    private bool _misnamedOnly;
 
     /// <summary>Shows only photos whose file was found damaged.</summary>
     public bool DamagedOnly
@@ -24,14 +23,56 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>Shows only photos whose name claims the wrong format, such as a JPEG called .png.</summary>
-    public bool MisnamedOnly
+    /// <summary>Those of <paramref name="items"/> the file check found damaged (and not changed since).</summary>
+    public async Task<List<PhotoItemViewModel>> DamagedAmongAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
-        get => _misnamedOnly;
-        set
+        if (items.Count == 0)
+            return [];
+        var damaged = await Task.Run(() => _index.Search(new PhotoQuery { DamagedOnly = true }).Select(p => p.Path)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase));
+        return items.Where(i => damaged.Contains(i.Path)).ToList();
+    }
+
+    /// <summary>
+    /// The user looked at a photo flagged as damaged and finds it fine: it counts as whole until the file changes
+    /// (or a later version of the check looks again).
+    /// </summary>
+    public async Task MarkAsFineAsync(PhotoItemViewModel item)
+    {
+        await Task.Run(() =>
         {
-            if (SetProperty(ref _misnamedOnly, value))
-                _ = SearchAsync();
+            var misnamed = File.Exists(item.Path) && FileCheck.IsMisnamed(item.Path);
+            _index.SaveCheck(item.Path, misnamed ? FileHealth.Misnamed : FileHealth.Whole, item.Photo.FileModifiedUtc);
+        });
+        Inform(Tr("{0} is no longer marked as damaged.", item.FileName));
+        if (DamagedOnly)
+            await SearchAsync();
+    }
+
+    /// <summary>Raised when what the file check knows about some photos changed outside the background check.</summary>
+    public event Action? HealthChanged;
+
+    /// <summary>
+    /// Checks one file now and keeps the result in the index, e.g. after a save was refused for its wrong
+    /// extension, so the Damaged files filter and Repair know about it at once.
+    /// </summary>
+    public async Task<FileHealth> NoteHealthAsync(string path)
+    {
+        try
+        {
+            var health = await Task.Run(() =>
+            {
+                var found = FileCheck.Check(path);
+                var misnamed = found is not (FileHealth.Whole or FileHealth.Misnamed) && FileCheck.IsMisnamed(path);
+                _index.SaveCheck(path, found, File.GetLastWriteTimeUtc(path), misnamed);
+                return found;
+            });
+            HealthChanged?.Invoke();
+            return health;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return FileHealth.Unreadable;
         }
     }
 
@@ -86,7 +127,6 @@ public sealed partial class MainViewModel
         _checkingFiles = true;
         var unreadable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var damagedBefore = await Task.Run(_index.CountDamaged);
-        var misnamedBefore = await Task.Run(_index.CountMisnamed);
         try
         {
             while (true)
@@ -103,7 +143,8 @@ public sealed partial class MainViewModel
                     try
                     {
                         var health = await Task.Run(() => FileCheck.Check(path));
-                        await Task.Run(() => _index.SaveCheck(path, health, modified));
+                        var misnamed = health is not (FileHealth.Whole or FileHealth.Misnamed) && await Task.Run(() => FileCheck.IsMisnamed(path));
+                        await Task.Run(() => _index.SaveCheck(path, health, modified, misnamed));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
@@ -120,13 +161,7 @@ public sealed partial class MainViewModel
         var damaged = await Task.Run(_index.CountDamaged);
         if (damaged > damagedBefore)
             Warn(damaged == 1
-                ? Tr("1 photo file is damaged. Choose Missing › Damaged files to see it, and Repair in the viewer to rescue it.")
-                : Tr("{0} photo files are damaged. Choose Missing › Damaged files to see them, and Repair in the viewer to rescue them.", damaged));
-
-        var misnamed = await Task.Run(_index.CountMisnamed);
-        if (misnamed > misnamedBefore)
-            Warn(misnamed == 1
-                ? Tr("1 photo has the wrong file extension, such as a JPEG called .png, so its details can’t be saved. Choose Missing › Wrong file extension to see it, select it and choose Fix extension.")
-                : Tr("{0} photos have the wrong file extension, such as a JPEG called .png, so their details can’t be saved. Choose Missing › Wrong file extension to see them, select them and choose Fix extension.", misnamed));
+                ? Tr("1 photo file is damaged. Choose Missing › Damaged files to see it, then select it and choose Repair.")
+                : Tr("{0} photo files are damaged. Choose Missing › Damaged files to see them, then select one and choose Repair.", damaged));
     }
 }

@@ -64,6 +64,13 @@ public static class FileCheck
         return health == FileHealth.Whole && misnamed ? FileHealth.Misnamed : health;
     }
 
+    /// <summary>Whether the file's name claims another format than its first bytes, damaged or not.</summary>
+    public static bool IsMisnamed(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return RealExtension(stream) is { } real && Family(real) != Family(Path.GetExtension(path));
+    }
+
     /// <summary>
     /// The extension the file's first bytes call for (".jpg", ".png", ".gif", ".webp", ".tif" or ".heic"),
     /// or null when they match none of these.

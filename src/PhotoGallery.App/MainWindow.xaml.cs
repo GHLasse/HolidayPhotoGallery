@@ -149,6 +149,7 @@ public sealed partial class MainWindow : Window
         ViewModel.Notices.CollectionChanged += (_, _) => ShowNotices();
         ViewModel.ReviewDuplicatesRequested += ViewModel_ReviewDuplicatesRequested;
         ViewModel.FlagsChanged += SyncFlagButton;
+        ViewModel.HealthChanged += () => _ = ShowRepairAsync();
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
         Root.CharacterReceived += Root_CharacterReceived;
@@ -385,7 +386,6 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutLocation = false;
         ViewModel.WithoutDate = false;
         ViewModel.DamagedOnly = false;
-        ViewModel.MisnamedOnly = false;
         ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;

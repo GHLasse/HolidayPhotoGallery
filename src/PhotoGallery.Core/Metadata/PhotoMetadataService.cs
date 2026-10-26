@@ -13,6 +13,12 @@ namespace PhotoGallery.Core.Metadata;
 /// </summary>
 public sealed class PhotoMetadataService(ExifToolProcess exifTool)
 {
+    /// <summary>
+    /// A save was refused because the file's name claims another format than it has (a JPEG called .png), so
+    /// the app can note it centrally and offer Fix extension. Raised on a background thread.
+    /// </summary>
+    public event Action<string>? WrongFormatFound;
+
     private static readonly string[] ReadTags =
     [
         "-XMP-dc:Subject", "-IPTC:Keywords", "-XMP-microsoft:LastKeywordXMP", "-IFD0:XPKeywords",
@@ -181,8 +187,11 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
 
             var reason = string.Join(" ", errors);
             if (WrongFormat(reason) is var (claimed, real) && real is not null)
-                reason = Tr("the name ends in .{0}, but the file is really a {1}. Rename it to .{2} and try again.",
+            {
+                WrongFormatFound?.Invoke(path);
+                reason = Tr("the name ends in .{0}, but the file is really a {1}. Choose Repair to give it the right extension, .{2}, then try again.",
                     claimed!.ToLowerInvariant(), real, real.ToLowerInvariant());
+            }
             if (errors.Any(IsFileLockedError))
                 reason += " " + Tr("Another program may have the photo open; close it and try again.");
             throw new ExifToolException(Tr("Could not save {0}: {1}", Path.GetFileName(path), reason));
