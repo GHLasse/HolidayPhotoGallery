@@ -64,6 +64,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (_exifTool is not null)
         {
             _metadata = new PhotoMetadataService(_exifTool);
+            _metadata.WrongFormatFound += path => _uiContext?.Post(_ => _ = NoteHealthAsync(path), null);
             _indexer = new LibraryIndexer(_index, _metadata);
             _photoEditor = new PhotoEditService(_metadata);
         }

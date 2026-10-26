@@ -24,17 +24,22 @@ public sealed partial class PhotoIndex
         }
     }
 
-    /// <summary>Notes what the check found for the file as it was at <paramref name="fileModifiedUtc"/>.</summary>
-    public void SaveCheck(string path, FileHealth health, DateTime fileModifiedUtc)
+    /// <summary>
+    /// Notes what the check found for the file as it was at <paramref name="fileModifiedUtc"/>. A damaged file
+    /// can be <paramref name="misnamed"/> too; that is kept beside its damage.
+    /// </summary>
+    public void SaveCheck(string path, FileHealth health, DateTime fileModifiedUtc, bool misnamed = false)
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO file_checks (photo_id, health, file_mtime, level)
-                SELECT id, $health, $mtime, $level FROM photos WHERE path = $path
-                ON CONFLICT (photo_id) DO UPDATE SET health = excluded.health, file_mtime = excluded.file_mtime, level = excluded.level;
+                INSERT INTO file_checks (photo_id, health, file_mtime, level, misnamed)
+                SELECT id, $health, $mtime, $level, $misnamed FROM photos WHERE path = $path
+                ON CONFLICT (photo_id) DO UPDATE SET health = excluded.health, file_mtime = excluded.file_mtime, level = excluded.level,
+                    misnamed = excluded.misnamed;
                 """;
+            cmd.Parameters.AddWithValue("$misnamed", misnamed || health == FileHealth.Misnamed ? 1 : 0);
             cmd.Parameters.AddWithValue("$path", path);
             cmd.Parameters.AddWithValue("$health", (int)health);
             cmd.Parameters.AddWithValue("$mtime", fileModifiedUtc.Ticks);
@@ -63,7 +68,7 @@ public sealed partial class PhotoIndex
         lock (_lock)
             return Convert.ToInt32(Scalar($"""
                 SELECT COUNT(*) FROM file_checks c JOIN photos p ON p.id = c.photo_id
-                WHERE c.health = {(int)FileHealth.Misnamed} AND c.file_mtime = p.file_mtime;
+                WHERE (c.health = {(int)FileHealth.Misnamed} OR c.misnamed = 1) AND c.file_mtime = p.file_mtime;
                 """));
     }
 

@@ -51,10 +51,41 @@ public sealed partial class MainViewModel
     /// </summary>
     public async Task MarkAsFineAsync(PhotoItemViewModel item)
     {
-        await Task.Run(() => _index.SaveCheck(item.Path, FileHealth.Whole, item.Photo.FileModifiedUtc));
+        await Task.Run(() =>
+        {
+            var misnamed = File.Exists(item.Path) && FileCheck.IsMisnamed(item.Path);
+            _index.SaveCheck(item.Path, misnamed ? FileHealth.Misnamed : FileHealth.Whole, item.Photo.FileModifiedUtc);
+        });
         Inform(Tr("{0} is no longer marked as damaged.", item.FileName));
         if (DamagedOnly)
             await SearchAsync();
+    }
+
+    /// <summary>Raised when what the file check knows about some photos changed outside the background check.</summary>
+    public event Action? HealthChanged;
+
+    /// <summary>
+    /// Checks one file now and keeps the result in the index, e.g. after a save was refused for its wrong
+    /// extension, so the Wrong file extension filter and Fix extension know about it at once.
+    /// </summary>
+    public async Task<FileHealth> NoteHealthAsync(string path)
+    {
+        try
+        {
+            var health = await Task.Run(() =>
+            {
+                var found = FileCheck.Check(path);
+                var misnamed = found is not (FileHealth.Whole or FileHealth.Misnamed) && FileCheck.IsMisnamed(path);
+                _index.SaveCheck(path, found, File.GetLastWriteTimeUtc(path), misnamed);
+                return found;
+            });
+            HealthChanged?.Invoke();
+            return health;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return FileHealth.Unreadable;
+        }
     }
 
     /// <summary>Those of <paramref name="items"/> the file check found misnamed (and not changed since).</summary>
@@ -125,7 +156,8 @@ public sealed partial class MainViewModel
                     try
                     {
                         var health = await Task.Run(() => FileCheck.Check(path));
-                        await Task.Run(() => _index.SaveCheck(path, health, modified));
+                        var misnamed = health is not (FileHealth.Whole or FileHealth.Misnamed) && await Task.Run(() => FileCheck.IsMisnamed(path));
+                        await Task.Run(() => _index.SaveCheck(path, health, modified, misnamed));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {

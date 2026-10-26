@@ -128,7 +128,8 @@ public sealed partial class PhotoIndex : IDisposable
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
                 health INTEGER NOT NULL,
                 file_mtime INTEGER NOT NULL,
-                level INTEGER NOT NULL DEFAULT 1
+                level INTEGER NOT NULL DEFAULT 1,
+                misnamed INTEGER NOT NULL DEFAULT 0
             );
             -- Picture fingerprints for finding duplicates (F-3), for the file as it was then.
             CREATE TABLE IF NOT EXISTS picture_hashes (
@@ -143,6 +144,9 @@ public sealed partial class PhotoIndex : IDisposable
         // Checks saved before the level was kept count as level 1, so those files are checked again.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'level';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE file_checks ADD COLUMN level INTEGER NOT NULL DEFAULT 1;");
+        // A damaged file's wrong name used to be hidden by its damage; those files are checked again.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'misnamed';"), CultureInfo.InvariantCulture) == 0)
+            Execute($"ALTER TABLE file_checks ADD COLUMN misnamed INTEGER NOT NULL DEFAULT 0; UPDATE file_checks SET level = 0 WHERE health NOT IN (0, {(int)FileHealth.Misnamed});");
         // Private photos (P-1) came later; their mark is read from the folders again on the next scan.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'private';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE photos ADD COLUMN private INTEGER NOT NULL DEFAULT 0;");
@@ -427,7 +431,7 @@ public sealed partial class PhotoIndex : IDisposable
                 where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health NOT IN (0, {(int)FileHealth.Misnamed}) AND c.file_mtime = p.file_mtime)");
 
             if (query.MisnamedOnly)
-                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health = {(int)FileHealth.Misnamed} AND c.file_mtime = p.file_mtime)");
+                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND (c.health = {(int)FileHealth.Misnamed} OR c.misnamed = 1) AND c.file_mtime = p.file_mtime)");
 
             if (query.WithoutPlace)
                 where.Add("(p.country IS NULL OR p.country = '')");

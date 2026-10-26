@@ -106,17 +106,8 @@ public sealed partial class MainViewModel
         StatusText = Tr("Looking for the damaged part of {0}…", item.FileName);
         try
         {
-            var health = await Task.Run(() =>
-            {
-                try
-                {
-                    return FileCheck.Check(item.Path);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    return FileHealth.Unreadable;
-                }
-            });
+            // Checked afresh, and kept in the index so the filters and the bottom bar agree with the wizard.
+            var health = await NoteHealthAsync(item.Path);
             DecodedImage? image = null;
             try
             {

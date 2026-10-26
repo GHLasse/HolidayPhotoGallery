@@ -47,6 +47,35 @@ public sealed partial class MainWindow
         RepairButton.Visibility = RepairPhotoItem.Visibility = damaged is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
+    private async Task OfferFixExtensionAsync(PhotoItemViewModel item)
+    {
+        string? name = null;
+        try
+        {
+            name = await Task.Run(() => FileCheck.CorrectName(item.Path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Repair damaged file"),
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = name is null
+                    ? Tr("This file is not damaged.")
+                    : Tr("This file is not damaged, but its name claims the wrong format, so its details can’t be saved. Fix extension renames it to {0}.", name),
+            },
+            PrimaryButtonText = name is null ? "" : Tr("Fix extension"),
+            CloseButtonText = name is null ? Tr("OK") : Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
+            await ViewModel.FixMisnamedAsync([item]);
+    }
+
     // Repair from the grid: the wizard works on the photo in the viewer, so the damaged photo opens there first.
     private void RepairSelected_Click(object sender, RoutedEventArgs e)
     {
@@ -65,6 +94,13 @@ public sealed partial class MainWindow
         var damaged = await ViewModel.FindDamageAsync(item);
         var copies = await ViewModel.FindCopiesAsync(item);
         ViewerProgress.IsActive = false;
+
+        // Only the name is wrong (a JPEG called .png): nothing to repair, but the extension needs fixing.
+        if (damaged.Health == FileHealth.Misnamed)
+        {
+            await OfferFixExtensionAsync(item);
+            return;
+        }
 
         string? copyPath = copies.FirstOrDefault();
         RepairedPhoto? repaired = null;

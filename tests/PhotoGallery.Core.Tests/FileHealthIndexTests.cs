@@ -61,4 +61,16 @@ public sealed class FileHealthIndexTests : IDisposable
         Assert.Contains("/other/b.jpg", _index.GetUnchecked(10).Select(p => p.Path));
     }
 
+    [Fact]
+    public void A_damaged_photo_with_the_wrong_extension_counts_as_both()
+    {
+        var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        _index.Upsert([Photo("c.png", then)]);
+        _index.SaveCheck("/photos/c.png", FileHealth.CutOff, then, misnamed: true);
+
+        Assert.Equal(1, _index.CountDamaged());
+        Assert.Equal(1, _index.CountMisnamed());
+        Assert.Equal(["/photos/c.png"], _index.GetMisnamed().Select(p => p.Path));
+    }
+
 }
