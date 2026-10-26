@@ -8,7 +8,7 @@ public sealed partial class MainViewModel
 {
     public string RenamePatternText
     {
-        get => _settings.RenamePattern;
+        get => _settings.RenamePattern == RenamePattern.OldDefault ? RenamePattern.Default : _settings.RenamePattern;
         set
         {
             _settings.RenamePattern = value;
@@ -25,7 +25,8 @@ public sealed partial class MainViewModel
         return items.OrderBy(i => order.TryGetValue(i, out var at) ? at : int.MaxValue).Select(i => i.Photo).ToList();
     }
 
-    public async Task RenamePhotosAsync(IReadOnlyList<(IndexedPhoto Photo, string NewName)> plan)
+    /// <summary>Renames the photos; the banner offers Undo, and after an undo (<paramref name="undoing"/>) Redo.</summary>
+    public async Task RenamePhotosAsync(IReadOnlyList<(IndexedPhoto Photo, string NewName)> plan, bool undoing = false)
     {
         if (IsBusy)
         {
@@ -50,7 +51,11 @@ public sealed partial class MainViewModel
         if (done.Count > 0)
         {
             var back = done.Select(d => (d.Photo.MovedTo(d.NewPath), d.Photo.FileName)).ToList();
-            Inform(Tr("Renamed {0}.", PhotoCount(done.Count)), () => RenamePhotosAsync(back));
+            if (undoing)
+                Offer(Tr("Gave {0} their names back.", PhotoCount(done.Count)),
+                      [new NoticeAction(Tr("Redo"), () => RenamePhotosAsync(back))]);
+            else
+                Inform(Tr("Renamed {0}.", PhotoCount(done.Count)), () => RenamePhotosAsync(back, undoing: true));
         }
         await AfterTransferAsync();
     }

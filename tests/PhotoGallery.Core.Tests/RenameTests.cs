@@ -50,6 +50,18 @@ public sealed class RenameTests : IDisposable
         var photo = Photo("IMG_2.jpg");
         Assert.Equal("Holiday 01", RenamePattern.Format("{date} Holiday {place} {##}", photo, 1));
         Assert.Equal("a b", RenamePattern.Format("a:b?", photo, 1));
+        Assert.Equal("Holiday_01", RenamePattern.Format(RenamePattern.Default.Replace("{place}", "Holiday").Replace("###", "##"), photo, 1));
+        Assert.Equal("01", RenamePattern.Format("{date}_{place}_{##}", photo, 1));
+    }
+
+    [Fact]
+    public void The_counter_gets_as_many_digits_as_the_batch_needs()
+    {
+        var photos = Enumerable.Range(1, 1000).Select(i => Photo($"p{i}.jpg")).ToList();
+        var plan = RenamePattern.Plan("Trip_{###}", photos, filesIn: _ => []);
+        Assert.Equal("Trip_0001.jpg", plan[0].NewName);
+        Assert.Equal("Trip_1000.jpg", plan[^1].NewName);
+        Assert.Equal("Trip_00099.jpg", RenamePattern.Plan("Trip_{#####}", photos[..2], start: 98, filesIn: _ => [])[1].NewName);
     }
 
     [Fact]

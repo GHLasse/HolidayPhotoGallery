@@ -967,7 +967,7 @@
                 <CommandBar x:Name="SelectionCommands" IsOpen="False" Padding="12,0,4,0" CornerRadius="8"
                             Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1" VerticalContentAlignment="Center" DefaultLabelPosition="Right" MaxWidth="1400"
-                            OverflowButtonVisibility="Auto">
+                            OverflowButtonVisibility="Auto" Opening="SelectionCommands_Opening">
                     <!-- Opening "…" switches the bar to its open look (another background and border, square
                          corners), which showed as odd edges; it keeps its closed look instead. -->
                     <CommandBar.Resources>
@@ -1091,6 +1091,27 @@
                         <AppBarButton Label="{local:Loc Text='Show in folder'}" Click="ShowInFolderMenu_Click">
                             <AppBarButton.Icon>
                                 <FontIcon Glyph="&#xE838;" />
+                            </AppBarButton.Icon>
+                        </AppBarButton>
+                        <AppBarButton Label="{local:Loc Text='Rename…'}" Click="RenamePhotos_Click" local:Busy.Gate="True"
+                                      ToolTipService.ToolTip="{local:Loc Text='Rename the selected photos with a name pattern such as date and counter (F2)'}">
+                            <AppBarButton.Icon>
+                                <FontIcon Glyph="&#xE8AC;" />
+                            </AppBarButton.Icon>
+                        </AppBarButton>
+                        <AppBarButton x:Name="BarPrivateButton" Label="{local:Loc Text='Make private'}" Click="PhotosPrivate_Click">
+                            <AppBarButton.Icon>
+                                <FontIcon Glyph="&#xE72E;" />
+                            </AppBarButton.Icon>
+                        </AppBarButton>
+                        <AppBarButton x:Name="BarCopyDetailsButton" Label="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">
+                            <AppBarButton.Icon>
+                                <FontIcon Glyph="&#xE8C8;" />
+                            </AppBarButton.Icon>
+                        </AppBarButton>
+                        <AppBarButton x:Name="BarPasteDetailsButton" Label="{local:Loc Text='Paste details…'}" Click="PasteDetails_Click" local:Busy.Gate="True">
+                            <AppBarButton.Icon>
+                                <FontIcon Glyph="&#xE77F;" />
                             </AppBarButton.Icon>
                         </AppBarButton>
                         <AppBarButton Label="{local:Loc Text='Reject'}" Click="Reject_Click">

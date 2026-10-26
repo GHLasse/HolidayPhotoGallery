@@ -5,28 +5,33 @@ using System.Text.RegularExpressions;
 namespace PhotoGallery.Core.Library;
 
 /// <summary>
-/// File names built from a pattern (F-2), such as "{date} {city} {###}" giving "2026-10-12 Lisbon 001".
+/// File names built from a pattern (F-2), such as "{date}_{city}_{###}" giving "2026-10-12_Lisbon_001".
 /// Parts: {date} (2026-10-12), {time} (14-30-05), {year}, {month}, {day}, {place} (city, else region or
 /// country), {city}, {country}, {camera}, {name} (the name it has now) and {#}, {##}, {###} … a counter with
-/// that many digits. Anything else is kept as text. A part the photo has nothing for is left out.
+/// at least that many digits (more when the batch needs them, so 1000 photos count 0001 to 1000). Anything else is kept as text. A part the photo has nothing for is left out.
 /// </summary>
 public static partial class RenamePattern
 {
-    public const string Default = "{date} {place} {###}";
+    public const string Default = "{date}_{place}_{###}";
+
+    /// <summary>The default before 0.1, with spaces; kept settings with it get the new one.</summary>
+    public const string OldDefault = "{date} {place} {###}";
 
     [GeneratedRegex(@"\{(#+|[a-z]+)\}", RegexOptions.IgnoreCase)]
     private static partial Regex Part();
 
-    [GeneratedRegex(@"\s{2,}")]
-    private static partial Regex Spaces();
+    // Two or more spaces and underscores in a row, as an empty part leaves between its neighbours.
+    [GeneratedRegex(@"[ _]{2,}")]
+    private static partial Regex Gaps();
 
     /// <summary>The new name, without the extension, for the photo with this counter.</summary>
-    public static string Format(string pattern, IndexedPhoto photo, int counter)
+    /// <paramref name="digits"/> is the fewest digits the counter has, whatever the pattern says.
+    public static string Format(string pattern, IndexedPhoto photo, int counter, int digits = 0)
     {
         var date = photo.DateTaken?.Local;
         var name = Part().Replace(pattern, m => m.Groups[1].Value.ToLowerInvariant() switch
         {
-            var hashes when hashes[0] == '#' => counter.ToString(new string('0', hashes.Length), CultureInfo.InvariantCulture),
+            var hashes when hashes[0] == '#' => counter.ToString(new string('0', Math.Max(hashes.Length, digits)), CultureInfo.InvariantCulture),
             "date" => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             "time" => date?.ToString("HH-mm-ss", CultureInfo.InvariantCulture) ?? "",
             "year" => date?.ToString("yyyy", CultureInfo.InvariantCulture) ?? "",
@@ -51,7 +56,7 @@ public static partial class RenamePattern
         var text = new StringBuilder();
         foreach (var c in name)
             text.Append(invalid.Contains(c) || char.IsControl(c) ? ' ' : c);
-        var result = Spaces().Replace(text.ToString(), " ").Trim(' ', '.', '-', '_');
+        var result = Gaps().Replace(text.ToString(), m => m.Value.Contains('_') ? "_" : " ").Trim(' ', '.', '-', '_');
         return result;
     }
 
@@ -77,13 +82,14 @@ public static partial class RenamePattern
             return names;
         }
 
+        var digits = (start + photos.Count - 1).ToString(CultureInfo.InvariantCulture).Length;
         var plan = new List<(IndexedPhoto, string)>();
         for (var i = 0; i < photos.Count; i++)
         {
             var photo = photos[i];
             var folder = Path.GetDirectoryName(photo.Path)!;
             var ext = Path.GetExtension(photo.Path);
-            var stem = Format(pattern, photo, start + i);
+            var stem = Format(pattern, photo, start + i, digits);
             if (stem.Length == 0)
                 stem = Path.GetFileNameWithoutExtension(photo.Path);
             var name = stem + ext;

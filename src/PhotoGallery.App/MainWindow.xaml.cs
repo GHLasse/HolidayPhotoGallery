@@ -515,6 +515,11 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 ToggleInfoPane();
                 break;
+            // Wherever the focus is (not only on the grid), like File Explorer.
+            case VirtualKey.F2 when selected.Count > 0:
+                e.Handled = true;
+                await RenamePhotosAsync();
+                break;
             case VirtualKey.M when _workspace == Workspace.Library:
                 e.Handled = true;
                 _ = SetSidePaneAsync(MapBeside ? SidePane.Info : SidePane.Map);
@@ -996,12 +1001,6 @@ public sealed partial class MainWindow : Window
         {
             PhotoGrid.SelectedItems.Clear();
             e.Handled = true;
-            return;
-        }
-        if (e.Key == VirtualKey.F2 && PhotoGrid.SelectedItems.Count > 0)
-        {
-            e.Handled = true;
-            _ = RenamePhotosAsync();
             return;
         }
         if (e.Key != VirtualKey.Enter)
