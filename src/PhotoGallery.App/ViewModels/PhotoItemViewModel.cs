@@ -72,7 +72,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
         LivePhotos.Has(Path) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     /// <summary>A video's frame rate from 24 fps up, rounded as cameras name it (29.97 → "30 fps"); else empty.</summary>
-    public string FrameRateText => Photo.FrameRate is >= 23.5 and var fps ? $"{Math.Round(fps.Value):0} fps" : "";
+    public string FrameRateText => Photo.FrameRate is >= 23.5 and var fps ? $"{Math.Round(fps):0} fps" : "";
 
     public Microsoft.UI.Xaml.Visibility FrameRateVisibility =>
         FrameRateText.Length > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
