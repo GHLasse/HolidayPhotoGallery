@@ -84,7 +84,7 @@ public sealed class AppUpdatesTests
             Assert.Equal(setup, await File.ReadAllBytesAsync(path));
 
             var wrong = good with { Sha256 = new string('0', 64) };
-            await Assert.ThrowsAsync<HttpRequestException>(() => AppUpdates.DownloadSetupAsync(http, wrong, folder));
+            await Assert.ThrowsAsync<UpdateChangedException>(() => AppUpdates.DownloadSetupAsync(http, wrong, folder));
             var unchecked_ = good with { Sha256 = null, Sha256Url = null };
             await Assert.ThrowsAsync<HttpRequestException>(() => AppUpdates.DownloadSetupAsync(http, unchecked_, folder));
             Assert.Empty(Directory.GetFiles(folder));
@@ -93,6 +93,43 @@ public sealed class AppUpdatesTests
         {
             if (Directory.Exists(folder))
                 Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public void Hand_over_script_waits_for_the_app_runs_setup_and_always_reopens_the_app()
+    {
+        var script = AppUpdates.HandOverScript(4242, @"C:\Users\O'Brien\AppData\Local\Programs\HolidayPhotoGallery\", "HolidayPhotoGallery.exe",
+                                               @"C:\Data\Updates\HolidayPhotoGallery-Setup-0.0.140.exe", new Version(0, 0, 140), @"C:\Data\Updates");
+        var lines = script.Split('\n');
+        Assert.StartsWith("Wait-Process -Id 4242", lines[1]);
+        // Quotes in a path are doubled inside PowerShell's single quotes.
+        Assert.Contains("'C:\\Users\\O''Brien\\AppData", script);
+        Assert.Contains("-Wait -PassThru", script);
+        Assert.Contains("/LOG=\"C:\\Data\\Updates", script);
+        Assert.DoesNotContain("RESTARTAPP=", script);
+        Assert.Contains("0.0.140", script);
+        // The app is opened again last, whatever Setup did.
+        Assert.StartsWith("Start-Process -FilePath 'C:\\Users\\O''Brien", lines[^1]);
+        Assert.EndsWith("HolidayPhotoGallery.exe'", lines[^1]);
+        Assert.Equal(script, Encoding.Unicode.GetString(Convert.FromBase64String(AppUpdates.Encode(script))));
+    }
+
+    [Fact]
+    public void The_last_update_result_is_read_once()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-update-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            Assert.Null(AppUpdates.TakeLastResult(folder));
+            File.WriteAllText(Path.Combine(folder, AppUpdates.ResultFile), "\uFEFF0.0.140\r\n5\r\n");
+            Assert.Equal((new Version(0, 0, 140), 5), AppUpdates.TakeLastResult(folder));
+            Assert.Null(AppUpdates.TakeLastResult(folder));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
         }
     }
 

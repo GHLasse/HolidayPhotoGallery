@@ -174,7 +174,7 @@ public static partial class AppUpdates
                     throw new HttpRequestException(Tr("The download of {0} stopped after {1:N0} of {2:N0} bytes.", SetupFile, length, size));
                 var actual = Convert.ToHexStringLower(hash.GetHashAndReset());
                 if (expected.Any(e => !e.Equals(actual, StringComparison.OrdinalIgnoreCase)))
-                    throw new HttpRequestException(Tr("The download of {0} is not the expected file.", SetupFile));
+                    throw new UpdateChangedException(Tr("The download of {0} is not the expected file.", SetupFile));
             }
             File.Move(part, target, overwrite: true);
             progress?.Report(1);
@@ -187,10 +187,70 @@ public static partial class AppUpdates
     }
 
     /// <summary>
-    /// The installer's command line for a quiet update: it closes nothing itself (the app has closed), keeps the
-    /// folder the app is in, and starts the app again when it is done (see installer/HolidayPhotoGallery.iss).
+    /// The installer's command line for a quiet update: it keeps the folder the app is in and writes a log.
+    /// The app is opened again by <see cref="HandOverScript"/>, not by the installer, so it opens even when
+    /// the install fails.
     /// </summary>
-    public const string SetupArguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /NORESTARTAPPLICATIONS /RESTARTAPP=1";
+    public static string SetupArguments(string logFile) => $"/SILENT /SUPPRESSMSGBOXES /NORESTART /NORESTARTAPPLICATIONS /LOG=\"{logFile}\"";
+
+    /// <summary>The file the hand-over leaves for the next start: the version being installed and Setup's exit code.</summary>
+    public const string ResultFile = "last-update.txt";
+
+    public const string LogFile = "last-update.log";
+
+    /// <summary>
+    /// A PowerShell script that does the update once the app has gone: it waits for the app's process to end,
+    /// stops anything still running from the app's folder (ExifTool keeps running while the app is open, and a
+    /// file in use makes a quiet Setup give up), runs Setup and waits for it, writes its exit code to
+    /// <see cref="ResultFile"/> in <paramref name="updatesFolder"/>, and opens the app again whatever happened.
+    /// </summary>
+    public static string HandOverScript(int processId, string appFolder, string appExe, string setup, Version version, string updatesFolder)
+    {
+        static string Quote(string text) => "'" + text.Replace("'", "''", StringComparison.Ordinal) + "'";
+        var folder = Path.TrimEndingDirectorySeparator(appFolder) + Path.DirectorySeparatorChar;
+        var log = Path.Combine(updatesFolder, LogFile);
+        var result = Path.Combine(updatesFolder, ResultFile);
+        return string.Join("\n",
+        [
+            "$ErrorActionPreference = 'SilentlyContinue'",
+            $"Wait-Process -Id {processId} -Timeout 60",
+            $"Stop-Process -Id {processId} -Force",
+            $"$folder = {Quote(folder)}",
+            "Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($folder, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force",
+            "Start-Sleep -Seconds 1",
+            "$code = -1",
+            $"try {{ $p = Start-Process -FilePath {Quote(setup)} -ArgumentList {Quote(SetupArguments(log))} -Wait -PassThru; $code = $p.ExitCode }} catch {{ }}",
+            $"Set-Content -LiteralPath {Quote(result)} -Value (\"{Format(version)}`n\" + $code)",
+            $"Start-Process -FilePath {Quote(Path.Combine(appFolder, appExe))}",
+        ]);
+    }
+
+    /// <summary>The script as PowerShell's -EncodedCommand wants it (UTF-16 in Base64), so no quoting can break it.</summary>
+    public static string Encode(string script) => Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+
+    /// <summary>
+    /// What the last update left in <paramref name="updatesFolder"/>: the version it installed and Setup's exit code
+    /// (0 worked, -1 Setup didn't start), or null when there was no update since the last start. The note is removed.
+    /// </summary>
+    public static (Version Version, int ExitCode)? TakeLastResult(string updatesFolder)
+    {
+        var path = Path.Combine(updatesFolder, ResultFile);
+        try
+        {
+            if (!File.Exists(path))
+                return null;
+            var lines = File.ReadAllLines(path).Select(l => l.Trim().TrimStart('\uFEFF')).Where(l => l.Length > 0).ToList();
+            File.Delete(path);
+            if (lines.Count < 2 || ParseVersion(lines[0]) is not { } version ||
+                !int.TryParse(lines[1], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var code))
+                return null;
+            return (version, code);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>The release notes as plain text: Markdown headings, bold and links are taken out.</summary>
     public static string PlainNotes(string notes)
@@ -226,3 +286,9 @@ public static partial class AppUpdates
     private static bool Bool(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
 }
+
+/// <summary>
+/// The installer downloaded is not the one the release named. Usually the test version was replaced by a newer
+/// build between the check and the download; asking GitHub again gives the new one's checksum.
+/// </summary>
+public sealed class UpdateChangedException(string message) : HttpRequestException(message);
