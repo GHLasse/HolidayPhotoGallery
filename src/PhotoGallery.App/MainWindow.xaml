@@ -615,6 +615,16 @@
                                 <FontIcon Glyph="&#xE838;" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="CopyDetailsItem" Text="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8C8;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="PasteDetailsItem" Text="{local:Loc Text='Paste details…'}" Click="PasteDetails_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE77F;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                         <MenuFlyoutSeparator />
                         <MenuFlyoutItem x:Name="AlbumCoverItem" Text="{local:Loc Text='Use as album cover'}" Click="UseAsAlbumCover_Click">
                             <MenuFlyoutItem.Icon>
@@ -1341,6 +1351,16 @@
                             <MenuFlyoutItem x:Name="ViewerAlbumCoverItem" Text="{local:Loc Text='Use as album cover'}" Click="UseAsAlbumCover_Click">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE8B9;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8C8;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="ViewerPasteDetailsItem" Text="{local:Loc Text='Paste details…'}" Click="PasteDetails_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE77F;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />

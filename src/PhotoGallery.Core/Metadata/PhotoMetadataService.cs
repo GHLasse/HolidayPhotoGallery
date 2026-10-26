@@ -24,6 +24,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
         "-XMP-photoshop:Country", "-XMP-iptcCore:CountryCode", "-XMP-photoshop:State", "-XMP-photoshop:City", "-XMP-iptcCore:Location",
         "-IPTC:Country-PrimaryLocationName", "-IPTC:Province-State", "-IPTC:City", "-IPTC:Sub-location",
+        "-IFD0:Copyright", "-XMP-dc:Rights", "-IPTC:CopyrightNotice", "-IFD0:Artist", "-XMP-dc:Creator", "-IPTC:By-line",
         $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}", $"-{AppNamespace.AutoTagsField}",
     ];
 
@@ -375,6 +376,33 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        if (changes.Camera is { } camera)
+        {
+            foreach (var (name, value) in camera)
+            {
+                if (CameraTags.Names.Contains(name))
+                    args.Add($"-{name}#={value}");
+            }
+        }
+
+        if (changes.Copyright is { } copyright)
+        {
+            copyright = copyright.Trim();
+            args.Add($"-IFD0:Copyright={copyright}");
+            args.Add($"-XMP-dc:Rights={copyright}");
+            if (hasIptc)
+                args.Add($"-IPTC:CopyrightNotice={copyright}");
+        }
+
+        if (changes.Creator is { } creator)
+        {
+            creator = creator.Trim();
+            args.Add($"-IFD0:Artist={creator}");
+            args.Add($"-XMP-dc:Creator={creator}");
+            if (hasIptc)
+                args.Add($"-IPTC:By-line={creator}");
+        }
+
         var people = changes.People ?? (changes.Orientation is not null && current is { People.Count: > 0 } ? current.People : null);
         if (people is not null)
         {
@@ -384,7 +412,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
 
         // IPTC needs to be told its text is UTF-8, or non-ASCII tags and captions are garbled in other apps.
-        if (hasIptc && (changes.Tags is not null || changes.Caption is not null || changes.Place is not null))
+        if (hasIptc && (changes.Tags is not null || changes.Caption is not null || changes.Place is not null ||
+                       changes.Copyright is not null || changes.Creator is not null))
             args.Add("-IPTC:CodedCharacterSet=UTF8");
 
         args.Add(path);
@@ -472,9 +501,28 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Longitude = GetNumber(item, "Composite:GPSLongitude"),
             Camera = CameraName(GetString(item, "IFD0:Make"), GetString(item, "IFD0:Model")),
             Place = ParsePlace(item),
+            Copyright = FirstText(item, "XMP-dc:Rights", "IFD0:Copyright", "IPTC:CopyrightNotice"),
+            Creator = FirstText(item, "XMP-dc:Creator", "IFD0:Artist", "IPTC:By-line"),
             People = people,
             OtherRegions = otherRegions,
         };
+    }
+
+    // The first field that has text; a list (XMP Creator) gives its entries joined.
+    private static string? FirstText(JsonElement item, params string[] keys) =>
+        keys.Select(k => string.Join("; ", GetList(item, k)).Trim()).FirstOrDefault(v => v.Length > 0);
+
+    /// <summary>
+    /// The camera and exposure tags of a photo (<see cref="CameraTags.Names"/>), as numbers so they can be
+    /// written into another photo unchanged. Tags the photo doesn't have are left out.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string>> ReadCameraAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "-json", "-n", "-G1" };
+        args.AddRange(CameraTags.Names.Select(n => "-" + n));
+        args.Add(path);
+        var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
+        return CameraTags.Parse(output.Output);
     }
 
     private static PlaceName? ParsePlace(JsonElement item)

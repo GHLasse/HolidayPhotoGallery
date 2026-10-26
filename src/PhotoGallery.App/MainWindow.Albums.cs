@@ -139,6 +139,9 @@ public sealed partial class MainWindow
         UploadOneDrivePhotosItem.IsEnabled = photos.Count > 0;
         UploadOneDrivePhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to OneDrive", photos.Count) : Tr("Upload to OneDrive");
         SharePhotosItem.IsEnabled = photos.Count > 0;
+        CopyDetailsItem.IsEnabled = photos.Count == 1;
+        PasteDetailsItem.IsEnabled = photos.Count > 0 && ViewModel.CopiedDetails is not null;
+        PasteDetailsItem.Text = ViewModel.CopiedDetails is null ? Tr("Paste details…") : Tr("Paste details of {0}…", ViewModel.CopiedFrom);
     }
 
     // The viewer's menu: the photo being looked at is the grid's selection.
@@ -149,6 +152,7 @@ public sealed partial class MainWindow
         ViewerAlbumCoverItem.Text = album is null
             ? Tr("Use as album cover (select one photo in an album)")
             : Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album));
+        ViewerPasteDetailsItem.IsEnabled = ViewModel.CopiedDetails is not null;
     }
 
     private async void UseAsAlbumCover_Click(object sender, RoutedEventArgs e)

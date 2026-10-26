@@ -237,7 +237,7 @@ public sealed partial class MainWindow
             CompareLayer.PreviewKey(e, WasdArrow(e.Key));
             return;
         }
-        if (HandleWasd(e))
+        if (HandleWasd(e) || HandleCopyPaste(e))
             return;
         if (IsViewerOpen && GridHasFocus() && CompareLayer.Visibility != Visibility.Visible)
         {

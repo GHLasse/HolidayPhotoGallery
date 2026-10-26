@@ -43,6 +43,12 @@ public sealed record PhotoMetadata
     /// <summary>Camera make and model, e.g. "Apple iPhone 15 Pro" or "Canon EOS R6".</summary>
     public string? Camera { get; init; }
 
+    /// <summary>The copyright notice, e.g. "© 2024 Lasse".</summary>
+    public string? Copyright { get; init; }
+
+    /// <summary>Who took the photo (EXIF Artist, XMP Creator).</summary>
+    public string? Creator { get; init; }
+
     /// <summary>The people named in the photo, with their faces on the stored pixels.</summary>
     public IReadOnlyList<PersonTag> People { get; init; } = [];
 

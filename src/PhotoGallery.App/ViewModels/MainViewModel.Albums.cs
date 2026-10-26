@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using PhotoGallery.Core.Albums;
+using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.Library;
 using static PhotoGallery.Core.Localization.Strings;
 

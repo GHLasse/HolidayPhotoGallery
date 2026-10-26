@@ -552,6 +552,8 @@ public sealed partial class MainWindow : Window
             (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
             ("Tab", Tr("Next photo in compare")),
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
+            ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
+            ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
             ("F11", Tr("Full screen")),
             ("Esc", Tr("Close the viewer or compare")),
             (Tr("? or F1"), Tr("This list")),
