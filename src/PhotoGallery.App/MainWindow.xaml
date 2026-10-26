@@ -293,7 +293,6 @@
                                 <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='Damaged files'}" IsChecked="{x:Bind ViewModel.DamagedOnly, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='Wrong file extension'}" IsChecked="{x:Bind ViewModel.MisnamedOnly, Mode=TwoWay}" />
-                                <MenuFlyoutItem Text="{local:Loc Text='Fix wrong file extensions'}" Click="FixMisnamed_Click" />
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>
@@ -964,6 +963,14 @@
                         <TextBlock x:Name="SelectionCountText" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Style="{ThemeResource BodyStrongTextBlockStyle}" />
                     </CommandBar.Content>
+                    <!-- Only while a selected photo's name claims the wrong format (shown from code). -->
+                    <AppBarButton x:Name="FixExtensionButton" Label="{local:Loc Text='Fix extension'}" Click="FixMisnamed_Click"
+                                  Visibility="Collapsed" local:Busy.Gate="True"
+                                  ToolTipService.ToolTip="{local:Loc Text='Rename the selected photos whose name claims the wrong format after their real one, e.g. IMG_1.PNG that is a JPEG to IMG_1.JPG'}">
+                        <AppBarButton.Icon>
+                            <FontIcon Glyph="&#xE8AC;" />
+                        </AppBarButton.Icon>
+                    </AppBarButton>
                     <AppBarButton Label="{local:Loc Text='Left'}" LabelPosition="Collapsed" Click="RotateLeft_Click"
                                   ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
                         <AppBarButton.Icon>
