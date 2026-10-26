@@ -3,12 +3,13 @@ name: Build
 # Branches (see CONTRIBUTING.md): work happens in pull requests into "prep"; a release is a pull request
 # from prep into "main".
 # - Pull requests build and test, never for documentation alone; a new push stops the build still running.
+# - Versions are MAJOR.MINOR.BUILD, worked out by scripts/version.sh from the newest release.
 # - Every push to prep (a merged pull request) also publishes the "experimental" pre-release: the latest
-#   test version, for testers to install. It carries the version in VERSION plus the run number.
-# - Every push to main (a merged release pull request) publishes GitHub Release v<VERSION> with the installer
-#   and the zip. Raise VERSION in prep before the release pull request; an existing release is not replaced.
+#   test version, for testers to install, e.g. 0.1.140 (the newest release's 0.1, then the run number).
+# - Every push to main (a merged release pull request) publishes the next release with the installer and
+#   the zip: v0.1.0, then v0.2.0, and so on. VERSION holds only the major version (0 until 1.0).
 # - Running the workflow by hand (Actions > Build > Run workflow) builds any branch; with a version such
-#   as 1.0.0 it also publishes that release.
+#   as 0.2.0 it also publishes that release.
 on:
   pull_request:
     paths-ignore:
@@ -22,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Version to release, such as 1.0.0 (leave empty for a test build only)'
+        description: 'Version to release, such as 0.2.0 (leave empty for a test build only)'
         required: false
         default: ''
 
@@ -32,6 +33,21 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          version="$(scripts/version.sh '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.run_number }}' "$RELEASE_VERSION")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version $version"
+
   core-tests-linux:
     runs-on: ubuntu-latest
     steps:
@@ -90,25 +106,12 @@ jobs:
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 
   windows:
+    needs: version
     runs-on: windows-latest
+    env:
+      APP_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      # Releases carry VERSION (or the version typed in by hand), experimental builds VERSION.<run number>,
-      # other test builds 0.0.<run number>.
-      - name: Version
-        shell: pwsh
-        env:
-          RELEASE_VERSION: ${{ inputs.release_version }}
-        run: |
-          $file = (Get-Content VERSION -Raw).Trim()
-          $push = '${{ github.event_name }}' -eq 'push'
-          $version = "0.0.${{ github.run_number }}"
-          if ($push -and '${{ github.ref_name }}' -eq 'prep') { $version = "$file.${{ github.run_number }}" }
-          if ($push -and '${{ github.ref_name }}' -eq 'main') { $version = $file }
-          if ($env:RELEASE_VERSION) { $version = $env:RELEASE_VERSION.Trim().TrimStart('v') }
-          if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw "Version '$version' must look like 1.2.3" }
-          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "Version $version"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -285,12 +288,14 @@ jobs:
   # (push to prep); see the top.
   release:
     if: (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || github.event_name == 'push'
-    needs: [core-tests-linux, windows]
+    needs: [version, core-tests-linux, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -298,36 +303,47 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_VERSION: ${{ inputs.release_version }}
+          VERSION: ${{ needs.version.outputs.version }}
           EVENT: ${{ github.event_name }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          file_version="$(tr -d '[:space:]' < VERSION)"
+          version="$VERSION"
           # The file names stay the same for every release, so .../releases/latest/download/<name> always works.
           cp artifacts/HolidayPhotoGallery-Setup-x64/*.exe HolidayPhotoGallery-Setup-x64.exe
           (cd artifacts/HolidayPhotoGallery-win-x64 && zip -qr ../../HolidayPhotoGallery-win-x64.zip .)
+          # The app checks its download against this before installing an update (GitHub's own asset digest
+          # is checked too, when there is one).
+          sha256sum HolidayPhotoGallery-Setup-x64.exe | cut -d' ' -f1 > HolidayPhotoGallery-Setup-x64.exe.sha256
+          files="HolidayPhotoGallery-Setup-x64.exe HolidayPhotoGallery-Setup-x64.exe.sha256 HolidayPhotoGallery-win-x64.zip"
           if [ "$EVENT" = push ] && [ "$BRANCH" = prep ]; then
+            # What's new since the previous experimental build, shown by the app's update banner.
+            previous="$(git rev-list -n 1 experimental 2> /dev/null || true)"
+            {
+              echo "Test version $version, built from prep at ${{ github.sha }}. It may have bugs; for everyday use take the latest release."
+              echo
+              if [ -n "$previous" ]; then
+                echo "What's new since the previous test version:"
+                git log --no-merges --format='- %s' "$previous..${{ github.sha }}"
+              fi
+            } > notes.md
             # One rolling pre-release: the old one goes, the new one points at this commit.
-            version="$file_version.${{ github.run_number }}"
             gh release delete experimental --yes --cleanup-tag > /dev/null 2>&1 || true
-            gh release create experimental HolidayPhotoGallery-Setup-x64.exe HolidayPhotoGallery-win-x64.zip \
+            gh release create experimental $files \
               --prerelease --target "${{ github.sha }}" --title "Holiday Photo Gallery $version (experimental)" \
-              --notes "Test version $version, built from prep at ${{ github.sha }}. It may have bugs; for everyday use take the latest release."
+              --notes-file notes.md
             exit 0
           fi
           if [ "$EVENT" = push ] && [ "$BRANCH" != main ]; then
             exit 0
           fi
-          version="${RELEASE_VERSION:-$file_version}"
-          version="${version#v}"
           tag="v$version"
           if [ "$EVENT" = push ] && gh release view "$tag" > /dev/null 2>&1; then
-            echo "::error::Release $tag already exists. Raise the version in VERSION (in prep) before the next release pull request."
+            echo "::error::Release $tag already exists."
             exit 1
           fi
           if gh release view "$tag" > /dev/null 2>&1; then
-            gh release upload "$tag" HolidayPhotoGallery-Setup-x64.exe HolidayPhotoGallery-win-x64.zip --clobber
+            gh release upload "$tag" $files --clobber
           else
-            gh release create "$tag" HolidayPhotoGallery-Setup-x64.exe HolidayPhotoGallery-win-x64.zip \
+            gh release create "$tag" $files \
               --target "${{ github.sha }}" --title "Holiday Photo Gallery $version" --generate-notes
           fi

@@ -160,19 +160,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>A result with an Undo button on its banner.</summary>
     public void Inform(string message, Func<Task> undo) => Notify(message, NoticeSeverity.Info, undo);
 
+    /// <summary>News with buttons, such as a new version with "What's new" and "Update now", as a blue banner.</summary>
+    public void Offer(string message, IReadOnlyList<NoticeAction> actions) => Notify(message, NoticeSeverity.Info, actions: actions);
+
     /// <summary>Something the user should do differently, shown as a yellow banner.</summary>
     public void Warn(string message) => Notify(message, NoticeSeverity.Warning);
 
     private const int MaxNotices = 3;
 
-    private void Notify(string message, NoticeSeverity severity, Func<Task>? undo = null)
+    private void Notify(string message, NoticeSeverity severity, Func<Task>? undo = null, IReadOnlyList<NoticeAction>? actions = null)
     {
         if (!IsBusy)
             StatusText = _countText;
         // The same message again moves to the top instead of showing twice.
         if (Notices.FirstOrDefault(n => n.Message == message) is { } same)
             Notices.Remove(same);
-        var notice = new Notice(message, severity, undo);
+        var notice = new Notice(message, severity, undo, actions);
         Notices.Insert(0, notice);
         while (Notices.Count > MaxNotices)
             Notices.RemoveAt(Notices.Count - 1);

@@ -80,6 +80,9 @@ The app is a plain `.exe` that carries its own Windows App SDK runtime, so nothi
 - **Experimental** ([pre-release](https://github.com/GHLasse/HolidayPhotoGallery/releases/tag/experimental)) is the
   newest test version, rebuilt from `prep` whenever a change lands there. It may have bugs.
 
+An installed app looks for a new version once a day and offers it in a banner (Settings › App › Updates
+picks Stable or Experimental).
+
 All work goes into `prep` through pull requests; see [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
 
 ## Project layout
