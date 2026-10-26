@@ -59,6 +59,24 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>The People view's order (X-1): 0 most photos first, 1 by name; kept in the settings.</summary>
+    public int PeopleSortIndex
+    {
+        get => _settings.PeopleSort == "name" ? 1 : 0;
+        set
+        {
+            var key = value == 1 ? "name" : "count";
+            if (key == _settings.PeopleSort)
+                return;
+            _settings.PeopleSort = key;
+            _settings.Save(SettingsPath);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Everyone named, in the People view's order.</summary>
+    public IReadOnlyList<TagFilterViewModel> PeopleInViewOrder => PeopleSortIndex == 1 ? PeopleByName : People.ToList();
+
     /// <summary>The names already used in the library, most photos first, to pick from when naming a face.</summary>
     public IReadOnlyList<string> KnownNames => People.Select(p => p.Tag).ToList();
 
@@ -461,6 +479,51 @@ public sealed partial class MainViewModel
         {
             _peopleWriting.Release();
         }
+        await AfterPeopleChangedAsync();
+    }
+
+    /// <summary>Takes a person off all of <paramref name="items"/> (the info pane with several photos selected).</summary>
+    public async Task RemovePersonFromAsync(IReadOnlyList<PhotoItemViewModel> items, string name)
+    {
+        if (_metadata is null || _indexer is null)
+            return;
+        var named = items.Where(i => i.Photo.People.Any(p => string.Equals(p.Name, name, StringComparison.CurrentCultureIgnoreCase))).ToList();
+        if (named.Count == 0)
+            return;
+        await _peopleWriting.WaitAsync();
+        var failures = new List<string>();
+        var changed = 0;
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < named.Count; i++)
+            {
+                if (_stopRequested)
+                    break;
+                var item = named[i];
+                StatusText = Tr("Removing {0} from {1} of {2} photo(s)…", name, i + 1, named.Count);
+                try
+                {
+                    var current = await _metadata.ReadAsync(item.Path);
+                    var people = current.People.Where(p => !string.Equals(p.Name, name, StringComparison.CurrentCultureIgnoreCase)).ToList();
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { People = people });
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                    changed++;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+            _peopleWriting.Release();
+        }
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
+        Inform(Tr("Removed {0} from {1}", name, PhotoCount(changed)));
         await AfterPeopleChangedAsync();
     }
 

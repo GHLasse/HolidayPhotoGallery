@@ -70,6 +70,9 @@ public sealed class LibrarySettings
     /// </summary>
     public string? LastPlace { get; set; }
 
+    /// <summary>How the People view is sorted: "count" (most photos first) or "name" (A–Z).</summary>
+    public string PeopleSort { get; set; } = "count";
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 

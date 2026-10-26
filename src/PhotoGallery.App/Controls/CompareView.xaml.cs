@@ -358,18 +358,20 @@ public sealed partial class CompareView : UserControl
     /// Takes the compare keys before anything else sees them; the window passes on every key while compare is
     /// open, so Tab moves the highlight wherever the focus is instead of moving the focus.
     /// </summary>
-    public async void PreviewKey(KeyRoutedEventArgs e)
+    /// <param name="asKey">The key to act on instead, such as Left for A (W, A, S and D work like the arrows).</param>
+    public async void PreviewKey(KeyRoutedEventArgs e, VirtualKey? asKey = null)
     {
-        if (Visibility != Visibility.Visible || _panes.Count == 0 || e.Handled || !HandlesKey(e.Key))
+        var key = asKey ?? e.Key;
+        if (Visibility != Visibility.Visible || _panes.Count == 0 || e.Handled || !HandlesKey(key))
             return;
-        if (e.Key == VirtualKey.Tab)
+        if (key == VirtualKey.Tab)
             _panes[_activeIndex].Host.Focus(FocusState.Keyboard);
         e.Handled = true;
         _keyHandledByPreview = e.Key;
         DispatcherQueue.TryEnqueue(() => _keyHandledByPreview = null);
         var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-        await HandleKeyAsync(e.Key, shift);
+        await HandleKeyAsync(key, shift);
     }
 
     private async Task HandleKeyAsync(VirtualKey key, bool shift)

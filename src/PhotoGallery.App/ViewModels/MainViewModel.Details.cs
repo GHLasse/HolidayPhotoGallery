@@ -27,6 +27,21 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>The chosen details of one photo; empty when ExifTool isn't running or can't read it.</summary>
+    /// <summary>Whether the photo is HDR, for the badge in the info pane; false when the file can't be read.</summary>
+    public async Task<bool> IsHdrAsync(string path)
+    {
+        if (_exifTool is null)
+            return false;
+        try
+        {
+            return await PhotoQuality.IsHdrAsync(_exifTool, path);
+        }
+        catch (Exception ex) when (ex is Core.ExifTool.ExifToolException or IOException or System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
     public async Task<IReadOnlyList<(string Label, string Value)>> ReadMoreDetailsAsync(string path)
     {
         if (_exifTool is null)

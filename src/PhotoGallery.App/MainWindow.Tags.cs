@@ -290,6 +290,21 @@ public sealed partial class MainWindow
         }
     }
 
+    // Each name in the list of everyone with their face (X-1), loaded as the rows come into view.
+    private async void MorePeopleList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (args.InRecycleQueue || args.Item is not TagFilterViewModel person ||
+            (args.ItemContainer.ContentTemplateRoot as Grid)?.Children.OfType<Ellipse>().FirstOrDefault() is not { } face)
+            return;
+        face.Tag = person.Tag;
+        face.Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush");
+        if (!_latestFaces.TryGetValue(person.Tag, out var thumbnail))
+            _latestFaces[person.Tag] = thumbnail = await ViewModel.GetLatestFaceAsync(person.Tag);
+        // The row may show someone else by now.
+        if (thumbnail is not null && Equals(face.Tag, person.Tag))
+            LoadFaceFill(face, thumbnail);
+    }
+
     private static async void LoadFaceFill(Ellipse face, byte[] thumbnail)
     {
         try

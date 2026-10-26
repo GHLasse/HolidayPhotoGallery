@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using PhotoGallery.Core.Metadata;
 using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
@@ -75,6 +76,39 @@ public sealed partial class MainWindow
             if (e.PropertyName is nameof(ViewModels.MetadataEditorViewModel.Details))
                 _ = ShowMoreDetailsAsync();
         };
+    }
+
+    private int _qualityVersion;
+
+    /// <summary>The resolution class badge (exact size in its tooltip) and, once the file is read, HDR (U-7).</summary>
+    private async Task ShowQualityBadgesAsync()
+    {
+        var version = ++_qualityVersion;
+        QualityBadges.Children.Clear();
+        if (ViewModel.Editor.Items is not [var item] || item.Photo.Width is not { } w || item.Photo.Height is not { } h)
+        {
+            QualityBadges.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var (width, height) = Core.Metadata.Orientation.SwapsDimensions(item.Photo.Orientation) ? (h, w) : (w, h);
+        QualityBadges.Children.Add(QualityBadge(PhotoQuality.ResolutionClass(width, height), Tr("{0} × {1} pixels", width, height)));
+        QualityBadges.Visibility = Visibility.Visible;
+        if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
+            QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
+    }
+
+    private static Border QualityBadge(string label, string tooltip)
+    {
+        var badge = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(10, 2, 10, 2),
+            BorderThickness = new Thickness(1),
+            BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush"),
+            Child = new TextBlock { Text = label, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+        };
+        ToolTipService.SetToolTip(badge, tooltip);
+        return badge;
     }
 
     private async Task ShowMoreDetailsAsync(bool force = false)

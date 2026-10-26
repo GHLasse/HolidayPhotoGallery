@@ -160,16 +160,20 @@
                                                 <Setter Property="CornerRadius" Value="0,0,4,4" />
                                             </Style>
                                         </Flyout.FlyoutPresenterStyle>
-                                        <ListView x:Name="MorePeopleList" MaxHeight="480" Padding="0,4" SelectionMode="None" ItemsSource="{x:Bind ViewModel.PeopleByName, Mode=OneWay}">
+                                        <ListView x:Name="MorePeopleList" MaxHeight="480" Padding="0,4" SelectionMode="None" ItemsSource="{x:Bind ViewModel.PeopleByName, Mode=OneWay}"
+                                                  ContainerContentChanging="MorePeopleList_ContainerContentChanging">
                                             <ListView.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:TagFilterViewModel">
                                                     <Grid ColumnSpacing="8">
                                                         <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="*" />
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
-                                                        <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
-                                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
+                                                        <!-- The person's face, filled from code like the faces in the filter bar. -->
+                                                        <Ellipse Width="24" Height="24" VerticalAlignment="Center" Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+                                                        <CheckBox Grid.Column="1" Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
+                                                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{x:Bind CountText}"
                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                                     </Grid>
                                                 </DataTemplate>
@@ -744,6 +748,13 @@
                 <Button HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Click="ClearFilters_Click"
                         Content="{local:Loc Text='Clear filters'}" />
             </StackPanel>
+            <!-- While the photos or albums load for the first time, instead of an empty view (U-9). -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsHitTestVisible="False" Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}">
+                <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" Width="20" Height="20" />
+                <TextBlock Text="{x:Bind ViewModel.LoadingText, Mode=OneWay}" VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
             <!-- Album view: one tile per album, opened with a click. -->
             <StackPanel Grid.Row="1" Spacing="12" Margin="24" MaxWidth="460"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -1005,6 +1016,12 @@
                         <TextBlock Text="{local:Loc Text='Name the people found…'}" />
                     </StackPanel>
                 </Button>
+                <ComboBox x:Name="PeopleSortCombo" MinWidth="170" SelectionChanged="PeopleSortCombo_SelectionChanged"
+                          AutomationProperties.Name="{local:Loc Text='Order of the people'}"
+                          ToolTipService.ToolTip="{local:Loc Text='Order of the people'}">
+                    <ComboBoxItem Content="{local:Loc Text='Most photos first'}" />
+                    <ComboBoxItem Content="{local:Loc Text='By name'}" />
+                </ComboBox>
             </controls:WrapPanel>
             <ScrollViewer Grid.Row="1">
                 <StackPanel Spacing="12" Padding="0,0,8,16">
@@ -1031,6 +1048,8 @@
                 </StackPanel>
                 <TextBlock Text="{x:Bind ViewModel.Editor.Summary, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap"
                            Visibility="{x:Bind ViewModel.Editor.HasSelection, Mode=OneWay}" />
+                <!-- SD/HD/Full HD/4K/8K and HDR, filled from code (MainWindow.Details.cs). -->
+                <StackPanel x:Name="QualityBadges" Orientation="Horizontal" Spacing="6" Visibility="Collapsed" />
                 <TextBlock Text="{x:Bind ViewModel.Editor.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <!-- Camera, lens, exposure and author, read from the file when opened; which ones in Settings › App. -->

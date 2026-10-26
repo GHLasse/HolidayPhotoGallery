@@ -26,6 +26,8 @@ public sealed partial class MainViewModel
             OnPropertyChanged(nameof(HeaderText));
             OnPropertyChanged(nameof(HasNoAlbums));
             OnPropertyChanged(nameof(ShownDetails));
+            OnPropertyChanged(nameof(IsLoading));
+            OnPropertyChanged(nameof(LoadingText));
             if (value)
                 _ = LoadAlbumsAsync();
         }
@@ -41,7 +43,10 @@ public sealed partial class MainViewModel
         }
     }
 
-    public bool HasNoAlbums => IsAlbumView && _loadedAlbums.Count == 0;
+    private bool _albumsLoaded;
+
+    // "No albums yet" only once the albums have been looked for (U-9): on start it showed for a moment.
+    public bool HasNoAlbums => IsAlbumView && _albumsLoaded && _loadedAlbums.Count == 0;
 
     private string _albumFilter = "";
 
@@ -87,6 +92,8 @@ public sealed partial class MainViewModel
     {
         var folders = _settings.Folders.ToList();
         _loadedAlbums = await Task.Run(() => Album.LoadAll(folders, _index));
+        _albumsLoaded = true;
+        OnPropertyChanged(nameof(IsLoading));
         ShowAlbums();
     }
 
@@ -153,14 +160,163 @@ public sealed partial class MainViewModel
         await AlbumsChangedAsync();
     }
 
-    /// <summary>Gives the album its own name; an empty name goes back to the folder's name.</summary>
-    public async Task RenameAlbumAsync(string folder, string name)
+    /// <summary>
+    /// Gives the album its own name; an empty name goes back to the folder's name. With
+    /// <paramref name="renameFolder"/> the folder on disk gets the name too (AL-1), with everything the app keeps
+    /// about its photos, and the album in Google Photos and OneDrive is renamed as well.
+    /// </summary>
+    public async Task RenameAlbumAsync(string folder, string name, bool renameFolder = true)
     {
         name = name.Trim();
+        var oldName = AlbumName(folder);
+        if (renameFolder && name.Length > 0 && SafeFolderName(name) is { Length: > 0 } folderName &&
+            folderName != Path.GetFileName(folder) && Path.GetDirectoryName(folder) is { } parent)
+        {
+            if (_settings.Folders.Any(f => string.Equals(f, folder, StringComparison.OrdinalIgnoreCase)))
+            {
+                Warn(Tr("{0} is a library folder, so only the album's name changes, not the folder's.", folder));
+            }
+            else if (IsBusy || IsUploading)
+            {
+                Warn(Tr("The folder can't be renamed while the app is busy. Try again when it has finished."));
+                return;
+            }
+            else
+            {
+                var target = Path.Combine(parent, folderName);
+                if (!string.Equals(target, folder, StringComparison.OrdinalIgnoreCase) && Directory.Exists(target))
+                {
+                    ErrorMessage = Tr("There is already a folder called {0} next to it.", folderName);
+                    return;
+                }
+                try
+                {
+                    MoveFolder(folder, target);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    ErrorMessage = Tr("Could not rename the folder {0}: {1}", folder, ex.Message);
+                    return;
+                }
+                await Task.Run(() => _index.RenameFolder(folder, target));
+                FolderRenamed(folder, target);
+                folder = target;
+            }
+        }
         var info = AlbumFile.Read(folder) ?? new AlbumInfo();
         var newName = name.Length == 0 || name == Album.DefaultName(folder) ? null : name;
-        if (TryChangeAlbums(folder, () => AlbumFile.Write(folder, info with { Name = newName })))
-            await AlbumsChangedAsync();
+        if (!TryChangeAlbums(folder, () => AlbumFile.Write(folder, info with { Name = newName })))
+            return;
+        await RenameCloudAlbumsAsync(folder, oldName);
+        await AlbumsChangedAsync();
+        await SearchAsync();
+    }
+
+    /// <summary>True when the album went to Google Photos or OneDrive.</summary>
+    public bool IsCloudLinked(string folder) => AlbumFile.Read(folder) is { } info && (info.Google is not null || info.OneDrive is not null);
+
+    /// <summary>The name without the characters Windows doesn't allow in a folder name (and no dot or space at the end).</summary>
+    private static string SafeFolderName(string name)
+    {
+        var invalid = new HashSet<char>(Path.GetInvalidFileNameChars()) { '<', '>', ':', '"', '/', '\\', '|', '?', '*' };
+        return new string(name.Where(c => !invalid.Contains(c)).ToArray()).Trim().TrimEnd('.', ' ');
+    }
+
+    // Windows refuses a move to the same name in other letter case, so that goes through a temporary name.
+    private static void MoveFolder(string from, string to)
+    {
+        if (string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
+        {
+            var temp = from + ".renaming-" + Guid.NewGuid().ToString("N")[..8];
+            Directory.Move(from, temp);
+            Directory.Move(temp, to);
+        }
+        else
+        {
+            Directory.Move(from, to);
+        }
+    }
+
+    // The folder tree, the folder shown and the start page follow the new path.
+    private void FolderRenamed(string from, string to)
+    {
+        static bool Replace(ObservableCollection<FolderNodeViewModel> nodes, string from, string to)
+        {
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                if (string.Equals(nodes[i].FullPath, from, StringComparison.OrdinalIgnoreCase))
+                {
+                    nodes[i] = new FolderNodeViewModel(to, isRoot: false);
+                    return true;
+                }
+                if (Replace(nodes[i].Children, from, to))
+                    return true;
+            }
+            return false;
+        }
+        Replace(Folders, from, to);
+        if (SelectedFolder is { } selected && PhotoMover.IsIn(selected.FullPath, from))
+            SelectedFolder = new FolderNodeViewModel(to + selected.FullPath[from.Length..], isRoot: false);
+        if (_settings.LastPlace is { } last && last.StartsWith("folder:", StringComparison.Ordinal) && PhotoMover.IsIn(last[7..], from))
+        {
+            _settings.LastPlace = "folder:" + to + last[(7 + from.Length)..];
+            _settings.Save(SettingsPath);
+        }
+    }
+
+    /// <summary>
+    /// Renames the album in each service it went to. When that fails (offline, signed out) the link keeps the old
+    /// name, so <see cref="RenameOwedCloudAlbumsAsync"/> tries again later.
+    /// </summary>
+    private async Task RenameCloudAlbumsAsync(string folder, string oldName)
+    {
+        foreach (var service in new[] { CloudService.GooglePhotos, CloudService.OneDrive })
+        {
+            if (AlbumFile.Read(folder)?.Link(service) is not { } link)
+                continue;
+            var known = link with { Title = link.Title ?? oldName };
+            await RenameCloudAlbumAsync(folder, service, known);
+        }
+    }
+
+    private async Task<bool> RenameCloudAlbumAsync(string folder, CloudService service, CloudAlbumLink link)
+    {
+        var name = AlbumName(folder);
+        var renamed = false;
+        if (link.Title != name && IsSignedIn(service) && CreateCloud(service) is { } cloud)
+        {
+            try
+            {
+                await cloud.RenameAlbumAsync(link, link.Title ?? name, name, CancellationToken.None);
+                link = link with { Title = name };
+                renamed = true;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException
+                                           or Core.GooglePhotos.GooglePhotosException or Core.OneDrive.OneDriveException)
+            {
+                App.Trace($"cloud album rename ({service}) failed, tried again later: {ex.Message}");
+            }
+            finally
+            {
+                (cloud as IDisposable)?.Dispose();
+            }
+        }
+        TryChangeAlbums(folder, () => AlbumFile.Write(folder, (AlbumFile.Read(folder) ?? new AlbumInfo()).WithLink(service, link)));
+        return renamed;
+    }
+
+    /// <summary>Album renames that didn't reach Google Photos or OneDrive yet, tried again (after signing in, on start).</summary>
+    public async Task RenameOwedCloudAlbumsAsync()
+    {
+        var folders = await Task.Run(() => _settings.Folders.ToList().SelectMany(AlbumFile.FindAlbums).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+        foreach (var folder in folders)
+        {
+            foreach (var service in new[] { CloudService.GooglePhotos, CloudService.OneDrive })
+            {
+                if (AlbumFile.Read(folder)?.Link(service) is { Title: { } title } link && title != AlbumName(folder) && IsSignedIn(service))
+                    await RenameCloudAlbumAsync(folder, service, link);
+            }
+        }
     }
 
     /// <summary>The album a photo belongs to: the nearest album folder above it within the library, or null.</summary>

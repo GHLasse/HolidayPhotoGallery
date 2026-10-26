@@ -125,14 +125,15 @@ public sealed partial class MainWindow
     private async Task ShowPeoplePageAsync()
     {
         var version = ++_peoplePageVersion;
-        var people = ViewModel.People.ToList(); // sorted by photo count
+        var people = ViewModel.PeopleInViewOrder;
         foreach (var person in people.Where(p => !_latestFaces.ContainsKey(p.Tag)))
             _latestFaces[person.Tag] = await ViewModel.GetLatestFaceAsync(person.Tag);
         if (version != _peoplePageVersion)
             return; // A newer refresh started while the faces were loading.
 
         PeopleCards.Children.Clear();
-        PeopleEmptyHint.Visibility = people.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Not while the people are still loading (U-9); the page is shown again once they are.
+        PeopleEmptyHint.Visibility = people.Count == 0 && ViewModel.HasLoaded ? Visibility.Visible : Visibility.Collapsed;
         foreach (var person in people)
             PeopleCards.Children.Add(PersonCard(person));
         FilterPeopleCards();

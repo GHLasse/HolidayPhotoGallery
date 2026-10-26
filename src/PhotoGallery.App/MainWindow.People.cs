@@ -19,7 +19,7 @@ public sealed partial class MainWindow
     private async void FindPeople_Click(object sender, RoutedEventArgs e)
     {
         if (!WaitsForBusyWork())
-            await FindPeopleAsync(SelectedPhotos);
+            await FindPeopleAsync(SelectedPhotos, again: true);
     }
 
     private async void FindPeopleInAll_Click(object sender, RoutedEventArgs e)
@@ -28,7 +28,19 @@ public sealed partial class MainWindow
             await FindPeopleAsync(ViewModel.Photos.ToList());
     }
 
-    private async Task FindPeopleAsync(IReadOnlyList<PhotoItemViewModel> photos)
+    private void PeopleSortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PeopleSortCombo.SelectedIndex < 0 || PeopleSortCombo.SelectedIndex == ViewModel.PeopleSortIndex)
+            return;
+        ViewModel.PeopleSortIndex = PeopleSortCombo.SelectedIndex;
+        _ = ShowPeoplePageAsync();
+    }
+
+    /// <param name="again">
+    /// Looks at photos already looked at once more (the selected photos): faces hidden by mistake come back,
+    /// and named faces keep their names, which are in the files.
+    /// </param>
+    private async Task FindPeopleAsync(IReadOnlyList<PhotoItemViewModel> photos, bool again = false)
     {
         if (photos.Count == 0)
         {
@@ -37,7 +49,7 @@ public sealed partial class MainWindow
         }
         if (!await EnsureFaceModelAsync())
             return;
-        await ViewModel.FindFacesAsync(photos);
+        await ViewModel.FindFacesAsync(photos, again);
     }
 
     /// <summary>Asks to download the face models when they aren't there yet; false when they still aren't.</summary>
@@ -72,7 +84,22 @@ public sealed partial class MainWindow
         }
         if (photos.Count > 1)
         {
+            // Everyone in any of the photos, with in how many, like the tags (X-1).
+            var counts = photos.SelectMany(p => p.Photo.People.Select(person => person.Name).Distinct(StringComparer.CurrentCultureIgnoreCase))
+                .GroupBy(n => n, StringComparer.CurrentCultureIgnoreCase)
+                .Select(g => (Name: g.Key, Count: g.Count()))
+                .OrderByDescending(p => p.Count).ThenBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            foreach (var (name, _) in counts.Where(p => !_latestFaces.ContainsKey(p.Name)))
+                _latestFaces[name] = await ViewModel.GetLatestFaceAsync(name);
+            if (version != _peopleVersion)
+                return;
             PeopleList.Children.Clear();
+            foreach (var (name, count) in counts)
+            {
+                PeopleList.Children.Add(Row(FacePicture(_latestFaces.GetValueOrDefault(name), FaceSize), Label($"{name} ({count})"),
+                    IconButton("\uE711", Tr("Remove {0} from the selected photos", name), async () => await ViewModel.RemovePersonFromAsync(photos, name))));
+            }
             PeopleList.Children.Add(AddPersonBox(photos));
             PeopleHint.Text = Tr("Adds the person to all {0} selected photos, without marking a face.", photos.Count);
             PeopleHint.Visibility = Visibility.Visible;

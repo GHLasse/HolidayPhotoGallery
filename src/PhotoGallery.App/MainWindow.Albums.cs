@@ -80,6 +80,8 @@ public sealed partial class MainWindow
             PlaceholderText = Path.GetFileName(folder),
         };
         box.SelectAll();
+        var alsoFolder = new CheckBox { Content = Tr("Also rename the folder"), IsChecked = true };
+        var linked = ViewModel.IsCloudLinked(folder);
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
@@ -90,9 +92,12 @@ public sealed partial class MainWindow
                 Children =
                 {
                     box,
+                    alsoFolder,
                     new TextBlock
                     {
-                        Text = Tr("The folder keeps its name. Leave the box empty to use the folder's name."),
+                        Text = linked
+                            ? Tr("Leave the box empty to use the folder's name. The album in Google Photos or OneDrive is renamed too.")
+                            : Tr("Leave the box empty to use the folder's name."),
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                     },
@@ -103,7 +108,7 @@ public sealed partial class MainWindow
             DefaultButton = ContentDialogButton.Primary,
         };
         if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
-            await ViewModel.RenameAlbumAsync(folder, box.Text);
+            await ViewModel.RenameAlbumAsync(folder, box.Text, alsoFolder.IsChecked == true);
     }
 
     // Like File Explorer: right-clicking a photo outside the selection selects just that photo; inside the

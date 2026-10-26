@@ -25,7 +25,7 @@ public sealed class ShiftDatesDialog : ContentDialog
     private readonly NumberBox _minutes = NewNumberBox(Tr("Minutes"), 59);
     private readonly NumberBox _seconds = NewNumberBox(Tr("Seconds"), 59);
     private readonly TextBox _target = new() { Header = Tr("Earliest photo was really taken at"), PlaceholderText = "2024-07-01 14:30:00" };
-    private readonly List<TimeZoneChoice> _zones = TimeZoneChoice.List(TimeZoneChoice.Unknown(Tr("Keep each photo's time zone")));
+    private readonly List<TimeZoneChoice> _zones = TimeZoneChoice.List(null, TimeZoneChoice.Unknown(Tr("Keep each photo's time zone")));
     private readonly ComboBox _zone = new() { Header = Tr("Time zone"), HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBlock _preview = new() { TextWrapping = TextWrapping.Wrap };
 
@@ -46,6 +46,7 @@ public sealed class ShiftDatesDialog : ContentDialog
         _target.Text = first.ToDisplayDate();
         _zone.ItemsSource = _zones;
         _zone.SelectedIndex = 0;
+        TimeZoneTyping.Attach(_zone);
 
         _shiftPanel.Children.Add(_direction);
         _shiftPanel.Children.Add(_days);
