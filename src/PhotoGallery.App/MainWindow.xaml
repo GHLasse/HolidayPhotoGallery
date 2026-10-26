@@ -615,6 +615,11 @@
                                 <FontIcon Glyph="&#xE838;" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="RenamePhotosItem" Text="{local:Loc Text='Rename…'}" Click="RenamePhotos_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8AC;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                         <MenuFlyoutItem x:Name="CopyDetailsItem" Text="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon Glyph="&#xE8C8;" />

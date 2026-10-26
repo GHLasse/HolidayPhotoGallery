@@ -70,6 +70,9 @@ public sealed class LibrarySettings
     /// </summary>
     public string? LastPlace { get; set; }
 
+    /// <summary>The pattern used last to rename photos (F-2).</summary>
+    public string RenamePattern { get; set; } = Library.RenamePattern.Default;
+
     /// <summary>The parts ticked last time details were pasted (M-4).</summary>
     public Metadata.MetadataParts PasteParts { get; set; } = Metadata.MetadataParts.All;
 
