@@ -136,6 +136,8 @@ public sealed partial class PhotoIndex : IDisposable
                 file_mtime INTEGER NOT NULL,
                 dhash INTEGER
             );
+            -- Groups of look-alikes the user kept all of; a new copy joining the group changes its key.
+            CREATE TABLE IF NOT EXISTS kept_duplicates (group_key TEXT PRIMARY KEY);
             PRAGMA user_version = {SchemaVersion};
             """);
         // Checks saved before the level was kept count as level 1, so those files are checked again.

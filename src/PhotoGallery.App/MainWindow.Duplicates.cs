@@ -24,6 +24,13 @@ public sealed partial class MainWindow
 
     private async void FindDuplicatesInLibrary_Click(object sender, RoutedEventArgs e) => await FindDuplicatesAsync(null);
 
+    // The banner after the search in the background.
+    private async void ViewModel_ReviewDuplicatesRequested()
+    {
+        if (!ViewModel.IsBusy)
+            await FindDuplicatesAsync(null);
+    }
+
     private async Task FindDuplicatesAsync(string? folder)
     {
         if (await ViewModel.FindDuplicatesAsync(folder) is not { Count: > 0 } groups)
@@ -69,6 +76,8 @@ public sealed partial class MainWindow
                 });
             }
 
+            var keepAll = false;
+            var notDuplicates = new HyperlinkButton { Content = Tr("These are not duplicates: keep them all and don’t show them again") };
             var dialog = new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
@@ -87,6 +96,7 @@ public sealed partial class MainWindow
                         },
                         new ScrollViewer { Content = cards, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled },
                         copyDetails,
+                        notDuplicates,
                     },
                 },
                 PrimaryButtonText = Tr("Keep one, recycle the others"),
@@ -96,8 +106,18 @@ public sealed partial class MainWindow
             };
             // Wide enough for four photos side by side.
             dialog.Resources["ContentDialogMaxWidth"] = 960.0;
+            notDuplicates.Click += (_, _) =>
+            {
+                keepAll = true;
+                dialog.Hide();
+            };
             var answer = await dialog.ShowThemedAsync();
             copy = copyDetails.IsChecked == true;
+            if (keepAll)
+            {
+                await ViewModel.KeepAllAsync(group);
+                continue;
+            }
             if (answer == ContentDialogResult.None)
                 break;
             if (answer == ContentDialogResult.Secondary)

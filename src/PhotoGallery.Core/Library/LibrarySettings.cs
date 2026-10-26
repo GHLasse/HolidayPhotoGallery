@@ -38,6 +38,9 @@ public sealed class LibrarySettings
     /// <summary>New photos are looked at for faces in the background, once the face models are downloaded.</summary>
     public bool FindPeopleAutomatically { get; set; } = true;
 
+    /// <summary>Photos get their picture fingerprints in the background, so duplicates are ready to go through.</summary>
+    public bool FindDuplicatesAutomatically { get; set; } = true;
+
     /// <summary>After a rating, flag or reject in the viewer, move on to the next photo.</summary>
     public bool AutoAdvance { get; set; }
 

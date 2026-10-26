@@ -630,9 +630,13 @@
                 <Button Grid.Column="2" VerticalAlignment="Center" Padding="8,6"
                         Background="Transparent" BorderThickness="0" Click="FindDuplicatesInLibrary_Click" local:Busy.Gate="True"
                         Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
-                        ToolTipService.ToolTip="{local:Loc Text='Find duplicates in the whole library (right-click a folder to look in one folder)'}"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.DuplicatesTip, Mode=OneWay}"
                         AutomationProperties.Name="{local:Loc Text='Find duplicates'}">
-                    <FontIcon Glyph="&#xE8C8;" FontSize="16" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8C8;" FontSize="16" />
+                        <InfoBadge Value="{x:Bind ViewModel.DuplicateCount, Mode=OneWay}"
+                                   Visibility="{x:Bind ViewModel.HasDuplicates, Mode=OneWay}" />
+                    </StackPanel>
                 </Button>
                 <ComboBox x:Name="SortCombo" Grid.Column="3" VerticalAlignment="Center" MinWidth="170"
                           Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
