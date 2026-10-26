@@ -25,6 +25,7 @@ public sealed partial class MainViewModel
             if (!SetProperty(ref _isAlbumView, value))
                 return;
             OnPropertyChanged(nameof(HeaderText));
+            OnPropertyChanged(nameof(HeaderTip));
             OnPropertyChanged(nameof(HasNoAlbums));
             OnPropertyChanged(nameof(ShownDetails));
             OnPropertyChanged(nameof(IsLoading));
@@ -74,6 +75,11 @@ public sealed partial class MainViewModel
         : SelectedFolder is not { } folder ? SelectedPlace?.Title ?? _dateTitle ?? Tr("All photos")
         : folder.IsAlbum ? AlbumName(folder.FullPath)
         : folder.FullPath;
+
+    /// <summary>The album shown in the grid, whose name above it can be clicked to rename it; otherwise null.</summary>
+    public string? ShownAlbum => !IsAlbumView && SelectedFolder is { IsAlbum: true } folder ? folder.FullPath : null;
+
+    public string? HeaderTip => ShownAlbum is null ? null : Tr("Click to rename the album");
 
     public int AlbumSortIndex
     {
@@ -181,8 +187,9 @@ public sealed partial class MainViewModel
             }
             else if (IsBusy || IsUploading)
             {
-                Warn(Tr("The folder can't be renamed while the app is busy. Try again when it has finished."));
-                return;
+                // The album gets its name now; the folder follows once the long job is done with its files.
+                _ = RenameFolderWhenIdleAsync(folder, name);
+                Inform(Tr("The album is renamed. Its folder gets the new name when the app has finished what it is doing."));
             }
             else
             {
@@ -213,6 +220,15 @@ public sealed partial class MainViewModel
         await RenameCloudAlbumsAsync(folder, oldName);
         await AlbumsChangedAsync();
         await SearchAsync();
+    }
+
+    private async Task RenameFolderWhenIdleAsync(string folder, string name)
+    {
+        while (IsBusy || IsUploading)
+            await Task.Delay(2000);
+        // Unless it was renamed again meanwhile.
+        if (Directory.Exists(folder) && AlbumName(folder) == name)
+            await RenameAlbumAsync(folder, name);
     }
 
     /// <summary>True when the album went to Google Photos or OneDrive.</summary>
@@ -369,6 +385,7 @@ public sealed partial class MainViewModel
         if (SelectedFolder is { } selected)
             selected.IsAlbum = AlbumFile.IsAlbum(selected.FullPath);
         OnPropertyChanged(nameof(HeaderText));
+        OnPropertyChanged(nameof(HeaderTip));
         if (IsAlbumView)
             await LoadAlbumsAsync();
     }

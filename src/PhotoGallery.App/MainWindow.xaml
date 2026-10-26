@@ -626,8 +626,14 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}" MaxWidth="480" VerticalAlignment="Center"
-                           Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                <!-- An album's name is renamed in place: click it, type, Enter (Esc keeps the old name). -->
+                <TextBlock x:Name="HeaderTitle" Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}" MaxWidth="480" VerticalAlignment="Center"
+                           Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis"
+                           ToolTipService.ToolTip="{x:Bind ViewModel.HeaderTip, Mode=OneWay}" Tapped="HeaderTitle_Tapped" />
+                <TextBox x:Name="HeaderEdit" Width="320" VerticalAlignment="Center" Visibility="Collapsed"
+                         FontSize="20" FontWeight="SemiBold"
+                         AutomationProperties.Name="{local:Loc Text='Album name'}"
+                         KeyDown="HeaderEdit_KeyDown" LostFocus="HeaderEdit_LostFocus" />
                 <controls:WrapPanel x:Name="FilterBadges" Grid.Column="1" VerticalAlignment="Center" />
                 <!-- One sort box at the top right of the photos or albums, apart from the filters, which it isn't
                      (Clear filters leaves it alone). Both are filled from code (list before index). -->
