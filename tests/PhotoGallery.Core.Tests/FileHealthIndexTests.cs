@@ -56,7 +56,7 @@ public sealed class FileHealthIndexTests : IDisposable
         Assert.Equal(1, _index.CountMisnamed());
 
         // Given the right extension: checked again, and no longer misnamed.
-        _index.Move(b.MovedTo("/other/b.png"), "/other/b.jpg");
+        _index.Move(_index.GetMisnamed()[0], "/other/b.jpg");
         Assert.Equal(0, _index.CountMisnamed());
         Assert.Contains("/other/b.jpg", _index.GetUnchecked(10).Select(p => p.Path));
     }
