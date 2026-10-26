@@ -65,6 +65,9 @@ public sealed record PhotoQuery
 
     /// <summary>Only photos whose file the health check found damaged (<see cref="FileCheck"/>).</summary>
     public bool DamagedOnly { get; init; }
+
+    /// <summary>Only photos whose name claims the wrong format (<see cref="FileHealth.Misnamed"/>).</summary>
+    public bool MisnamedOnly { get; init; }
 }
 
 /// <summary>Which kind of files the grid shows.</summary>

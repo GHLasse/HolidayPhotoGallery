@@ -382,6 +382,7 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutLocation = false;
         ViewModel.WithoutDate = false;
         ViewModel.DamagedOnly = false;
+        ViewModel.MisnamedOnly = false;
         ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;

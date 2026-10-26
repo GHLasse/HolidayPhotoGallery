@@ -47,9 +47,23 @@ public sealed partial class PhotoIndex
     public int CountDamaged()
     {
         lock (_lock)
-            return Convert.ToInt32(Scalar("""
+            return Convert.ToInt32(Scalar($"""
                 SELECT COUNT(*) FROM file_checks c JOIN photos p ON p.id = c.photo_id
-                WHERE c.health <> 0 AND c.file_mtime = p.file_mtime;
+                WHERE c.health NOT IN (0, {(int)FileHealth.Misnamed}) AND c.file_mtime = p.file_mtime;
+                """));
+    }
+
+    /// <summary>The photos whose name claims the wrong format (and not changed since), with their index entries.</summary>
+    public IReadOnlyList<IndexedPhoto> GetMisnamed() =>
+        Search(new PhotoQuery { MisnamedOnly = true });
+
+    /// <summary>How many photos have a name claiming the wrong format.</summary>
+    public int CountMisnamed()
+    {
+        lock (_lock)
+            return Convert.ToInt32(Scalar($"""
+                SELECT COUNT(*) FROM file_checks c JOIN photos p ON p.id = c.photo_id
+                WHERE c.health = {(int)FileHealth.Misnamed} AND c.file_mtime = p.file_mtime;
                 """));
     }
 

@@ -19,6 +19,12 @@ public enum FileHealth
     /// step, which shows as wrong colours or blocks shifted sideways.
     /// </summary>
     Garbled = 3,
+
+    /// <summary>
+    /// The picture is fine, but its name claims another format (a JPEG called .png). Windows shows it anyway,
+    /// but ExifTool goes by the name and refuses to save details into it.
+    /// </summary>
+    Misnamed = 4,
 }
 
 /// <summary>
@@ -30,9 +36,9 @@ public static class FileCheck
 {
     /// <summary>
     /// Raised when the check learns to find more: files checked at a lower level are checked again (2: JPEG
-    /// picture data).
+    /// picture data, 3: names claiming the wrong format).
     /// </summary>
-    public const int Level = 2;
+    public const int Level = 3;
 
     public static FileHealth Check(string path)
     {
@@ -42,11 +48,68 @@ public static class FileCheck
 
     public static FileHealth Check(Stream stream, string extension)
     {
-        var health = CheckStructure(stream, extension);
-        if (health != FileHealth.Whole || extension is not (".jpg" or ".jpeg" or ".jpe"))
-            return health;
+        // A misnamed file is checked as what it really is; damage, if any, matters more than the name.
+        var real = RealExtension(stream);
+        var misnamed = real is not null && Family(real) != Family(extension);
+        if (misnamed)
+            extension = real!;
         stream.Position = 0;
-        return JpegScan.Check(stream) is { Damaged: true } ? FileHealth.Garbled : FileHealth.Whole;
+        var health = CheckStructure(stream, extension);
+        if (health == FileHealth.Whole && extension is ".jpg" or ".jpeg" or ".jpe")
+        {
+            stream.Position = 0;
+            if (JpegScan.Check(stream) is { Damaged: true })
+                health = FileHealth.Garbled;
+        }
+        return health == FileHealth.Whole && misnamed ? FileHealth.Misnamed : health;
+    }
+
+    /// <summary>
+    /// The extension the file's first bytes call for (".jpg", ".png", ".gif", ".webp", ".tif" or ".heic"),
+    /// or null when they match none of these.
+    /// </summary>
+    public static string? RealExtension(Stream stream)
+    {
+        Span<byte> h = stackalloc byte[12];
+        stream.Position = 0;
+        var read = stream.ReadAtLeast(h, h.Length, throwOnEndOfStream: false);
+        h = h[..read];
+        if (h is [0xFF, 0xD8, 0xFF, ..])
+            return ".jpg";
+        if (h is [0x89, (byte)'P', (byte)'N', (byte)'G', ..])
+            return ".png";
+        if (h is [(byte)'G', (byte)'I', (byte)'F', (byte)'8', ..])
+            return ".gif";
+        if (h is [(byte)'R', (byte)'I', (byte)'F', (byte)'F', _, _, _, _, (byte)'W', (byte)'E', (byte)'B', (byte)'P'])
+            return ".webp";
+        if (h is [(byte)'I', (byte)'I', 0x2A, 0x00, ..] or [(byte)'M', (byte)'M', 0x00, 0x2A, ..])
+            return ".tif";
+        if (h is [_, _, _, _, (byte)'f', (byte)'t', (byte)'y', (byte)'p', ..])
+            return ".heic";
+        return null;
+    }
+
+    // Names that mean the same format. HEIC, HEIF and AVIF share a container and are not told apart here.
+    private static string Family(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" or ".jpe" => ".jpg",
+        ".tif" or ".tiff" => ".tif",
+        ".heic" or ".heif" or ".avif" => ".heic",
+        var other => other,
+    };
+
+    /// <summary>The name a misnamed photo should have: its own name with the right extension, in the same case.</summary>
+    public static string? CorrectName(string path)
+    {
+        string? real;
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            real = RealExtension(stream);
+        var extension = Path.GetExtension(path);
+        if (real is null || Family(real) == Family(extension))
+            return null;
+        if (extension.Length > 1 && extension.All(c => !char.IsLetter(c) || char.IsUpper(c)))
+            real = real.ToUpperInvariant();
+        return Path.GetFileNameWithoutExtension(path) + real;
     }
 
     private static FileHealth CheckStructure(Stream stream, string extension)

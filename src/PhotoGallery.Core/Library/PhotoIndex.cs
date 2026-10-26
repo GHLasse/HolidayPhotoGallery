@@ -319,6 +319,9 @@ public sealed partial class PhotoIndex : IDisposable
             {
                 cmd.Transaction = tx;
                 cmd.CommandText = "DELETE FROM main.photos WHERE path = $new; UPDATE main.photos SET path = $new WHERE path = $old;";
+                // A new extension can make a misnamed photo right (or a right one misnamed): check it again.
+                if (!string.Equals(Path.GetExtension(photo.Path), Path.GetExtension(newPath), StringComparison.OrdinalIgnoreCase))
+                    cmd.CommandText += " DELETE FROM file_checks WHERE photo_id = (SELECT id FROM main.photos WHERE path = $new);";
                 cmd.Parameters.AddWithValue("$old", photo.Path);
                 cmd.Parameters.AddWithValue("$new", newPath);
                 cmd.ExecuteNonQuery();
@@ -415,7 +418,10 @@ public sealed partial class PhotoIndex : IDisposable
                 where.Add("p.video = 1");
 
             if (query.DamagedOnly)
-                where.Add("EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
+                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health NOT IN (0, {(int)FileHealth.Misnamed}) AND c.file_mtime = p.file_mtime)");
+
+            if (query.MisnamedOnly)
+                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health = {(int)FileHealth.Misnamed} AND c.file_mtime = p.file_mtime)");
 
             if (query.WithoutPlace)
                 where.Add("(p.country IS NULL OR p.country = '')");

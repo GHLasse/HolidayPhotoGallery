@@ -58,4 +58,54 @@ public class FileCheckTests
         Assert.Equal(FileHealth.Whole, Check(webp, ".webp"));
         Assert.Equal(FileHealth.CutOff, Check(webp[..(webp.Length / 2)], ".webp"));
     }
+    [Fact]
+    public void A_jpeg_called_png_is_misnamed() => Assert.Equal(FileHealth.Misnamed, Check(Jpeg(), ".png"));
+
+    [Fact]
+    public void A_cut_off_jpeg_called_png_is_cut_off()
+    {
+        // The damage matters more than the name, and it is found by checking the file as a JPEG.
+        var jpeg = Jpeg();
+        Assert.Equal(FileHealth.CutOff, Check(jpeg[..(jpeg.Length * 2 / 3)], ".png"));
+    }
+
+    [Theory]
+    [InlineData("sample.jpg", ".jpeg")]
+    [InlineData("sample.tiff", ".tif")]
+    [InlineData("sample.heic", ".heif")]
+    public void Other_names_for_the_same_format_are_fine(string sample, string extension) =>
+        Assert.Equal(FileHealth.Whole, Check(File.ReadAllBytes(Path.Combine("TestData", sample)), extension));
+
+    [Theory]
+    [InlineData("sample.jpg", ".jpg")]
+    [InlineData("sample.png", ".png")]
+    [InlineData("sample.gif", ".gif")]
+    [InlineData("sample.webp", ".webp")]
+    [InlineData("sample.tiff", ".tif")]
+    [InlineData("sample.heic", ".heic")]
+    public void Recognises_the_real_format(string sample, string extension)
+    {
+        using var stream = File.OpenRead(Path.Combine("TestData", sample));
+        Assert.Equal(extension, FileCheck.RealExtension(stream));
+    }
+
+    [Fact]
+    public void The_correct_name_keeps_the_case()
+    {
+        var folder = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            File.WriteAllBytes(Path.Combine(folder, "IMG_4973.PNG"), Jpeg());
+            File.WriteAllBytes(Path.Combine(folder, "beach.png"), Jpeg());
+            File.WriteAllBytes(Path.Combine(folder, "fine.jpeg"), Jpeg());
+            Assert.Equal("IMG_4973.JPG", FileCheck.CorrectName(Path.Combine(folder, "IMG_4973.PNG")));
+            Assert.Equal("beach.jpg", FileCheck.CorrectName(Path.Combine(folder, "beach.png")));
+            Assert.Null(FileCheck.CorrectName(Path.Combine(folder, "fine.jpeg")));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
 }
