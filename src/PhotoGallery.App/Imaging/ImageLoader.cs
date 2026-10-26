@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -52,6 +53,16 @@ public static class ImageLoader
         return new DecodedImage(pixels, straight.PixelWidth, straight.PixelHeight);
     });
 
+    /// <summary>
+    /// Like <see cref="ShellThumbnailPixelsAsync"/>, but from the shared pool: dispose it when done.
+    /// </summary>
+    public static Task<PooledImage> ShellThumbnailPooledPixelsAsync(string path, uint size) => Task.Run(async () =>
+    {
+        using var bitmap = await ReadShellThumbnailAsync(path, size) ?? throw new IOException($"Windows has no thumbnail of {Path.GetFileName(path)}.");
+        using var straight = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight);
+        return Pooled(straight);
+    });
+
     private static async Task<SoftwareBitmap?> ReadShellThumbnailAsync(string path, uint size)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);
@@ -84,6 +95,25 @@ public static class ImageLoader
         bitmap.CopyToBuffer(pixels.AsBuffer());
         return new DecodedImage(pixels, bitmap.PixelWidth, bitmap.PixelHeight);
     });
+
+    /// <summary>
+    /// Like <see cref="DecodePixelsAsync"/>, but the pixels come from a shared pool: dispose it when
+    /// done. One photo's pixels are too big for the ordinary heap, so tagging thousands of them in a
+    /// row would otherwise leave the app holding gigabytes of waiting-to-be-freed memory.
+    /// </summary>
+    public static Task<PooledImage> DecodePooledPixelsAsync(string path, uint maxSize) => Task.Run(async () =>
+    {
+        using var bitmap = await DecodeBitmapAsync(path, maxSize, BitmapAlphaMode.Straight);
+        return Pooled(bitmap);
+    });
+
+    private static PooledImage Pooled(SoftwareBitmap bitmap)
+    {
+        var size = bitmap.PixelWidth * bitmap.PixelHeight * 4;
+        var pixels = ArrayPool<byte>.Shared.Rent(size);
+        bitmap.CopyToBuffer(pixels.AsBuffer(0, size));
+        return new PooledImage(pixels, bitmap.PixelWidth, bitmap.PixelHeight);
+    }
 
     /// <summary>Shows a small encoded image such as a face thumbnail; call on the UI thread.</summary>
     public static async Task<ImageSource> FromEncodedAsync(byte[] encoded)
@@ -146,3 +176,18 @@ public static class ImageLoader
 
 /// <summary>Upright 8-bit BGRA pixels with straight alpha.</summary>
 public sealed record DecodedImage(byte[] Pixels, int Width, int Height);
+
+/// <summary>
+/// Upright 8-bit BGRA pixels borrowed from a shared pool. <see cref="Pixels"/> may be longer than the
+/// picture, so read it through <see cref="Span"/>, and dispose this to hand the memory back.
+/// </summary>
+public readonly struct PooledImage(byte[] pixels, int width, int height) : IDisposable
+{
+    public byte[] Pixels { get; } = pixels;
+    public int Width { get; } = width;
+    public int Height { get; } = height;
+
+    public ReadOnlySpan<byte> Span => Pixels.AsSpan(0, Width * Height * 4);
+
+    public void Dispose() => ArrayPool<byte>.Shared.Return(Pixels);
+}

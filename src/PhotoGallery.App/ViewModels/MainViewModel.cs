@@ -1221,9 +1221,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 {
                     // A small copy is plenty: the model looks at 224 × 224 pixels.
                     // A video is tagged by the frame Windows shows as its thumbnail.
-                    var image = item.IsVideo
-                        ? await ImageLoader.ShellThumbnailPixelsAsync(item.Path, 512)
-                        : await ImageLoader.DecodePixelsAsync(item.Path, 512);
+                    // Pooled, and handed back at the end of this photo: a batch of thousands would
+                    // otherwise pile up gigabytes of pixels waiting to be freed.
+                    using var image = item.IsVideo
+                        ? await ImageLoader.ShellThumbnailPooledPixelsAsync(item.Path, 512)
+                        : await ImageLoader.DecodePooledPixelsAsync(item.Path, 512);
                     var tagger = _tagger;
                     var scores = await Task.Run(() =>
                     {

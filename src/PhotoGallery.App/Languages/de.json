@@ -767,6 +767,7 @@
     "The folder can't be renamed while the app is busy. Try again when it has finished.": "Der Ordner kann nicht umbenannt werden, solange die App beschäftigt ist. Versuchen Sie es erneut, wenn sie fertig ist.",
     "The library folder {0} can't be found. Is the drive connected?": "Der Bibliotheksordner {0} wurde nicht gefunden. Ist das Laufwerk angeschlossen?",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "Die Karte konnte nicht gestartet werden: {0} Sie benötigt die Microsoft Edge WebView2 Runtime, die in Windows 11 enthalten ist.",
+    "the name ends in .{0}, but the file is really a {1}. Rename it to .{2} and try again.": "der Name endet auf .{0}, die Datei ist aber in Wirklichkeit eine {1}-Datei. Benennen Sie sie in .{2} um und versuchen Sie es erneut.",
     "The new language is used the next time the app starts.": "Die neue Sprache wird beim nächsten Start der App verwendet.",
     "The other {0} photo(s) move by the same {1}.": "Die übrigen {0} Foto(s) werden um dieselben {1} verschoben.",
     "The photo goes back to how it was before all {0} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.": "Das Foto wird auf den Zustand vor allen {0} Bearbeitungen zurückgesetzt, und die Bearbeitungen können danach nicht wiederhergestellt werden. Geänderte Markierungen, Bewertung und andere Details bleiben erhalten.",

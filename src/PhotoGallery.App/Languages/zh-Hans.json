@@ -767,6 +767,7 @@
     "The folder can't be renamed while the app is busy. Try again when it has finished.": "应用繁忙时无法重命名文件夹。请在其完成后重试。",
     "The library folder {0} can't be found. Is the drive connected?": "找不到库文件夹 {0}。驱动器是否已连接？",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "地图无法启动：{0} 它需要 Microsoft Edge WebView2 Runtime，Windows 11 已包含该组件。",
+    "the name ends in .{0}, but the file is really a {1}. Rename it to .{2} and try again.": "文件名以 .{0} 结尾，但该文件实际上是 {1} 文件。请将其重命名为 .{2} 后重试。",
     "The new language is used the next time the app starts.": "下次启动应用时将使用新语言。",
     "The other {0} photo(s) move by the same {1}.": "其他 {0} 张照片同样调整 {1}。",
     "The photo goes back to how it was before all {0} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.": "照片将恢复到全部 {0} 次编辑之前的状态，之后无法撤消。你更改的标记、分级和其他详细信息会保留。",
