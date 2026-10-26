@@ -71,6 +71,7 @@ public sealed partial class MainWindow : Window
         };
         MapView.PhotoClicked += MapPhotoClicked;
         MapView.PhotoOpened += MapPhotoOpened;
+        MapView.PhotoShown += MapPhotoShown;
         MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
@@ -87,8 +88,12 @@ public sealed partial class MainWindow : Window
                 SyncTimeZoneCombo();
             else if (e.PropertyName is nameof(MetadataEditorViewModel.Tags))
                 ShowTagBadges();
+            else if (e.PropertyName is nameof(MetadataEditorViewModel.Items))
+                _ = ShowQualityBadgesAsync();
         };
         SyncTimeZoneCombo();
+        TimeZoneTyping.Attach(TimeZoneCombo);
+        PeopleSortCombo.SelectedIndex = ViewModel.PeopleSortIndex;
         FillAlbumSortCombo();
         foreach (var (_, label) in PhotoSort.All)
             SortCombo.Items.Add(label);
@@ -118,9 +123,12 @@ public sealed partial class MainWindow : Window
             }
             else if (e.PropertyName is nameof(MainViewModel.IsBusy) or nameof(MainViewModel.StatusText))
                 ApplyBusyGates();
+            else if (e.PropertyName is nameof(MainViewModel.HasLoaded) && _workspace == Workspace.People)
+                _ = ShowPeoplePageAsync();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
                 ShowPhotoGroups();
+                DispatcherQueue.TryEnqueue(RevealPendingPhoto);
                 ShowFilterBadges();
                 _ = ShowTopPeopleAsync();
                 if (IsMapOpen)
@@ -540,10 +548,12 @@ public sealed partial class MainWindow : Window
             ("P", Tr("Flag or unflag the selected photos")),
             ("X", Tr("Reject the selected photos, or take the mark off")),
             ("← →", Tr("Previous or next photo in the viewer and compare")),
+            ("W A S D", Tr("Like the arrow keys: move in the grid, previous or next photo in the viewer and compare")),
             (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
             ("Tab", Tr("Next photo in compare")),
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
-            ("Ctrl+S", Tr("Save the changes in the info pane")),
+            ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
+            ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
             ("F11", Tr("Full screen")),
             ("Esc", Tr("Close the viewer or compare")),
             (Tr("? or F1"), Tr("This list")),
@@ -889,6 +899,31 @@ public sealed partial class MainWindow : Window
         var items = _mapPhotos.OrderBy(p => p.DateTaken?.Local ?? DateTime.MaxValue).Select(p => new PhotoItemViewModel(p)).ToList();
         if (items.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
             OpenViewer(item, items);
+    }
+
+    private string? _revealPath;
+
+    // "Show in library" in a photo's bubble on the map: the Library with the photo's folder open, the photo
+    // selected and scrolled to once the folder's photos are in.
+    private void MapPhotoShown(string path)
+    {
+        if (Path.GetDirectoryName(path) is not { } folder)
+            return;
+        _revealPath = path;
+        ShowWorkspace(Workspace.Library);
+        ClearBrowseTrees();
+        ViewModel.ShowFolder(folder);
+    }
+
+    private void RevealPendingPhoto()
+    {
+        if (_revealPath is not { } path ||
+            ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is not { } item)
+            return;
+        _revealPath = null;
+        PhotoGrid.SelectedItems.Clear();
+        PhotoGrid.SelectedItem = item;
+        PhotoGrid.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
     }
 
     private void MapPhotoClicked(string path, bool addToSelection)

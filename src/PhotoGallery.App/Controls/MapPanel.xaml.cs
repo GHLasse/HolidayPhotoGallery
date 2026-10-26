@@ -106,8 +106,11 @@ public sealed partial class MapPanel : UserControl
         UpdateButtons();
     }
 
-    /// <summary>Raised when the picture in a photo's bubble on the whole-library map is clicked.</summary>
+    /// <summary>Raised when the picture or Open in a photo's bubble on the whole-library map is clicked.</summary>
     public event Action<string>? PhotoOpened;
+
+    /// <summary>Raised by "Show in library" in a photo's bubble.</summary>
+    public event Action<string>? PhotoShown;
 
     // The picture shown above a clicked dot: Windows' thumbnail, sent to the map as a small JPEG.
     private async Task SendPreviewAsync(string path)
@@ -204,6 +207,13 @@ public sealed partial class MapPanel : UserControl
         {
             case "ready":
                 _ready = true;
+                Web.CoreWebView2.PostWebMessageAsJson(new JsonObject
+                {
+                    ["type"] = "texts",
+                    ["open"] = Tr("Open"),
+                    ["show"] = Tr("Show in library"),
+                    ["of"] = Tr("{0} of {1}"),
+                }.ToJsonString());
                 foreach (var json in _pending)
                     Web.CoreWebView2.PostWebMessageAsJson(json);
                 _pending.Clear();
@@ -221,6 +231,10 @@ public sealed partial class MapPanel : UserControl
             case "open":
                 if (message["path"]?.GetValue<string>() is { } open)
                     PhotoOpened?.Invoke(open);
+                break;
+            case "show":
+                if (message["path"]?.GetValue<string>() is { } shown)
+                    PhotoShown?.Invoke(shown);
                 break;
             case "places":
                 PlacesFound?.Invoke(message["q"]?.GetValue<string>() ?? "",

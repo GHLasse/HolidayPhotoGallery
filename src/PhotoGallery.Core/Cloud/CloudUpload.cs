@@ -42,7 +42,7 @@ public static class CloudUpload
             var batch = await cloud.UploadBatchAsync(chunk, link, albumName, cancellationToken).ConfigureAwait(false);
             // The album is made with the first batch; the ids uploaded before stay with it.
             if (albumFolder is not null && batch.Album is { } album)
-                link = album with { Items = link?.Items ?? album.Items };
+                link = album with { Items = link?.Items ?? album.Items, Title = link?.Title ?? albumName };
 
             for (var i = 0; i < chunk.Length; i++)
             {

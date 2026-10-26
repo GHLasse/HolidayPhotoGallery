@@ -70,6 +70,15 @@ public sealed class LibrarySettings
     /// </summary>
     public string? LastPlace { get; set; }
 
+    /// <summary>The parts ticked last time details were pasted (M-4).</summary>
+    public Metadata.MetadataParts PasteParts { get; set; } = Metadata.MetadataParts.All;
+
+    /// <summary>Pasting a date keeps the time between the photos (moves them together) instead of giving all the same date.</summary>
+    public bool PasteKeepsGaps { get; set; } = true;
+
+    /// <summary>How the People view is sorted: "count" (most photos first) or "name" (A–Z).</summary>
+    public string PeopleSort { get; set; } = "count";
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 

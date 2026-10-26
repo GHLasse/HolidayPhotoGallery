@@ -18,7 +18,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
     private string _caption = "";
     private double _rating = -1;
     private string _dateText = "";
-    private List<TimeZoneChoice> _timeZones = TimeZoneChoice.List(TimeZoneChoice.Unknown());
+    private List<TimeZoneChoice> _timeZones = TimeZoneChoice.List(null, TimeZoneChoice.Unknown());
     private int _timeZoneIndex;
     private bool _captionChanged, _tagsChanged, _ratingChanged, _dateChanged;
     private string _summary = Tr("No photo selected");
@@ -170,8 +170,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
             DateText = date?.ToDisplayDate() ?? "";
             // Photos only store an offset, not a place, so the saved offset is offered as its own entry.
             TimeZones = date?.Offset is { } saved
-                ? TimeZoneChoice.List(TimeZoneChoice.Unknown(), TimeZoneChoice.Fixed(saved, Tr("as saved in the photo")))
-                : TimeZoneChoice.List(TimeZoneChoice.Unknown());
+                ? TimeZoneChoice.List(date?.Local, TimeZoneChoice.Unknown(), TimeZoneChoice.Fixed(saved, Tr("as saved in the photo")))
+                : TimeZoneChoice.List(date?.Local, TimeZoneChoice.Unknown());
             // Reset first: replacing the list clears the combo box, so the index must be raised again even if unchanged.
             _timeZoneIndex = -1;
             TimeZoneIndex = date?.Offset is null ? 0 : 1;
@@ -189,6 +189,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
             _loading = false;
         }
 
+        OnPropertyChanged(nameof(Items));
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(IsSingle));
         OnPropertyChanged(nameof(IsDirty));
@@ -272,12 +273,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
     private static string DescribeSingle(Core.Library.IndexedPhoto photo)
     {
+        // The pixel size is in the resolution badge's tooltip and in More details (U-7).
         var lines = new List<string>();
-        if (photo.Width is { } w && photo.Height is { } h)
-        {
-            var (dw, dh) = Orientation.SwapsDimensions(photo.Orientation) ? (h, w) : (w, h);
-            lines.Add(Tr("{0} × {1} pixels", dw, dh));
-        }
         lines.Add(Core.Library.ViewSummary.FormatSize(photo.FileSize));
         if (photo.Place is { } place)
             lines.Add(place.ToString());

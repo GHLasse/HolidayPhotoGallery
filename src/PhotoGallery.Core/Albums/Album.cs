@@ -26,7 +26,10 @@ public sealed record Album
     /// <summary>Photos in the album, its subfolders included.</summary>
     public int PhotoCount { get; init; }
 
-    /// <summary>When the first and last photo were taken (local time), if any photo has a date.</summary>
+    /// <summary>
+    /// When the trip began and ended (local time), if any photo has a date; stray photos long before or after the
+    /// rest are left out (<see cref="TripDates"/>).
+    /// </summary>
     public DateTime? From { get; init; }
 
     public DateTime? To { get; init; }
@@ -73,11 +76,12 @@ public sealed record Album
     public static string DefaultName(string folder) =>
         Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) is { Length: > 0 } name ? name : folder;
 
-    /// <summary>Albums by date (newest or oldest first; undated ones last) or by name.</summary>
+    /// <summary>Albums by the trip's end date (newest or oldest first; undated ones last) or by name.</summary>
     public static List<Album> Sort(IEnumerable<Album> albums, string order) => order switch
     {
         SortName => albums.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
-        SortOldest => albums.OrderBy(a => a.From is null).ThenBy(a => a.From).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
-        _ => albums.OrderBy(a => a.From is null).ThenByDescending(a => a.From).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
+        // By when the trip ended (AL-1): a trip still being added to sorts by its newest photos.
+        SortOldest => albums.OrderBy(a => a.To is null).ThenBy(a => a.To).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
+        _ => albums.OrderBy(a => a.To is null).ThenByDescending(a => a.To).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
     };
 }

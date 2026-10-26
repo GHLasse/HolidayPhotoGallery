@@ -36,4 +36,7 @@ public interface ICloudPhotos
     /// can't be read or is refused gets an error in its entry; only sign-in and connection trouble throw.
     /// </summary>
     Task<CloudBatch> UploadBatchAsync(IReadOnlyList<UploadPhoto> photos, CloudAlbumLink? album, string? albumName, CancellationToken cancellationToken);
+
+    /// <summary>Gives the album in the service a new name, after the album was renamed in the app (AL-1).</summary>
+    Task RenameAlbumAsync(CloudAlbumLink album, string oldName, string newName, CancellationToken cancellationToken);
 }

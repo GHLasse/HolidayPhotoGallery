@@ -14,7 +14,7 @@ public sealed class OneDriveException(string message) : Exception(message);
 /// <summary>An album in the user's OneDrive, made by any app or on the website.</summary>
 public sealed record OneDriveAlbum(string Id, string Name, string? Url, int PhotoCount)
 {
-    public CloudAlbumLink Link() => new() { AlbumId = Id, Url = Url };
+    public CloudAlbumLink Link() => new() { AlbumId = Id, Url = Url, Title = Name };
 }
 
 /// <summary>
@@ -85,6 +85,35 @@ public sealed class OneDriveClient : ICloudPhotos, IDisposable
                 await AddToAlbumAsync(album.AlbumId, id, cancellationToken).ConfigureAwait(false);
         }
         return new CloudBatch(results, album);
+    }
+
+    /// <summary>
+    /// Renames the OneDrive album, and the folder in Pictures › Holiday Photo Gallery its uploaded photos are in,
+    /// so photos uploaded later land next to them.
+    /// </summary>
+    public async Task RenameAlbumAsync(CloudAlbumLink album, string oldName, string newName, CancellationToken cancellationToken)
+    {
+        using (var request = new HttpRequestMessage(HttpMethod.Patch, $"me/drive/items/{Uri.EscapeDataString(album.AlbumId)}")
+               {
+                   Content = JsonContent.Create(new { name = newName }),
+               })
+        using (await SendAsync(request, cancellationToken).ConfigureAwait(false))
+        {
+        }
+        if (SafeName(oldName) == SafeName(newName))
+            return;
+        using var folder = new HttpRequestMessage(HttpMethod.Patch, $"me/drive/special/photos:/{EscapePath($"{AppFolder}/{SafeName(oldName)}")}")
+        {
+            Content = JsonContent.Create(new { name = SafeName(newName) }),
+        };
+        try
+        {
+            using var response = await SendAsync(folder, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OneDriveException ex) when (ex.Data["status"] is 404)
+        {
+            // Its photos were already in OneDrive (synced folder), so the app made no folder for it.
+        }
     }
 
     /// <summary>All the user's OneDrive albums, by name.</summary>

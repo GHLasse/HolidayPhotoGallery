@@ -138,6 +138,16 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
         return ReadAlbum(doc.RootElement);
     }
 
+    /// <summary>Renames an album; Google allows it for albums this app made, which are the only ones it uploads to.</summary>
+    public async Task RenameAlbumAsync(CloudAlbumLink album, string oldName, string newName, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"albums/{Uri.EscapeDataString(album.AlbumId)}?updateMask=title")
+        {
+            Content = JsonContent.Create(new { title = Truncate(newName, 500) }, options: Json),
+        };
+        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>The albums this app created (Google lists no others to apps any more).</summary>
     public async Task<IReadOnlyList<GoogleAlbum>> ListAlbumsAsync(CancellationToken cancellationToken = default)
     {

@@ -16,8 +16,17 @@
   #search input { flex: 1; padding: 6px 8px; border: 1px solid #8a8a8a; border-radius: 4px; font: inherit; font-size: 14px; }
   #search button { padding: 6px 10px; border: 1px solid #8a8a8a; border-radius: 4px; background: #fff; font: inherit; font-size: 14px; cursor: pointer; }
   #message { position: absolute; z-index: 1000; bottom: 24px; left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
-  .preview img { display: block; max-width: 240px; max-height: 240px; border-radius: 4px; cursor: pointer; }
-  .preview div { margin-top: 4px; font-size: 12px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+  /* The picture box has a fixed size, so the bubble is laid out right before the picture arrives; the close
+     button sits above it (it covered the picture, which stuck out on the right). */
+  .leaflet-popup-content:has(.preview) { margin: 26px 12px 10px; }
+  .preview { width: 240px; }
+  .preview .pic { width: 240px; height: 180px; display: flex; align-items: center; justify-content: center; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+  .preview .pic img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; cursor: pointer; }
+  .preview .name { margin-top: 4px; font-size: 12px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview .row { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
+  .preview .row .count { flex: 1; text-align: center; font-size: 12px; color: #555; }
+  .preview button { padding: 3px 8px; border: 1px solid #8a8a8a; border-radius: 4px; background: #fff; font: inherit; font-size: 12px; cursor: pointer; }
+  .preview .actions button { flex: 1; }
   #offline { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 14px; color: #555; }
 </style>
 </head>
@@ -35,8 +44,9 @@
 //                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on},
 //                 {type:"find", q} (search for a place and go to the first found), {type:"goto", index} (another one found)
 //                 {type:"preview", path, src} (the picture of the photo clicked on the whole-library map)
+//                 {type:"texts", open, show, of} (the bubble's buttons in the app's language; "of" is like "{0} of {1}")
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
-//                 {type:"open", path} (the picture in the preview was clicked)
+//                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library)
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
 const lang = new URLSearchParams(location.search).get("lang") || "en";
@@ -178,27 +188,71 @@ function start() {
     else if (points.length > 1) map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
   }
 
-  // The picture of a photo clicked on the whole-library map, in a bubble above its dot.
-  let preview = null, previewPath = null;
-  function previewContent(name, src) {
+  // The picture of a photo clicked on the whole-library map, in a bubble above its dot, with Show in library
+  // and Open. Where dots lie on top of each other, the bubble steps through all the photos there.
+  let preview = null, previewPath = null, previewGroup = [], previewIndex = 0;
+  let texts = { open: "Open", show: "Show in library", of: "{0} of {1}" };
+  function button(text, onClick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    b.addEventListener("click", ev => { ev.stopPropagation(); onClick(); });
+    return b;
+  }
+  function previewContent(src) {
+    const p = previewGroup[previewIndex];
     const box = document.createElement("div");
     box.className = "preview";
+    const pic = document.createElement("div");
+    pic.className = "pic";
     if (src) {
       const img = document.createElement("img");
       img.src = src;
-      img.title = name;
-      img.addEventListener("click", () => send({ type: "open", path: previewPath }));
-      box.appendChild(img);
+      img.title = p.name;
+      img.addEventListener("click", () => send({ type: "open", path: p.path }));
+      pic.appendChild(img);
     }
+    box.appendChild(pic);
     const label = document.createElement("div");
-    label.textContent = name;
+    label.className = "name";
+    label.textContent = p.name;
     box.appendChild(label);
+    if (previewGroup.length > 1) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = texts.of.replace("{0}", previewIndex + 1).replace("{1}", previewGroup.length);
+      row.append(button("‹", () => step(-1)), count, button("›", () => step(1)));
+      box.appendChild(row);
+    }
+    const actions = document.createElement("div");
+    actions.className = "row actions";
+    actions.append(button(texts.show, () => send({ type: "show", path: p.path })), button(texts.open, () => send({ type: "open", path: p.path })));
+    box.appendChild(actions);
     return box;
   }
+  function step(by) {
+    previewIndex = (previewIndex + by + previewGroup.length) % previewGroup.length;
+    previewPath = previewGroup[previewIndex].path;
+    preview.setContent(previewContent(null));
+    send({ type: "select", path: previewPath, add: false });
+  }
+  // The photos whose dots lie within a few pixels of the clicked one, the clicked one first.
+  function photosAt(p) {
+    const here = map.latLngToContainerPoint(markers.get(p.path).getLatLng());
+    const near = [];
+    for (const [path, marker] of markers) {
+      if (path !== p.path && map.latLngToContainerPoint(marker.getLatLng()).distanceTo(here) <= 6)
+        near.push(marker.photo);
+    }
+    return [p, ...near];
+  }
   function showPreview(p, at) {
+    previewGroup = photosAt(p);
+    previewIndex = 0;
     previewPath = p.path;
-    preview = L.popup({ offset: [0, -4], maxWidth: 260 }).setLatLng(at).setContent(previewContent(p.name, null)).openOn(map);
-    preview.photoName = p.name;
+    preview = L.popup({ offset: [0, -4], maxWidth: 270, minWidth: 240, autoPanPadding: [20, 20] }).setLatLng(at).setContent(previewContent(null)).openOn(map);
   }
 
   if (host) {
@@ -210,6 +264,7 @@ function start() {
         for (const p of m.photos) {
           // Clicking a photo selects it instead of moving the pin.
           const marker = L.circleMarker([p.lat, p.lon], { ...normal, bubblingMouseEvents: false });
+          marker.photo = p;
           // The name is attached on first hover: tens of thousands of tooltips up front slow the map down.
           marker.once("mouseover", () => marker.bindTooltip(p.name).openTooltip());
           marker.on("click", ev => {
@@ -236,7 +291,9 @@ function start() {
         document.getElementById("search").style.display = placing ? "flex" : "none";
       } else if (m.type === "preview") {
         if (preview && preview.isOpen() && m.path === previewPath && m.src)
-          preview.setContent(previewContent(preview.photoName, m.src));
+          preview.setContent(previewContent(m.src));
+      } else if (m.type === "texts") {
+        texts = { open: m.open, show: m.show, of: m.of };
       } else if (m.type === "find") {
         findPlace(m.q);
       } else if (m.type === "goto") {

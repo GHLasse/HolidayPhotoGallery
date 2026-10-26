@@ -234,9 +234,11 @@ public sealed partial class MainWindow
     {
         if (CompareLayer.Visibility == Visibility.Visible)
         {
-            CompareLayer.PreviewKey(e);
+            CompareLayer.PreviewKey(e, WasdArrow(e.Key));
             return;
         }
+        if (HandleWasd(e) || HandleCopyPaste(e))
+            return;
         if (IsViewerOpen && GridHasFocus() && CompareLayer.Visibility != Visibility.Visible)
         {
             // The grid behind the viewer must not take keys: it moved its own selection, so the details pane

@@ -32,7 +32,7 @@ public static class PhotoDetails
         new("focusMode", Tr("Focus mode"), ["MakerNotes:FocusMode", "MakerNotes:AFMode"]),
         new("focusDistance", Tr("Focus distance"), ["MakerNotes:FocusDistance", "ExifIFD:SubjectDistance", "MakerNotes:ApproximateFocusDistance"]),
         new("whiteBalance", Tr("White balance"), ["ExifIFD:WhiteBalance"]),
-        new("size", Tr("Size in pixels"), ["Composite:ImageSize"], v => v.Replace('x', '×').Replace(" ", "")),
+        new("size", Tr("Size in pixels"), ["Composite:ImageSize"], v => v.Replace('x', '×').Replace(" ", ""), ShownByDefault: true),
         new("fileSize", Tr("File size"), ["System:FileSize"]),
         new("software", Tr("Software"), ["IFD0:Software", "XMP-xmp:CreatorTool"]),
     ];

@@ -22,6 +22,9 @@ public sealed class TimeZoneChoice
 
     public string Display { get; }
 
+    /// <summary>The Windows time zone, or null for "unknown" and a fixed offset.</summary>
+    public TimeZoneInfo? Zone => _zone;
+
     /// <summary>What the closed box shows: just the offset, such as "UTC-06:00" ("UTC+01:00" for Berlin).</summary>
     public string Short =>
         _fixedOffset is { } offset ? $"UTC{DateTaken.FormatOffset(offset)}"
@@ -43,17 +46,20 @@ public sealed class TimeZoneChoice
 
     /// <summary>
     /// The dropdown entries: first <paramref name="leading"/> (e.g. "unknown" or "as saved in the photo"),
-    /// then every Windows time zone, sorted by offset as Windows lists them.
+    /// then every Windows time zone, sorted by offset as Windows lists them, each with its common abbreviation:
+    /// the one that applies on <paramref name="date"/> (EST in winter, EDT in summer), or both without a date.
     /// </summary>
-    public static List<TimeZoneChoice> List(params TimeZoneChoice[] leading)
+    public static List<TimeZoneChoice> List(DateTime? date, params TimeZoneChoice[] leading)
     {
         var list = new List<TimeZoneChoice>(leading);
-        list.AddRange(SystemZones.Value);
+        list.AddRange(SystemZones.Value.Select(z =>
+            new TimeZoneChoice(TimeZoneNames.Abbreviation(z, date) is { } abbreviation ? $"{z.DisplayName} · {abbreviation}" : z.DisplayName, z, null)));
         return list;
     }
 
-    private static readonly Lazy<List<TimeZoneChoice>> SystemZones = new(() =>
-        TimeZoneInfo.GetSystemTimeZones()
-            .Select(z => new TimeZoneChoice(z.DisplayName, z, null))
-            .ToList());
+    /// <summary>The entry that best matches what was typed (D-3); see <see cref="TimeZoneNames.Find"/>.</summary>
+    public static List<int> Find(string typed, IReadOnlyList<TimeZoneChoice> choices) =>
+        TimeZoneNames.Find(typed, choices.Select(c => (c._zone, c.Display)).ToList());
+
+    private static readonly Lazy<IReadOnlyCollection<TimeZoneInfo>> SystemZones = new(TimeZoneInfo.GetSystemTimeZones);
 }

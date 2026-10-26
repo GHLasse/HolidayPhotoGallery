@@ -309,6 +309,32 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>
+    /// Follows a folder renamed or moved on disk: every photo in and under it keeps its entry (faces, checks)
+    /// under its new path.
+    /// </summary>
+    public void RenameFolder(string oldFolder, string newFolder)
+    {
+        var oldRoot = Path.TrimEndingDirectorySeparator(oldFolder);
+        var newRoot = Path.TrimEndingDirectorySeparator(newFolder);
+        lock (_lock)
+        {
+            using var tx = _connection.BeginTransaction();
+            using var cmd = _connection.CreateCommand();
+            cmd.Transaction = tx;
+            var where = FolderCondition(cmd, oldRoot, true);
+            cmd.Parameters.AddWithValue("$oldLen", oldRoot.Length);
+            cmd.Parameters.AddWithValue("$new", newRoot);
+            // Only the start of each path changes: the old folder's part is cut off and the new one put in front.
+            cmd.CommandText = $"""
+                UPDATE photos SET path = $new || substr(path, $oldLen + 1), folder = $new || substr(folder, $oldLen + 1)
+                WHERE {where};
+                """;
+            cmd.ExecuteNonQuery();
+            tx.Commit();
+        }
+    }
+
     /// <summary>Forgets every photo under a folder, e.g. when it is removed from the library.</summary>
     public void RemoveFolder(string rootFolder)
     {
@@ -592,17 +618,25 @@ public sealed partial class PhotoIndex : IDisposable
             using var cmd = _connection.CreateCommand();
             var where = FolderCondition(cmd, folder, true);
             cmd.CommandText = $"""
-                SELECT COUNT(*), MIN(date_taken), MAX(date_taken) FROM photos WHERE {where};
+                SELECT COUNT(*) FROM photos WHERE {where};
                 SELECT path FROM photos WHERE {where} ORDER BY date_taken IS NULL, date_taken, path COLLATE NOCASE LIMIT 1;
+                SELECT date_taken FROM photos WHERE {where} AND date_taken IS NOT NULL ORDER BY date_taken;
                 """;
             using var reader = cmd.ExecuteReader();
             reader.Read();
             var count = reader.GetInt32(0);
-            var from = ParseDate(reader, 1);
-            var to = ParseDate(reader, 2);
             string? first = null;
             if (reader.NextResult() && reader.Read())
                 first = reader.GetString(0);
+            var dates = new List<DateTime>();
+            if (reader.NextResult())
+            {
+                while (reader.Read())
+                    if (ParseDate(reader, 0) is { } date)
+                        dates.Add(date);
+            }
+            // The trip's dates without stray photos weeks before or after it (AL-1).
+            var (from, to) = Albums.TripDates.MainGroup(dates);
             return new FolderSummary(count, from, to, first);
         }
 

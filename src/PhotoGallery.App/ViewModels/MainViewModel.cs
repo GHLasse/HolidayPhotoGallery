@@ -390,11 +390,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
         (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
 
+    /// <summary>
+    /// True once the photos, filters and people from the index are shown (U-9): until then views show that
+    /// they are loading instead of saying there is nothing.
+    /// </summary>
+    public bool HasLoaded { get; private set; }
+
+    /// <summary>The grid or the album view is still waiting for its first content.</summary>
+    public bool IsLoading => IsAlbumView ? !_albumsLoaded : !HasLoaded;
+
+    public string LoadingText => IsAlbumView ? Tr("Looking for albums…") : Tr("Loading the photos…");
+
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
     public async Task InitializeAsync()
     {
         await SearchAsync();
-        _ = LoadCloudUploadsAsync();
+        HasLoaded = true;
+        OnPropertyChanged(nameof(HasLoaded));
+        OnPropertyChanged(nameof(IsLoading));
+        _ = LoadCloudUploadsAsync().ContinueWith(_ => RenameOwedCloudAlbumsAsync(), TaskScheduler.FromCurrentSynchronizationContext());
         if (IsExifToolMissing)
         {
             ErrorMessage = Tr("ExifTool was not found, so photos cannot be indexed or edited. Run scripts\\Get-ExifTool.ps1 and rebuild, or install ExifTool and add it to the PATH.");

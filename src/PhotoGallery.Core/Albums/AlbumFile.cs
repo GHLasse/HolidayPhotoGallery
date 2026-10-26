@@ -33,6 +33,12 @@ public sealed record CloudAlbumLink
     /// <summary>The album's page in the service.</summary>
     public string? Url { get; init; }
 
+    /// <summary>
+    /// The album's name in the service, as far as the app knows; when it differs from the album's name, a rename
+    /// there is still owed (it failed, e.g. offline) and is tried again. Null for links saved before it was kept.
+    /// </summary>
+    public string? Title { get; init; }
+
     /// <summary>Photo path relative to the album folder (with "/") → the service's id for it.</summary>
     public Dictionary<string, string> Items { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
