@@ -296,6 +296,7 @@
     "Found in your library: {0}": "In Ihrer Bibliothek gefunden: {0}",
     "Found {0:N0} groups of duplicates in the library.": "{0:N0} Gruppen von Duplikaten in der Bibliothek gefunden.",
     "Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.": "{0} Gesicht(er) in {1} Foto(s) gefunden. {2} Gesicht(er) in der Bibliothek haben noch keinen Namen.",
+    "Frames per second: {0:0.##}": "Bilder pro Sekunde: {0:0.##}",
     "Free": "Frei",
     "From {0} onto {1}.": "Von {0} auf {1}.",
     "Full screen": "Vollbild",

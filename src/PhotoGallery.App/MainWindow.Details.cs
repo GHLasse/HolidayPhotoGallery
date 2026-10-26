@@ -95,6 +95,8 @@ public sealed partial class MainWindow
         QualityBadges.Visibility = Visibility.Visible;
         if (item.IsVideo && item.DurationText.Length > 0)
             QualityBadges.Children.Add(QualityBadge("▶ " + item.DurationText, Tr("Length of the video")));
+        if (item.IsVideo && item.FrameRateText.Length > 0)
+            QualityBadges.Children.Add(QualityBadge(item.FrameRateText, Tr("Frames per second: {0:0.##}", item.Photo.FrameRate!.Value)));
         if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
             QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
     }

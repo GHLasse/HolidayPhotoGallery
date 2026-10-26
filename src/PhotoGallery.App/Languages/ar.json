@@ -296,6 +296,7 @@
     "Found in your library: {0}": "وُجدت في مكتبتك: {0}",
     "Found {0:N0} groups of duplicates in the library.": "تم العثور على {0:N0} مجموعات من النسخ المكررة في المكتبة.",
     "Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.": "تم العثور على {0} من الوجوه في {1} من الصور. {2} من الوجوه في المكتبة ليس لها اسم بعد.",
+    "Frames per second: {0:0.##}": "إطارات في الثانية: {0:0.##}",
     "Free": "حر",
     "From {0} onto {1}.": "من {0} إلى {1}.",
     "Full screen": "ملء الشاشة",

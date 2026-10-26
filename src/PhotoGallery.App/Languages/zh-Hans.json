@@ -296,6 +296,7 @@
     "Found in your library: {0}": "在您的图库中找到：{0}",
     "Found {0:N0} groups of duplicates in the library.": "在图库中找到 {0:N0} 组重复项。",
     "Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.": "在 {1} 张照片中找到 {0} 张面部。库中有 {2} 张面部尚未命名。",
+    "Frames per second: {0:0.##}": "每秒帧数：{0:0.##}",
     "Free": "自由",
     "From {0} onto {1}.": "从 {0} 到 {1}。",
     "Full screen": "全屏",

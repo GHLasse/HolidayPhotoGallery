@@ -296,6 +296,7 @@
     "Found in your library: {0}": "",
     "Found {0:N0} groups of duplicates in the library.": "",
     "Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.": "",
+    "Frames per second: {0:0.##}": "",
     "Free": "",
     "From {0} onto {1}.": "",
     "Full screen": "",
