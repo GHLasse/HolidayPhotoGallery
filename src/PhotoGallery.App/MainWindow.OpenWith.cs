@@ -92,11 +92,9 @@ public sealed partial class MainWindow
         {
             if (IsProgram(app.Path))
             {
-                // A desktop program gets all photos at once, so it opens them together.
-                var start = new ProcessStartInfo(app.Path) { UseShellExecute = false };
-                foreach (var path in ready)
-                    start.ArgumentList.Add(path);
-                await Task.Run(() => Process.Start(start));
+                // A desktop program gets all photos at once, so it opens them together, and stays open when
+                // this app closes.
+                await Task.Run(() => Native.ChildProcessGuard.StartDetached(app.Path, ready));
             }
             else
             {
