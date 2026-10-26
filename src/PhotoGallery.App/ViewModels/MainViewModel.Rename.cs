@@ -8,7 +8,7 @@ public sealed partial class MainViewModel
 {
     public string RenamePatternText
     {
-        get => _settings.RenamePattern;
+        get => _settings.RenamePattern == RenamePattern.OldDefault ? RenamePattern.Default : _settings.RenamePattern;
         set
         {
             _settings.RenamePattern = value;

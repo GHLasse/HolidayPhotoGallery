@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.Core.Library;
@@ -25,7 +26,7 @@ public sealed partial class MainWindow
         foreach (var (label, token) in new[]
                  {
                      (Tr("Date"), "{date}"), (Tr("Time"), "{time}"), (Tr("Place"), "{place}"), (Tr("Country"), "{country}"),
-                     (Tr("Camera"), "{camera}"), (Tr("Current name"), "{name}"), (Tr("Counter"), "{###}"),
+                     (Tr("Camera"), "{camera}"), (Tr("Current name"), "{name}"), (Tr("Counter"), "{" + new string('#', Math.Max(3, photos.Count.ToString(CultureInfo.InvariantCulture).Length)) + "}"),
                  })
         {
             var button = new Button { Content = label, Padding = new Thickness(8, 3, 8, 4) };
@@ -33,7 +34,8 @@ public sealed partial class MainWindow
             {
                 var at = pattern.SelectionStart;
                 var text = pattern.Text;
-                var insert = (at > 0 && text[at - 1] != ' ' ? " " : "") + token;
+                // Parts are joined with "_": spaces in file names trip up scripts and links.
+                var insert = (at > 0 && !" _-.".Contains(text[at - 1]) ? "_" : "") + token;
                 pattern.Text = text[..at] + insert + text[(at + pattern.SelectionLength)..];
                 pattern.SelectionStart = at + insert.Length;
                 pattern.Focus(FocusState.Programmatic);
