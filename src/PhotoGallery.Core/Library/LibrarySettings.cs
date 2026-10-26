@@ -70,6 +70,9 @@ public sealed class LibrarySettings
     /// </summary>
     public string? LastPlace { get; set; }
 
+    /// <summary>The note that private photos are only hidden in this app was shown (P-1).</summary>
+    public bool PrivateNoteShown { get; set; }
+
     /// <summary>The pattern used last to rename photos (F-2).</summary>
     public string RenamePattern { get; set; } = Library.RenamePattern.Default;
 
