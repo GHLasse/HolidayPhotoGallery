@@ -72,6 +72,50 @@ public sealed partial class MainWindow
             await ViewModel.SetAlbumAsync(album.Folder, false);
     }
 
+    private string? _renamingAlbum;
+
+    // Clicking the album's name above its photos turns it into a box to type the new name in.
+    private void HeaderTitle_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (ViewModel.ShownAlbum is not { } folder)
+            return;
+        _renamingAlbum = folder;
+        HeaderEdit.Text = ViewModel.CurrentAlbumName(folder);
+        HeaderEdit.PlaceholderText = Path.GetFileName(folder);
+        HeaderTitle.Visibility = Visibility.Collapsed;
+        HeaderEdit.Visibility = Visibility.Visible;
+        HeaderEdit.SelectAll();
+        HeaderEdit.Focus(FocusState.Programmatic);
+    }
+
+    private async void HeaderEdit_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            e.Handled = true;
+            await EndHeaderEditAsync(keep: true);
+        }
+        else if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            e.Handled = true;
+            await EndHeaderEditAsync(keep: false);
+        }
+    }
+
+    // Clicking elsewhere keeps what was typed, like renaming in File Explorer.
+    private async void HeaderEdit_LostFocus(object sender, RoutedEventArgs e) => await EndHeaderEditAsync(keep: true);
+
+    private async Task EndHeaderEditAsync(bool keep)
+    {
+        if (_renamingAlbum is not { } folder)
+            return;
+        _renamingAlbum = null;
+        HeaderEdit.Visibility = Visibility.Collapsed;
+        HeaderTitle.Visibility = Visibility.Visible;
+        if (keep && HeaderEdit.Text.Trim() != ViewModel.CurrentAlbumName(folder))
+            await ViewModel.RenameAlbumAsync(folder, HeaderEdit.Text);
+    }
+
     private async Task RenameAlbumAsync(string folder)
     {
         var box = new TextBox
