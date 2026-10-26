@@ -73,6 +73,15 @@ dotnet build src\PhotoGallery.App -c Release -p:Platform=x64
 
 The app is a plain `.exe` that carries its own Windows App SDK runtime, so nothing needs installing.
 
+## Downloads and branches
+
+- **Releases** ([latest](https://github.com/GHLasse/HolidayPhotoGallery/releases/latest)) are built from `main`, which
+  only ever holds released versions.
+- **Experimental** ([pre-release](https://github.com/GHLasse/HolidayPhotoGallery/releases/tag/experimental)) is the
+  newest test version, rebuilt from `prep` whenever a change lands there. It may have bugs.
+
+All work goes into `prep` through pull requests; see [CONTRIBUTING.md](CONTRIBUTING.md) for the flow.
+
 ## Project layout
 
 - `src/PhotoGallery.Core` – metadata reading and writing (via ExifTool), the search index and folder scanning. Plain .NET, no UI.
