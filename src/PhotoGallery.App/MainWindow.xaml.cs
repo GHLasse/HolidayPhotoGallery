@@ -133,7 +133,9 @@ public sealed partial class MainWindow : Window
                 _ = ShowPeoplePageAsync();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
+                var place = NoteSelectionPlace();
                 ShowPhotoGroups();
+                KeepSelectionPlace(place);
                 DispatcherQueue.TryEnqueue(RevealPendingPhoto);
                 ShowFilterBadges();
                 _ = ShowTopPeopleAsync();
@@ -761,7 +763,9 @@ public sealed partial class MainWindow : Window
     private async void PhotoGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Before the info pane slides in or out and the grid reflows: the clicked photo stays where it is.
-        RememberAnchor(e.AddedItems.OfType<PhotoItemViewModel>().LastOrDefault());
+        // (Not while the selection is carried over to new search results: that sets its own place.)
+        if (!_carryingSelection)
+            RememberAnchor(e.AddedItems.OfType<PhotoItemViewModel>().LastOrDefault());
         OnSelectionChromeChanged();
         if (_handlingSelection)
             return;

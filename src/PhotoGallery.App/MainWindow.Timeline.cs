@@ -113,6 +113,65 @@ public sealed partial class MainWindow
         _anchorRetries = 0;
     }
 
+    private bool _carryingSelection;
+
+    /// <summary>
+    /// Before new search results replace the grid (a filter set or cleared): the selected photos, and where the
+    /// last selected one is on screen if it is.
+    /// </summary>
+    private (List<string> Paths, string? Anchor, double Y) NoteSelectionPlace()
+    {
+        var selected = PhotoGrid.SelectedItems.OfType<PhotoItemViewModel>().ToList();
+        string? anchor = null;
+        double y = 0;
+        if (_gridScroller is { } scroller)
+        {
+            foreach (var item in Enumerable.Reverse(selected))
+            {
+                if (TopInGrid(item) is { } top && top > -ViewModel.TileSize && top < scroller.ViewportHeight)
+                {
+                    (anchor, y) = (item.Path, top);
+                    break;
+                }
+            }
+        }
+        return (selected.Select(i => i.Path).ToList(), anchor, y);
+    }
+
+    /// <summary>
+    /// After new search results: the photos that were selected and are still shown stay selected, and the
+    /// grid scrolls so the one that was on screen stays at the same height, instead of the view jumping back
+    /// to the top of a much longer list.
+    /// </summary>
+    private void KeepSelectionPlace((List<string> Paths, string? Anchor, double Y) place)
+    {
+        if (place.Paths.Count == 0)
+            return;
+        var byPath = new Dictionary<string, PhotoItemViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in ViewModel.Photos)
+            byPath.TryAdd(item.Path, item);
+        var kept = place.Paths.Select(p => byPath.GetValueOrDefault(p)).OfType<PhotoItemViewModel>().ToList();
+        if (kept.Count == 0)
+            return;
+        _carryingSelection = true;
+        try
+        {
+            PhotoGrid.SelectedItems.Clear();
+            foreach (var item in kept)
+                PhotoGrid.SelectedItems.Add(item);
+        }
+        finally
+        {
+            _carryingSelection = false;
+        }
+        if (place.Anchor is { } anchor && byPath.GetValueOrDefault(anchor) is { } anchorItem)
+        {
+            (_anchorItem, _anchorY) = (anchorItem, place.Y);
+            _anchorRetries = 0;
+            _restoreAnchor = true;
+        }
+    }
+
     private double? TopInGrid(PhotoItemViewModel item) =>
         _gridScroller is { } scroller && PhotoGrid.ContainerFromItem(item) is UIElement container
             ? container.TransformToVisual(scroller).TransformPoint(new Windows.Foundation.Point(0, 0)).Y
