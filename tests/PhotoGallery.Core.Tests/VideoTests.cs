@@ -70,6 +70,7 @@ public sealed class VideoTests : IAsyncLifetime
         Assert.Equal(38.7223, read.Latitude!.Value, 3);
         Assert.Equal(-9.1393, read.Longitude!.Value, 3);
         Assert.Equal(0.5, read.Duration!.Value, 1);
+        Assert.Equal(4, read.FrameRate!.Value, 1);
         Assert.Equal(extension == ".avi", File.Exists(path + ".xmp"));
     }
 
@@ -102,6 +103,7 @@ public sealed class VideoTests : IAsyncLifetime
         var videos = _index.Search(new PhotoQuery { Media = MediaKind.Videos });
         Assert.Equal(clip, Assert.Single(videos).Path);
         Assert.Equal(0.5, videos[0].Duration!.Value, 1);
+        Assert.Equal(4, videos[0].FrameRate!.Value, 1);
         Assert.Equal("IMG_1.jpg", Assert.Single(_index.Search(new PhotoQuery { Media = MediaKind.Photos })).FileName);
         Assert.DoesNotContain(_index.GetNotFaceScanned(10), p => p.Path == clip);
     }

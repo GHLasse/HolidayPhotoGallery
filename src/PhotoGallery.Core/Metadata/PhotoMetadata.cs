@@ -57,4 +57,7 @@ public sealed record PhotoMetadata
 
     /// <summary>A video's length in seconds; null for photos.</summary>
     public double? Duration { get; init; }
+
+    /// <summary>A video's frames per second; null for photos or when the file doesn't say.</summary>
+    public double? FrameRate { get; init; }
 }

@@ -27,7 +27,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-IFD0:Copyright", "-XMP-dc:Rights", "-IPTC:CopyrightNotice", "-IFD0:Artist", "-XMP-dc:Creator", "-IPTC:By-line",
         $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}", $"-{AppNamespace.AutoTagsField}",
         // Videos (F-4): their own dates, length, turn, camera and place.
-        "-Keys:CreationDate", "-QuickTime:CreateDate", "-QuickTime:Duration", "-Composite:Duration", "-Composite:Rotation",
+        "-Keys:CreationDate", "-QuickTime:CreateDate", "-QuickTime:Duration", "-Composite:Duration", "-Composite:Rotation", "-VideoFrameRate",
         "-Keys:Make", "-Keys:Model", "-UserData:Make", "-UserData:Model", "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude",
     ];
 
@@ -589,6 +589,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             People = people,
             OtherRegions = otherRegions,
             Duration = SupportedFormats.IsVideo(path) ? GetNumber(item, "QuickTime:Duration") ?? GetNumber(item, "Composite:Duration") : null,
+            FrameRate = SupportedFormats.IsVideo(path) ? FrameRateOf(item) : null,
         };
     }
 
@@ -702,6 +703,11 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             _ => [],
         };
     }
+
+    // The video track's rate: its group depends on the container (Track1 in MP4/MOV, RIFF in AVI, Matroska …).
+    private static double? FrameRateOf(JsonElement item) =>
+        item.EnumerateObject().Where(p => p.Name.EndsWith(":VideoFrameRate", StringComparison.Ordinal))
+            .Select(p => GetNumber(item, p.Name)).FirstOrDefault(r => r is > 0);
 
     private static double? GetNumber(JsonElement item, string key)
     {
