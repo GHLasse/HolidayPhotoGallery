@@ -54,4 +54,7 @@ public sealed record PhotoMetadata
 
     /// <summary>Regions other programs wrote that are not named people; kept when the people change.</summary>
     public IReadOnlyList<OtherRegion> OtherRegions { get; init; } = [];
+
+    /// <summary>A video's length in seconds; null for photos.</summary>
+    public double? Duration { get; init; }
 }

@@ -93,6 +93,8 @@ public sealed partial class MainWindow
         var (width, height) = Core.Metadata.Orientation.SwapsDimensions(item.Photo.Orientation) ? (h, w) : (w, h);
         QualityBadges.Children.Add(QualityBadge(PhotoQuality.ResolutionClass(width, height), Tr("{0} × {1} pixels", width, height)));
         QualityBadges.Visibility = Visibility.Visible;
+        if (item.IsVideo && item.DurationText.Length > 0)
+            QualityBadges.Children.Add(QualityBadge("▶ " + item.DurationText, Tr("Length of the video")));
         if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
             QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
     }

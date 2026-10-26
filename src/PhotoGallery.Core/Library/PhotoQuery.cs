@@ -60,6 +60,17 @@ public sealed record PhotoQuery
     /// <summary>Inclusive: a date with no time covers that whole day.</summary>
     public DateTime? TakenTo { get; init; }
 
+    /// <summary>Photos, videos or both.</summary>
+    public MediaKind Media { get; init; }
+
     /// <summary>Only photos whose file the health check found damaged (<see cref="FileCheck"/>).</summary>
     public bool DamagedOnly { get; init; }
+}
+
+/// <summary>Which kind of files the grid shows.</summary>
+public enum MediaKind
+{
+    All,
+    Photos,
+    Videos,
 }

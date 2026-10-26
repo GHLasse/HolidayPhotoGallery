@@ -18,6 +18,26 @@ public static class PhotoMover
         else
             File.Move(path, target);
         EditHistory.Transfer(path, target, copy);
+        // A video's details in its sidecar go along.
+        if (SupportedFormats.MetadataTarget(path) is var sidecar && sidecar != path && File.Exists(sidecar) && !File.Exists(target + ".xmp"))
+        {
+            if (copy)
+                File.Copy(sidecar, target + ".xmp");
+            else
+                File.Move(sidecar, target + ".xmp");
+        }
+        // A Live Photo's video goes with its photo, under the photo's new name.
+        if (SupportedFormats.CompanionVideoOf(path) is { } video)
+        {
+            var videoTarget = Path.ChangeExtension(target, Path.GetExtension(video));
+            if (!File.Exists(videoTarget))
+            {
+                if (copy)
+                    File.Copy(video, videoTarget);
+                else
+                    File.Move(video, videoTarget);
+            }
+        }
         if (!copy)
         {
             UploadFile.Carry(path, target);
@@ -104,7 +124,8 @@ public static class PhotoMover
 
     /// <summary>
     /// The photo's sidecar files and where each goes for the photo's new path: IMG_1.jpg.xmp belongs to it alone,
-    /// IMG_1.xmp and IMG_1.aae only when no other file is called IMG_1 (a RAW and JPEG pair shares them).
+    /// IMG_1.xmp and IMG_1.aae only when no other file is called IMG_1 (a RAW and JPEG pair shares them). A Live
+    /// Photo's video (IMG_1.MOV next to IMG_1.HEIC) goes with the photo too.
     /// </summary>
     private static List<(string Path, Func<string, string> Final)> Sidecars(string photo)
     {
@@ -115,7 +136,13 @@ public static class PhotoMover
             .Any(f => !string.Equals(f, photo, StringComparison.OrdinalIgnoreCase) &&
                       Path.GetFileNameWithoutExtension(f).Equals(stem, StringComparison.OrdinalIgnoreCase) &&
                       !SidecarExtensions.Any(s => f.EndsWith(s, StringComparison.OrdinalIgnoreCase)) &&
+                      !(SupportedFormats.IsImage(photo) && SupportedFormats.IsVideo(f)) &&
                       !f.Contains(".renaming-", StringComparison.Ordinal));
+        if (SupportedFormats.CompanionVideoOf(photo) is { } video)
+        {
+            var ext = Path.GetExtension(video);
+            found.Add((video, newPath => Path.ChangeExtension(newPath, ext)));
+        }
         foreach (var ext in SidecarExtensions)
         {
             var own = photo + ext;

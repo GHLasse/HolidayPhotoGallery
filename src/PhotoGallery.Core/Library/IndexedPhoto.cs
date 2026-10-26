@@ -44,6 +44,11 @@ public sealed record IndexedPhoto
     /// <summary>The people named in the file, with their faces on the stored pixels.</summary>
     public IReadOnlyList<PersonTag> People { get; init; } = [];
 
+    /// <summary>A video's length in seconds, when ExifTool could read it.</summary>
+    public double? Duration { get; init; }
+
+    public bool IsVideo => SupportedFormats.IsVideo(Path);
+
     public string FileName => System.IO.Path.GetFileName(Path);
 
     /// <summary>
@@ -86,5 +91,6 @@ public sealed record IndexedPhoto
         Location = metadata.Latitude is { } lat && metadata.Longitude is { } lon ? new GeoPosition(lat, lon) : null,
         Place = metadata.Place,
         People = metadata.People,
+        Duration = metadata.Duration,
     };
 }

@@ -252,6 +252,13 @@
                             <TextBlock Text="{local:Loc Text='Rejected'}" />
                         </StackPanel>
                     </ToggleButton>
+                    <ComboBox x:Name="MediaFilter" VerticalAlignment="Center" MinWidth="120"
+                              SelectedIndex="{x:Bind ViewModel.MediaIndex, Mode=TwoWay}"
+                              ToolTipService.ToolTip="{local:Loc Text='Show photos, videos or both'}">
+                        <ComboBoxItem Content="{local:Loc Text='Photos and videos'}" />
+                        <ComboBoxItem Content="{local:Loc Text='Photos only'}" />
+                        <ComboBoxItem Content="{local:Loc Text='Videos only'}" />
+                    </ComboBox>
                     <CalendarDatePicker x:Name="TakenFromFilter" VerticalAlignment="Center" PlaceholderText="{local:Loc Text='Taken from'}"
                                         Date="{x:Bind ViewModel.TakenFrom, Mode=TwoWay}" />
                     <CalendarDatePicker x:Name="TakenToFilter" VerticalAlignment="Center" PlaceholderText="{local:Loc Text='Taken until'}"
@@ -749,6 +756,15 @@
                                     <controls:OneDriveLogo Width="12" Height="12" />
                                 </Border>
                             </StackPanel>
+                            <!-- A video: play mark and length, on the picture's lower left corner (F-4). -->
+                            <Border IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,32"
+                                    Padding="5,2" CornerRadius="4" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    Visibility="{x:Bind VideoVisibility, Mode=OneWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="&#xE768;" FontSize="10" />
+                                    <TextBlock Text="{x:Bind DurationText, Mode=OneWay}" FontSize="11" />
+                                </StackPanel>
+                            </Border>
                             <!-- The rating under the photo, like Windows Live Photo Gallery: the photo sits on it and never
                                  hides it. The file name only shows on hover. -->
                             <StackPanel x:Name="StarLine" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5">
@@ -1341,17 +1357,17 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="ViewerTitle" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <Button Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate left'}">
+                    <Button x:Name="ViewerRotateLeftButton" Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate left'}">
                         <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
                             <FontIcon.RenderTransform>
                                 <ScaleTransform ScaleX="-1" />
                             </FontIcon.RenderTransform>
                         </FontIcon>
                     </Button>
-                    <Button Click="ViewerRotateRight_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate right'}">
+                    <Button x:Name="ViewerRotateRightButton" Click="ViewerRotateRight_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate right'}">
                         <FontIcon Glyph="&#xE7AD;" />
                     </Button>
-                    <AppBarSeparator />
+                    <AppBarSeparator x:Name="ViewerEditSeparator" />
                     <ToggleButton x:Name="ViewerCropButton" Click="ViewerCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE7A8;" FontSize="16" />
@@ -1474,6 +1490,9 @@
                 </StackPanel>
             </Grid>
             <controls:EditCanvas x:Name="ViewerCanvas" Grid.Row="1" Margin="56,0,56,16" />
+            <!-- Videos play here instead (F-4), with Windows' own play, seek and volume controls. -->
+            <MediaPlayerElement x:Name="ViewerVideo" Grid.Row="1" Margin="56,0,56,16" Visibility="Collapsed"
+                                AreTransportControlsEnabled="True" AutoPlay="True" Stretch="Uniform" />
             <ProgressRing x:Name="ViewerProgress" Grid.Row="1" IsActive="False" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
             <TextBlock x:Name="ViewerError" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="480" />
             <Button x:Name="ViewerPreviousButton" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8" Click="ViewerPrevious_Click" ToolTipService.ToolTip="{local:Loc Text='Previous (Left arrow)'}">

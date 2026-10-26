@@ -144,6 +144,9 @@ public sealed partial class PhotoIndex : IDisposable
         // Private photos (P-1) came later; their mark is read from the folders again on the next scan.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'private';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE photos ADD COLUMN private INTEGER NOT NULL DEFAULT 0;");
+        // Videos (F-4) came later too; until now the library held only photos.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'video';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE photos ADD COLUMN video INTEGER NOT NULL DEFAULT 0; ALTER TABLE photos ADD COLUMN duration REAL;");
     }
 
     /// <summary>Path → (size, modified time) for every indexed file under a folder, to spot changes.</summary>
@@ -179,9 +182,9 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT INTO main.photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
-                                country, country_code, state, city, sublocation, private)
+                                country, country_code, state, city, sublocation, private, video, duration)
             VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $flagged, $caption, $orientation, $width, $height, $camera, $lat, $lon,
-                    $country, $countryCode, $state, $city, $sublocation, $private)
+                    $country, $countryCode, $state, $city, $sublocation, $private, $video, $duration)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
@@ -190,7 +193,8 @@ public sealed partial class PhotoIndex : IDisposable
                 width = excluded.width, height = excluded.height, camera = excluded.camera,
                 latitude = excluded.latitude, longitude = excluded.longitude,
                 country = excluded.country, country_code = excluded.country_code, state = excluded.state,
-                city = excluded.city, sublocation = excluded.sublocation, private = excluded.private
+                city = excluded.city, sublocation = excluded.sublocation, private = excluded.private,
+                video = excluded.video, duration = excluded.duration
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", photo.Path);
@@ -216,6 +220,8 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$city", (object?)photo.Place?.City ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$sublocation", (object?)photo.Place?.Sublocation ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$private", PrivateMarks.IsPrivate(photo.Path, _privateMarks) ? 1 : 0);
+        cmd.Parameters.AddWithValue("$video", photo.IsVideo ? 1 : 0);
+        cmd.Parameters.AddWithValue("$duration", (object?)photo.Duration ?? DBNull.Value);
         var id = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         using var delete = _connection.CreateCommand();
@@ -403,6 +409,11 @@ public sealed partial class PhotoIndex : IDisposable
             if (query.WithoutCamera)
                 where.Add("(p.camera IS NULL OR p.camera = '')");
 
+            if (query.Media == MediaKind.Photos)
+                where.Add("p.video = 0");
+            else if (query.Media == MediaKind.Videos)
+                where.Add("p.video = 1");
+
             if (query.DamagedOnly)
                 where.Add("EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
 
@@ -480,7 +491,8 @@ public sealed partial class PhotoIndex : IDisposable
                        (SELECT group_concat(name || char(30) || x || char(30) || y || char(30) || w || char(30) || h, char(31))
                         FROM photo_people pp WHERE pp.photo_id = p.id) AS people,
                        p.flagged,
-                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1) AS auto_tags
+                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1) AS auto_tags,
+                       p.duration
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -729,6 +741,7 @@ public sealed partial class PhotoIndex : IDisposable
             Flagged = r.GetInt32(22) == 1,
             Rejected = r.GetInt32(22) == -1,
             AutoTags = r.IsDBNull(23) ? [] : r.GetString(23).Split('\u001f'),
+            Duration = r.IsDBNull(24) ? null : r.GetDouble(24),
         };
     }
 

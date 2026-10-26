@@ -26,6 +26,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-IPTC:Country-PrimaryLocationName", "-IPTC:Province-State", "-IPTC:City", "-IPTC:Sub-location",
         "-IFD0:Copyright", "-XMP-dc:Rights", "-IPTC:CopyrightNotice", "-IFD0:Artist", "-XMP-dc:Creator", "-IPTC:By-line",
         $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}", $"-{AppNamespace.AutoTagsField}",
+        // Videos (F-4): their own dates, length, turn, camera and place.
+        "-Keys:CreationDate", "-QuickTime:CreateDate", "-QuickTime:Duration", "-Composite:Duration", "-Composite:Rotation",
+        "-Keys:Make", "-Keys:Model", "-UserData:Make", "-UserData:Model", "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -89,6 +92,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var args = new List<string> { "-json", "-n", "-G1", "-struct" };
         args.AddRange(ReadTags);
         args.AddRange(paths);
+        // Videos ExifTool can't write keep their details in an XMP sidecar, read along with the video.
+        var withSidecar = paths.Select(p => (Path: p, Sidecar: SupportedFormats.MetadataTarget(p)))
+            .Where(p => p.Sidecar != p.Path && File.Exists(p.Sidecar))
+            .ToList();
+        args.AddRange(withSidecar.Select(p => p.Sidecar));
+        var sidecars = withSidecar.ToDictionary(p => KeyOf(p.Sidecar), p => p.Path, PathComparer);
 
         var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(output.Output))
@@ -98,25 +107,44 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var byKey = paths.ToDictionary(KeyOf, p => p, PathComparer);
 
         using var doc = JsonDocument.Parse(output.Output);
+        var items = new Dictionary<string, JsonElement>(PathComparer);
+        var sidecarItems = new Dictionary<string, JsonElement>(PathComparer);
         foreach (var item in doc.RootElement.EnumerateArray())
         {
             var source = GetString(item, "SourceFile");
-            if (source is null || !byKey.TryGetValue(KeyOf(source), out var originalPath))
+            if (source is null || item.TryGetProperty("Error", out _))
                 continue;
-            if (item.TryGetProperty("Error", out _))
-                continue;
-            result[originalPath] = Parse(originalPath, item);
+            if (sidecars.TryGetValue(KeyOf(source), out var owner))
+                sidecarItems[owner] = item;
+            else if (byKey.TryGetValue(KeyOf(source), out var originalPath))
+                items[originalPath] = item;
         }
+        foreach (var (path, item) in items)
+            result[path] = Parse(path, sidecarItems.TryGetValue(path, out var sidecar) ? Merge(item, sidecar) : item);
         return result;
+    }
+
+    // The video's own values with the sidecar's on top.
+    private static JsonElement Merge(JsonElement video, JsonElement sidecar)
+    {
+        var merged = new Dictionary<string, JsonElement>();
+        foreach (var property in video.EnumerateObject())
+            merged[property.Name] = property.Value;
+        foreach (var property in sidecar.EnumerateObject().Where(p => p.Name != "SourceFile"))
+            merged[property.Name] = property.Value;
+        return JsonSerializer.SerializeToElement(merged);
     }
 
     public async Task WriteAsync(string path, MetadataChanges changes, CancellationToken cancellationToken = default)
     {
         if (changes.IsEmpty)
             return;
+        if (SupportedFormats.IsVideo(path) && (changes.Orientation is not null || changes.People is not null))
+            throw new NotSupportedException(Tr("Videos can't be turned or have people marked yet."));
 
         if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
+        var target = SupportedFormats.MetadataTarget(path);
 
         // People tags are rewritten as a whole, keeping the file's other regions; Windows' copy of them
         // is measured on the upright photo, so it changes when the photo is rotated.
@@ -126,13 +154,13 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var args = BuildWriteArguments(path, changes, current);
         for (var attempt = 1; ; attempt++)
         {
-            await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+            await RemoveStaleTempFileAsync(target, cancellationToken).ConfigureAwait(false);
             var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
             // ExifTool ignores a failure to delete its temp file after a successful save; tidy up so the
             // next save of this photo is not blocked.
             try
             {
-                await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+                await RemoveStaleTempFileAsync(target, cancellationToken).ConfigureAwait(false);
             }
             catch (ExifToolException)
             {
@@ -416,7 +444,44 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                        changes.Copyright is not null || changes.Creator is not null))
             args.Add("-IPTC:CodedCharacterSet=UTF8");
 
+        if (SupportedFormats.IsVideo(path))
+            return VideoArguments(path, changes, args);
         args.Add(path);
+        return args;
+    }
+
+    /// <summary>
+    /// A video keeps its details in XMP, in the file (MP4, MOV) or in a sidecar (AVI, MTS…), plus the QuickTime
+    /// date and place that phones, Windows and Google Photos read. The photo-only EXIF and IPTC tags are left out.
+    /// </summary>
+    private static List<string> VideoArguments(string path, MetadataChanges changes, List<string> photoArgs)
+    {
+        var target = SupportedFormats.MetadataTarget(path);
+        var args = photoArgs.Where(a => !a.StartsWith('-') || a.StartsWith("-overwrite", StringComparison.Ordinal) || a is "-P" or "-m" ||
+                                         a.StartsWith("-XMP", StringComparison.Ordinal) ||
+                                         (target == path && a.StartsWith("-File", StringComparison.Ordinal)))
+            .ToList();
+        if (target == path)
+        {
+            if (changes.DateTaken is { } date)
+            {
+                // QuickTime's own dates are in UTC; a date without a time zone is taken as this PC's.
+                var instant = date.Instant ?? new DateTimeOffset(date.Local, TimeZoneInfo.Local.GetUtcOffset(date.Local));
+                var utc = instant.UtcDateTime.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture);
+                args.Add($"-Keys:CreationDate={date.ToExifDate()}{DateTaken.FormatOffset(instant.Offset)}");
+                args.Add($"-QuickTime:CreateDate={utc}");
+                if (changes.SyncOtherDates)
+                    args.Add($"-QuickTime:ModifyDate={utc}");
+            }
+            if (changes.RemoveLocation)
+                args.AddRange(["-Keys:GPSCoordinates=", "-UserData:GPSCoordinates="]);
+            if (changes.Location is { } location)
+            {
+                var text = FormattableString.Invariant($"{location.Latitude:0.0000000}, {location.Longitude:0.0000000}");
+                args.Add($"-Keys:GPSCoordinates={text}");
+            }
+        }
+        args.Add(target);
         return args;
     }
 
@@ -479,6 +544,10 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        // A phone video filmed upright is stored on its side with a turn to show it at.
+        if (GetNumber(item, "Composite:Rotation") is 90 or 270 && width is not null)
+            (width, height) = (height, width);
+
         var orientation = (int)(GetNumber(item, "IFD0:Orientation") ?? GetNumber(item, "XMP-tiff:Orientation") ?? 1);
         var (people, otherRegions) = FaceRegions.Read(item, Orientation.Normalize(orientation));
 
@@ -497,14 +566,16 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Orientation = Orientation.Normalize(orientation),
             Width = width,
             Height = height,
-            Latitude = GetNumber(item, "Composite:GPSLatitude"),
-            Longitude = GetNumber(item, "Composite:GPSLongitude"),
-            Camera = CameraName(GetString(item, "IFD0:Make"), GetString(item, "IFD0:Model")),
+            // A video's sidecar has only the XMP copy of the position.
+            Latitude = GetNumber(item, "Composite:GPSLatitude") ?? GetNumber(item, "XMP-exif:GPSLatitude"),
+            Longitude = GetNumber(item, "Composite:GPSLongitude") ?? GetNumber(item, "XMP-exif:GPSLongitude"),
+            Camera = CameraName(FirstText(item, "IFD0:Make", "Keys:Make", "UserData:Make"), FirstText(item, "IFD0:Model", "Keys:Model", "UserData:Model")),
             Place = ParsePlace(item),
             Copyright = FirstText(item, "XMP-dc:Rights", "IFD0:Copyright", "IPTC:CopyrightNotice"),
             Creator = FirstText(item, "XMP-dc:Creator", "IFD0:Artist", "IPTC:By-line"),
             People = people,
             OtherRegions = otherRegions,
+            Duration = SupportedFormats.IsVideo(path) ? GetNumber(item, "QuickTime:Duration") ?? GetNumber(item, "Composite:Duration") : null,
         };
     }
 
@@ -575,10 +646,19 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
 
         if (xmp is not null)
             return xmp;
+        // A phone's video: the local time with its time zone.
+        if (DateTaken.TryParse(GetString(item, "Keys:CreationDate"), out var keys))
+            return keys;
         if (DateTaken.TryParse(GetString(item, "XMP-photoshop:DateCreated"), out var created))
             return created;
         if (DateTaken.TryParse(GetString(item, "ExifIFD:CreateDate"), out var digitized))
             return digitized;
+        // Other videos only have QuickTime's date in UTC (zero when the camera had no clock), shown in this PC's time zone.
+        if (DateTaken.TryParse(GetString(item, "QuickTime:CreateDate"), out var quickTime) && quickTime.Local.Year > 1904)
+        {
+            var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(quickTime.Local, DateTimeKind.Utc), TimeZoneInfo.Local);
+            return new DateTaken(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeZoneInfo.Local.GetUtcOffset(local));
+        }
         return null;
     }
 

@@ -216,6 +216,13 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
         ".webp" => "image/webp",
         ".gif" => "image/gif",
         ".tif" or ".tiff" => "image/tiff",
+        ".mp4" or ".m4v" => "video/mp4",
+        ".mov" => "video/quicktime",
+        ".3gp" => "video/3gpp",
+        ".avi" => "video/x-msvideo",
+        ".mts" or ".m2ts" => "video/mp2t",
+        ".mkv" => "video/x-matroska",
+        ".wmv" => "video/x-ms-wmv",
         _ => "application/octet-stream",
     };
 

@@ -33,6 +33,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string? _sort;
     private int _minRating;
     private bool _flaggedOnly;
+    private MediaKind _media;
     private bool _withoutTags;
     private bool _withoutPeople;
     private bool _withoutLocation;
@@ -319,6 +320,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Photos and videos, only photos, or only videos (F-4); the media filter's index.</summary>
+    public int MediaIndex
+    {
+        get => (int)_media;
+        set
+        {
+            if (value >= 0 && SetProperty(ref _media, (MediaKind)value))
+                _ = SearchAsync();
+        }
+    }
+
     /// <summary>Shows only photos without any of the user's own tags.</summary>
     public bool WithoutTags
     {
@@ -388,7 +400,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>How many filters "Clear filters" would reset: the search text, each tag and person, and every other filter set.</summary>
     public int ActiveFilterCount =>
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
-        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
+        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) + (_media == MediaKind.All ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
         (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
         (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
@@ -537,6 +549,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             MinRating = MinRating,
             FlaggedOnly = FlaggedOnly,
             RejectedOnly = RejectedOnly,
+            Media = _media,
             WithoutTags = WithoutTags,
             WithoutPeople = WithoutPeople,
             WithoutLocation = WithoutLocation,
@@ -1207,7 +1220,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 try
                 {
                     // A small copy is plenty: the model looks at 224 × 224 pixels.
-                    var image = await ImageLoader.DecodePixelsAsync(item.Path, 512);
+                    // A video is tagged by the frame Windows shows as its thumbnail.
+                    var image = item.IsVideo
+                        ? await ImageLoader.ShellThumbnailPixelsAsync(item.Path, 512)
+                        : await ImageLoader.DecodePixelsAsync(item.Path, 512);
                     var tagger = _tagger;
                     var scores = await Task.Run(() =>
                     {

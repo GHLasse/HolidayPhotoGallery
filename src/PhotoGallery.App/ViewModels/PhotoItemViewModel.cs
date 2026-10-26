@@ -36,6 +36,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 OnPropertyChanged(nameof(RejectVisibility));
                 OnPropertyChanged(nameof(ThumbnailOpacity));
                 OnPropertyChanged(nameof(Tooltip));
+                OnPropertyChanged(nameof(DurationText));
             }
         }
     }
@@ -59,6 +60,23 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     public string FileName => Photo.FileName;
 
     public bool CanRotate => SupportedFormats.CanRotate(Path);
+
+    public bool IsVideo => Photo.IsVideo;
+
+    /// <summary>Videos show a play mark and their length on the tile.</summary>
+    public Microsoft.UI.Xaml.Visibility VideoVisibility =>
+        Photo.IsVideo ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    /// <summary>A video's length as 0:42 or 1:02:03; empty when it isn't known.</summary>
+    public string DurationText => FormatDuration(Photo.Duration);
+
+    public static string FormatDuration(double? seconds)
+    {
+        if (seconds is not { } s || s <= 0)
+            return "";
+        var time = TimeSpan.FromSeconds(Math.Round(s));
+        return time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");
+    }
 
     public int Rating => Photo.Rating;
 
@@ -218,7 +236,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
         _thumbnailRequested = true;
         try
         {
-            Thumbnail = await ImageLoader.DecodeAsync(Path, ThumbnailSize);
+            // Windows' own thumbnail is the only picture of a video the app has.
+            Thumbnail = IsVideo ? await ImageLoader.LoadShellThumbnailAsync(Path, ThumbnailSize) : await ImageLoader.DecodeAsync(Path, ThumbnailSize);
             Keep();
         }
         catch (Exception)
