@@ -73,6 +73,7 @@ public sealed partial class MainWindow
         AddTabAccelerators();
         SetUpFilterFolding();
         SetUpViewerMotion();
+        WatchForCards();
     }
 
     private void AddAccelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)

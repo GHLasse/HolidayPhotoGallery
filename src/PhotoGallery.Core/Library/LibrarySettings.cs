@@ -70,6 +70,12 @@ public sealed class LibrarySettings
     /// </summary>
     public string? LastPlace { get; set; }
 
+    /// <summary>Where imported photos go (F-1); null: the first library folder.</summary>
+    public string? ImportFolder { get; set; }
+
+    /// <summary>The dated folders imported photos go into, e.g. "{year}/{date} {event}".</summary>
+    public string ImportPattern { get; set; } = Import.ImportPlanner.DefaultPattern;
+
     /// <summary>The note that private photos are only hidden in this app was shown (P-1).</summary>
     public bool PrivateNoteShown { get; set; }
 
