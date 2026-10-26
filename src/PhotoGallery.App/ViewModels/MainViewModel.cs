@@ -241,6 +241,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 _sort = null;
                 OnPropertyChanged(nameof(SortIndex));
                 OnPropertyChanged(nameof(HeaderText));
+                OnPropertyChanged(nameof(HeaderTip));
                 _ = SearchAsync();
                 _ = CheckReadOnlyAsync();
             }
@@ -561,6 +562,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             await LoadAlbumsAsync();
         _ = FindFacesInNewPhotosAsync();
         _ = CheckFilesInBackgroundAsync();
+        _ = FindDuplicatesInBackgroundAsync();
     }
 
     private async Task SearchSoonAsync()

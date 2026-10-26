@@ -147,6 +147,7 @@ public sealed partial class MainWindow : Window
         ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();
         ViewModel.FacesChanged += ForgetLatestFaces;
         ViewModel.Notices.CollectionChanged += (_, _) => ShowNotices();
+        ViewModel.ReviewDuplicatesRequested += ViewModel_ReviewDuplicatesRequested;
         ViewModel.FlagsChanged += SyncFlagButton;
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
@@ -1421,6 +1422,13 @@ public sealed partial class MainWindow : Window
             Header = Tr("Look for people in new photos by itself"),
             IsOn = ViewModel.FindPeopleAutomatically,
         };
+        var findDuplicates = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Look for duplicates in new photos by itself"),
+            IsOn = ViewModel.FindDuplicatesAutomatically,
+        };
         var gallery = new StackPanel
         {
             Spacing = 12,
@@ -1436,6 +1444,7 @@ public sealed partial class MainWindow : Window
                 },
                 autoAdvance,
                 findPeople,
+                findDuplicates,
                 new TextBlock
                 {
                     Text = Tr("Photos not looked at yet are searched quietly whenever nothing else is running. Turning this on downloads the face models first if they aren't there yet."),
@@ -1710,6 +1719,8 @@ public sealed partial class MainWindow : Window
         // leave it off if they aren't wanted, so the setting never says on while nothing happens.
         var findPeopleOn = findPeople.IsOn && !MainViewModel.IsFaceModelInstalled ? await EnsureFaceModelAsync() : findPeople.IsOn;
         ViewModel.SaveFindPeopleAutomatically(findPeopleOn);
+        if (findDuplicates.IsOn != ViewModel.FindDuplicatesAutomatically)
+            ViewModel.SaveFindDuplicatesAutomatically(findDuplicates.IsOn);
         ViewModel.SaveDetailKeys(detailBoxes.Where(d => d.Box.IsChecked == true).Select(d => d.Key).ToList());
         _ = ShowMoreDetailsAsync();
         ViewModel.SaveFavouriteApps(chosenApps());

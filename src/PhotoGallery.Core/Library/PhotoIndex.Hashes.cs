@@ -41,4 +41,50 @@ public sealed partial class PhotoIndex
             tx.Commit();
         }
     }
+
+    /// <summary>Photos with no fingerprint for the file as it is now, newest first, for the search in the background.</summary>
+    public IReadOnlyList<string> GetNotPictureHashed(int limit)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT p.path FROM photos p
+                WHERE NOT EXISTS (SELECT 1 FROM picture_hashes h WHERE h.photo_id = p.id AND h.file_mtime = p.file_mtime)
+                ORDER BY p.id DESC LIMIT $limit;
+                """;
+            cmd.Parameters.AddWithValue("$limit", limit);
+            var result = new List<string>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(r.GetString(0));
+            return result;
+        }
+    }
+
+    /// <summary>The groups the user chose to keep all of (<see cref="Duplicates.DuplicateGroup.Key"/>), so they aren't offered again.</summary>
+    public HashSet<string> GetKeptDuplicates()
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT group_key FROM kept_duplicates;";
+            var result = new HashSet<string>(StringComparer.Ordinal);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(r.GetString(0));
+            return result;
+        }
+    }
+
+    public void KeepDuplicates(string groupKey)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "INSERT OR IGNORE INTO kept_duplicates (group_key) VALUES ($key);";
+            cmd.Parameters.AddWithValue("$key", groupKey);
+            cmd.ExecuteNonQuery();
+        }
+    }
 }

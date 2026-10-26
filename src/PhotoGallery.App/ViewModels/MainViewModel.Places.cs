@@ -20,6 +20,7 @@ public sealed partial class MainViewModel
             if (!SetProperty(ref _selectedPlace, value))
                 return;
             OnPropertyChanged(nameof(HeaderText));
+            OnPropertyChanged(nameof(HeaderTip));
             _ = SearchAsync();
         }
     }

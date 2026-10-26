@@ -32,6 +32,7 @@ public sealed partial class MainViewModel
         _dateFromTree = true;
         _dateTitle = node.Title;
         OnPropertyChanged(nameof(HeaderText));
+        OnPropertyChanged(nameof(HeaderTip));
         WithoutDate = node.IsNoDate;
         if (node.IsNoDate)
         {
@@ -52,6 +53,7 @@ public sealed partial class MainViewModel
         _dateFromTree = false;
         _dateTitle = null;
         OnPropertyChanged(nameof(HeaderText));
+        OnPropertyChanged(nameof(HeaderTip));
         WithoutDate = false;
         TakenFrom = null;
         TakenTo = null;

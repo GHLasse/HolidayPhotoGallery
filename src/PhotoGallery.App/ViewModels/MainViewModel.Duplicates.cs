@@ -33,23 +33,11 @@ public sealed partial class MainViewModel
             var done = 0;
             var lastShown = DateTime.MinValue;
 
-            // Windows decodes HEIC and others ImageSharp can't; its thumbnail is enough for a fingerprint.
             ulong? Hash(IndexedPhoto photo)
             {
                 if (known.TryGetValue(photo.Path, out var saved))
                     return saved;
-                var hash = PictureHash.FromFile(photo.Path);
-                if (hash is null)
-                {
-                    try
-                    {
-                        if (ImageLoader.LoadShellThumbnailJpegAsync(photo.Path, 256).GetAwaiter().GetResult() is { } jpeg)
-                            hash = PictureHash.FromStream(new MemoryStream(jpeg));
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
-                    {
-                    }
-                }
+                var hash = HashOf(photo.Path);
                 lock (fresh)
                     fresh.Add((photo.Path, hash));
                 return hash;
@@ -65,6 +53,10 @@ public sealed partial class MainViewModel
             });
             var groups = await Task.Run(() => DuplicateFinder.Find(photos, Hash, progress: progress));
             await Task.Run(() => _index.SavePictureHashes(fresh));
+            var kept = await Task.Run(_index.GetKeptDuplicates);
+            groups.RemoveAll(g => kept.Contains(g.Key));
+            if (folder is null)
+                DuplicateCount = groups.Count;
             if (groups.Count == 0)
                 Inform(Tr("No duplicates found among {0}.", PhotoCount(photos.Count)));
             return groups;
@@ -76,6 +68,135 @@ public sealed partial class MainViewModel
                 StatusText = _countText;
         }
     }
+
+    // Windows decodes HEIC and others ImageSharp can't; its thumbnail is enough for a fingerprint.
+    private static ulong? HashOf(string path)
+    {
+        var hash = PictureHash.FromFile(path);
+        if (hash is null)
+        {
+            try
+            {
+                if (ImageLoader.LoadShellThumbnailJpegAsync(path, 256).GetAwaiter().GetResult() is { } jpeg)
+                    hash = PictureHash.FromStream(new MemoryStream(jpeg));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
+            {
+            }
+        }
+        return hash;
+    }
+
+    private int _duplicateCount;
+    private bool _hashingInBackground;
+
+    /// <summary>Groups of duplicates in the whole library still to go through, from the last search (0 before one).</summary>
+    public int DuplicateCount
+    {
+        get => _duplicateCount;
+        private set
+        {
+            if (SetProperty(ref _duplicateCount, value))
+            {
+                OnPropertyChanged(nameof(HasDuplicates));
+                OnPropertyChanged(nameof(DuplicatesTip));
+            }
+        }
+    }
+
+    public bool HasDuplicates => _duplicateCount > 0;
+
+    public string DuplicatesTip => _duplicateCount > 0
+        ? Tr("{0:N0} groups of duplicates found. Click to go through them (right-click a folder to look in one folder).", _duplicateCount)
+        : Tr("Find duplicates in the whole library (right-click a folder to look in one folder)");
+
+    /// <summary>Whether new photos get their fingerprints in the background (Settings › App).</summary>
+    public bool FindDuplicatesAutomatically => _settings.FindDuplicatesAutomatically;
+
+    public void SaveFindDuplicatesAutomatically(bool on)
+    {
+        if (on != _settings.FindDuplicatesAutomatically)
+        {
+            _settings.FindDuplicatesAutomatically = on;
+            _settings.Save(SettingsPath);
+        }
+        if (on)
+            _ = FindDuplicatesInBackgroundAsync();
+        else
+            DuplicateCount = 0;
+    }
+
+    /// <summary>
+    /// Takes the fingerprint of every photo that has none yet, quietly and pausing while the app is busy with
+    /// something the user asked for, like the face search. Then counts the groups of duplicates in the
+    /// library, so the duplicates button can say there are some to go through, and tells once when there
+    /// are more than before.
+    /// </summary>
+    public async Task FindDuplicatesInBackgroundAsync()
+    {
+        if (_hashingInBackground || _findingDuplicates || !_settings.FindDuplicatesAutomatically)
+            return;
+        _hashingInBackground = true;
+        var unreadable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            while (true)
+            {
+                const int Batch = 100;
+                var todo = (await Task.Run(() => _index.GetNotPictureHashed(Batch + unreadable.Count)))
+                    .Where(p => !unreadable.Contains(p)).Take(Batch).ToList();
+                if (todo.Count == 0)
+                    break;
+                var fresh = new List<(string, ulong?)>();
+                foreach (var path in todo)
+                {
+                    while (IsBusy || _findingDuplicates)
+                        await Task.Delay(2000);
+                    if (!_settings.FindDuplicatesAutomatically)
+                        return;
+                    if (!File.Exists(path))
+                    {
+                        unreadable.Add(path); // gone: the next check of the folders removes it
+                        continue;
+                    }
+                    fresh.Add((path, await Task.Run(() => HashOf(path))));
+                }
+                await Task.Run(() => _index.SavePictureHashes(fresh));
+            }
+
+            while (IsBusy || _findingDuplicates)
+                await Task.Delay(2000);
+            var before = _duplicateCount;
+            await CountDuplicatesAsync();
+            if (_duplicateCount > before)
+                Offer(Tr("Found {0:N0} groups of duplicates in the library.", _duplicateCount),
+                      [new NoticeAction(Tr("Go through them"), () => { ReviewDuplicatesRequested?.Invoke(); return Task.CompletedTask; })]);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            App.Trace($"Duplicates in the background stopped: {ex.Message}");
+        }
+        finally
+        {
+            _hashingInBackground = false;
+        }
+    }
+
+    // From the saved fingerprints only, so quick; photos without one yet don't count.
+    private async Task CountDuplicatesAsync()
+    {
+        var photos = await Task.Run(() => _index.Search(new PhotoQuery()).ToList());
+        var known = await Task.Run(_index.GetPictureHashes);
+        var kept = await Task.Run(_index.GetKeptDuplicates);
+        var groups = await Task.Run(() => DuplicateFinder.Find(photos, p => known.GetValueOrDefault(p.Path)));
+        DuplicateCount = groups.Count(g => !kept.Contains(g.Key));
+    }
+
+    /// <summary>The banner's "Go through them": the window opens the review of the whole library.</summary>
+    public event Action? ReviewDuplicatesRequested;
+
+    /// <summary>"Keep all": the group isn't offered again (until another copy joins it).</summary>
+    public Task KeepAllAsync(DuplicateGroup group) => Task.Run(() => _index.KeepDuplicates(group.Key));
 
     /// <summary>
     /// Keeps one photo of a group and moves the others to the Recycle Bin, with their earlier versions. With
@@ -155,12 +276,14 @@ public sealed partial class MainViewModel
         };
     }
 
-    /// <summary>After the duplicates were handled: the grid, counts and tags follow.</summary>
+    /// <summary>After the duplicates were handled: the grid, counts, tags and the duplicates button follow.</summary>
     public async Task DuplicatesHandledAsync(int recycled)
     {
         if (recycled > 0)
             Inform(Tr("Moved {0} to the Recycle Bin. You can restore them from there.", PhotoCount(recycled)));
         await SearchAsync();
         await RefreshTagsAsync();
+        if (_duplicateCount > 0)
+            await CountDuplicatesAsync();
     }
 }
