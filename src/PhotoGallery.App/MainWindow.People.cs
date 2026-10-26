@@ -193,6 +193,7 @@ public sealed partial class MainWindow
     private AutoSuggestBox NameBox(Func<string, Task> submit)
     {
         var box = new AutoSuggestBox { PlaceholderText = Tr("Who is this?"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        PrepareSuggestions(box);
         box.TextChanged += (sender, args) =>
         {
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)

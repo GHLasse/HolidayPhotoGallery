@@ -74,15 +74,34 @@ public sealed partial class MainWindow
     {
         if (!_suggestions.TryGetValue(box, out var list))
         {
-            list = [];
-            _suggestions.Add(box, list);
-            box.ItemsSource = list;
+            // Normally given when the box is made (PrepareSuggestions); setting it while the user types can
+            // fail the same way, so then the box just goes without suggestions.
+            try
+            {
+                list = PrepareSuggestions(box);
+            }
+            catch (System.Runtime.InteropServices.COMException ex)
+            {
+                App.Trace($"suggestions: no list for the box: {ex.Message}");
+                return;
+            }
         }
         if (items.SequenceEqual(list))
             return;
         list.Clear();
         foreach (var item in items)
             list.Add(item);
+    }
+
+    /// <summary>Gives a box its one suggestion list, before anything is typed (setting it later crashed).</summary>
+    private System.Collections.ObjectModel.ObservableCollection<string> PrepareSuggestions(AutoSuggestBox box)
+    {
+        if (_suggestions.TryGetValue(box, out var list))
+            return list;
+        list = [];
+        box.ItemsSource = list;
+        _suggestions.Add(box, list);
+        return list;
     }
 
     private void TagBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>

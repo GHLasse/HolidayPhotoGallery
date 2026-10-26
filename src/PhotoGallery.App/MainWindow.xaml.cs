@@ -49,6 +49,7 @@ public sealed partial class MainWindow : Window
         SetUpPeopleTyping();
         SetUpMoreDetails();
         SetUpAutoSave();
+        PrepareSuggestions(TagBox);
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
