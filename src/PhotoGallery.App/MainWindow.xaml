@@ -1072,6 +1072,12 @@
                                 <FontIcon Glyph="&#xE838;" />
                             </AppBarButton.Icon>
                         </AppBarButton>
+                        <AppBarButton Label="{local:Loc Text='Rename…'}" Click="RenamePhotos_Click" local:Busy.Gate="True"
+                                      ToolTipService.ToolTip="{local:Loc Text='Rename the selected photos with a name pattern such as date and counter (F2)'}">
+                            <AppBarButton.Icon>
+                                <FontIcon Glyph="&#xE8AC;" />
+                            </AppBarButton.Icon>
+                        </AppBarButton>
                         <AppBarButton Label="{local:Loc Text='Reject'}" Click="Reject_Click">
                             <AppBarButton.Icon>
                                 <FontIcon Glyph="&#xE711;" />
