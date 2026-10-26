@@ -11,6 +11,7 @@ using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Localization;
 using PhotoGallery.Core.Tagging;
+using PhotoGallery.Core.Updates;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
@@ -137,7 +138,11 @@ public sealed partial class MainWindow : Window
         Root.ActualThemeChanged += Root_ActualThemeChanged;
         ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
         _ = ViewModel.InitializeAsync();
-        Root.Loaded += (_, _) => OpenStartPage();
+        Root.Loaded += (_, _) =>
+        {
+            OpenStartPage();
+            _ = CheckForUpdatesLaterAsync();
+        };
     }
 
     // The start page chosen in Settings › App: the albums (the way into the trips), all photos with the
@@ -686,6 +691,26 @@ public sealed partial class MainWindow : Window
                 await undo();
             };
             bar.ActionButton = button;
+        }
+        if (notice.Actions.Count > 0)
+        {
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 12) };
+            for (var i = 0; i < notice.Actions.Count; i++)
+            {
+                var action = notice.Actions[i];
+                var button = new Button { Content = action.Label };
+                // The last button is the one the banner is about, e.g. "Update now".
+                if (i == notice.Actions.Count - 1)
+                    button.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+                button.Click += async (_, _) =>
+                {
+                    if (action.Closes)
+                        ViewModel.CloseNotice(notice);
+                    await action.Run();
+                };
+                buttons.Children.Add(button);
+            }
+            bar.Content = buttons;
         }
         return bar;
     }
@@ -1469,7 +1494,14 @@ public sealed partial class MainWindow : Window
             detailBoxes.Add((detail.Key, box));
         }
 
-        // App tab: how the gallery behaves, the details pane, and the language.
+        AppRelease? updateTo = null;
+        var updates = UpdatesSettings(release =>
+        {
+            updateTo = release;
+            dialog?.Hide();
+        }, out var chosenUpdates);
+
+        // App tab: how the gallery behaves, the details pane, the language and updates.
         gallery.Visibility = languagePage.Visibility = Visibility.Visible;
         var appPage = new ScrollViewer
         {
@@ -1488,6 +1520,8 @@ public sealed partial class MainWindow : Window
                     new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
                     new TextBlock { Text = Tr("Language"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
                     languagePage,
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    updates,
                 },
             },
         };
@@ -1580,7 +1614,8 @@ public sealed partial class MainWindow : Window
             ViewModel.FilterByTag(showTag);
             return;
         }
-        if (answer != ContentDialogResult.Primary)
+        // "Update now" in Settings › App keeps what was changed, like Save.
+        if (answer != ContentDialogResult.Primary && updateTo is null)
         {
             revertAppearance();
             return;
@@ -1617,6 +1652,10 @@ public sealed partial class MainWindow : Window
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
         if (processorOnly.IsOn != ViewModel.UpscaleOnProcessorOnly)
             ViewModel.SaveUpscaleOnProcessorOnly(processorOnly.IsOn);
+        var (updateChannel, checkForUpdates) = chosenUpdates();
+        ViewModel.SaveUpdateSettings(updateChannel, checkForUpdates);
+        if (updateTo is not null)
+            await UpdateAsync(updateTo);
     }
 
     private void UpdateEditBar()

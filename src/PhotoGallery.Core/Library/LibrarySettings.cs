@@ -93,6 +93,15 @@ public sealed class LibrarySettings
     /// <summary>The Microsoft account signed in, for display.</summary>
     public string? OneDriveAccount { get; set; }
 
+    /// <summary>Which versions the app offers to update to (an <see cref="Updates.AppUpdates"/> channel).</summary>
+    public string UpdateChannel { get; set; } = Updates.AppUpdates.Stable;
+
+    /// <summary>Whether the app looks for a new version by itself, at most once a day.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>When the app last asked GitHub for a new version.</summary>
+    public DateTimeOffset? LastUpdateCheck { get; set; }
+
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HolidayPhotoGallery");
 

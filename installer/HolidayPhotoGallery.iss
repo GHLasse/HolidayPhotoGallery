@@ -143,6 +143,8 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#AppExe
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:OpenNow}"; Flags: nowait postinstall skipifsilent
+; An update from inside the app runs Setup quietly with /RESTARTAPP=1: the app opens again afterwards.
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RestartAfterUpdate
 
 [Code]
 // ---------------------------------------------------------------------------------------------
@@ -150,6 +152,12 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:OpenNow}"; Flags: nowait postinst
 // at twice their size), redrawn about 30 times a second by a timer, and scaled down smoothly to
 // the size of the picture on the page.
 // ---------------------------------------------------------------------------------------------
+
+// The app's own updater (Settings > App) runs Setup with /SILENT /RESTARTAPP=1.
+function RestartAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RESTARTAPP|0}') = '1');
+end;
 
 const
   SRCCOPY = $00CC0020;
