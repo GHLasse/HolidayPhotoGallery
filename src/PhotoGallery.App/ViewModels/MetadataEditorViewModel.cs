@@ -276,6 +276,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
         // The pixel size is in the resolution badge's tooltip and in More details (U-7).
         var lines = new List<string>();
         lines.Add(Core.Library.ViewSummary.FormatSize(photo.FileSize));
+        if (PhotoItemViewModel.FormatDuration(photo.Duration) is { Length: > 0 } duration)
+            lines.Add(Tr("Length: {0}", duration));
         if (photo.Place is { } place)
             lines.Add(place.ToString());
         if (photo.Location is { } at)

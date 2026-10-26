@@ -364,7 +364,7 @@
     "Leave the box empty to use the folder's name.": "اترك المربع فارغًا لاستخدام اسم المجلد.",
     "Leave the box empty to use the folder's name. The album in Google Photos or OneDrive is renamed too.": "اترك المربع فارغًا لاستخدام اسم المجلد. تتم أيضًا إعادة تسمية الألبوم في صور Google أو OneDrive.",
     "Left": "يسار",
-    "Length of the video": "مدة الفيديو",
+    "Length: {0}": "المدة: {0}",
     "Lens": "العدسة",
     "Library": "المكتبة",
     "Light": "فاتح",

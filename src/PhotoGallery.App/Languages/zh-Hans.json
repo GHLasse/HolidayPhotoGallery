@@ -364,7 +364,7 @@
     "Leave the box empty to use the folder's name.": "留空则使用文件夹的名称。",
     "Leave the box empty to use the folder's name. The album in Google Photos or OneDrive is renamed too.": "留空则使用文件夹的名称。Google 相册或 OneDrive 中的相册也会一并重命名。",
     "Left": "左",
-    "Length of the video": "视频时长",
+    "Length: {0}": "时长：{0}",
     "Lens": "镜头",
     "Library": "图库",
     "Light": "浅色",

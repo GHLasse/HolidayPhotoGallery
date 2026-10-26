@@ -93,8 +93,6 @@ public sealed partial class MainWindow
         var (width, height) = Core.Metadata.Orientation.SwapsDimensions(item.Photo.Orientation) ? (h, w) : (w, h);
         QualityBadges.Children.Add(QualityBadge(PhotoQuality.ResolutionClass(width, height), Tr("{0} × {1} pixels", width, height)));
         QualityBadges.Visibility = Visibility.Visible;
-        if (item.IsVideo && item.DurationText.Length > 0)
-            QualityBadges.Children.Add(QualityBadge("▶ " + item.DurationText, Tr("Length of the video")));
         if (item.IsVideo && item.FrameRateText.Length > 0)
             QualityBadges.Children.Add(QualityBadge(item.FrameRateText, Tr("Frames per second: {0:0.##}", item.Photo.FrameRate!.Value)));
         if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)

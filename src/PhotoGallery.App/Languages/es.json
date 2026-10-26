@@ -364,7 +364,7 @@
     "Leave the box empty to use the folder's name.": "Deja el cuadro vacío para usar el nombre de la carpeta.",
     "Leave the box empty to use the folder's name. The album in Google Photos or OneDrive is renamed too.": "Deja el cuadro vacío para usar el nombre de la carpeta. El álbum de Google Fotos u OneDrive también cambia de nombre.",
     "Left": "Izquierda",
-    "Length of the video": "Duración del vídeo",
+    "Length: {0}": "Duración: {0}",
     "Lens": "Objetivo",
     "Library": "Biblioteca",
     "Light": "Claro",
