@@ -140,6 +140,8 @@ public sealed partial class MainWindow
                                                                 setup, update.Version, MainViewModel.UpdatesFolder));
             File.WriteAllText(Path.Combine(MainViewModel.UpdatesFolder, AppUpdates.PendingFile), AppUpdates.Format(update.Version));
             App.Trace($"update: handing over to {script} for {setup}");
+            // The app's job would kill the script along with the app.
+            Native.ChildProcessGuard.Release();
             Process.Start(new ProcessStartInfo("cmd.exe", $"/d /c \"\"{script}\"\"")
             {
                 UseShellExecute = false,
@@ -229,6 +231,7 @@ public sealed partial class MainWindow
             actions.Add(new NoticeAction(Tr("Run Setup"), () =>
             {
                 _closeConfirmed = true;
+                Native.ChildProcessGuard.Release(); // Setup must outlive the app it replaces
                 Process.Start(new ProcessStartInfo(setup) { UseShellExecute = true });
                 Close();
                 return Task.CompletedTask;
