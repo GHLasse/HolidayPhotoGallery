@@ -430,6 +430,7 @@
     "Next": "下一个",
     "Next (Right arrow)": "下一张(向右键)",
     "Next photo in compare": "比较中的下一张照片",
+    "Next: reading {0}": "接下来：读取 {0}",
     "No album whose name starts with “{0}”.": "没有名称以“{0}”开头的相册。",
     "No albums yet. Right-click a folder on the left and choose \"Make this an album\", or \"Make each subfolder an album\" for a folder with one subfolder per trip.": "还没有相册。右键单击左侧的文件夹，然后选择“将其设为相册”；对于每次旅行各有一个子文件夹的文件夹，可选择“将每个子文件夹设为相册”。",
     "no answer": "无应答",

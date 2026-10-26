@@ -123,8 +123,40 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (value)
                 _stopRequested = false;
-            SetProperty(ref _isBusy, value);
+            if (SetProperty(ref _isBusy, value) && !value && _queuedFolders.Count > 0)
+                _ = RunQueuedFoldersAsync();
         }
+    }
+
+    // Library folders to read once the job that is running has finished: added or rescanned meanwhile.
+    private readonly List<string> _queuedFolders = [];
+
+    /// <summary>What waits for the running job, for the progress details; empty when nothing does.</summary>
+    public string QueuedText => _queuedFolders.Count == 0 ? ""
+        : Tr("Next: reading {0}", string.Join(", ", _queuedFolders.Select(f => Path.GetFileName(f) is { Length: > 0 } name ? name : f)));
+
+    public bool HasQueuedWork => _queuedFolders.Count > 0;
+
+    private void QueueFolders(IReadOnlyList<string> folders)
+    {
+        foreach (var folder in folders)
+            if (!_queuedFolders.Contains(folder, StringComparer.OrdinalIgnoreCase))
+                _queuedFolders.Add(folder);
+        OnPropertyChanged(nameof(QueuedText));
+        OnPropertyChanged(nameof(HasQueuedWork));
+    }
+
+    private async Task RunQueuedFoldersAsync()
+    {
+        // Let the finished job wrap up (its banner, refreshing the grid) before the next one starts.
+        await Task.Delay(200);
+        if (IsBusy || _queuedFolders.Count == 0)
+            return;
+        var folders = _queuedFolders.ToList();
+        _queuedFolders.Clear();
+        OnPropertyChanged(nameof(QueuedText));
+        OnPropertyChanged(nameof(HasQueuedWork));
+        await IndexFoldersAsync(folders);
     }
 
     private bool _stopRequested;
@@ -475,8 +507,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task IndexFoldersAsync(IReadOnlyList<string> folders, bool report = false)
     {
-        if (_indexer is null || IsBusy)
+        if (_indexer is null)
             return;
+        if (IsBusy)
+        {
+            // Another job (tagging, say) is running: the folders are read right after it, and the
+            // progress details say so.
+            QueueFolders(folders);
+            return;
+        }
 
         IsBusy = true;
         int read = 0, removed = 0;
