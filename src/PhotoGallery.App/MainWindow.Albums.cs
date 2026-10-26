@@ -140,6 +140,7 @@ public sealed partial class MainWindow
         UploadOneDrivePhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to OneDrive", photos.Count) : Tr("Upload to OneDrive");
         SharePhotosItem.IsEnabled = photos.Count > 0;
         CopyDetailsItem.IsEnabled = photos.Count == 1;
+        RenamePhotosItem.IsEnabled = photos.Count > 0;
         PasteDetailsItem.IsEnabled = photos.Count > 0 && ViewModel.CopiedDetails is not null;
         PasteDetailsItem.Text = ViewModel.CopiedDetails is null ? Tr("Paste details…") : Tr("Paste details of {0}…", ViewModel.CopiedFrom);
     }

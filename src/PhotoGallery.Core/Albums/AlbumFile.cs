@@ -62,6 +62,20 @@ public static class AlbumFile
 
     public static bool IsAlbum(string folder) => File.Exists(PathIn(folder));
 
+    /// <summary>A photo used as an album's cover was renamed or moved: the album follows it.</summary>
+    public static void FollowCover(string oldPath, string newPath)
+    {
+        for (var folder = Path.GetDirectoryName(oldPath); folder is not null; folder = Path.GetDirectoryName(folder))
+        {
+            if (Read(folder) is not { Cover: { } cover } info)
+                continue;
+            var relative = Path.GetRelativePath(folder, oldPath);
+            if (string.Equals(cover.Replace('\\', '/'), relative.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase) &&
+                Path.GetRelativePath(folder, newPath) is var moved && !moved.StartsWith("..", StringComparison.Ordinal))
+                Write(folder, info with { Cover = moved });
+        }
+    }
+
     /// <summary>The album's settings, or null when the folder is not an album.</summary>
     public static AlbumInfo? Read(string folder)
     {

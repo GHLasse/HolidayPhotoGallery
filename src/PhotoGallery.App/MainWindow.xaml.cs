@@ -558,6 +558,7 @@ public sealed partial class MainWindow : Window
             (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
             ("Tab", Tr("Next photo in compare")),
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
+            ("F2", Tr("Rename the selected photos")),
             ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
             ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
             ("F11", Tr("Full screen")),
@@ -987,6 +988,12 @@ public sealed partial class MainWindow : Window
         {
             PhotoGrid.SelectedItems.Clear();
             e.Handled = true;
+            return;
+        }
+        if (e.Key == VirtualKey.F2 && PhotoGrid.SelectedItems.Count > 0)
+        {
+            e.Handled = true;
+            _ = RenamePhotosAsync();
             return;
         }
         if (e.Key != VirtualKey.Enter)
