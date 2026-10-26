@@ -155,6 +155,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += (_, _) =>
         {
             OpenStartPage();
+            ReportLastUpdate();
             _ = CheckForUpdatesLaterAsync();
         };
     }

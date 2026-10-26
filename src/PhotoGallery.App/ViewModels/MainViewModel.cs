@@ -157,6 +157,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>A result for the user, shown as a blue banner; the filter row goes back to the photo count.</summary>
     public void Inform(string message) => Notify(message, NoticeSeverity.Info);
 
+    /// <summary>A red banner with buttons, e.g. to show what went wrong.</summary>
+    public void Fail(string message, IReadOnlyList<NoticeAction> actions) => Notify(message, NoticeSeverity.Error, actions: actions);
+
     /// <summary>A result with an Undo button on its banner.</summary>
     public void Inform(string message, Func<Task> undo) => Notify(message, NoticeSeverity.Info, undo);
 

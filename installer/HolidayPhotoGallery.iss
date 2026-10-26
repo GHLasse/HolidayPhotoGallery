@@ -143,7 +143,8 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#AppExe
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:OpenNow}"; Flags: nowait postinstall skipifsilent
-; An update from inside the app runs Setup quietly with /RESTARTAPP=1: the app opens again afterwards.
+; Versions up to 0.0.137 ran Setup quietly with /RESTARTAPP=1 to have the app opened again afterwards. Newer
+; ones open it themselves once Setup has finished (AppUpdates.HandOverScript), also when it failed.
 Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RestartAfterUpdate
 
 [Code]
