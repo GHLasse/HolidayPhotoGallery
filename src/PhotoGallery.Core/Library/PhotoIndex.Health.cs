@@ -11,7 +11,7 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 SELECT p.path, p.file_mtime FROM photos p
-                WHERE NOT EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.file_mtime = p.file_mtime AND c.level >= $level)
+                WHERE p.video = 0 AND NOT EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.file_mtime = p.file_mtime AND c.level >= $level)
                 ORDER BY p.id DESC LIMIT $limit;
                 """;
             cmd.Parameters.AddWithValue("$limit", limit);

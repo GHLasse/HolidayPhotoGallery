@@ -287,7 +287,10 @@ public sealed partial class CompareView : UserControl
             var maxSize = (uint)Math.Clamp(longEdge * scale * 2, 1200, 4096);
             try
             {
-                var source = await ImageLoader.DecodeAsync(pane.Item.Path, maxSize);
+                // A video is compared by the frame Windows shows for it.
+                var source = pane.Item.IsVideo
+                    ? await ImageLoader.LoadShellThumbnailAsync(pane.Item.Path, Math.Min(maxSize, 1024))
+                    : await ImageLoader.DecodeAsync(pane.Item.Path, maxSize);
                 if (_panes.Contains(pane))
                     pane.Image.Source = source;
             }

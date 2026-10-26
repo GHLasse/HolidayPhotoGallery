@@ -172,11 +172,12 @@ public sealed partial class MainViewModel
         IsBusy = true;
         try
         {
-            var todo = items;
+            // Faces are only looked for on photos, not in videos.
+            var todo = items.Where(i => !i.IsVideo).ToList();
             if (!again)
             {
                 var done = await Task.Run(() => _index.GetFaceScanned(items.Select(i => i.Path)));
-                todo = items.Where(i => !done.Contains(i.Path)).ToList();
+                todo = todo.Where(i => !done.Contains(i.Path)).ToList();
             }
 
             if (todo.Count > 0 && _faceAnalyzer is null)

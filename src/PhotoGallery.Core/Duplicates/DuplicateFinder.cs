@@ -87,9 +87,11 @@ public static class DuplicateFinder
             .ToList();
     }
 
-    // Same moment (when both have one) and the same shape once upright.
+    // Same moment (when both have one) and the same shape once upright; a photo never matches a video.
     private static bool Alike(IndexedPhoto a, IndexedPhoto b)
     {
+        if (a.IsVideo != b.IsVideo)
+            return false;
         if (a.DateTaken is { } da && b.DateTaken is { } db && Math.Abs((da.Local - db.Local).TotalSeconds) > 2)
             return false;
         if (Ratio(a) is { } ra && Ratio(b) is { } rb && Math.Abs(ra - rb) > 0.03 * Math.Max(ra, rb))

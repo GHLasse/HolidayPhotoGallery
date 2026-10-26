@@ -106,6 +106,15 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
         return photo;
     }
 
+    /// <summary>The photos and videos in and below the folder; a Live Photo's video stays hidden with its photo.</summary>
     public static IEnumerable<FileInfo> EnumeratePhotos(string rootFolder, Action<string, Exception>? folderFailed = null) =>
-        LibraryWalk.Files(rootFolder, failed: folderFailed).Where(f => SupportedFormats.IsSupported(f.Name));
+        LibraryWalk.Files(rootFolder, failed: folderFailed)
+            .Where(f => SupportedFormats.IsSupported(f.Name))
+            .GroupBy(f => f.DirectoryName, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(folder =>
+            {
+                var files = folder.ToList();
+                var names = files.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return files.Where(f => !SupportedFormats.IsCompanionVideo(f.Name, names));
+            });
 }

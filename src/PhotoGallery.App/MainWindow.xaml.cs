@@ -375,6 +375,7 @@ public sealed partial class MainWindow : Window
         ViewModel.MinRating = 0;
         ViewModel.FlaggedOnly = false;
         ViewModel.RejectedOnly = false;
+        ViewModel.MediaIndex = 0;
         ViewModel.WithoutTags = false;
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
@@ -1110,6 +1111,7 @@ public sealed partial class MainWindow : Window
         App.Trace("viewer: close");
         EndEdit();
         StartCloseMotion();
+        StopVideo();
         ApplyChrome(animate: false);
         _viewerPixels = null;
         if (_viewerIndex < _viewerItems.Count)
@@ -1143,6 +1145,14 @@ public sealed partial class MainWindow : Window
         ViewerError.Text = "";
         ViewerProgress.IsActive = true;
         UpdateUndoButtons();
+
+        ShowVideoTools(item.IsVideo);
+        if (item.IsVideo)
+        {
+            await PlayVideoAsync(item, version);
+            return;
+        }
+        StopVideo();
 
         try
         {

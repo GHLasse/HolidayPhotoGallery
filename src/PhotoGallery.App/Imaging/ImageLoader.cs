@@ -42,6 +42,16 @@ public static class ImageLoader
         return (byte[]?)bytes;
     });
 
+    /// <summary>The thumbnail Windows shows, as pixels; for a video it is a frame from it.</summary>
+    public static Task<DecodedImage> ShellThumbnailPixelsAsync(string path, uint size) => Task.Run(async () =>
+    {
+        using var bitmap = await ReadShellThumbnailAsync(path, size) ?? throw new IOException($"Windows has no thumbnail of {Path.GetFileName(path)}.");
+        using var straight = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight);
+        var pixels = new byte[straight.PixelWidth * straight.PixelHeight * 4];
+        straight.CopyToBuffer(pixels.AsBuffer());
+        return new DecodedImage(pixels, straight.PixelWidth, straight.PixelHeight);
+    });
+
     private static async Task<SoftwareBitmap?> ReadShellThumbnailAsync(string path, uint size)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);
