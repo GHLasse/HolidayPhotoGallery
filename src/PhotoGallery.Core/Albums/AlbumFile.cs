@@ -94,26 +94,7 @@ public static class AlbumFile
         File.Delete(path);
     }
 
-    /// <summary>Every album folder in and below <paramref name="root"/>, the root included, skipping hidden folders.</summary>
-    public static IEnumerable<string> FindAlbums(string root)
-    {
-        if (!Directory.Exists(root))
-            return [];
-        var options = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
-        };
-        IEnumerable<string> folders = [root];
-        try
-        {
-            folders = folders.Concat(Directory.EnumerateDirectories(root, "*", options).ToList());
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Only the root then.
-        }
-        return folders.Where(IsAlbum);
-    }
+    /// <summary>Every album folder in and below <paramref name="root"/>, the root included.</summary>
+    public static IEnumerable<string> FindAlbums(string root) =>
+        Library.LibraryWalk.Folders(root).Select(d => d.FullName).Where(IsAlbum).ToList();
 }

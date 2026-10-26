@@ -745,9 +745,15 @@
                         Content="{local:Loc Text='Clear filters'}" />
             </StackPanel>
             <!-- Album view: one tile per album, opened with a click. -->
-            <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Visibility="{x:Bind ViewModel.HasNoAlbums, Mode=OneWay}"
-                       Text="{local:Loc Text='No albums yet. Right-click a folder on the left and choose &quot;Make this an album&quot;, or &quot;Make each subfolder an album&quot; for a folder with one subfolder per trip.'}" />
+            <StackPanel Grid.Row="1" Spacing="12" Margin="24" MaxWidth="460"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="{x:Bind ViewModel.HasNoAlbums, Mode=OneWay}">
+                <FontIcon Glyph="&#xE8B9;" FontSize="32" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="{local:Loc Text='No albums yet. Right-click a folder on the left and choose &quot;Make this an album&quot;, or &quot;Make each subfolder an album&quot; for a folder with one subfolder per trip.'}" />
+                <Button HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Click="RailFolders_Click"
+                        Content="{local:Loc Text='Show the folders'}" />
+            </StackPanel>
             <!-- Lies over the photos (declared after them), so it must never take the pointer: it stopped scrolling
                  and selecting in the grid. -->
             <TextBlock Grid.Row="1" Margin="4,8" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -1015,7 +1021,16 @@
         <!-- Metadata panel -->
         <ScrollViewer x:Name="InfoPane" Grid.Row="3" Grid.Column="4" Padding="8,0,16,8">
             <StackPanel Spacing="12">
-                <TextBlock Text="{x:Bind ViewModel.Editor.Summary, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                <!-- With nothing selected: the folder, album, month or place shown, then "No photo selected". -->
+                <StackPanel Spacing="6" Visibility="{x:Bind local:Ui.Collapsed(ViewModel.Editor.HasSelection), Mode=OneWay}">
+                    <TextBlock Text="{x:Bind ViewModel.HeaderText, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.ShownDetails, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Margin="0,12,0,0" Text="{local:Loc Text='No photo selected'}" FontStyle="Italic"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                </StackPanel>
+                <TextBlock Text="{x:Bind ViewModel.Editor.Summary, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap"
+                           Visibility="{x:Bind ViewModel.Editor.HasSelection, Mode=OneWay}" />
                 <TextBlock Text="{x:Bind ViewModel.Editor.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <!-- Camera, lens, exposure and author, read from the file when opened; which ones in Settings › App. -->
@@ -1125,17 +1140,9 @@
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                     <!-- Wraps when the pane is narrow or the words are long (German). -->
                     <controls:WrapPanel Spacing="8">
-                        <Button Style="{ThemeResource AccentButtonStyle}" Content="{local:Loc Text='Save'}" Click="Save_Click"
-                                IsEnabled="{x:Bind ViewModel.Editor.IsDirty, Mode=OneWay}"
-                                ToolTipService.ToolTip="{local:Loc Text='Write the changes into the files (Ctrl+S)'}">
-                            <Button.KeyboardAccelerators>
-                                <KeyboardAccelerator Modifiers="Control" Key="S" />
-                            </Button.KeyboardAccelerators>
-                        </Button>
-                        <Button Content="{local:Loc Text='Discard'}" Click="Discard_Click" IsEnabled="{x:Bind ViewModel.Editor.IsDirty, Mode=OneWay}" />
                         <Button Content="{local:Loc Text='Show in folder'}" Click="ShowInFolder_Click" IsEnabled="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}" />
                     </controls:WrapPanel>
-                    <TextBlock Text="{local:Loc Text='Changes are also saved when you select other photos.'}"
+                    <TextBlock Text="{local:Loc Text='Changes are saved as you make them: stars and tags at once, text when you leave the field or press Enter.'}"
                                TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </StackPanel>

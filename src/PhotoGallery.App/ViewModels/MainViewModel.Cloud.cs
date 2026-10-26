@@ -142,11 +142,22 @@ public sealed partial class MainViewModel
         var roots = _settings.Folders.ToList();
         foreach (var (service, state) in _clouds)
         {
-            (state.LooseUploads, state.Uploaded) = await Task.Run(() =>
+            // Started without waiting for it, so a failure here used to leave the marks empty without a word.
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            try
             {
-                var loose = state.LooseUploads ?? LoadLooseUploads(service, state, roots);
-                return (loose, CloudUpload.UploadedPaths(service, roots, loose.Keys));
-            });
+                (state.LooseUploads, state.Uploaded) = await Task.Run(() =>
+                {
+                    var loose = state.LooseUploads ?? LoadLooseUploads(service, state, roots);
+                    return (loose, CloudUpload.UploadedPaths(service, roots, loose.Keys));
+                });
+                App.Trace($"cloud marks: {DisplayName(service)} {state.Uploaded.Count} photos, {watch.ElapsedMilliseconds} ms");
+            }
+            catch (Exception ex)
+            {
+                App.Trace($"cloud marks: {DisplayName(service)} failed: {ex}");
+                Warn(Tr("Could not check which photos are in {0}: {1}", DisplayName(service), ex.Message));
+            }
         }
         foreach (var item in Photos)
         {

@@ -510,7 +510,7 @@ public sealed partial class MainViewModel
         }
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
-        Inform(Tr("Changed the people in {0} photo(s)", changed));
+        Inform(Tr("Changed the people in {0}", PhotoCount(changed)));
         await AfterPeopleChangedAsync();
         return changed;
     }
@@ -560,7 +560,7 @@ public sealed partial class MainViewModel
         }
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
-        Inform(Tr("Added {0} to {1} photo(s)", name, changed));
+        Inform(Tr("Added {0} to {1}", name, PhotoCount(changed)));
         await AfterPeopleChangedAsync();
         return changed;
     }

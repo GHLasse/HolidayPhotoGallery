@@ -39,6 +39,9 @@ public sealed record PhotoQuery
     /// <summary>Only photos without a date taken.</summary>
     public bool WithoutDate { get; init; }
 
+    /// <summary>Only photos with no camera in their metadata (scans, screenshots, edited copies).</summary>
+    public bool WithoutCamera { get; init; }
+
     /// <summary>Only photos from this country (as written in the file's place names).</summary>
     public string? Country { get; init; }
 

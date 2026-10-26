@@ -12,6 +12,55 @@ public sealed partial class MainWindow
 {
     private int _moreDetailsVersion;
 
+    // ---- Saving on its own: no Save button for the details (Lasse, M-1) ----
+    // Stars, tags and the time zone are written as soon as they change; caption and date when the field is
+    // left or Enter is pressed (Shift+Enter starts a new line in the caption). Each save offers Undo.
+
+    private bool _autoSaving, _autoSaveAgain;
+
+    private void SetUpAutoSave()
+    {
+        ViewModel.Editor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(ViewModels.MetadataEditorViewModel.Rating) or nameof(ViewModels.MetadataEditorViewModel.Tags)
+                or nameof(ViewModels.MetadataEditorViewModel.TimeZoneIndex) && ViewModel.Editor.IsDirty)
+                DispatcherQueue.TryEnqueue(() => _ = AutoSaveAsync());
+        };
+        InfoPane.LostFocus += (_, _) => _ = AutoSaveAsync();
+        InfoPane.AddHandler(UIElement.PreviewKeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, e) =>
+        {
+            if (e.Key != Windows.System.VirtualKey.Enter || e.OriginalSource is not TextBox || IsDown(Windows.System.VirtualKey.Shift))
+                return;
+            e.Handled = true;
+            _ = AutoSaveAsync();
+        }), handledEventsToo: false);
+    }
+
+    private async Task AutoSaveAsync()
+    {
+        if (!ViewModel.Editor.IsDirty)
+            return;
+        if (_autoSaving)
+        {
+            _autoSaveAgain = true;
+            return;
+        }
+        _autoSaving = true;
+        try
+        {
+            do
+            {
+                _autoSaveAgain = false;
+                await ViewModel.SaveEditsAsync();
+            }
+            while (_autoSaveAgain && ViewModel.Editor.IsDirty);
+        }
+        finally
+        {
+            _autoSaving = false;
+        }
+    }
+
     private void SetUpMoreDetails()
     {
         MoreDetailsExpander.IsExpanded = ViewModel.MoreDetailsOpen;

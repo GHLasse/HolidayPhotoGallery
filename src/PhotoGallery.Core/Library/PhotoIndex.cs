@@ -361,6 +361,9 @@ public sealed partial class PhotoIndex : IDisposable
             if (query.WithoutDate)
                 where.Add("p.date_taken IS NULL");
 
+            if (query.WithoutCamera)
+                where.Add("(p.camera IS NULL OR p.camera = '')");
+
             if (query.DamagedOnly)
                 where.Add("EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
 

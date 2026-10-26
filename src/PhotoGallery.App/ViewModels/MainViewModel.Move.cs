@@ -58,9 +58,9 @@ public sealed partial class MainViewModel
         if (done.Count > 0)
         {
             if (copy)
-                Inform(Tr("Copied {0:N0} photo(s) to {1}.", done.Count, folderName));
+                Inform(Tr("Copied {0} to {1}.", PhotoCount(done.Count), folderName));
             else
-                Inform(Tr("Moved {0:N0} photo(s) to {1}.", done.Count, folderName), () => MoveBackAsync(done));
+                Inform(Tr("Moved {0} to {1}.", PhotoCount(done.Count), folderName), () => MoveBackAsync(done));
         }
         await AfterTransferAsync();
     }

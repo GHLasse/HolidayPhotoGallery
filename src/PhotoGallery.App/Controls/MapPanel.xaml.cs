@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
+using PhotoGallery.App.Imaging;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
@@ -105,6 +106,24 @@ public sealed partial class MapPanel : UserControl
         UpdateButtons();
     }
 
+    /// <summary>Raised when the picture in a photo's bubble on the whole-library map is clicked.</summary>
+    public event Action<string>? PhotoOpened;
+
+    // The picture shown above a clicked dot: Windows' thumbnail, sent to the map as a small JPEG.
+    private async Task SendPreviewAsync(string path)
+    {
+        try
+        {
+            var jpeg = await ImageLoader.LoadShellThumbnailJpegAsync(path, 256);
+            if (jpeg is not null)
+                Post(new JsonObject { ["type"] = "preview", ["path"] = path, ["src"] = "data:image/jpeg;base64," + Convert.ToBase64String(jpeg) });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
+        {
+            // Without a picture the bubble keeps the name.
+        }
+    }
+
     /// <summary>The places found for a search (<see cref="FindPlace"/>), best first; the map went to the first.</summary>
     public event Action<string, IReadOnlyList<string>>? PlacesFound;
 
@@ -194,7 +213,14 @@ public sealed partial class MapPanel : UserControl
                 SetPin(position.IsValid ? position : Wrapped(position), tellMap: false);
                 break;
             case "select":
-                PhotoClicked?.Invoke(message["path"]!.GetValue<string>(), message["add"]?.GetValue<bool>() == true);
+                var path = message["path"]!.GetValue<string>();
+                PhotoClicked?.Invoke(path, message["add"]?.GetValue<bool>() == true);
+                if (!CanPlacePhotos)
+                    _ = SendPreviewAsync(path);
+                break;
+            case "open":
+                if (message["path"]?.GetValue<string>() is { } open)
+                    PhotoOpened?.Invoke(open);
                 break;
             case "places":
                 PlacesFound?.Invoke(message["q"]?.GetValue<string>() ?? "",

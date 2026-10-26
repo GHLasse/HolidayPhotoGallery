@@ -48,12 +48,14 @@ public sealed partial class MainWindow : Window
         SetUpRatingRow();
         SetUpPeopleTyping();
         SetUpMoreDetails();
+        SetUpAutoSave();
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.RejectRequested += item => ViewModel.ToggleRejectAsync([item]);
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
+        CompareLayer.OpenRequested += OpenFromCompare;
 
         MapView.AssignRequested += async (items, position) =>
         {
@@ -66,11 +68,16 @@ public sealed partial class MainWindow : Window
             RefreshMap(fit: false);
         };
         MapView.PhotoClicked += MapPhotoClicked;
+        MapView.PhotoOpened += MapPhotoOpened;
         MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
-        Closed += (_, _) => ViewModel.Dispose();
+        Closed += (_, _) =>
+        {
+            ViewModel.SaveLastPlace(CurrentPlace());
+            ViewModel.Dispose();
+        };
         AppWindow.Closing += AppWindow_Closing;
         ViewModel.Editor.PropertyChanged += (_, e) =>
         {
@@ -129,7 +136,53 @@ public sealed partial class MainWindow : Window
         Root.ActualThemeChanged += Root_ActualThemeChanged;
         ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
         _ = ViewModel.InitializeAsync();
+        Root.Loaded += (_, _) => OpenStartPage();
     }
+
+    // The start page chosen in Settings › App: the albums (the way into the trips), all photos with the
+    // folders open, or where the app was when it closed.
+    private void OpenStartPage()
+    {
+        var place = ViewModel.StartPage switch
+        {
+            "folders" => "folders",
+            "last" => ViewModel.LastPlace ?? "albums",
+            _ => "albums",
+        };
+        if (place.StartsWith("folder:", StringComparison.Ordinal) && place[7..] is var folder)
+        {
+            if (Directory.Exists(folder))
+                ViewModel.ShowFolder(folder);
+            return;
+        }
+        switch (place)
+        {
+            case "albums":
+                // With no albums yet the album view says how to make one, with a button to the folders.
+                ClearBrowseTrees();
+                ShowWorkspace(Workspace.Albums);
+                break;
+            case "folders":
+                SetNavFolded(false);
+                OpenNavSection(FoldersHeading, true);
+                break;
+            case "map":
+                ShowWorkspace(Workspace.Map);
+                break;
+            case "people":
+                ShowWorkspace(Workspace.People);
+                break;
+        }
+    }
+
+    // Where the app is, for the start page "Where I left off".
+    private string CurrentPlace() => _workspace switch
+    {
+        Workspace.Albums => "albums",
+        Workspace.Map => "map",
+        Workspace.People => "people",
+        _ => ViewModel.SelectedFolder is { } folder ? "folder:" + folder.FullPath : "all",
+    };
 
     // The list always goes in before the index; a combo box throws when given an index it doesn't have.
     private void SyncTimeZoneCombo()
@@ -204,7 +257,7 @@ public sealed partial class MainWindow : Window
     private async void Rescan_Click(object sender, RoutedEventArgs e)
     {
         if (!WaitsForBusyWork())
-            await ViewModel.RescanAsync();
+            await ViewModel.RescanAndReportAsync();
     }
 
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
@@ -784,6 +837,7 @@ public sealed partial class MainWindow : Window
             var all = await ViewModel.PhotosWithLocationAsync();
             if (version != _mapVersion)
                 return;
+            _mapPhotos = all;
             MapView.ShowPhotos(all, fitAll: fit && SelectedPhotos.Count == 0);
         }
         else
@@ -791,6 +845,24 @@ public sealed partial class MainWindow : Window
             MapView.ShowPhotos(ViewModel.Photos);
         }
         MapView.ShowSelection(SelectedPhotos, fit);
+    }
+
+    // The photos on the whole-library map, for opening one from its bubble.
+    private List<IndexedPhoto> _mapPhotos = [];
+
+    // Clicking the picture in a dot's bubble opens the photo, and the viewer walks the photos on the map.
+    private void MapPhotoOpened(string path)
+    {
+        if (IsViewerOpen)
+            return;
+        if (ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } shown)
+        {
+            OpenViewer(shown);
+            return;
+        }
+        var items = _mapPhotos.OrderBy(p => p.DateTaken?.Local ?? DateTime.MaxValue).Select(p => new PhotoItemViewModel(p)).ToList();
+        if (items.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
+            OpenViewer(item, items);
     }
 
     private void MapPhotoClicked(string path, bool addToSelection)
@@ -824,9 +896,6 @@ public sealed partial class MainWindow : Window
         PhotoGrid.ScrollIntoView(item);
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e) => await ViewModel.SaveEditsAsync();
-
-    private void Discard_Click(object sender, RoutedEventArgs e) => ViewModel.Editor.Revert();
 
     private void ShowInFolder_Click(object sender, RoutedEventArgs e)
     {
@@ -840,7 +909,8 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is PhotoItemViewModel item)
+        var item = FirstClickedPhoto() ?? (e.OriginalSource as FrameworkElement)?.DataContext as PhotoItemViewModel;
+        if (item is not null)
             OpenViewer(item);
     }
 
@@ -891,6 +961,17 @@ public sealed partial class MainWindow : Window
         PhotoGrid.Focus(FocusState.Programmatic);
     }
 
+    // A double-clicked photo opens on its own in the viewer; closing the viewer comes back to compare as it was
+    // (the compare view is only hidden, so it keeps its photos, highlight and zoom).
+    private bool _viewerFromCompare;
+
+    private void OpenFromCompare(PhotoItemViewModel item)
+    {
+        CompareLayer.Visibility = Visibility.Collapsed;
+        _viewerFromCompare = true;
+        OpenViewer(item, [item]);
+    }
+
     // With one photo shown, Left and Right step through the grid, so photos can be rated one after another.
     private void CompareNavigate(int step)
     {
@@ -934,11 +1015,11 @@ public sealed partial class MainWindow : Window
 
     private bool IsViewerOpen => ViewerLayer.Visibility == Visibility.Visible && !_viewerClosing;
 
-    private void OpenViewer(PhotoItemViewModel item)
+    private void OpenViewer(PhotoItemViewModel item, List<PhotoItemViewModel>? items = null)
     {
         App.Trace("viewer: open");
         var tile = TileImageBounds(item); // before the viewer covers it
-        _viewerItems = ViewModel.Photos.ToList();
+        _viewerItems = items ?? ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
         ApplyChrome(animate: false); // the details or the map stay beside the photo
@@ -964,6 +1045,12 @@ public sealed partial class MainWindow : Window
             PhotoGrid.ScrollIntoView(current);
         }
         PhotoGrid.Focus(FocusState.Programmatic);
+        if (_viewerFromCompare)
+        {
+            _viewerFromCompare = false;
+            CompareLayer.Visibility = Visibility.Visible;
+            CompareLayer.FocusHighlighted();
+        }
     }
 
     private async Task ShowViewerImageAsync()
@@ -1028,13 +1115,33 @@ public sealed partial class MainWindow : Window
         ViewerTitle.Text = Tr("{0}   ({1} of {2}){3}", item.FileName, _viewerIndex + 1, _viewerItems.Count, marks);
     }
 
-    // Esc first leaves an edit, then the viewer.
-    private void ViewerClose_Click(object sender, RoutedEventArgs e)
+    // Esc first leaves an edit, asking whether to save it, then the viewer.
+    private async void ViewerClose_Click(object sender, RoutedEventArgs e)
     {
-        if (IsEditing)
-            CancelEdit();
-        else
+        if (!IsEditing)
+        {
             CloseViewer();
+            return;
+        }
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Save the edit?"),
+            Content = Tr("The photo is changed only when you save."),
+            PrimaryButtonText = Tr("Save"),
+            SecondaryButtonText = Tr("Discard"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        switch (await dialog.ShowThemedAsync())
+        {
+            case ContentDialogResult.Primary:
+                ViewerSaveEdit_Click(sender, e);
+                break;
+            case ContentDialogResult.Secondary:
+                CancelEdit();
+                break;
+        }
     }
 
     private void ViewerPrevious_Click(object sender, RoutedEventArgs e)
@@ -1202,6 +1309,10 @@ public sealed partial class MainWindow : Window
         };
 
         // Gallery tab
+        var startPage = new ComboBox { Header = Tr("Open the app on"), MinWidth = 320 };
+        foreach (var (_, label) in MainViewModel.StartPages)
+            startPage.Items.Add(label);
+        startPage.SelectedIndex = ViewModel.StartPageIndex;
         var defaultSort = new ComboBox { Header = Tr("Order of the photos in every folder"), MinWidth = 320 };
         foreach (var (_, label) in PhotoSort.All)
             defaultSort.Items.Add(label);
@@ -1227,6 +1338,7 @@ public sealed partial class MainWindow : Window
             Visibility = Visibility.Collapsed,
             Children =
             {
+                startPage,
                 defaultSort,
                 new TextBlock
                 {
@@ -1488,6 +1600,8 @@ public sealed partial class MainWindow : Window
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
         if (crop.SelectedIndex >= 0)
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
+        if (startPage.SelectedIndex >= 0)
+            ViewModel.SaveStartPage(startPage.SelectedIndex);
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);

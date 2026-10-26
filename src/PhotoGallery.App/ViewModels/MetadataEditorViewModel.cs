@@ -278,7 +278,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
             var (dw, dh) = Orientation.SwapsDimensions(photo.Orientation) ? (h, w) : (w, h);
             lines.Add(Tr("{0} × {1} pixels", dw, dh));
         }
-        lines.Add(FormatSize(photo.FileSize));
+        lines.Add(Core.Library.ViewSummary.FormatSize(photo.FileSize));
         if (photo.Place is { } place)
             lines.Add(place.ToString());
         if (photo.Location is { } at)
@@ -286,11 +286,4 @@ public sealed class MetadataEditorViewModel : ObservableObject
         lines.Add(photo.Folder);
         return string.Join(Environment.NewLine, lines);
     }
-
-    private static string FormatSize(long bytes) => bytes switch
-    {
-        >= 1024 * 1024 => Tr("{0:0.0} MB", bytes / (1024.0 * 1024)),
-        >= 1024 => Tr("{0:0} KB", bytes / 1024.0),
-        _ => Tr("{0} bytes", bytes),
-    };
 }

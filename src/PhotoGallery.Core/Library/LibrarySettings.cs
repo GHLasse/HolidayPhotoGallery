@@ -61,6 +61,15 @@ public sealed class LibrarySettings
     /// <summary>True when the folder pane was folded into its strip of icons.</summary>
     public bool NavPaneFolded { get; set; }
 
+    /// <summary>What the app opens on: "albums", "folders" (all photos, with the folder tree open) or "last".</summary>
+    public string StartPage { get; set; } = "albums";
+
+    /// <summary>
+    /// Where the app was when it closed, for <see cref="StartPage"/> "last": "albums", "all", "map", "people"
+    /// or "folder:" and the folder's path.
+    /// </summary>
+    public string? LastPlace { get; set; }
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 
