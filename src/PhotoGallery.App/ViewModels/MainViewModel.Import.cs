@@ -55,10 +55,14 @@ public sealed partial class MainViewModel
         {
             if (await PhotoImportManager.IsSupportedAsync())
             {
+                var cards = choices.Count;
                 foreach (var source in await PhotoImportManager.FindAllSourcesAsync())
                 {
-                    // Cards are already listed by their drive letter.
-                    if (source.Type != PhotoImportSourceType.StorageMedium)
+                    // A card reader shows up here as a plain removable medium too; it is already listed by its drive letter.
+                    var isCard = source.Type == PhotoImportSourceType.Generic &&
+                                 source.StorageMedia.Count > 0 &&
+                                 source.StorageMedia.All(m => m.StorageMediumType == PhotoImportStorageMediumType.Removable);
+                    if (!(isCard && cards > 0))
                         choices.Add(new ImportSourceChoice(source.DisplayName, null, source));
                 }
             }
@@ -156,7 +160,7 @@ public sealed partial class MainViewModel
                     DriveImport.Copy(item.SourcePath!, target, verify: delete);
                     if (delete)
                     {
-                        File.SetAttributes(item.SourcePath!, FileAttributes.Normal);
+                        File.SetAttributes(item.SourcePath!, System.IO.FileAttributes.Normal);
                         File.Delete(item.SourcePath!);
                     }
                 });
@@ -176,11 +180,11 @@ public sealed partial class MainViewModel
         if (source.Found is not { } found)
             return;
         var staging = Directory.CreateDirectory(Path.Combine(destination, ".importing-" + Guid.NewGuid().ToString("N")[..8]));
-        staging.Attributes |= FileAttributes.Hidden;
+        staging.Attributes |= System.IO.FileAttributes.Hidden;
         try
         {
             // By the device's key for each item: Windows may hand back other objects for the same items.
-            var targets = new Dictionary<string, string>();
+            var targets = new Dictionary<ulong, string>();
             foreach (var (item, target) in plan)
             {
                 if (item.Handle is PhotoImportItem device)
@@ -210,7 +214,7 @@ public sealed partial class MainViewModel
                     try
                     {
                         Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-                        File.SetAttributes(copied, FileAttributes.Normal);
+                        File.SetAttributes(copied, System.IO.FileAttributes.Normal);
                         File.Move(copied, to);
                         if (to == target)
                             imported.Add(target);
