@@ -11,7 +11,6 @@ public sealed partial class MainViewModel
 {
     private bool _checkingFiles;
     private bool _damagedOnly;
-    private bool _misnamedOnly;
 
     /// <summary>Shows only photos whose file was found damaged.</summary>
     public bool DamagedOnly
@@ -20,17 +19,6 @@ public sealed partial class MainViewModel
         set
         {
             if (SetProperty(ref _damagedOnly, value))
-                _ = SearchAsync();
-        }
-    }
-
-    /// <summary>Shows only photos whose name claims the wrong format, such as a JPEG called .png.</summary>
-    public bool MisnamedOnly
-    {
-        get => _misnamedOnly;
-        set
-        {
-            if (SetProperty(ref _misnamedOnly, value))
                 _ = SearchAsync();
         }
     }
@@ -66,7 +54,7 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Checks one file now and keeps the result in the index, e.g. after a save was refused for its wrong
-    /// extension, so the Wrong file extension filter and Fix extension know about it at once.
+    /// extension, so the Damaged files filter and Repair know about it at once.
     /// </summary>
     public async Task<FileHealth> NoteHealthAsync(string path)
     {
@@ -139,7 +127,6 @@ public sealed partial class MainViewModel
         _checkingFiles = true;
         var unreadable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var damagedBefore = await Task.Run(_index.CountDamaged);
-        var misnamedBefore = await Task.Run(_index.CountMisnamed);
         try
         {
             while (true)
@@ -174,13 +161,7 @@ public sealed partial class MainViewModel
         var damaged = await Task.Run(_index.CountDamaged);
         if (damaged > damagedBefore)
             Warn(damaged == 1
-                ? Tr("1 photo file is damaged. Choose Missing › Damaged files to see it, and Repair in the viewer to rescue it.")
-                : Tr("{0} photo files are damaged. Choose Missing › Damaged files to see them, and Repair in the viewer to rescue them.", damaged));
-
-        var misnamed = await Task.Run(_index.CountMisnamed);
-        if (misnamed > misnamedBefore)
-            Warn(misnamed == 1
-                ? Tr("1 photo has the wrong file extension, such as a JPEG called .png, so its details can’t be saved. Choose Missing › Wrong file extension to see it, select it and choose Fix extension.")
-                : Tr("{0} photos have the wrong file extension, such as a JPEG called .png, so their details can’t be saved. Choose Missing › Wrong file extension to see them, select them and choose Fix extension.", misnamed));
+                ? Tr("1 photo file is damaged. Choose Missing › Damaged files to see it, then select it and choose Repair.")
+                : Tr("{0} photo files are damaged. Choose Missing › Damaged files to see them, then select one and choose Repair.", damaged));
     }
 }

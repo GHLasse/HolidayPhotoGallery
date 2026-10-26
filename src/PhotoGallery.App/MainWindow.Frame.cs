@@ -463,7 +463,7 @@ public sealed partial class MainWindow
                 ApplyChrome();
         }
         SelectionCountText.Text = Tr("{0} selected", count);
-        _ = ShowFixExtensionAsync();
+        _ = ShowRepairAsync();
         ShowSelectionBar(has);
         // Room under the last row, so the bar never covers a photo that is scrolled to the end.
         ApplyGridPadding(has ? 80 : 8);

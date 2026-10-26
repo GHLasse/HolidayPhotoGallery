@@ -48,13 +48,13 @@ public sealed partial class PhotoIndex
         }
     }
 
-    /// <summary>How many photos the check found damaged (and not changed since).</summary>
+    /// <summary>How many photos the check found damaged (and not changed since); a wrong extension counts too.</summary>
     public int CountDamaged()
     {
         lock (_lock)
             return Convert.ToInt32(Scalar($"""
                 SELECT COUNT(*) FROM file_checks c JOIN photos p ON p.id = c.photo_id
-                WHERE c.health NOT IN (0, {(int)FileHealth.Misnamed}) AND c.file_mtime = p.file_mtime;
+                WHERE c.health <> 0 AND c.file_mtime = p.file_mtime;
                 """));
     }
 

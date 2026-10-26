@@ -428,7 +428,7 @@ public sealed partial class PhotoIndex : IDisposable
                 where.Add("p.video = 1");
 
             if (query.DamagedOnly)
-                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health NOT IN (0, {(int)FileHealth.Misnamed}) AND c.file_mtime = p.file_mtime)");
+                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
 
             if (query.MisnamedOnly)
                 where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND (c.health = {(int)FileHealth.Misnamed} OR c.misnamed = 1) AND c.file_mtime = p.file_mtime)");

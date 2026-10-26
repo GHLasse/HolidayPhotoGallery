@@ -189,7 +189,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             if (WrongFormat(reason) is var (claimed, real) && real is not null)
             {
                 WrongFormatFound?.Invoke(path);
-                reason = Tr("the name ends in .{0}, but the file is really a {1}. Choose Fix extension to rename it to .{2}, then try again.",
+                reason = Tr("the name ends in .{0}, but the file is really a {1}. Choose Repair to give it the right extension, .{2}, then try again.",
                     claimed!.ToLowerInvariant(), real, real.ToLowerInvariant());
             }
             if (errors.Any(IsFileLockedError))
