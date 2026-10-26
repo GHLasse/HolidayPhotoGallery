@@ -84,6 +84,13 @@
             </TitleBar.Content>
             <TitleBar.RightHeader>
                 <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,0,4,0" VerticalAlignment="Center">
+                    <!-- Private mode is on (P-1): private photos show. One click hides them again. -->
+                    <Button Padding="8" Background="Transparent" BorderThickness="0" Click="PrivateModeOff_Click"
+                            Visibility="{x:Bind ViewModel.IsPrivateMode, Mode=OneWay}"
+                            ToolTipService.ToolTip="{local:Loc Text='Private mode is on: private photos show. Click to hide them again.'}"
+                            AutomationProperties.Name="{local:Loc Text='Turn private mode off'}">
+                        <FontIcon Glyph="&#xE785;" FontSize="16" Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                    </Button>
                     <!-- Long work (tagging, finding people, uploads) runs in the background; the ring opens the details. -->
                     <Button Padding="8" Background="Transparent" BorderThickness="0"
                             Visibility="{x:Bind local:Ui.VisibleIfAny(ViewModel.IsBusy, ViewModel.IsUploading), Mode=OneWay}"
@@ -456,6 +463,19 @@
                                         </MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
                                         <MenuFlyoutItem Text="{local:Loc Text='Make each subfolder an album'}" Tag="{x:Bind}" Click="MakeSubfolderAlbums_Click" />
+                                        <MenuFlyoutItem Text="{local:Loc Text='Make private'}" Tag="{x:Bind}" Click="MakeFolderPrivate_Click"
+                                                        Visibility="{x:Bind local:Ui.Collapsed(IsPrivate), Mode=OneWay}"
+                                                        ToolTipService.ToolTip="{local:Loc Text='Hide this folder and its subfolders until private mode is on'}">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE72E;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="{local:Loc Text='Make public again'}" Tag="{x:Bind}" Click="MakeFolderPublic_Click"
+                                                        Visibility="{x:Bind IsPrivate, Mode=OneWay}">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE785;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                         <MenuFlyoutItem Text="{local:Loc Text='Find duplicates in this folder'}" Tag="{x:Bind}" Click="FindDuplicatesInFolder_Click">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE8C8;" />
@@ -631,6 +651,11 @@
                         <MenuFlyoutItem x:Name="RenamePhotosItem" Text="{local:Loc Text='Rename…'}" Click="RenamePhotos_Click">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon Glyph="&#xE8AC;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="PhotosPrivateItem" Text="{local:Loc Text='Make private'}" Click="PhotosPrivate_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72E;" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
                         <MenuFlyoutItem x:Name="CopyDetailsItem" Text="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">

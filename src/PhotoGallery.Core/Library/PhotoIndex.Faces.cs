@@ -146,7 +146,7 @@ public sealed partial class PhotoIndex
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT name, COUNT(DISTINCT photo_id) FROM photo_people GROUP BY name COLLATE NOCASE ORDER BY COUNT(DISTINCT photo_id) DESC, name;";
+            cmd.CommandText = "SELECT name, COUNT(DISTINCT photo_id) FROM photo_people WHERE photo_id IN (SELECT id FROM photos) GROUP BY name COLLATE NOCASE ORDER BY COUNT(DISTINCT photo_id) DESC, name;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -253,7 +253,7 @@ public sealed partial class PhotoIndex
     }
 
     private long? PhotoId(string path, SqliteTransaction tx) =>
-        Scalar(tx, "SELECT id FROM photos WHERE path = $path;", ("$path", path)) is { } id ? Convert.ToInt64(id, CultureInfo.InvariantCulture) : null;
+        Scalar(tx, "SELECT id FROM main.photos WHERE path = $path;", ("$path", path)) is { } id ? Convert.ToInt64(id, CultureInfo.InvariantCulture) : null;
 
     private static string[] Split(string? names) =>
         string.IsNullOrEmpty(names) ? [] : names.Split('\u001f');

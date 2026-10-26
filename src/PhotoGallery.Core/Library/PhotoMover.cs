@@ -19,7 +19,10 @@ public static class PhotoMover
             File.Move(path, target);
         EditHistory.Transfer(path, target, copy);
         if (!copy)
+        {
             UploadFile.Carry(path, target);
+            PrivateMarks.FollowFile(path, target);
+        }
         return target;
     }
 
@@ -130,6 +133,7 @@ public static class PhotoMover
         File.Move(from, to);
         EditHistory.Transfer(from, to, copy: false);
         UploadFile.Carry(from, to);
+        PrivateMarks.FollowFile(from, to);
         index.Move(photo, to);
         Albums.AlbumFile.FollowCover(from, to);
     }

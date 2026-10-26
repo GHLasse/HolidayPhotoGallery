@@ -37,6 +37,7 @@ public sealed partial class PhotoIndex : IDisposable
         _connection.Open();
         EnsureSchema();
         RelinkFaces();
+        ShowPrivate = false;
     }
 
     private void EnsureSchema()
@@ -140,6 +141,9 @@ public sealed partial class PhotoIndex : IDisposable
         // Checks saved before the level was kept count as level 1, so those files are checked again.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'level';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE file_checks ADD COLUMN level INTEGER NOT NULL DEFAULT 1;");
+        // Private photos (P-1) came later; their mark is read from the folders again on the next scan.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'private';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE photos ADD COLUMN private INTEGER NOT NULL DEFAULT 0;");
     }
 
     /// <summary>Path → (size, modified time) for every indexed file under a folder, to spot changes.</summary>
@@ -148,7 +152,7 @@ public sealed partial class PhotoIndex : IDisposable
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = $"SELECT path, file_size, file_mtime FROM photos WHERE {FolderCondition(cmd, rootFolder, true)};";
+            cmd.CommandText = $"SELECT path, file_size, file_mtime FROM main.photos WHERE {FolderCondition(cmd, rootFolder, true)};";
             var result = new Dictionary<string, (long, DateTime)>(StringComparer.OrdinalIgnoreCase);
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -161,6 +165,7 @@ public sealed partial class PhotoIndex : IDisposable
     {
         lock (_lock)
         {
+            _privateMarks.Clear();
             using var tx = _connection.BeginTransaction();
             foreach (var photo in photos)
                 UpsertOne(photo, tx);
@@ -173,10 +178,10 @@ public sealed partial class PhotoIndex : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
-                                country, country_code, state, city, sublocation)
+            INSERT INTO main.photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
+                                country, country_code, state, city, sublocation, private)
             VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $flagged, $caption, $orientation, $width, $height, $camera, $lat, $lon,
-                    $country, $countryCode, $state, $city, $sublocation)
+                    $country, $countryCode, $state, $city, $sublocation, $private)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
@@ -185,7 +190,7 @@ public sealed partial class PhotoIndex : IDisposable
                 width = excluded.width, height = excluded.height, camera = excluded.camera,
                 latitude = excluded.latitude, longitude = excluded.longitude,
                 country = excluded.country, country_code = excluded.country_code, state = excluded.state,
-                city = excluded.city, sublocation = excluded.sublocation
+                city = excluded.city, sublocation = excluded.sublocation, private = excluded.private
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", photo.Path);
@@ -210,6 +215,7 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$state", (object?)photo.Place?.State ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$city", (object?)photo.Place?.City ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$sublocation", (object?)photo.Place?.Sublocation ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$private", PrivateMarks.IsPrivate(photo.Path, _privateMarks) ? 1 : 0);
         var id = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         using var delete = _connection.CreateCommand();
@@ -288,7 +294,7 @@ public sealed partial class PhotoIndex : IDisposable
             {
                 using var cmd = _connection.CreateCommand();
                 cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM photos WHERE path = $path;";
+                cmd.CommandText = "DELETE FROM main.photos WHERE path = $path;";
                 cmd.Parameters.AddWithValue("$path", path);
                 cmd.ExecuteNonQuery();
             }
@@ -301,11 +307,12 @@ public sealed partial class PhotoIndex : IDisposable
     {
         lock (_lock)
         {
+            _privateMarks.Clear();
             using var tx = _connection.BeginTransaction();
             using (var cmd = _connection.CreateCommand())
             {
                 cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM photos WHERE path = $new; UPDATE photos SET path = $new WHERE path = $old;";
+                cmd.CommandText = "DELETE FROM main.photos WHERE path = $new; UPDATE main.photos SET path = $new WHERE path = $old;";
                 cmd.Parameters.AddWithValue("$old", photo.Path);
                 cmd.Parameters.AddWithValue("$new", newPath);
                 cmd.ExecuteNonQuery();
@@ -333,7 +340,7 @@ public sealed partial class PhotoIndex : IDisposable
             cmd.Parameters.AddWithValue("$new", newRoot);
             // Only the start of each path changes: the old folder's part is cut off and the new one put in front.
             cmd.CommandText = $"""
-                UPDATE photos SET path = $new || substr(path, $oldLen + 1), folder = $new || substr(folder, $oldLen + 1)
+                UPDATE main.photos SET path = $new || substr(path, $oldLen + 1), folder = $new || substr(folder, $oldLen + 1)
                 WHERE {where};
                 """;
             cmd.ExecuteNonQuery();
@@ -347,7 +354,7 @@ public sealed partial class PhotoIndex : IDisposable
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = $"DELETE FROM photos WHERE {FolderCondition(cmd, rootFolder, true)};";
+            cmd.CommandText = $"DELETE FROM main.photos WHERE {FolderCondition(cmd, rootFolder, true)};";
             cmd.ExecuteNonQuery();
         }
     }
@@ -510,7 +517,7 @@ public sealed partial class PhotoIndex : IDisposable
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags GROUP BY tag COLLATE NOCASE ORDER BY tag COLLATE NOCASE;";
+            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags WHERE photo_id IN (SELECT id FROM photos) GROUP BY tag COLLATE NOCASE ORDER BY tag COLLATE NOCASE;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -525,7 +532,7 @@ public sealed partial class PhotoIndex : IDisposable
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT tag FROM photo_tags GROUP BY tag COLLATE NOCASE HAVING MIN(auto) = 1;";
+            cmd.CommandText = "SELECT tag FROM photo_tags WHERE photo_id IN (SELECT id FROM photos) GROUP BY tag COLLATE NOCASE HAVING MIN(auto) = 1;";
             var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
