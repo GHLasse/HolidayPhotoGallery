@@ -67,7 +67,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _photoEditor = new PhotoEditService(_metadata);
         }
 
-        foreach (var folder in _settings.Folders)
+        foreach (var folder in _settings.Folders.Where(f => !PrivateMarks.IsFolderPrivate(f)))
             Folders.Add(new FolderNodeViewModel(folder, isRoot: true));
     }
 
@@ -93,7 +93,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public bool IsExifToolMissing => _exifTool is null;
 
-    public bool HasNoFolders => Folders.Count == 0;
+    public bool HasNoFolders => _settings.Folders.Count == 0;
 
     public ObservableCollection<PhotoItemViewModel> Photos
     {

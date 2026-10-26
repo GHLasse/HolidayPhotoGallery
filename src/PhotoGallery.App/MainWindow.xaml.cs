@@ -1570,6 +1570,8 @@ public sealed partial class MainWindow : Window
                     new TextBlock { Text = Tr("Language"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
                     languagePage,
                     new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    PrivateModeSettings(),
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
                     updates,
                 },
             },

@@ -92,7 +92,9 @@ public sealed partial class MainViewModel
     public async Task LoadAlbumsAsync()
     {
         var folders = _settings.Folders.ToList();
-        _loadedAlbums = await Task.Run(() => Album.LoadAll(folders, _index));
+        var showPrivate = IsPrivateMode;
+        _loadedAlbums = await Task.Run(() => Album.LoadAll(folders, _index)
+            .Where(a => showPrivate || !PrivateMarks.IsFolderPrivate(a.Folder)).ToList());
         _albumsLoaded = true;
         OnPropertyChanged(nameof(IsLoading));
         ShowAlbums();
