@@ -129,6 +129,12 @@ public sealed partial class PhotoIndex : IDisposable
                 file_mtime INTEGER NOT NULL,
                 level INTEGER NOT NULL DEFAULT 1
             );
+            -- Picture fingerprints for finding duplicates (F-3), for the file as it was then.
+            CREATE TABLE IF NOT EXISTS picture_hashes (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                file_mtime INTEGER NOT NULL,
+                dhash INTEGER
+            );
             PRAGMA user_version = {SchemaVersion};
             """);
         // Checks saved before the level was kept count as level 1, so those files are checked again.
