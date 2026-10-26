@@ -180,6 +180,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
 
             var reason = string.Join(" ", errors);
+            if (WrongFormat(reason) is var (claimed, real) && real is not null)
+                reason = Tr("the name ends in .{0}, but the file is really a {1}. Rename it to .{2} and try again.",
+                    claimed!.ToLowerInvariant(), real, real.ToLowerInvariant());
             if (errors.Any(IsFileLockedError))
                 reason += " " + Tr("Another program may have the photo open; close it and try again.");
             throw new ExifToolException(Tr("Could not save {0}: {1}", Path.GetFileName(path), reason));
@@ -209,6 +212,16 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     }
 
     private const int WriteAttempts = 5;
+
+    // ExifTool goes by the file's name: a JPEG called .png is refused with "Not a valid PNG (looks
+    // more like a JPEG)". Phone transfers and downloads do produce such files, so say what is wrong
+    // rather than passing ExifTool's wording on.
+    internal static (string? Claimed, string? Real) WrongFormat(string error)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(
+            error, @"Not a valid (\w+) \(looks more like an? (\w+)\)");
+        return match.Success ? (match.Groups[1].Value, match.Groups[2].Value) : (null, null);
+    }
 
     private static bool IsFileLockedError(string error) =>
         error.Contains("for writing", StringComparison.OrdinalIgnoreCase) ||

@@ -26,11 +26,19 @@ public sealed class ImageTagger : IDisposable
     private readonly InferenceSession _text;
     private readonly SentencePieceTokenizer _tokenizer;
 
+    // Tagging a folder runs this many thousand times, and each photo's working buffers are far too big
+    // for the normal heap (they go on the large object heap, which is only cleared by a full collection).
+    // Kept and reused instead, so the app's memory stays flat however many photos are tagged.
+    private readonly float[] _pixelValues = new float[3 * ImageSize * ImageSize];
+    private readonly DenseTensor<float> _pixelTensor;
+    private float[] _rowBuffer = [];
+
     private ImageTagger(InferenceSession vision, InferenceSession text, SentencePieceTokenizer tokenizer)
     {
         _vision = vision;
         _text = text;
         _tokenizer = tokenizer;
+        _pixelTensor = new DenseTensor<float>(_pixelValues, [1, 3, ImageSize, ImageSize]);
     }
 
     /// <summary>Loads the model from <paramref name="folder"/> (see <see cref="TagModel"/>); takes a few seconds.</summary>
@@ -87,11 +95,20 @@ public sealed class ImageTagger : IDisposable
         return Split(ToFloats(results[0]), texts.Count);
     }
 
-    /// <summary>A unit-length vector for a photo, given as 8-bit BGRA pixels of any size.</summary>
-    public float[] EmbedImage(byte[] bgra, int width, int height)
+    /// <summary>
+    /// A unit-length vector for a photo, given as 8-bit BGRA pixels of any size. One photo at a time:
+    /// the working buffers are shared between calls.
+    /// </summary>
+    public float[] EmbedImage(byte[] bgra, int width, int height) => EmbedImage(bgra.AsSpan(), width, height);
+
+    /// <inheritdoc cref="EmbedImage(byte[], int, int)"/>
+    public float[] EmbedImage(ReadOnlySpan<byte> bgra, int width, int height)
     {
-        var input = new DenseTensor<float>(ToPixelValues(bgra, width, height), [1, 3, ImageSize, ImageSize]);
-        using var results = _vision.Run([NamedOnnxValue.CreateFromTensor("pixel_values", input)], ["pooler_output"]);
+        var rows = height * ImageSize * 3;
+        if (_rowBuffer.Length < rows)
+            _rowBuffer = new float[rows];
+        WritePixelValues(bgra, width, height, _rowBuffer, _pixelValues);
+        using var results = _vision.Run([NamedOnnxValue.CreateFromTensor("pixel_values", _pixelTensor)], ["pooler_output"]);
         return Split(ToFloats(results[0]), 1)[0];
     }
 
@@ -151,11 +168,20 @@ public sealed class ImageTagger : IDisposable
     /// </summary>
     internal static float[] ToPixelValues(byte[] bgra, int width, int height)
     {
-        var (xIndex, xWeights) = ResampleWeights(width, ImageSize);
-        var (yIndex, yWeights) = ResampleWeights(height, ImageSize);
+        var result = new float[3 * ImageSize * ImageSize];
+        WritePixelValues(bgra, width, height, new float[height * ImageSize * 3], result);
+        return result;
+    }
+
+    /// <inheritdoc cref="ToPixelValues"/>
+    /// <param name="temp">Working space, at least height × 224 × 3 long.</param>
+    /// <param name="result">Where the values go, 3 × 224 × 224 long.</param>
+    internal static void WritePixelValues(ReadOnlySpan<byte> bgra, int width, int height, float[] temp, float[] result)
+    {
+        var (xIndex, xWeights) = CachedResampleWeights(width, ImageSize);
+        var (yIndex, yWeights) = CachedResampleWeights(height, ImageSize);
 
         // Rows first: width → 224 for every source row, keeping the three colours.
-        var temp = new float[height * ImageSize * 3];
         for (var y = 0; y < height; y++)
         {
             var row = y * width * 4;
@@ -179,7 +205,6 @@ public sealed class ImageTagger : IDisposable
 
         // Then columns: height → 224, into separate colour planes scaled from 0 … 255 to -1 … 1.
         const int plane = ImageSize * ImageSize;
-        var result = new float[3 * plane];
         for (var y = 0; y < ImageSize; y++)
         {
             var weights = yWeights[y];
@@ -199,9 +224,24 @@ public sealed class ImageTagger : IDisposable
                 result[2 * plane + p] = Normalize(b);
             }
         }
-        return result;
 
         static float Normalize(float value) => Math.Clamp(MathF.Round(value), 0, 255) / 127.5f - 1;
+    }
+
+    // The weights depend only on the size being resized, and a library holds few different sizes, so
+    // the last handful are kept rather than worked out again for every photo.
+    private static readonly Dictionary<int, (int[] First, float[][] Weights)> WeightCache = [];
+
+    private static (int[] First, float[][] Weights) CachedResampleWeights(int inSize, int outSize)
+    {
+        lock (WeightCache)
+        {
+            if (WeightCache.TryGetValue(inSize, out var cached))
+                return cached;
+            if (WeightCache.Count >= 8)
+                WeightCache.Clear();
+            return WeightCache[inSize] = ResampleWeights(inSize, outSize);
+        }
     }
 
     // For each output pixel, the first source pixel it uses and the weight of each source pixel from

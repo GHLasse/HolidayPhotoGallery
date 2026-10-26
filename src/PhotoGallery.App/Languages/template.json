@@ -767,6 +767,7 @@
     "The folder can't be renamed while the app is busy. Try again when it has finished.": "",
     "The library folder {0} can't be found. Is the drive connected?": "",
     "The map could not start: {0} It needs the Microsoft Edge WebView2 Runtime, which Windows 11 includes.": "",
+    "the name ends in .{0}, but the file is really a {1}. Rename it to .{2} and try again.": "",
     "The new language is used the next time the app starts.": "",
     "The other {0} photo(s) move by the same {1}.": "",
     "The photo goes back to how it was before all {0} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.": "",
