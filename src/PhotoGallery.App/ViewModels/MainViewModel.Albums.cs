@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using PhotoGallery.Core.Albums;
+using PhotoGallery.Core.Library;
 using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
@@ -132,8 +133,7 @@ public sealed partial class MainViewModel
         var made = 0;
         TryChangeAlbums(node.FullPath, () =>
         {
-            var options = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
-            foreach (var sub in Directory.EnumerateDirectories(node.FullPath, "*", options))
+            foreach (var sub in LibraryWalk.Subfolders(new DirectoryInfo(node.FullPath)).Select(d => d.FullName))
             {
                 if (AlbumFile.IsAlbum(sub))
                     continue;

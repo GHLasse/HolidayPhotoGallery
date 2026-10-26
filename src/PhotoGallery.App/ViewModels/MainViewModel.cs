@@ -459,7 +459,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 try
                 {
                     var changes = await _indexer.SyncFolderAsync(folder, progress, fileFailed: (path, ex) =>
-                        App.Trace($"Could not read the metadata of {path}: {ex}"));
+                        App.Trace($"Could not read {path}: {ex}"));
                     (read, removed) = (read + changes.Read, removed + changes.Removed);
                     App.Trace($"Rescan of \"{folder}\": exists {Directory.Exists(folder)}, {changes.OnDisk} photos on disk, {changes.Known} in the index");
                     if (!Directory.Exists(folder))

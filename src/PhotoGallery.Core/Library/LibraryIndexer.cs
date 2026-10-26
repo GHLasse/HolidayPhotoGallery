@@ -23,7 +23,7 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
         Action<string, Exception>? fileFailed = null)
     {
         var known = index.GetFileStamps(rootFolder);
-        var onDisk = await Task.Run(() => EnumeratePhotos(rootFolder).ToList(), cancellationToken).ConfigureAwait(false);
+        var onDisk = await Task.Run(() => EnumeratePhotos(rootFolder, fileFailed).ToList(), cancellationToken).ConfigureAwait(false);
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var toRead = new List<FileInfo>();
@@ -106,18 +106,6 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
         return photo;
     }
 
-    public static IEnumerable<FileInfo> EnumeratePhotos(string rootFolder)
-    {
-        var dir = new DirectoryInfo(rootFolder);
-        if (!dir.Exists)
-            return [];
-
-        var options = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
-        };
-        return dir.EnumerateFiles("*", options).Where(f => SupportedFormats.IsSupported(f.Name));
-    }
+    public static IEnumerable<FileInfo> EnumeratePhotos(string rootFolder, Action<string, Exception>? folderFailed = null) =>
+        LibraryWalk.Files(rootFolder, failed: folderFailed).Where(f => SupportedFormats.IsSupported(f.Name));
 }

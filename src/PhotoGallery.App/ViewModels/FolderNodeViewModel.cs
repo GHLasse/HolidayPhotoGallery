@@ -65,21 +65,9 @@ public sealed class FolderNodeViewModel : ObservableObject
             Children.Add(new FolderNodeViewModel(dir, isRoot: false));
     }
 
-    private static readonly EnumerationOptions SubfolderOptions = new()
-    {
-        IgnoreInaccessible = true,
-        AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
-    };
-
     private static List<string> EnumerateSubfolders(string path)
     {
-        try
-        {
-            return Directory.EnumerateDirectories(path, "*", SubfolderOptions).Order(StringComparer.CurrentCultureIgnoreCase).ToList();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
+        // The same folders the scan reads (Core.Library.LibraryWalk), so the tree shows every trip it indexes.
+        return Core.Library.LibraryWalk.Subfolders(new DirectoryInfo(path)).Select(d => d.FullName).ToList();
     }
 }
