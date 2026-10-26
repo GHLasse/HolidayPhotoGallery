@@ -103,4 +103,43 @@ public sealed class DuplicateFinderTests : IDisposable
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     }
+
+    [Fact]
+    public void The_background_search_finds_photos_without_a_current_fingerprint()
+    {
+        using var data = new TempFolder();
+        var a = Picture("a.jpg", 400, 95);
+        var b = Picture("b.jpg", 400, 90);
+        using (var index = new PhotoIndex(Path.Combine(data.Path, "index.db")))
+        {
+            index.Upsert([Indexed(a), Indexed(b)]);
+            Assert.Equal(2, index.GetNotPictureHashed(10).Count);
+
+            index.SavePictureHashes([(a, 1UL), (b, null)]);
+            Assert.Empty(index.GetNotPictureHashed(10));
+
+            index.Upsert([Indexed(b) with { FileModifiedUtc = DateTime.UtcNow }]);
+            Assert.Equal([b], index.GetNotPictureHashed(10));
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public void A_group_kept_whole_is_remembered_until_another_copy_joins_it()
+    {
+        using var data = new TempFolder();
+        var a = Indexed(Picture("a.jpg", 400, 95));
+        var b = Indexed(Picture("b.jpg", 200, 80));
+        var c = Indexed(Picture("c.jpg", 300, 85));
+        var pair = new DuplicateGroup([a, b], Exact: false);
+        using (var index = new PhotoIndex(Path.Combine(data.Path, "index.db")))
+        {
+            index.KeepDuplicates(pair.Key);
+            index.KeepDuplicates(pair.Key);
+            var kept = index.GetKeptDuplicates();
+            Assert.Contains(new DuplicateGroup([b, a], Exact: false).Key, kept);
+            Assert.DoesNotContain(new DuplicateGroup([a, b, c], Exact: false).Key, kept);
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
 }

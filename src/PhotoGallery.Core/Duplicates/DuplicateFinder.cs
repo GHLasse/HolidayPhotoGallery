@@ -6,6 +6,9 @@ namespace PhotoGallery.Core.Duplicates;
 /// <summary>Photos that are the same picture: <see cref="Exact"/> when the files are identical.</summary>
 public sealed record DuplicateGroup(IReadOnlyList<IndexedPhoto> Photos, bool Exact)
 {
+    /// <summary>The group's paths, sorted, to remember that the user kept them all.</summary>
+    public string Key => string.Join("\n", Photos.Select(p => p.Path.ToUpperInvariant()).Order(StringComparer.Ordinal));
+
     /// <summary>The copy to keep: the most pixels, then the most details written into it, then the largest file.</summary>
     public IndexedPhoto Best => Photos.OrderByDescending(p => (long)(p.Width ?? 0) * (p.Height ?? 0))
         .ThenByDescending(DuplicateFinder.DetailCount)
