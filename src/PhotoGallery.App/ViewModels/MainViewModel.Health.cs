@@ -35,19 +35,29 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Those of <paramref name="items"/> the file check found misnamed (and not changed since).</summary>
+    public async Task<List<PhotoItemViewModel>> MisnamedAmongAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        if (items.Count == 0)
+            return [];
+        var misnamed = await Task.Run(() => _index.GetMisnamed().Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase));
+        return items.Where(i => misnamed.Contains(i.Path)).ToList();
+    }
+
     /// <summary>
-    /// Gives every misnamed photo the extension of its real format (IMG_1.PNG that is a JPEG becomes
-    /// IMG_1.JPG), with its backups and sidecar files, and Undo. Then details can be saved into it again.
+    /// Gives each of the misnamed photos among <paramref name="items"/> the extension of its real format
+    /// (IMG_1.PNG that is a JPEG becomes IMG_1.JPG), with its backups and sidecar files, and Undo. Then
+    /// details can be saved into it again.
     /// </summary>
-    public async Task FixMisnamedAsync()
+    public async Task FixMisnamedAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
         var plan = new List<(IndexedPhoto Photo, string NewName)>();
-        foreach (var photo in await Task.Run(_index.GetMisnamed))
+        foreach (var item in await MisnamedAmongAsync(items))
         {
             try
             {
-                if (await Task.Run(() => FileCheck.CorrectName(photo.Path)) is { } name)
-                    plan.Add((photo, name));
+                if (await Task.Run(() => FileCheck.CorrectName(item.Path)) is { } name)
+                    plan.Add((item.Photo, name));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -56,7 +66,7 @@ public sealed partial class MainViewModel
         }
         if (plan.Count == 0)
         {
-            Inform(Tr("No photo has the wrong file extension."));
+            Inform(Tr("None of the selected photos has the wrong file extension."));
             return;
         }
         await RenamePhotosAsync(plan);
@@ -116,8 +126,7 @@ public sealed partial class MainViewModel
         var misnamed = await Task.Run(_index.CountMisnamed);
         if (misnamed > misnamedBefore)
             Warn(misnamed == 1
-                    ? Tr("1 photo has the wrong file extension, such as a JPEG called .png, so its details can’t be saved. Choose Missing › Wrong file extension to see it.")
-                    : Tr("{0} photos have the wrong file extension, such as a JPEG called .png, so their details can’t be saved. Choose Missing › Wrong file extension to see them.", misnamed),
-                [new NoticeAction(Tr("Fix the extensions"), FixMisnamedAsync)]);
+                ? Tr("1 photo has the wrong file extension, such as a JPEG called .png, so its details can’t be saved. Choose Missing › Wrong file extension to see it, select it and choose Fix extension.")
+                : Tr("{0} photos have the wrong file extension, such as a JPEG called .png, so their details can’t be saved. Choose Missing › Wrong file extension to see them, select them and choose Fix extension.", misnamed));
     }
 }

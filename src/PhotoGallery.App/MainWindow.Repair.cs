@@ -19,12 +19,24 @@ public sealed partial class MainWindow
 {
     private const int CompareSize = 360;
 
-    // Missing › Fix wrong file extensions: renames every misnamed photo after its real format.
+    // Fix extension on the selection bar: renames the selected misnamed photos after their real format.
     private async void FixMisnamed_Click(object sender, RoutedEventArgs e)
     {
         if (WaitsForBusyWork())
             return;
-        await ViewModel.FixMisnamedAsync();
+        await ViewModel.FixMisnamedAsync(SelectedPhotos);
+        _ = ShowFixExtensionAsync();
+    }
+
+    private int _fixExtensionVersion;
+
+    // The selection bar offers Fix extension only while a selected photo is misnamed.
+    private async Task ShowFixExtensionAsync()
+    {
+        var version = ++_fixExtensionVersion;
+        var any = (await ViewModel.MisnamedAmongAsync(SelectedPhotos)).Count > 0;
+        if (version == _fixExtensionVersion)
+            FixExtensionButton.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void ViewerRepair_Click(object sender, RoutedEventArgs e)
