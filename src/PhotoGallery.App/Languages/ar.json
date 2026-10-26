@@ -371,6 +371,7 @@
     "Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere.": "كما في التحريرات التي يجريها التطبيق، توضع النسخة في مجلد .originals مخفي بجوار الصورة، لذا يظل التراجع والرجوع إلى الأصل يعملان بعد تحريرها في مكان آخر.",
     "Like the arrow keys: move in the grid, previous or next photo in the viewer and compare": "مثل مفاتيح الأسهم: التنقل في الشبكة، والصورة السابقة أو التالية في العارض والمقارنة",
     "Linked apps": "التطبيقات المرتبطة",
+    "Live Photo: its short clip is kept with it": "صورة حية: يُحفظ مقطعها القصير معها",
     "Loading the apps…": "جارٍ تحميل التطبيقات…",
     "Loading the face models…": "جارٍ تحميل نماذج الوجوه…",
     "Loading the photos…": "جارٍ تحميل الصور…",

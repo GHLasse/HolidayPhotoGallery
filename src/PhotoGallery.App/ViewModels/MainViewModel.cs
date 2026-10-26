@@ -556,6 +556,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (report)
             Inform(read == 0 && removed == 0 ? Tr("No new, changed or deleted photos found.")
                 : Tr("Photos read: {0}. Photos no longer there: {1}.", read, removed));
+        LivePhotos.Forget(); // new or moved clips
         await SearchAsync();
         await CheckReadOnlyAsync();
         if (IsAlbumView)

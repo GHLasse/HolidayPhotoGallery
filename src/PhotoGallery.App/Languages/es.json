@@ -371,6 +371,7 @@
     "Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere.": "Igual que con las ediciones de la propia aplicación, la copia se guarda en una carpeta oculta .originals junto a la foto, así que Deshacer y Revertir siguen funcionando después de editarla en otro lugar.",
     "Like the arrow keys: move in the grid, previous or next photo in the viewer and compare": "Como las flechas: moverse por la cuadrícula, foto anterior o siguiente en el visor y en la comparación",
     "Linked apps": "Aplicaciones vinculadas",
+    "Live Photo: its short clip is kept with it": "Live Photo: su breve clip se guarda con ella",
     "Loading the apps…": "Cargando las aplicaciones…",
     "Loading the face models…": "Cargando los modelos de caras…",
     "Loading the photos…": "Cargando las fotos…",
