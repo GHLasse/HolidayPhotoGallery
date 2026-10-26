@@ -29,14 +29,31 @@ public sealed partial class MainWindow
     }
 
     private int _fixExtensionVersion;
+    private PhotoItemViewModel? _damagedInSelection;
+    private static bool _bestUpscaleTooSlow;
 
-    // The selection bar offers Fix extension only while a selected photo is misnamed.
+    // The selection bar offers Fix extension only while a selected photo is misnamed, and Repair (also on the
+    // right-click menu) only while one is damaged.
     private async Task ShowFixExtensionAsync()
     {
         var version = ++_fixExtensionVersion;
-        var any = (await ViewModel.MisnamedAmongAsync(SelectedPhotos)).Count > 0;
-        if (version == _fixExtensionVersion)
-            FixExtensionButton.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+        var selected = SelectedPhotos;
+        var misnamed = (await ViewModel.MisnamedAmongAsync(selected)).Count > 0;
+        var damaged = (await ViewModel.DamagedAmongAsync(selected)).FirstOrDefault();
+        if (version != _fixExtensionVersion)
+            return;
+        FixExtensionButton.Visibility = misnamed ? Visibility.Visible : Visibility.Collapsed;
+        _damagedInSelection = damaged;
+        RepairButton.Visibility = RepairPhotoItem.Visibility = damaged is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // Repair from the grid: the wizard works on the photo in the viewer, so the damaged photo opens there first.
+    private void RepairSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (_damagedInSelection is not { } item)
+            return;
+        OpenViewer(item);
+        ViewerRepair_Click(sender, e);
     }
 
     private async void ViewerRepair_Click(object sender, RoutedEventArgs e)
@@ -65,8 +82,10 @@ public sealed partial class MainWindow
                         ? Tr("The end of this file is missing, but its picture is complete. Mending adds the missing end; the picture stays exactly as it is.")
                         : markDamage
                             ? Tr("The picture data of this file is damaged, but where it starts can't be seen for sure. Move the line to where the photo starts to look wrong.")
+                            : damaged.Health == FileHealth.CutOff
+                                ? Tr("The end of this file is missing, but no lost area shows in the picture. If the photo looks fine, you can stop marking it as damaged; if it looks wrong, replace it with another copy.")
                             : damaged.Health != FileHealth.Whole
-                                ? Tr("The file is damaged, but no lost area shows in the picture. If it looks wrong, replace it with another copy.")
+                                ? Tr("The structure of this file is damaged, but no lost area shows in the picture. If the photo looks fine, you can stop marking it as damaged; if it looks wrong, replace it with another copy.")
                                 : Tr("No damage found in this file. If the photo looks wrong anyway, you can replace it with another copy.");
         var canFill = damaged.Damage is not null || markDamage;
         var mend = Way(Tr("Mend the file without changing the picture"), damaged.CanMend);
@@ -75,6 +94,10 @@ public sealed partial class MainWindow
         var fromCopy = Way(Tr("Fill the lost part from another copy of this photo"), canFill);
         var replace = Way(Tr("Replace the photo with another copy of it"), true);
         var crop = Way(Tr("Crop the photo to the part that is undamaged"), canFill);
+        // The check can flag a file whose picture is fine to the eye; the user has the last word.
+        var showFine = damaged.Image is not null && damaged.Health != FileHealth.Whole;
+        var fine = Way(Tr("The photo looks fine: stop marking it as damaged"), showFine);
+        var markFine = false;
 
         // The line the user moves to where the damage starts, over a small picture of the photo.
         var markSlider = new Slider
@@ -136,7 +159,7 @@ public sealed partial class MainWindow
         var aiQuality = new ComboBox { MinWidth = 260 };
         aiQuality.Items.Add(Tr("Fast"));
         aiQuality.Items.Add(Tr("Best quality (much slower)"));
-        aiQuality.SelectedIndex = 0;
+        aiQuality.SelectedIndex = _bestUpscaleTooSlow ? 0 : 1; // best quality, unless this PC was too slow for it
         var aiDownload = Hint("");
         var aiRow = new StackPanel { Spacing = 6, Margin = new Thickness(28, 0, 0, 0), Children = { useAi, aiQuality, aiDownload } };
         UpscaleQuality ChosenQuality() => aiQuality.SelectedIndex == 1 ? UpscaleQuality.Best : UpscaleQuality.Fast;
@@ -159,7 +182,7 @@ public sealed partial class MainWindow
                 : "";
             aiDownload.Visibility = aiDownload.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
-        foreach (var way in new[] { mend, fromPreview, fromCopy, replace, crop })
+        foreach (var way in new[] { mend, fromPreview, fromCopy, replace, crop, fine })
             way.Checked += (_, _) => ShowAi();
         useAi.Checked += (_, _) => ShowAi();
         useAi.Unchecked += (_, _) => ShowAi();
@@ -176,6 +199,8 @@ public sealed partial class MainWindow
         choosePage.Children.Add(fromCopy);
         choosePage.Children.Add(replace);
         choosePage.Children.Add(crop);
+        if (showFine)
+            choosePage.Children.Add(fine);
         choosePage.Children.Add(Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder.")));
         ShowAi();
 
@@ -225,6 +250,11 @@ public sealed partial class MainWindow
         {
             if (repaired is not null)
                 return; // "Keep the repair": the dialog closes and the repair is saved below
+            if (fine.IsChecked == true)
+            {
+                markFine = true; // the dialog closes and the mark is taken off below
+                return;
+            }
             args.Cancel = true;
             var way = mend.IsChecked == true ? RepairWay.Mend
                 : fromPreview.IsChecked == true ? RepairWay.FillFromPreview
@@ -282,6 +312,8 @@ public sealed partial class MainWindow
             {
                 // Say how long it would take and let the user choose: the fast model, no AI, or wait.
                 slowAccepted = quality;
+                if (quality == UpscaleQuality.Best)
+                    _bestUpscaleTooSlow = true;
                 var device = slow.OnGraphicsCard ? Tr("graphics card") : Tr("processor");
                 problem.Text = quality == UpscaleQuality.Best
                     ? Tr("With the best-quality model this takes about {0} on this PC ({1}); the fast model takes about a tenth of that. Choose Fast, or press Next again to wait.", Duration(slow.Estimate), device)
@@ -304,7 +336,15 @@ public sealed partial class MainWindow
             dialog.SecondaryButtonText = "";
         };
 
-        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || repaired is null)
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return;
+        if (markFine)
+        {
+            await ViewModel.MarkAsFineAsync(item);
+            await ShowFixExtensionAsync();
+            return;
+        }
+        if (repaired is null)
             return;
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveRepairAsync(item, repaired);

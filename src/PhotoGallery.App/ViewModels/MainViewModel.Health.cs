@@ -35,6 +35,28 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Those of <paramref name="items"/> the file check found damaged (and not changed since).</summary>
+    public async Task<List<PhotoItemViewModel>> DamagedAmongAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        if (items.Count == 0)
+            return [];
+        var damaged = await Task.Run(() => _index.Search(new PhotoQuery { DamagedOnly = true }).Select(p => p.Path)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase));
+        return items.Where(i => damaged.Contains(i.Path)).ToList();
+    }
+
+    /// <summary>
+    /// The user looked at a photo flagged as damaged and finds it fine: it counts as whole until the file changes
+    /// (or a later version of the check looks again).
+    /// </summary>
+    public async Task MarkAsFineAsync(PhotoItemViewModel item)
+    {
+        await Task.Run(() => _index.SaveCheck(item.Path, FileHealth.Whole, item.Photo.FileModifiedUtc));
+        Inform(Tr("{0} is no longer marked as damaged.", item.FileName));
+        if (DamagedOnly)
+            await SearchAsync();
+    }
+
     /// <summary>Those of <paramref name="items"/> the file check found misnamed (and not changed since).</summary>
     public async Task<List<PhotoItemViewModel>> MisnamedAmongAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
