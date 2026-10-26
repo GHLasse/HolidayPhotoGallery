@@ -133,15 +133,18 @@ public sealed partial class MainWindow
                 setup = await DownloadAsync(await FreshAsync(update));
             }
 
-            // A small PowerShell script waits until the app has closed, runs Setup, notes how it went and opens
-            // the app again, also when Setup fails (see AppUpdates.HandOverScript).
-            var script = AppUpdates.HandOverScript(Environment.ProcessId, AppContext.BaseDirectory, Path.GetFileName(Environment.ProcessPath!),
-                                                   setup, update.Version, MainViewModel.UpdatesFolder);
-            App.Trace($"update: handing over to {setup}");
-            Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {AppUpdates.Encode(script)}")
+            // A small batch file waits until the app has closed, runs Setup, notes how it went and opens the
+            // app again, also when Setup fails (see AppUpdates.HandOverScript).
+            var script = Path.Combine(MainViewModel.UpdatesFolder, AppUpdates.ScriptFile);
+            File.WriteAllText(script, AppUpdates.HandOverScript(Environment.ProcessId, AppContext.BaseDirectory, Path.GetFileName(Environment.ProcessPath!),
+                                                                setup, update.Version, MainViewModel.UpdatesFolder));
+            File.WriteAllText(Path.Combine(MainViewModel.UpdatesFolder, AppUpdates.PendingFile), AppUpdates.Format(update.Version));
+            App.Trace($"update: handing over to {script} for {setup}");
+            Process.Start(new ProcessStartInfo("cmd.exe", $"/d /c \"\"{script}\"\"")
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                WorkingDirectory = MainViewModel.UpdatesFolder,
             });
             dialog.Hide();
             _closeConfirmed = true;
@@ -188,8 +191,13 @@ public sealed partial class MainWindow
     /// <summary>On the start after an update: says whether it worked, and points at Setup's log when it didn't.</summary>
     private void ReportLastUpdate()
     {
+        var stalled = AppUpdates.TakeStalledUpdate(MainViewModel.UpdatesFolder);
         if (AppUpdates.TakeLastResult(MainViewModel.UpdatesFolder) is not { } result)
+        {
+            if (stalled is { } wanted && MainViewModel.CurrentVersion < wanted)
+                ReportStalledUpdate(wanted);
             return;
+        }
         var (version, code) = result;
         App.Trace($"update to {AppUpdates.Format(version)}: Setup exit code {code}, running {AppUpdates.Format(MainViewModel.CurrentVersion)}");
         if (code == 0 && MainViewModel.CurrentVersion >= version)
@@ -206,6 +214,32 @@ public sealed partial class MainWindow
                         return Task.CompletedTask;
                     })]
                 : []);
+    }
+
+    // The hand-over never got as far as Setup (something stopped it, such as security software): say so and
+    // offer Setup with its own window, which needs nothing in between.
+    private void ReportStalledUpdate(Version version)
+    {
+        var folder = MainViewModel.UpdatesFolder;
+        var setup = Path.Combine(folder, $"HolidayPhotoGallery-Setup-{AppUpdates.Format(version)}.exe");
+        var steps = Path.Combine(folder, AppUpdates.StepsFile);
+        App.Trace($"update to {AppUpdates.Format(version)} didn't run; steps noted: {(File.Exists(steps) ? File.ReadAllText(steps).Trim() : "none")}");
+        var actions = new List<NoticeAction>();
+        if (File.Exists(setup))
+            actions.Add(new NoticeAction(Tr("Run Setup"), () =>
+            {
+                _closeConfirmed = true;
+                Process.Start(new ProcessStartInfo(setup) { UseShellExecute = true });
+                Close();
+                return Task.CompletedTask;
+            }));
+        if (File.Exists(steps))
+            actions.Add(new NoticeAction(Tr("Show what happened"), () =>
+            {
+                Process.Start(new ProcessStartInfo(steps) { UseShellExecute = true });
+                return Task.CompletedTask;
+            }, Closes: false));
+        ViewModel.Fail(Tr("The update to version {0} didn't run after the app closed. Something on this PC may have stopped it. Run Setup to install it yourself.", AppUpdates.Format(version)), actions);
     }
 
     /// <summary>

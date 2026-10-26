@@ -99,20 +99,41 @@ public sealed class AppUpdatesTests
     [Fact]
     public void Hand_over_script_waits_for_the_app_runs_setup_and_always_reopens_the_app()
     {
-        var script = AppUpdates.HandOverScript(4242, @"C:\Users\O'Brien\AppData\Local\Programs\HolidayPhotoGallery\", "HolidayPhotoGallery.exe",
+        var script = AppUpdates.HandOverScript(4242, @"C:\Users\O'Brien 100%\AppData\Local\Programs\HolidayPhotoGallery\", "HolidayPhotoGallery.exe",
                                                @"C:\Data\Updates\HolidayPhotoGallery-Setup-0.0.140.exe", new Version(0, 0, 140), @"C:\Data\Updates");
-        var lines = script.Split('\n');
-        Assert.StartsWith("Wait-Process -Id 4242", lines[1]);
-        // Quotes in a path are doubled inside PowerShell's single quotes.
-        Assert.Contains("'C:\\Users\\O''Brien\\AppData", script);
-        Assert.Contains("-Wait -PassThru", script);
+        var lines = script.TrimEnd().Split("\r\n");
+        Assert.Equal("@echo off", lines[0]);
+        Assert.Contains("tasklist /FI \"PID eq 4242\"", script);
+        // % is doubled for the batch file, a quote doubled inside PowerShell's single quotes.
+        Assert.Contains("'C:\\Users\\O''Brien 100%%\\AppData", script);
+        Assert.Contains("\"C:\\Data\\Updates\\HolidayPhotoGallery-Setup-0.0.140.exe\" /SILENT", script);
         Assert.Contains("/LOG=\"C:\\Data\\Updates", script);
         Assert.DoesNotContain("RESTARTAPP=", script);
-        Assert.Contains("0.0.140", script);
-        // The app is opened again last, whatever Setup did.
-        Assert.StartsWith("Start-Process -FilePath 'C:\\Users\\O''Brien", lines[^1]);
-        Assert.EndsWith("HolidayPhotoGallery.exe'", lines[^1]);
-        Assert.Equal(script, Encoding.Unicode.GetString(Convert.FromBase64String(AppUpdates.Encode(script))));
+        Assert.DoesNotContain("EncodedCommand", script);
+        Assert.Contains("(echo 0.0.140& echo %code%)", script);
+        // Every step is noted, and the app is opened again last, whatever Setup did.
+        Assert.Contains(AppUpdates.StepsFile, script);
+        Assert.Contains(AppUpdates.PendingFile, script);
+        Assert.StartsWith("start \"\" \"C:\\Users\\O'Brien 100%%", lines[^1]);
+        Assert.EndsWith("HolidayPhotoGallery.exe\"", lines[^1]);
+    }
+
+    [Fact]
+    public void A_hand_over_that_never_ran_is_reported_once()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-update-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            Assert.Null(AppUpdates.TakeStalledUpdate(folder));
+            File.WriteAllText(Path.Combine(folder, AppUpdates.PendingFile), "0.0.156");
+            Assert.Equal(new Version(0, 0, 156), AppUpdates.TakeStalledUpdate(folder));
+            Assert.Null(AppUpdates.TakeStalledUpdate(folder));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
     }
 
     [Fact]

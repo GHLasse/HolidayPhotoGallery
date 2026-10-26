@@ -198,35 +198,90 @@ public static partial class AppUpdates
 
     public const string LogFile = "last-update.log";
 
+    /// <summary>Each step of the hand-over with its time, so a stalled update shows how far it got.</summary>
+    public const string StepsFile = "last-update-steps.txt";
+
+    /// <summary>The hand-over script itself, kept in the Updates folder where it can be read.</summary>
+    public const string ScriptFile = "update.cmd";
+
     /// <summary>
-    /// A PowerShell script that does the update once the app has gone: it waits for the app's process to end,
+    /// Left by the app when it hands over (the version it is updating to); the hand-over's result replaces it.
+    /// Still there on the next start means the hand-over never ran.
+    /// </summary>
+    public const string PendingFile = "update-pending.txt";
+
+    /// <summary>
+    /// A batch file that does the update once the app has gone: it waits for the app's process to end,
     /// stops anything still running from the app's folder (ExifTool keeps running while the app is open, and a
     /// file in use makes a quiet Setup give up), runs Setup and waits for it, writes its exit code to
     /// <see cref="ResultFile"/> in <paramref name="updatesFolder"/>, and opens the app again whatever happened.
+    /// A plain batch file rather than a hidden, encoded PowerShell command, which security software blocks as
+    /// a likely attack; every step is noted in <see cref="StepsFile"/>.
     /// </summary>
     public static string HandOverScript(int processId, string appFolder, string appExe, string setup, Version version, string updatesFolder)
     {
-        static string Quote(string text) => "'" + text.Replace("'", "''", StringComparison.Ordinal) + "'";
+        // Inside double quotes only % is special in a batch file; PowerShell's single quotes double a quote.
+        static string Bat(string text) => text.Replace("%", "%%", StringComparison.Ordinal);
+        static string Ps(string text) => "'" + text.Replace("'", "''", StringComparison.Ordinal) + "'";
         var folder = Path.TrimEndingDirectorySeparator(appFolder) + Path.DirectorySeparatorChar;
+        var steps = Bat(Path.Combine(updatesFolder, StepsFile));
         var log = Path.Combine(updatesFolder, LogFile);
-        var result = Path.Combine(updatesFolder, ResultFile);
-        return string.Join("\n",
+        var result = Bat(Path.Combine(updatesFolder, ResultFile));
+        var pending = Bat(Path.Combine(updatesFolder, PendingFile));
+        var id = processId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string Note(string what) => $"echo %date% %time% {what}>>\"{steps}\"";
+        return string.Join("\r\n",
         [
-            "$ErrorActionPreference = 'SilentlyContinue'",
-            $"Wait-Process -Id {processId} -Timeout 60",
-            $"Stop-Process -Id {processId} -Force",
-            $"$folder = {Quote(folder)}",
-            "Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($folder, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force",
-            "Start-Sleep -Seconds 1",
-            "$code = -1",
-            $"try {{ $p = Start-Process -FilePath {Quote(setup)} -ArgumentList {Quote(SetupArguments(log))} -Wait -PassThru; $code = $p.ExitCode }} catch {{ }}",
-            $"Set-Content -LiteralPath {Quote(result)} -Value (\"{Format(version)}`n\" + $code)",
-            $"Start-Process -FilePath {Quote(Path.Combine(appFolder, appExe))}",
-        ]);
+            "@echo off",
+            "setlocal DisableDelayedExpansion",
+            $"echo %date% %time% hand-over started, updating to {Format(version)}>\"{steps}\"",
+            "set waited=0",
+            ":wait",
+            $"tasklist /FI \"PID eq {id}\" /NH 2>nul | find \" {id} \" >nul || goto closed",
+            "set /a waited+=1",
+            "if %waited% geq 60 goto stop",
+            // timeout needs a console to read from; ping waits a second without one.
+            "ping -n 2 127.0.0.1 >nul",
+            "goto wait",
+            ":stop",
+            Note("app still running after 60 s, stopping it"),
+            $"taskkill /F /PID {id} >nul 2>&1",
+            ":closed",
+            Note("app closed"),
+            Bat($"powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {{ $_.Path -and $_.Path.StartsWith({Ps(folder)}, [StringComparison]::OrdinalIgnoreCase) }} | Stop-Process -Force\" >nul 2>&1"),
+            "ping -n 2 127.0.0.1 >nul",
+            Note("starting Setup"),
+            // A program started from a batch file is waited for; Setup's exit code lands in errorlevel.
+            $"\"{Bat(setup)}\" {Bat(SetupArguments(log))}",
+            "set code=%errorlevel%",
+            Note("Setup ended with code %code%"),
+            $"(echo {Format(version)}& echo %code%)>\"{result}\"",
+            $"del \"{pending}\" >nul 2>&1",
+            Note("opening the app"),
+            $"start \"\" \"{Bat(Path.Combine(appFolder, appExe))}\"",
+        ]) + "\r\n";
     }
 
-    /// <summary>The script as PowerShell's -EncodedCommand wants it (UTF-16 in Base64), so no quoting can break it.</summary>
-    public static string Encode(string script) => Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+    /// <summary>
+    /// The version a hand-over was started for that never reported back (see <see cref="PendingFile"/>), or
+    /// null. The note is removed.
+    /// </summary>
+    public static Version? TakeStalledUpdate(string updatesFolder)
+    {
+        var path = Path.Combine(updatesFolder, PendingFile);
+        try
+        {
+            if (!File.Exists(path))
+                return null;
+            var text = File.ReadAllText(path).Trim();
+            File.Delete(path);
+            return ParseVersion(text);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// What the last update left in <paramref name="updatesFolder"/>: the version it installed and Setup's exit code
