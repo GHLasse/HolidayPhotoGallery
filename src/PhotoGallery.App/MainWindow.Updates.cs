@@ -120,11 +120,29 @@ public sealed partial class MainWindow
         _ = dialog.ShowThemedAsync();
         try
         {
-            using var http = AppUpdates.CreateClient();
-            var setup = await AppUpdates.DownloadSetupAsync(http, update, MainViewModel.UpdatesFolder,
-                new Progress<double>(p => progress.Value = p), cancel.Token);
-            App.Trace($"update: starting {setup} {AppUpdates.SetupArguments}");
-            Process.Start(new ProcessStartInfo(setup, AppUpdates.SetupArguments) { UseShellExecute = true });
+            string setup;
+            try
+            {
+                setup = await DownloadAsync(await FreshAsync(update));
+            }
+            catch (UpdateChangedException ex)
+            {
+                // The test version was replaced while it downloaded: once more with GitHub's new checksum.
+                App.Trace($"update: {ex.Message} Asking GitHub again.");
+                progress.Value = 0;
+                setup = await DownloadAsync(await FreshAsync(update));
+            }
+
+            // A small PowerShell script waits until the app has closed, runs Setup, notes how it went and opens
+            // the app again, also when Setup fails (see AppUpdates.HandOverScript).
+            var script = AppUpdates.HandOverScript(Environment.ProcessId, AppContext.BaseDirectory, Path.GetFileName(Environment.ProcessPath!),
+                                                   setup, update.Version, MainViewModel.UpdatesFolder);
+            App.Trace($"update: handing over to {setup}");
+            Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {AppUpdates.Encode(script)}")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
             dialog.Hide();
             _closeConfirmed = true;
             Close();
@@ -143,6 +161,51 @@ public sealed partial class MainWindow
         {
             _updating = false;
         }
+
+        // What's on GitHub now: the test version may have been replaced since the check found it.
+        async Task<AppRelease> FreshAsync(AppRelease found)
+        {
+            try
+            {
+                var now = await ViewModel.FindUpdateAsync(ViewModel.UpdateChannel, cancel.Token);
+                return now is not null && now.Version >= found.Version ? now : found;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+            {
+                return found;
+            }
+        }
+
+        async Task<string> DownloadAsync(AppRelease release)
+        {
+            update = release;
+            using var http = AppUpdates.CreateClient();
+            return await AppUpdates.DownloadSetupAsync(http, release, MainViewModel.UpdatesFolder,
+                new Progress<double>(p => progress.Value = p), cancel.Token);
+        }
+    }
+
+    /// <summary>On the start after an update: says whether it worked, and points at Setup's log when it didn't.</summary>
+    private void ReportLastUpdate()
+    {
+        if (AppUpdates.TakeLastResult(MainViewModel.UpdatesFolder) is not { } result)
+            return;
+        var (version, code) = result;
+        App.Trace($"update to {AppUpdates.Format(version)}: Setup exit code {code}, running {AppUpdates.Format(MainViewModel.CurrentVersion)}");
+        if (code == 0 && MainViewModel.CurrentVersion >= version)
+        {
+            ViewModel.Inform(Tr("Updated to version {0}.", AppUpdates.Format(version)));
+            return;
+        }
+        var log = Path.Combine(MainViewModel.UpdatesFolder, AppUpdates.LogFile);
+        ViewModel.Fail(Tr("The update to version {0} didn't install (Setup ended with code {1}). You can try again in Settings › App.", AppUpdates.Format(version), code),
+            File.Exists(log)
+                ? [new NoticeAction(Tr("Show Setup's log"), () =>
+                    {
+                        Process.Start(new ProcessStartInfo(log) { UseShellExecute = true });
+                        return Task.CompletedTask;
+                    })]
+                : []);
     }
 
     /// <summary>
