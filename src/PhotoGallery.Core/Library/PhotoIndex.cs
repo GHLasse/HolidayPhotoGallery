@@ -645,6 +645,32 @@ public sealed partial class PhotoIndex : IDisposable
                 ? d : null;
     }
 
+    /// <summary>
+    /// Every photo with both a GPS position and a date taken, with the moment in UTC, sorted by it: what a
+    /// location estimate (G-3) works from. Dates without a time zone count as UTC.
+    /// </summary>
+    public List<Metadata.GeoTimePoint> GetGeotaggedTimes()
+    {
+        var points = new List<Metadata.GeoTimePoint>();
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT path, date_taken, date_offset_minutes, latitude, longitude FROM photos " +
+                              "WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND date_taken IS NOT NULL;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                if (!DateTime.TryParseExact(reader.GetString(1), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
+                    continue;
+                TimeSpan? offset = reader.IsDBNull(2) ? null : TimeSpan.FromMinutes(reader.GetInt32(2));
+                points.Add(new Metadata.GeoTimePoint(reader.GetString(0), Metadata.LocationEstimate.ToUtc(new Metadata.DateTaken(local, offset)),
+                    new Metadata.GeoPosition(reader.GetDouble(3), reader.GetDouble(4))));
+            }
+        }
+        points.Sort((a, b) => a.Utc.CompareTo(b.Utc));
+        return points;
+    }
+
     /// <summary>Every camera in the library (or one folder of it) with how many photos it took, by name.</summary>
     public IReadOnlyList<(string Camera, int Count)> GetCameraCounts(string? folder = null)
     {

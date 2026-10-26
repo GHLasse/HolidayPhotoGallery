@@ -44,9 +44,11 @@
 //                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on},
 //                 {type:"find", q} (search for a place and go to the first found), {type:"goto", index} (another one found)
 //                 {type:"preview", path, src} (the picture of the photo clicked on the whole-library map)
-//                 {type:"texts", open, show, of} (the bubble's buttons in the app's language; "of" is like "{0} of {1}")
+//                 {type:"texts", open, show, of, estimate} (the bubble's buttons in the app's language; "of" is like "{0} of {1}")
+//                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
-//                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library)
+//                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
+//                 {type:"estimate"} (the pin's right-click menu: estimate from the photos before and after)
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
 const lang = new URLSearchParams(location.search).get("lang") || "en";
@@ -106,6 +108,9 @@ function start() {
   });
 
   const photoLayer = L.layerGroup().addTo(map);
+  // Suggested positions for photos without GPS: red until they are assigned, then they become photo dots.
+  const estimateLayer = L.layerGroup().addTo(map);
+  const estimated = { radius: 7, color: "#c42b1c", weight: 2, dashArray: "3 3", fillColor: "#e81123", fillOpacity: 0.35 };
   const markers = new Map();   // path -> circle marker
   let selected = new Set();
   let pin = null;
@@ -129,6 +134,13 @@ function start() {
     if (!pin) {
       pin = L.marker([lat, lon], { draggable: true, autoPan: true, title: "Drag to move. Assign it to the selected photos with the button below the map." }).addTo(map);
       pin.on("dragend", () => { const p = pin.getLatLng(); send({ type: "pin", lat: p.lat, lon: p.lng }); });
+      // Right-click: estimate from the photos before and after instead (G-3).
+      pin.on("contextmenu", () => {
+        const b = document.createElement("button");
+        b.textContent = texts.estimate || "Estimate from photos before and after";
+        b.addEventListener("click", () => { map.closePopup(); send({ type: "estimate" }); });
+        L.popup({ offset: [0, -30] }).setLatLng(pin.getLatLng()).setContent(b).openOn(map);
+      });
     } else {
       pin.setLatLng([lat, lon]);
     }
@@ -293,7 +305,15 @@ function start() {
         if (preview && preview.isOpen() && m.path === previewPath && m.src)
           preview.setContent(previewContent(m.src));
       } else if (m.type === "texts") {
-        texts = { open: m.open, show: m.show, of: m.of };
+        texts = { open: m.open, show: m.show, of: m.of, estimate: m.estimate };
+      } else if (m.type === "estimates") {
+        estimateLayer.clearLayers();
+        for (const p of m.points)
+          L.circleMarker([p.lat, p.lon], { ...estimated, bubblingMouseEvents: false }).bindTooltip(p.name).addTo(estimateLayer);
+        if (m.points.length > 1)
+          map.fitBounds(L.latLngBounds(m.points.map(p => [p.lat, p.lon])), { padding: [40, 40], maxZoom: 14 });
+        else if (m.points.length === 1 && !map.getBounds().contains([m.points[0].lat, m.points[0].lon]))
+          map.panTo([m.points[0].lat, m.points[0].lon]);
       } else if (m.type === "find") {
         findPlace(m.q);
       } else if (m.type === "goto") {

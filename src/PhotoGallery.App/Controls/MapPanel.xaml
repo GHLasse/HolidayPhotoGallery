@@ -19,15 +19,20 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="PinText" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Text="{local:Loc Text='Click the map or search for a place to set a pin.'}" />
-            <Button x:Name="AssignButton" Grid.Column="1" Style="{ThemeResource AccentButtonStyle}" IsEnabled="False"
+            <Button x:Name="EstimateButton" Grid.Column="1" IsEnabled="False" Click="Estimate_Click"
+                    ToolTipService.ToolTip="{local:Loc Text='Estimate where the selected photos were taken from the geotagged photos before and after them'}">
+                <FontIcon Glyph="&#xE81D;" FontSize="16" />
+            </Button>
+            <Button x:Name="AssignButton" Grid.Column="2" Style="{ThemeResource AccentButtonStyle}" IsEnabled="False"
                     Click="Assign_Click" ToolTipService.ToolTip="{local:Loc Text='Write the pin’s position into the selected photos'}">
                 <TextBlock x:Name="AssignText" Text="{local:Loc Text='Assign to selected'}" />
             </Button>
-            <Button x:Name="RemoveButton" Grid.Column="2" IsEnabled="False" Content="{local:Loc Text='Remove location'}"
+            <Button x:Name="RemoveButton" Grid.Column="3" IsEnabled="False" Content="{local:Loc Text='Remove location'}"
                     Click="Remove_Click" ToolTipService.ToolTip="{local:Loc Text='Delete the GPS position from the selected photos'}" />
         </Grid>
     </Grid>

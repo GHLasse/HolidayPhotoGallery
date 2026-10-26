@@ -965,12 +965,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Writes a GPS position into the photos, or with null removes their GPS information.</summary>
-    public async Task SetLocationAsync(IReadOnlyList<PhotoItemViewModel> items, GeoPosition? position)
+    public Task SetLocationAsync(IReadOnlyList<PhotoItemViewModel> items, GeoPosition? position) =>
+        SetLocationsAsync(items.Select(i => (i, position)).ToList(), removing: position is null);
+
+    /// <summary>Writes each photo's own GPS position (estimates, G-3).</summary>
+    public Task SetLocationsAsync(IReadOnlyList<(PhotoItemViewModel Item, GeoPosition Position)> placed) =>
+        SetLocationsAsync(placed.Select(p => (p.Item, (GeoPosition?)p.Position)).ToList(), removing: false);
+
+    private async Task SetLocationsAsync(IReadOnlyList<(PhotoItemViewModel Item, GeoPosition? Position)> placed, bool removing)
     {
-        if (_metadata is null || _indexer is null || items.Count == 0)
+        if (_metadata is null || _indexer is null || placed.Count == 0)
             return;
 
-        var changes = position is { } p ? new MetadataChanges { Location = p } : new MetadataChanges { RemoveLocation = true };
+        var items = placed.Select(p => p.Item).ToList();
         var failures = new List<string>();
         IsBusy = true;
         try
@@ -983,6 +990,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = Tr("Saving the location of {0} of {1}…", i + 1, items.Count);
                 try
                 {
+                    var changes = placed[i].Position is { } p ? new MetadataChanges { Location = p } : new MetadataChanges { RemoveLocation = true };
                     await _metadata.WriteAsync(item.Path, changes);
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
@@ -1000,7 +1008,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some locations could not be saved.") + " " + string.Join(" ", failures);
         var done = items.Count - failures.Count;
-        Inform(position is null
+        Inform(removing
             ? Tr("Removed the location from {0} photo(s)", done)
             : Tr("Placed {0} photo(s) on the map", done));
     }

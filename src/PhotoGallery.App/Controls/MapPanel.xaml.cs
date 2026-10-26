@@ -36,6 +36,17 @@ public sealed partial class MapPanel : UserControl
     /// <summary>Raised when the user assigns the pin to the selected photos.</summary>
     public event Func<IReadOnlyList<PhotoItemViewModel>, GeoPosition, Task>? AssignRequested;
 
+    /// <summary>Raised when the user assigns the estimated positions, each photo its own (G-3).</summary>
+    public event Func<IReadOnlyList<(PhotoItemViewModel Item, GeoPosition Position)>, Task>? AssignEachRequested;
+
+    /// <summary>Estimates where the photos were taken from the geotagged photos before and after them; null: no guess.</summary>
+    public Func<IReadOnlyList<PhotoItemViewModel>, Task<IReadOnlyList<(PhotoItemViewModel Item, LocationGuess? Guess)>>>? Estimator { get; set; }
+
+    // The estimate shown for the selection (one or more photos), until the user sets a pin of their own.
+    private List<(PhotoItemViewModel Item, GeoPosition Position)>? _estimates;
+    private bool _pinIsEstimate;
+    private int _estimateRun;
+
     /// <summary>Raised when the user removes the location from the selected photos.</summary>
     public event Func<IReadOnlyList<PhotoItemViewModel>, Task>? RemoveRequested;
 
@@ -102,7 +113,15 @@ public sealed partial class MapPanel : UserControl
 
         // With one photo selected, its own position becomes the pin, ready to be dragged.
         if (selection is [{ Photo.Location: { } own }])
+        {
             SetPin(own, tellMap: true);
+            _pinIsEstimate = false;
+        }
+        // Photos without GPS and no pin of the user's: suggest where they were (G-3).
+        if (CanPlacePhotos && selection.Count > 0 && selection.All(p => p.Photo.Location is null) && (_pin is null || _pinIsEstimate))
+            _ = EstimateAsync(auto: true);
+        else
+            ClearEstimates();
         UpdateButtons();
     }
 
@@ -174,6 +193,12 @@ public sealed partial class MapPanel : UserControl
             1 => Tr("Assign to 1 photo"),
             _ => Tr("Assign to {0:N0} photos", count),
         };
+        if (_estimates is { Count: > 0 } each && _pin is null)
+        {
+            AssignButton.IsEnabled = true;
+            AssignText.Text = Tr("Assign estimates to {0:N0} photos", each.Count);
+        }
+        EstimateButton.IsEnabled = _selection.Any(p => p.Photo.Location is null && p.Photo.DateTaken is not null) && Estimator is not null;
         RemoveButton.IsEnabled = _selection.Any(p => p.Photo.Location is not null);
     }
 
@@ -213,6 +238,7 @@ public sealed partial class MapPanel : UserControl
                     ["open"] = Tr("Open"),
                     ["show"] = Tr("Show in library"),
                     ["of"] = Tr("{0} of {1}"),
+                    ["estimate"] = Tr("Estimate from photos before and after"),
                 }.ToJsonString());
                 foreach (var json in _pending)
                     Web.CoreWebView2.PostWebMessageAsJson(json);
@@ -220,7 +246,12 @@ public sealed partial class MapPanel : UserControl
                 break;
             case "pin":
                 var position = new GeoPosition(message["lat"]!.GetValue<double>(), message["lon"]!.GetValue<double>());
+                // A pin of the user's own replaces the estimate.
+                ClearEstimates();
                 SetPin(position.IsValid ? position : Wrapped(position), tellMap: false);
+                break;
+            case "estimate":
+                _ = EstimateAsync(auto: false);
                 break;
             case "select":
                 var path = message["path"]!.GetValue<string>();
@@ -249,8 +280,93 @@ public sealed partial class MapPanel : UserControl
 
     private async void Assign_Click(object sender, RoutedEventArgs e)
     {
+        if (_estimates is { Count: > 0 } each && _pin is null && AssignEachRequested is { } assignEach)
+        {
+            ClearEstimates();
+            await assignEach(each);
+            return;
+        }
+        ClearEstimates();
         if (_pin is { } pin && _selection.Count > 0 && AssignRequested is { } handler)
             await handler(_selection, pin);
+    }
+
+    private void Estimate_Click(object sender, RoutedEventArgs e) => _ = EstimateAsync(auto: false);
+
+    /// <summary>
+    /// Suggests where the selected photos without GPS were taken: one photo gets the pin there, ready to drag and
+    /// assign; several get a red dot each, assigned together, each to its own position.
+    /// </summary>
+    private async Task EstimateAsync(bool auto)
+    {
+        var run = ++_estimateRun;
+        var photos = _selection.Where(p => p.Photo.Location is null).ToList();
+        if (Estimator is null || photos.Count == 0)
+            return;
+        IReadOnlyList<(PhotoItemViewModel Item, LocationGuess? Guess)> guesses;
+        try
+        {
+            guesses = await Estimator(photos);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            return;
+        }
+        if (run != _estimateRun)
+            return; // the selection changed meanwhile
+        var found = guesses.Where(g => g.Guess is not null).Select(g => (g.Item, g.Guess!)).ToList();
+        if (found.Count == 0)
+        {
+            ClearEstimates();
+            if (_pinIsEstimate)
+                SetPin(null, tellMap: true);
+            _pinIsEstimate = false;
+            if (!auto || _pin is null)
+                PinText.Text = photos.All(p => p.Photo.DateTaken is null)
+                    ? Tr("No estimate: the photos have no date taken.")
+                    : Tr("No estimate: there is no geotagged photo taken before and after. Click the map to set a pin.");
+            return;
+        }
+
+        _estimates = found.Select(f => (f.Item, f.Item2.Position)).ToList();
+        PostEstimates();
+        if (found.Count == 1 && _selection.Count == 1)
+        {
+            SetPin(found[0].Item2.Position, tellMap: true);
+            _pinIsEstimate = true;
+        }
+        else if (_pinIsEstimate || !auto)
+        {
+            SetPin(null, tellMap: true);
+            _pinIsEstimate = true;
+        }
+        var rough = found.Max(f => f.Item2.Gap);
+        var text = found.Count == 1 && _selection.Count == 1
+            ? Tr("Estimated from the photos before and after. Drag the pin to correct it, then assign it.")
+            : Tr("Estimated {0} of {1} photos from the photos before and after (red dots).", found.Count, _selection.Count);
+        if (rough > LocationEstimate.RoughAfter)
+            text += " " + Tr("The photos around them are {0:N0} hours apart, so it may be rough.", rough.TotalHours);
+        PinText.Text = text;
+        UpdateButtons();
+    }
+
+    private void PostEstimates()
+    {
+        var points = new JsonArray();
+        foreach (var (item, at) in _estimates ?? [])
+            points.Add(new JsonObject { ["lat"] = at.Latitude, ["lon"] = at.Longitude, ["name"] = item.FileName });
+        Post(new JsonObject { ["type"] = "estimates", ["points"] = points });
+    }
+
+    private void ClearEstimates()
+    {
+        _estimateRun++;
+        if (_estimates is null)
+            return;
+        _estimates = null;
+        _pinIsEstimate = false;
+        PostEstimates();
+        UpdateButtons();
     }
 
     private async void Remove_Click(object sender, RoutedEventArgs e)

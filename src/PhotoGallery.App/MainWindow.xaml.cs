@@ -64,6 +64,12 @@ public sealed partial class MainWindow : Window
             await ViewModel.SetLocationAsync(items, position);
             RefreshMap(fit: false);
         };
+        MapView.AssignEachRequested += async placed =>
+        {
+            await ViewModel.SetLocationsAsync(placed);
+            RefreshMap(fit: false);
+        };
+        MapView.Estimator = ViewModel.EstimateLocationsAsync;
         MapView.RemoveRequested += async items =>
         {
             await ViewModel.SetLocationAsync(items, null);
