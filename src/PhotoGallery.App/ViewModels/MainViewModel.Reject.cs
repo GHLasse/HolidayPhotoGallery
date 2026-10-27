@@ -33,6 +33,7 @@ public sealed partial class MainViewModel
         if (_metadata is null || _indexer is null || items.Count == 0)
             return;
         var reject = items.Any(i => !i.Photo.Rejected);
+        var before = Marks(items);
         var failures = new List<string>();
         foreach (var item in items.Where(i => i.Photo.Rejected != reject))
         {
@@ -49,6 +50,7 @@ public sealed partial class MainViewModel
         }
         ErrorMessage = failures.Count == 0 ? null : (reject ? Tr("Some photos could not be rejected.") : Tr("Some reject marks could not be removed.")) + " " + string.Join(" ", failures);
         FlagsChanged?.Invoke();
+        RememberMarks(reject ? Tr("reject mark on {0}", PhotoCount(items.Count)) : Tr("removing the reject mark from {0}", PhotoCount(items.Count)), before);
     }
 
     /// <summary>The rejected photos among those shown now.</summary>

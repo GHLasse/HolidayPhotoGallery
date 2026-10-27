@@ -584,6 +584,7 @@ public sealed partial class MainWindow : Window
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
+            ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),
             ("Ctrl+Shift+D", Tr("Adjust the date and time of the selected photos")),
             ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
             ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
@@ -785,6 +786,7 @@ public sealed partial class MainWindow : Window
             {
                 ViewModel.CloseNotice(notice);
                 await undo();
+                ViewModel.TipOnce("key:undo", Tr("Tip: Ctrl+Z undoes the last change too, even after its banner has gone."));
             };
             bar.ActionButton = button;
         }
@@ -1099,6 +1101,7 @@ public sealed partial class MainWindow : Window
         }
         CompareLayer.Visibility = Visibility.Visible;
         CompareLayer.Show(photos);
+        TipForCompare();
     }
 
     private void CloseCompare()
@@ -1178,6 +1181,7 @@ public sealed partial class MainWindow : Window
         // Move focus off the grid, which would otherwise take the arrow keys for itself.
         ViewerCloseButton.Focus(FocusState.Programmatic);
         _ = ShowViewerImageAsync();
+        TipForViewer();
     }
 
     private void CloseViewer()
@@ -1497,6 +1501,21 @@ public sealed partial class MainWindow : Window
             Header = Tr("Look for duplicates in new photos by itself"),
             IsOn = ViewModel.FindDuplicatesAutomatically,
         };
+        var tips = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Show tips while I get to know the app"),
+            IsOn = ViewModel.ShowTips,
+        };
+        var tipsAgain = new HyperlinkButton { Content = Tr("Show all tips again"), Padding = new Thickness(0) };
+        tipsAgain.Click += (_, _) =>
+        {
+            ViewModel.ShowTipsAgain();
+            tips.IsOn = true;
+            tipsAgain.Content = Tr("The tips will show again.");
+            tipsAgain.IsEnabled = false;
+        };
         var gallery = new StackPanel
         {
             Spacing = 12,
@@ -1519,6 +1538,8 @@ public sealed partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                 },
+                tips,
+                tipsAgain,
             },
         };
 
@@ -1784,6 +1805,7 @@ public sealed partial class MainWindow : Window
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
+        ViewModel.SaveShowTips(tips.IsOn);
         // The search in the background needs the face models: ask for them now (Settings has closed), and
         // leave it off if they aren't wanted, so the setting never says on while nothing happens.
         var findPeopleOn = findPeople.IsOn && !MainViewModel.IsFaceModelInstalled ? await EnsureFaceModelAsync() : findPeople.IsOn;

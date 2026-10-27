@@ -195,7 +195,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Fail(string message, IReadOnlyList<NoticeAction> actions) => Notify(message, NoticeSeverity.Error, actions: actions);
 
     /// <summary>A result with an Undo button on its banner.</summary>
-    public void Inform(string message, Func<Task> undo) => Notify(message, NoticeSeverity.Info, undo);
+    public void Inform(string message, Func<Task> undo) => Notify(message, NoticeSeverity.Info, RememberUndo(message, undo));
 
     /// <summary>News with buttons, such as a new version with "What's new" and "Update now", as a blue banner.</summary>
     public void Offer(string message, IReadOnlyList<NoticeAction> actions) => Notify(message, NoticeSeverity.Info, actions: actions);
@@ -210,6 +210,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void Notify(string message, NoticeSeverity severity, Func<Task>? undo = null, IReadOnlyList<NoticeAction>? actions = null)
     {
+        _noticesMade++;
         if (!IsBusy)
             StatusText = _countText;
         // The same message again moves to the top instead of showing twice.
@@ -923,6 +924,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Sets one photo's star rating straight away, as the compare view does.</summary>
     public async Task SetRatingAsync(PhotoItemViewModel item, int stars)
     {
+        var before = Marks([item]);
+        await WriteRatingAsync(item, stars);
+        RememberMarks(Tr("rating of {0}", item.FileName), before);
+    }
+
+    private async Task WriteRatingAsync(PhotoItemViewModel item, int stars)
+    {
         if (_metadata is null || _indexer is null || item.Photo.Rating == stars)
             return;
         try
@@ -940,8 +948,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Rates several photos at once, e.g. with the number keys in the grid.</summary>
     public async Task SetRatingAsync(IReadOnlyList<PhotoItemViewModel> items, int stars)
     {
+        var before = Marks(items);
         foreach (var item in items)
-            await SetRatingAsync(item, stars);
+            await WriteRatingAsync(item, stars);
+        RememberMarks(Tr("rating of {0}", PhotoCount(items.Count)), before);
     }
 
     /// <summary>
@@ -953,6 +963,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (_metadata is null || _indexer is null || items.Count == 0)
             return;
         var flag = items.Any(i => !i.Photo.Flagged);
+        var before = Marks(items);
         var failures = new List<string>();
         foreach (var item in items.Where(i => i.Photo.Flagged != flag))
         {
@@ -969,6 +980,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         ErrorMessage = failures.Count == 0 ? null : (flag ? Tr("Some photos could not be flagged.") : Tr("Some flags could not be removed.")) + " " + string.Join(" ", failures);
         FlagsChanged?.Invoke();
+        RememberMarks(flag ? Tr("flag on {0}", PhotoCount(items.Count)) : Tr("removing the flag from {0}", PhotoCount(items.Count)), before);
     }
 
     /// <summary>Raised after flags were written, so the info pane can show them.</summary>
