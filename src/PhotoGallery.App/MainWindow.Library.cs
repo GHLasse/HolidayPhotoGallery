@@ -37,7 +37,7 @@ public sealed partial class MainWindow
             new(Tr("Add a folder…"), "\uE8F4", () => Do(AddFolder_Click), Tip: Tr("Add a folder to the library")),
             new(Tr("Look for changes"), "\uE72C", () => Do(Rescan_Click), "F5", Tr("Look for new, changed and deleted photos")),
             null,
-            new(ViewModel.HasDuplicates ? Tr("Go through duplicates ({0:N0} groups)", ViewModel.DuplicateCount) : Tr("Find duplicates"),
+            new(ViewModel.HasDuplicates ? Tr("Go through duplicates ({0})", ViewModel.DuplicatesText) : Tr("Find duplicates"),
                 AppIcons.FindDuplicates, () => Do(FindDuplicatesInLibrary_Click), Tip: ViewModel.DuplicatesTip),
             new(Tr("Find people in all photos shown"), AppIcons.FindPeople, () => Do(FindPeopleInAll_Click),
                 Tip: Tr("Find the people in your photos on this PC and name them")),

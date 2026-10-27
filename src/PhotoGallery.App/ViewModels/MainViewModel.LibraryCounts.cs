@@ -1,7 +1,7 @@
 namespace PhotoGallery.App.ViewModels;
 
 /// <summary>
-/// What is waiting in the whole library, for the Library menu and the dot on its button: groups of duplicates
+/// What is waiting in the whole library, for the Library menu and the dot on its button: duplicates
 /// (MainViewModel.Duplicates.cs), faces without a name and damaged files.
 /// </summary>
 public sealed partial class MainViewModel
