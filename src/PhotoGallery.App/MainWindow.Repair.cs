@@ -209,7 +209,9 @@ public sealed partial class MainWindow
         choosePage.Children.Add(crop);
         if (showFine)
             choosePage.Children.Add(fine);
-        choosePage.Children.Add(Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder.")));
+        // Renaming and taking off the mark happen at once, with no result to look at first.
+        var saveNote = Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder."));
+        choosePage.Children.Add(saveNote);
         ShowAi();
 
         // ---- Page 2: before and after ----
@@ -246,10 +248,20 @@ public sealed partial class MainWindow
             XamlRoot = Root.XamlRoot,
             Title = Tr("Repair damaged file"),
             Content = new ScrollViewer { Content = body, MaxHeight = 600 },
-            PrimaryButtonText = Tr("Next"),
+            PrimaryButtonText = FirstButtonText(),
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
+        // Renaming and taking off the mark are done at once, so their button names the action instead of "Next".
+        string FirstButtonText() => rename.IsChecked == true ? Tr("Rename") : fine.IsChecked == true ? Tr("Mark as fine") : Tr("Next");
+        void ShowAtOnce()
+        {
+            dialog.PrimaryButtonText = FirstButtonText();
+            saveNote.Visibility = rename.IsChecked == true || fine.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+        }
+        foreach (var way in new[] { rename, mend, fromPreview, fromCopy, replace, crop, fine })
+            way.Checked += (_, _) => ShowAtOnce();
+        ShowAtOnce();
         dialog.Resources["ContentDialogMaxWidth"] = 2.0 * CompareSize + 120;
         dialog.Closing += (_, _) => closing.Cancel();
         ShowBefore();
@@ -345,7 +357,7 @@ public sealed partial class MainWindow
             repaired = null;
             body.Children.Remove(comparePage);
             body.Children.Insert(0, choosePage);
-            dialog.PrimaryButtonText = Tr("Next");
+            dialog.PrimaryButtonText = FirstButtonText();
             dialog.SecondaryButtonText = "";
         };
 
