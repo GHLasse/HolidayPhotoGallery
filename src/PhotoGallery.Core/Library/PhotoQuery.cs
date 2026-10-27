@@ -45,6 +45,9 @@ public sealed record PhotoQuery
     /// <summary>Only photos from this country (as written in the file's place names).</summary>
     public string? Country { get; init; }
 
+    /// <summary>Only photos from one of these countries: one country's names in the languages it was tagged in.</summary>
+    public IReadOnlyList<string>? Countries { get; init; }
+
     /// <summary>Only photos from this city.</summary>
     public string? City { get; init; }
 

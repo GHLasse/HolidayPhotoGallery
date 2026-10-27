@@ -47,11 +47,35 @@ public sealed partial class MainWindow
                 Tip: Tr("Show only the photos whose file is damaged, to repair them"), Enabled: damaged > 0),
             new(Tr("Manage tags…"), "\uE8EC", () => _ = ShowSettingsAsync(tab: Tr("Tags")),
                 Tip: Tr("Rename, merge or remove tags in all your photos at once")),
+            new(Tr("Write all place names in {0}…", ViewModel.PlaceLanguageName), "\uE774", () => _ = WritePlaceNamesAsync(),
+                Tip: Tr("For photos tagged in different languages: write every country, region and city name in one language")),
             null,
             new(rejected > 0 ? Tr("Move {0} rejected photos to the Recycle Bin…", rejected) : Tr("Move rejected photos to the Recycle Bin…"),
                 "\uE74D", () => Do(RecycleRejected_Click), Tip: Tr("The rejected photos shown now go to the Recycle Bin, from where they can be restored"),
                 Enabled: rejected > 0),
         ];
+    }
+
+    private async Task WritePlaceNamesAsync()
+    {
+        if (WaitsForBusyWork())
+            return;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Write all place names in {0}", ViewModel.PlaceLanguageName),
+            Content = new TextBlock
+            {
+                Text = Tr("Every photo’s country, region, city and district is written in {0}, so the Places list shows each place once. Countries change at once; the other names are looked up again online, once per place, which can take a while. A name the lookup can’t confirm stays as it is. You can change the language in Settings › Dates and places.",
+                          ViewModel.PlaceLanguageName),
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = Tr("Write the names"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
+            await ViewModel.WritePlaceNamesInOneLanguageAsync();
     }
 
     private void ShowDamagedFiles()

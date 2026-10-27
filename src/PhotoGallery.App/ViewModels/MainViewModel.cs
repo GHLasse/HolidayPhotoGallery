@@ -603,7 +603,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             WithoutLocation = WithoutLocation,
             WithoutDate = WithoutDate,
             DamagedOnly = DamagedOnly,
-            Country = SelectedPlace?.Country,
+            Countries = SelectedPlace?.CountryNames,
             City = SelectedPlace?.City,
             WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
             Camera = _selectedCamera == NoCameraKey ? null : _selectedCamera,
