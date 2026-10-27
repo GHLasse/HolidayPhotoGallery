@@ -159,6 +159,7 @@ public sealed partial class MainViewModel
         }
 
         var damaged = await Task.Run(_index.CountDamaged);
+        DamagedCount = damaged;
         if (damaged > damagedBefore)
             Warn(damaged == 1
                 ? Tr("1 photo file is damaged. Choose Missing › Damaged files to see it, then select it and choose Repair.")

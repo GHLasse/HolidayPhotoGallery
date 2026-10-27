@@ -100,6 +100,7 @@ public sealed partial class MainViewModel
             {
                 OnPropertyChanged(nameof(HasDuplicates));
                 OnPropertyChanged(nameof(DuplicatesTip));
+                OnPropertyChanged(nameof(HasLibraryWork));
             }
         }
     }

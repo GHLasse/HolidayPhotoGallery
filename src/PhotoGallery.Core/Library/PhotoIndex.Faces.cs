@@ -114,6 +114,16 @@ public sealed partial class PhotoIndex
     /// <summary>Every face in the library that is not ignored, to suggest names and group unnamed faces.</summary>
     public IReadOnlyList<FoundFace> GetAllFaces(bool withThumbnails = false) => QueryFaces("f.ignored = 0", withThumbnails);
 
+    /// <summary>How many faces found in the library have no name yet (ignored faces don't count).</summary>
+    public int CountUnnamedFaces()
+    {
+        lock (_lock)
+            return Convert.ToInt32(Scalar("""
+                SELECT COUNT(*) FROM faces f JOIN photos p ON p.id = f.photo_id
+                WHERE f.ignored = 0 AND f.person IS NULL;
+                """));
+    }
+
     public FoundFace? GetFace(long id) => QueryFaces("f.id = $face", ("$face", id)).FirstOrDefault();
 
     /// <summary>Remembers that a face is not this person, so they are not suggested for it again.</summary>

@@ -148,6 +148,7 @@ public sealed partial class MainWindow
                 },
             };
         }
+        FitViewerToolbar(); // the app names may not fit beside the other labels
     }
 
     private static async Task<Microsoft.UI.Xaml.Media.ImageSource?> AppIconAsync(string exe)

@@ -59,6 +59,21 @@ public sealed class FaceIndexTests : IAsyncLifetime
         Assert.False(Assert.Single(_index.Search(new PhotoQuery())).Flagged);
     }
 
+    [Fact]
+    public void Unnamed_faces_are_counted_until_they_are_ignored()
+    {
+        var path = Path.Combine(_photos.Path, "a.jpg");
+        _index!.Upsert([new IndexedPhoto { Path = path, Folder = _photos.Path }]);
+        Assert.Equal(0, _index.CountUnnamedFaces());
+
+        _index.SaveFaces(path, [new NewFace(new FaceBox(0.1, 0.1, 0.2, 0.2), 0.9f, Vector(1, 0), null),
+                                new NewFace(new FaceBox(0.6, 0.1, 0.2, 0.2), 0.9f, Vector(0, 1), null)]);
+        Assert.Equal(2, _index.CountUnnamedFaces());
+
+        _index.IgnoreFace(_index.GetFaces(path)[0].Id);
+        Assert.Equal(1, _index.CountUnnamedFaces());
+    }
+
     [ExifToolFact]
     public async Task Found_faces_take_the_names_in_the_file_and_people_can_be_searched()
     {
