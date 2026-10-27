@@ -44,6 +44,12 @@ public sealed class LibrarySettings
     /// <summary>After a rating, flag or reject in the viewer, move on to the next photo.</summary>
     public bool AutoAdvance { get; set; }
 
+    /// <summary>Short tips the first time a view opens, and a key hint after a command was clicked three times.</summary>
+    public bool ShowTips { get; set; } = true;
+
+    /// <summary>The tips already shown (each only once), by id such as "viewer" or "key:Ctrl+D".</summary>
+    public List<string> SeenTips { get; set; } = [];
+
     /// <summary>The language of place names: "de", "en", "local" (as written there), or null for the app's language.</summary>
     public string? PlaceLanguage { get; set; }
 

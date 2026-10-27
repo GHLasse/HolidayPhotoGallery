@@ -62,6 +62,10 @@ public sealed partial class MainWindow
                 Enabled: targets.Count > 0 && !(viewer && IsEditing)));
         }
 
+        list.Add(new(Tr("Undo the last change"), "\uE7A7", Tr("Photos"), () => _ = UndoAsync(), "Ctrl+Z",
+            Tip: Tr("Takes back the last rating, flag, reject, tag change, rename or move"), Also: Tr("back revert"),
+            Enabled: ViewModel.CanUndo && !(viewer && IsEditing)));
+
         // The whole library.
         foreach (var job in LibraryJobs().OfType<LibraryJob>())
             list.Add(new(job.Label, job.Glyph, Tr("Library"), () => { LeaveViewer(); job.Run(); }, job.Keys, job.Tip, Enabled: job.Enabled));

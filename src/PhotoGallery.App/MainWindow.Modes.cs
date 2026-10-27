@@ -63,6 +63,7 @@ public sealed partial class MainWindow
         PeoplePage.Visibility = people ? Visibility.Visible : Visibility.Collapsed;
         PhotoArea.Visibility = people ? Visibility.Collapsed : Visibility.Visible;
         SyncSearchBox();
+        TipForWorkspace(workspace);
         ApplyChrome(); // the People page has no use for the filter bar
         await ApplyMapLayoutAsync();
         if (people)

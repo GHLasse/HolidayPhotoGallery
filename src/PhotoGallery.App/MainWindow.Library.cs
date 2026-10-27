@@ -63,7 +63,12 @@ public sealed partial class MainWindow
                 item.KeyboardAcceleratorTextOverride = job.Keys;
             if (job.Tip is not null)
                 ToolTipService.SetToolTip(item, job.Tip);
-            item.Click += (_, _) => job.Run();
+            item.Click += (_, _) =>
+            {
+                if (job.Keys is { } keys)
+                    CountClick(keys, job.Label);
+                job.Run();
+            };
             items.Add(item);
         }
     }

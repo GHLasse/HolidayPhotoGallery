@@ -203,7 +203,12 @@ public sealed partial class MainWindow
             ToolTipService.SetToolTip(item, tip);
         // Menu items are made anew each time, so they are not gated (Busy keeps its elements); the work
         // they start waits by itself and says why in a banner.
-        item.Click += (_, _) => command.Run();
+        item.Click += (_, _) =>
+        {
+            if (command.Keys is { } keys)
+                CountClick(keys, command.Label);
+            command.Run();
+        };
         return item;
     }
 
@@ -252,7 +257,11 @@ public sealed partial class MainWindow
                 Text = n == 0 ? Tr("No rating") : new string('★', n),
                 KeyboardAcceleratorTextOverride = n.ToString(System.Globalization.CultureInfo.InvariantCulture),
             };
-            item.Click += (_, _) => _ = RateAsync(n);
+            item.Click += (_, _) =>
+            {
+                CountRatingClick();
+                _ = RateAsync(n);
+            };
             sub.Items.Add(item);
         }
         return sub;
@@ -315,7 +324,12 @@ public sealed partial class MainWindow
             ToolTipService.SetToolTip(button, WithKeys(command.Tip ?? command.Label, command.Keys));
             if (command.Gated)
                 Busy.SetGate(button, true);
-            button.Click += (_, _) => command.Run();
+            button.Click += (_, _) =>
+            {
+                if (command.Keys is { } keys)
+                    CountClick(keys, command.Label);
+                command.Run();
+            };
             return button;
         }
 
@@ -365,7 +379,7 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// The keys of the command list that are not single letters (those are in Root_KeyDown): Ctrl+C, Ctrl+V,
-    /// Ctrl+D, Ctrl+Shift+D, Ctrl+I, Ctrl+K, Ctrl+1–3, Del and F5, and in the viewer R, Ctrl+U and the rotate keys.
+    /// Ctrl+D, Ctrl+Z, Ctrl+Shift+D, Ctrl+I, Ctrl+K, Ctrl+1–3, Del and F5, and in the viewer R, Ctrl+U and the rotate keys.
     /// True when the key was used. Typing in a box keeps its own Ctrl+C and Ctrl+V.
     /// </summary>
     private bool HandleCommandKeys(KeyRoutedEventArgs e)
@@ -388,6 +402,7 @@ public sealed partial class MainWindow
             (true, false, VirtualKey.C) => () => _ = CopyFilesAsync(),
             (true, false, VirtualKey.V) when !viewer => () => _ = PasteFilesAsync(),
             (true, false, VirtualKey.D) => () => _ = DuplicateAsync(),
+            (true, false, VirtualKey.Z) when !viewer || !IsEditing => () => _ = UndoAsync(),
             (true, true, VirtualKey.D) => () => ShiftDates_Click(this, new RoutedEventArgs()),
             (true, false, VirtualKey.I) when !viewer => () => Import_Click(this, new RoutedEventArgs()),
             (true, false, VirtualKey.Number1 or VirtualKey.NumberPad1) when !viewer => () => ShowWorkspace(Workspace.Library),
