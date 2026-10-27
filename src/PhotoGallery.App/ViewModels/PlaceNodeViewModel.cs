@@ -41,8 +41,10 @@ public sealed class PlaceNodeViewModel
                 node.Children.Add(new PlaceNodeViewModel(country.Key, city.City, city.Count));
             nodes.Add(node);
         }
-        if (counts.FirstOrDefault(c => c.Country is null) is { } nowhere)
-            nodes.Add(new PlaceNodeViewModel(null, null, nowhere.Count));
+        // Photos without a country come in one row per city they may still name; together they are "Unknown place".
+        var nowhere = counts.Where(c => c.Country is null).Sum(c => c.Count);
+        if (nowhere > 0)
+            nodes.Add(new PlaceNodeViewModel(null, null, nowhere));
         return nodes;
     }
 }
