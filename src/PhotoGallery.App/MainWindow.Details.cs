@@ -92,7 +92,7 @@ public sealed partial class MainWindow
 
     private int _qualityVersion;
 
-    /// <summary>The resolution class badge (exact size in its tooltip) and, once the file is read, HDR (U-7).</summary>
+    /// <summary>The resolution class badge (exact size in its tooltip), LIVE for a Live Photo and, once the file is read, HDR (U-7).</summary>
     private async Task ShowQualityBadgesAsync()
     {
         var version = ++_qualityVersion;
@@ -107,6 +107,8 @@ public sealed partial class MainWindow
         QualityBadges.Visibility = Visibility.Visible;
         if (item.IsVideo && item.FrameRateText.Length > 0)
             QualityBadges.Children.Add(QualityBadge(item.FrameRateText, Tr("Frames per second: {0:0.##}", item.Photo.FrameRate!.Value)));
+        if (item.IsLive)
+            QualityBadges.Children.Add(QualityBadge("LIVE", Tr("Live Photo: its short clip is kept with it")));
         if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
             QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
     }

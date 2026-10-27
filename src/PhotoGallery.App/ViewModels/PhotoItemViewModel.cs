@@ -67,9 +67,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     public Microsoft.UI.Xaml.Visibility VideoVisibility =>
         Photo.IsVideo ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
-    /// <summary>A Live Photo (its clip is hidden with it) shows "LIVE" on the tile, as on the iPhone.</summary>
-    public Microsoft.UI.Xaml.Visibility LiveVisibility =>
-        LivePhotos.Has(Path) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    /// <summary>A Live Photo (its clip is hidden with it) shows "LIVE" in the info pane, as on the iPhone.</summary>
+    public bool IsLive => LivePhotos.Has(Path);
 
     /// <summary>A video's frame rate from 24 fps up for its quality badge, rounded as cameras name it (29.97 → "30fps"); else empty.</summary>
     public string FrameRateText => Photo.FrameRate is >= 23.5 and var fps ? $"{Math.Round(fps):0}fps" : "";
