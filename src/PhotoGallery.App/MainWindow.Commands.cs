@@ -24,6 +24,7 @@ public sealed partial class MainWindow
     {
         public required string Label { get; init; }
 
+        /// <summary>One Segoe Fluent Icons character, or path data from <see cref="AppIcons"/>.</summary>
         public required string Glyph { get; init; }
 
         public required CommandGroup Group { get; init; }
@@ -95,14 +96,14 @@ public sealed partial class MainWindow
                     Run = () => Do(IsViewerOpen ? (RoutedEventHandler)ViewerRotateRight_Click : RotateRight_Click) },
 
             // Describe
-            new() { Label = Tr("Look up place"), Also = Tr("location address city country"), Glyph = "\uE707", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
+            new() { Label = Tr("Look up place"), Also = Tr("location address city country"), Glyph = AppIcons.PlaceText, Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files"),
                     Run = () => Do(AddPlaceNames_Click) },
-            new() { Label = Tr("Auto-tag"), Also = Tr("keywords AI recognise"), Glyph = "\uE8EC", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
+            new() { Label = Tr("Auto-tag"), Also = Tr("keywords AI recognise"), Glyph = AppIcons.TagSparkle, Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Recognise what is in the selected photos on this PC and add tags from your tag list"), Run = () => Do(AutoTag_Click) },
-            new() { Label = Tr("Remove auto tags"), Glyph = "\uE75C", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
+            new() { Label = Tr("Remove auto tags"), Glyph = AppIcons.RemoveAutoTags, Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Remove the tags auto-tagging added to the selected photos; your own tags stay"), Run = () => Do(RemoveAutoTags_Click) },
-            new() { Label = Tr("Find people"), Glyph = "\uE716", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
+            new() { Label = Tr("Find people"), Glyph = AppIcons.FindPeople, Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Find people in the selected photos"), Run = () => Do(FindPeople_Click) },
             new() { Label = Tr("Add a person…"), Glyph = "\uE8FA", Group = CommandGroup.Describe, Enabled = Any,
                     Tip = Tr("Add a person to the selected photos, without marking a face"), Run = () => Do(AddPerson_Click) },
@@ -131,7 +132,7 @@ public sealed partial class MainWindow
             // Organise
             new() { Label = Tr("Rename…"), Glyph = "\uE8AC", Group = CommandGroup.Organise, Keys = "F2", Enabled = Any, Gated = true, InViewer = false,
                     Tip = Tr("Rename the selected photos with a name pattern such as date and counter"), Run = () => Do(RenamePhotos_Click) },
-            new() { Label = Tr("Duplicate"), Also = Tr("copy"), Glyph = "\uE792", Group = CommandGroup.Organise, Keys = "Ctrl+D", Enabled = Any, Gated = true,
+            new() { Label = Tr("Duplicate"), Also = Tr("copy"), Glyph = AppIcons.Duplicate, Group = CommandGroup.Organise, Keys = "Ctrl+D", Enabled = Any, Gated = true,
                     Tip = Tr("Make a copy of each photo next to it, with all its details"), Run = () => _ = DuplicateAsync() },
             new() { Label = Tr("Copy files"), Glyph = "\uE8C8", Group = CommandGroup.Organise, Keys = "Ctrl+C", Enabled = Any,
                     Tip = Tr("Copy the photo files, to paste them in File Explorer, another app or another folder here"), Run = () => _ = CopyFilesAsync() },
@@ -143,7 +144,7 @@ public sealed partial class MainWindow
             new() { Label = Tr("Make private"), Also = Tr("hide"), Glyph = "\uE72E", Group = CommandGroup.Organise, Enabled = Any,
                     LabelFor = p => SelectionIsPrivate(p) ? Tr("Not private any more") : Tr("Make private"),
                     Tip = Tr("Hide the photos until private mode is on"), Run = () => Do(PhotosPrivate_Click) },
-            new() { Label = Tr("Use as album cover"), Glyph = "\uE8B9", Group = CommandGroup.Organise,
+            new() { Label = Tr("Use as album cover"), Glyph = AppIcons.AlbumCover, Group = CommandGroup.Organise,
                     Enabled = p => p.Count == 1 && ViewModel.FindAlbumFor(p[0].Path) is not null,
                     LabelFor = p => p.Count == 1 && ViewModel.FindAlbumFor(p[0].Path) is { } album
                         ? Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album))
@@ -178,9 +179,9 @@ public sealed partial class MainWindow
             ViewModel.Editor.Load(SelectedPhotos);
     }
 
-    private static FontIcon Icon(PhotoCommand command)
+    private static IconElement Icon(PhotoCommand command)
     {
-        var icon = new FontIcon { Glyph = command.Glyph };
+        var icon = AppIcons.Make(command.Glyph);
         if (command.Mirrored)
         {
             icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);

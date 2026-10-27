@@ -35,6 +35,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AutoTagIcon.Data = AppIcons.Geometry(AppIcons.TagSparkle);
+        LookUpPlaceIcon.Data = AppIcons.Geometry(AppIcons.PlaceText);
+        FindPeopleInAllIcon.Data = AppIcons.Geometry(AppIcons.FindPeople);
         // Arabic and other right-to-left languages mirror the whole window.
         if (Strings.RightToLeft)
             Root.FlowDirection = FlowDirection.RightToLeft;

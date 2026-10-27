@@ -284,7 +284,8 @@ public sealed partial class MainWindow
     // A line of the command box: icon, name, where it is in the menus, and its key as a key cap.
     private static Grid Row(BoxCommand command)
     {
-        var icon = new FontIcon { Glyph = command.Glyph, FontSize = 16, VerticalAlignment = VerticalAlignment.Center };
+        var icon = AppIcons.Element(command.Glyph, 16);
+        icon.VerticalAlignment = VerticalAlignment.Center;
         if (command.Mirrored)
         {
             icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);

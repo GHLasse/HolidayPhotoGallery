@@ -13,6 +13,8 @@ public static class Ui
 
     public static Visibility VisibleIfAny(bool a, bool b) => a || b ? Visibility.Visible : Visibility.Collapsed;
 
+    public static Visibility VisibleIfText(string? text) => string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+
     /// <summary>Star <paramref name="n"/> of a rating: filled up to the rating, outlined after it.</summary>
     public static string Star(int rating, int n) => rating >= n ? "★" : "☆";
 

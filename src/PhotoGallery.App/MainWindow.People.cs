@@ -142,7 +142,7 @@ public sealed partial class MainWindow
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = 6,
-                    Children = { new FontIcon { Glyph = "\uE716", FontSize = 14 }, new TextBlock { Text = Tr("Find people") } },
+                    Children = { AppIcons.Element(AppIcons.FindPeople, 14), new TextBlock { Text = Tr("Find people") } },
                 },
             };
             ToolTipService.SetToolTip(find, Tr("Find people in the selected photos"));
