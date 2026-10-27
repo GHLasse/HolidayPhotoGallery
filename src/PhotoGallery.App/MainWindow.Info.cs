@@ -93,7 +93,7 @@ public sealed partial class MainWindow
                 new TextBlock { Text = Tr("Credits"), Style = heading, Margin = new Thickness(0, 12, 0, 0) },
                 new TextBlock
                 {
-                    Text = Tr("Made by Lasse with Claude Code, the AI coding assistant from Anthropic. Claude wrote the code; Lasse decided what the app should do and tested every version."),
+                    Text = Tr("Code created by Claude Code from Anthropic."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 new HyperlinkButton { Content = "Claude Code", NavigateUri = new Uri("https://claude.com/claude-code"), Padding = new Thickness(0) },

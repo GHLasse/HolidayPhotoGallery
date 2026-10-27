@@ -150,8 +150,7 @@ The app is a plain `.exe` that carries its own Windows App SDK runtime. The inst
 
 ## Credits
 
-HolidayPhotoGallery was made by Lasse with [Claude Code](https://claude.com/claude-code), the AI coding
-assistant from Anthropic: Claude wrote the code, Lasse decided what the app should do and tested every version.
+Code created by [Claude Code](https://claude.com/claude-code) from Anthropic.
 
 It builds on the work of others (Settings › Info lists the same):
 
