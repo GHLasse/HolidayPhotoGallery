@@ -30,11 +30,23 @@ public sealed partial class MainWindow
         InfoPane.LostFocus += (_, _) => _ = AutoSaveAsync();
         InfoPane.AddHandler(UIElement.PreviewKeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, e) =>
         {
-            if (e.Key != Windows.System.VirtualKey.Enter || e.OriginalSource is not TextBox || IsDown(Windows.System.VirtualKey.Shift))
+            // Enter in a name or tag box (an AutoSuggestBox) submits that box; it must reach it.
+            if (e.Key != Windows.System.VirtualKey.Enter || e.OriginalSource is not TextBox box || IsDown(Windows.System.VirtualKey.Shift)
+                || InSuggestBox(box))
                 return;
             e.Handled = true;
             _ = AutoSaveAsync();
         }), handledEventsToo: false);
+    }
+
+    private static bool InSuggestBox(DependencyObject? element)
+    {
+        for (; element is not null; element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
+        {
+            if (element is AutoSuggestBox)
+                return true;
+        }
+        return false;
     }
 
     private async Task AutoSaveAsync()
