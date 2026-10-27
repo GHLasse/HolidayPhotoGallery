@@ -1277,7 +1277,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Grid x:Name="ViewerTopBar" Padding="12,8" ColumnSpacing="8">
+            <Grid x:Name="ViewerTopBar" Padding="12,8" ColumnSpacing="8" SizeChanged="ViewerTopBar_SizeChanged">
                 <Grid.OpacityTransition>
                     <ScalarTransition Duration="0:0:0.25" />
                 </Grid.OpacityTransition>
@@ -1285,8 +1285,11 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="ViewerTitle" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <!-- One line: the style wraps, and a narrow window then stacked the name a letter per line (Lasse, 2026-10-27). -->
+                <TextBlock x:Name="ViewerTitle" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}"
+                           TextWrapping="NoWrap" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                <!-- The buttons drop their labels when the window is too narrow for them (FitViewerToolbar). -->
+                <StackPanel x:Name="ViewerTools" Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                     <Button x:Name="ViewerRotateLeftButton" Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
                         <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
                             <FontIcon.RenderTransform>
