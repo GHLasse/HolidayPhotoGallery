@@ -74,9 +74,17 @@ public static class TimeZoneTyping
         if (combo.IsDropDownOpen)
         {
             if (combo.ContainerFromIndex(index) is ComboBoxItem item)
+            {
                 item.Focus(FocusState.Keyboard);
+            }
             else
+            {
+                // Further down the open list the entry isn't made yet, and choosing it didn't scroll there
+                // (+8 from the top of the date shift list). Opened again, the list shows the chosen entry.
+                combo.IsDropDownOpen = false;
                 combo.SelectedIndex = index;
+                combo.DispatcherQueue.TryEnqueue(() => combo.IsDropDownOpen = true);
+            }
         }
         else
         {
