@@ -219,7 +219,7 @@ public sealed partial class MainViewModel
         UnnamedFaceCount = unnamed;
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be looked at.") + " " + string.Join(" ", failures);
         Inform(looked == 0 && failures.Count == 0
-            ? Tr("These photos were already looked at.")
+            ? items.All(i => i.IsVideo) ? Tr("Faces are only looked for in photos, not in videos.") : Tr("These photos were already looked at.")
             : Tr("Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.", found, looked, unnamed));
         FacesChanged?.Invoke();
         return unnamed;

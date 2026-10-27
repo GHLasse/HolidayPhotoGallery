@@ -109,7 +109,9 @@ public sealed partial class MainWindow
 
         var item = photos[0];
         var orientation = item.Photo.Orientation;
-        var faces = (await ViewModel.GetFacesAsync(item.Path))
+        var allFaces = await ViewModel.GetFacesAsync(item.Path);
+        var hidden = allFaces.Any(f => f.Ignored);
+        var faces = allFaces
             .Where(f => !f.Ignored)
             .OrderBy(f => f.Box.ToUpright(orientation).X)
             .ToList();
@@ -133,8 +135,9 @@ public sealed partial class MainWindow
 
         for (var i = 0; i < withoutFace.Count; i++)
             PeopleList.Children.Add(PersonRow(item, withoutFace[i], pictures[i]));
-        // Not looked at yet: the search is offered right here.
-        if (!looked)
+        // The search is offered right here when it can do something: the photo was not looked at yet, or
+        // faces were hidden and looking again brings them back. Faces are not looked for in videos (Lasse, 2026-10-27).
+        if (!item.IsVideo && (!looked || hidden))
         {
             var find = new Button
             {
@@ -142,16 +145,17 @@ public sealed partial class MainWindow
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = 6,
-                    Children = { AppIcons.Element(AppIcons.FindPeople, 14), new TextBlock { Text = Tr("Find people") } },
+                    Children = { AppIcons.Element(AppIcons.FindPeople, 14), new TextBlock { Text = looked ? Tr("Look again") : Tr("Find people") } },
                 },
             };
-            ToolTipService.SetToolTip(find, Tr("Find people in the selected photos"));
+            ToolTipService.SetToolTip(find, looked ? Tr("Look for people in this photo again; hidden faces come back") : Tr("Find people in the selected photos"));
             find.Click += FindPeople_Click;
             PeopleList.Children.Add(find);
         }
         PeopleList.Children.Add(AddPersonBox([item]));
 
-        PeopleHint.Text = looked && faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
+        PeopleHint.Text = item.IsVideo && faces.Count == 0 && withoutFace.Count == 0 ? Tr("Faces are only looked for in photos, not in videos.")
+            : looked && faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
         PeopleHint.Visibility = PeopleHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         PeopleSection.Visibility = Visibility.Visible;
     }
