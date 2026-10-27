@@ -56,7 +56,7 @@ public sealed partial class MainViewModel
             var kept = await Task.Run(_index.GetKeptDuplicates);
             groups.RemoveAll(g => kept.Contains(g.Key));
             if (folder is null)
-                DuplicateCount = groups.Count;
+                ShowDuplicateCounts(groups);
             if (groups.Count == 0)
                 Inform(Tr("No duplicates found among {0}.", PhotoCount(photos.Count)));
             return groups;
@@ -88,27 +88,41 @@ public sealed partial class MainViewModel
     }
 
     private int _duplicateCount;
+    private int _duplicateCopies;
     private bool _hashingInBackground;
 
-    /// <summary>Groups of duplicates in the whole library still to go through, from the last search (0 before one).</summary>
-    public int DuplicateCount
+    /// <summary>
+    /// Photos in the whole library that have duplicates still to go through (one per group, however many
+    /// copies it has), from the last search (0 before one).
+    /// </summary>
+    public int DuplicateCount => _duplicateCount;
+
+    /// <summary>The extra copies of those photos: what could go to the Recycle Bin.</summary>
+    public int DuplicateCopies => _duplicateCopies;
+
+    private void ShowDuplicateCounts(IReadOnlyCollection<DuplicateGroup> groups)
     {
-        get => _duplicateCount;
-        private set
-        {
-            if (SetProperty(ref _duplicateCount, value))
-            {
-                OnPropertyChanged(nameof(HasDuplicates));
-                OnPropertyChanged(nameof(DuplicatesTip));
-                OnPropertyChanged(nameof(HasLibraryWork));
-            }
-        }
+        var copies = groups.Sum(g => g.Photos.Count - 1);
+        if (groups.Count == _duplicateCount && copies == _duplicateCopies)
+            return;
+        _duplicateCount = groups.Count;
+        _duplicateCopies = copies;
+        OnPropertyChanged(nameof(DuplicateCount));
+        OnPropertyChanged(nameof(DuplicateCopies));
+        OnPropertyChanged(nameof(HasDuplicates));
+        OnPropertyChanged(nameof(DuplicatesTip));
+        OnPropertyChanged(nameof(HasLibraryWork));
     }
 
     public bool HasDuplicates => _duplicateCount > 0;
 
+    /// <summary>How many duplicates there are, the same words in the banner, the Library menu and its tooltip.</summary>
+    public string DuplicatesText => _duplicateCopies == 1 ? Tr("1 extra copy of a photo")
+        : _duplicateCount == 1 ? Tr("{0:N0} extra copies of a photo", _duplicateCopies)
+        : Tr("{0:N0} extra copies of {1:N0} photos", _duplicateCopies, _duplicateCount);
+
     public string DuplicatesTip => _duplicateCount > 0
-        ? Tr("{0:N0} groups of duplicates found. Click to go through them (right-click a folder to look in one folder).", _duplicateCount)
+        ? Tr("{0} found. Click to go through them (right-click a folder to look in one folder).", DuplicatesText)
         : Tr("Find duplicates in the whole library (right-click a folder to look in one folder)");
 
     /// <summary>Whether new photos get their fingerprints in the background (Settings › App).</summary>
@@ -124,7 +138,7 @@ public sealed partial class MainViewModel
         if (on)
             _ = FindDuplicatesInBackgroundAsync();
         else
-            DuplicateCount = 0;
+            ShowDuplicateCounts([]);
     }
 
     /// <summary>
@@ -170,7 +184,7 @@ public sealed partial class MainViewModel
             var before = _duplicateCount;
             await CountDuplicatesAsync();
             if (_duplicateCount > before)
-                Offer(Tr("Found {0:N0} groups of duplicates in the library.", _duplicateCount),
+                Offer(Tr("Found {0} in the library.", DuplicatesText),
                       [new NoticeAction(Tr("Go through them"), () => { ReviewDuplicatesRequested?.Invoke(); return Task.CompletedTask; })]);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -190,7 +204,7 @@ public sealed partial class MainViewModel
         var known = await Task.Run(_index.GetPictureHashes);
         var kept = await Task.Run(_index.GetKeptDuplicates);
         var groups = await Task.Run(() => DuplicateFinder.Find(photos, p => known.GetValueOrDefault(p.Path)));
-        DuplicateCount = groups.Count(g => !kept.Contains(g.Key));
+        ShowDuplicateCounts(groups.Where(g => !kept.Contains(g.Key)).ToList());
     }
 
     /// <summary>The banner's "Go through them": the window opens the review of the whole library.</summary>
