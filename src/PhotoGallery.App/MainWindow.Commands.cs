@@ -103,7 +103,7 @@ public sealed partial class MainWindow
                     Tip = Tr("Recognise what is in the selected photos on this PC and add tags from your tag list"), Run = () => Do(AutoTag_Click) },
             new() { Label = Tr("Remove auto tags"), Glyph = AppIcons.RemoveAutoTags, Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Remove the tags auto-tagging added to the selected photos; your own tags stay"), Run = () => Do(RemoveAutoTags_Click) },
-            new() { Label = Tr("Find people"), Glyph = AppIcons.FindPeople, Group = CommandGroup.Describe, Enabled = Any, Gated = true,
+            new() { Label = Tr("Find people"), Glyph = AppIcons.FindPeople, Group = CommandGroup.Describe, Enabled = p => p.Any(i => !i.IsVideo), Gated = true,
                     Tip = Tr("Find people in the selected photos"), Run = () => Do(FindPeople_Click) },
             new() { Label = Tr("Add a person…"), Glyph = "\uE8FA", Group = CommandGroup.Describe, Enabled = Any,
                     Tip = Tr("Add a person to the selected photos, without marking a face"), Run = () => Do(AddPerson_Click) },
