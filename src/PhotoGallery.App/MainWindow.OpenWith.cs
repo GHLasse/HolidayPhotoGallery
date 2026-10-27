@@ -151,15 +151,25 @@ public sealed partial class MainWindow
         FitViewerToolbar(); // the app names may not fit beside the other labels
     }
 
-    private static async Task<Microsoft.UI.Xaml.Media.ImageSource?> AppIconAsync(string exe)
+    /// <summary>The icon of a program (its path) or of a Store app (its app id); null keeps the pencil icon.</summary>
+    private static async Task<Microsoft.UI.Xaml.Media.ImageSource?> AppIconAsync(string app)
     {
         try
         {
-            return File.Exists(exe) ? await ImageLoader.LoadShellThumbnailAsync(exe, 32) : null;
+            if (File.Exists(app) && await ImageLoader.LoadShellThumbnailAsync(app, 32) is { } thumbnail)
+                return thumbnail;
         }
         catch (Exception)
         {
-            return null; // The button keeps a pencil icon.
+            // A Store app's program can't be read from its folder; the shell still knows its icon.
+        }
+        try
+        {
+            return await AssocHandlers.IconAsync(app, 32) is { } icon ? await ImageLoader.ToImageSourceAsync(icon) : null;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 

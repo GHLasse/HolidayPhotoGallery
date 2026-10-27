@@ -50,6 +50,52 @@ internal static class AssocHandlers
         object BindToHandler(nint bindContext, ref Guid handler, ref Guid riid);
     }
 
+    [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItemImageFactory
+    {
+        void GetImage(NativeSize size, int flags, out nint bitmap);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeSize(int cx, int cy)
+    {
+        public int Cx = cx, Cy = cy;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BitmapHeader
+    {
+        public int Size, Width, Height;
+        public short Planes, BitCount;
+        public int Compression, SizeImage, XPelsPerMeter, YPelsPerMeter, ClrUsed, ClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BitmapInfo
+    {
+        public int Type, Width, Height, WidthBytes;
+        public short Planes, BitsPixel;
+        public nint Bits;
+    }
+
+    private static readonly Guid IID_IShellItemImageFactory = new("bcc18b79-ba16-442f-80c4-8a59c30c463b");
+    private const int SIIGBF_BIGGERSIZEOK = 0x1, SIIGBF_ICONONLY = 0x4;
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetObject(nint bitmap, int size, out BitmapInfo info);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDIBits(nint dc, nint bitmap, uint start, uint lines, [Out] byte[] bits, ref BitmapHeader header, uint usage);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(nint handle);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetDC(nint window);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(nint window, nint dc);
+
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
     private static extern IEnumAssocHandlers SHAssocEnumHandlers(string extension, int filter);
 
@@ -92,6 +138,70 @@ internal static class AssocHandlers
         handler.Invoke(data);
         return true;
     });
+
+    /// <summary>
+    /// The app's icon as Explorer shows it, for a program's path or a Store app's id (shown through
+    /// the shell's Apps folder, where packaged apps such as Affinity Photo from the Store live); null
+    /// when Windows has none. Upright BGRA with straight alpha.
+    /// </summary>
+    public static Task<Imaging.DecodedImage?> IconAsync(string appName, int size) => RunOnStaThread(() =>
+    {
+        try
+        {
+            var parsing = Path.IsPathRooted(appName) ? appName : @"shell:AppsFolder\" + appName;
+            Guid factoryId = IID_IShellItemImageFactory;
+            var factory = (IShellItemImageFactory)SHCreateItemFromParsingName(parsing, 0, ref factoryId);
+            factory.GetImage(new NativeSize(size, size), SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, out var bitmap);
+            try
+            {
+                return Pixels(bitmap);
+            }
+            finally
+            {
+                DeleteObject(bitmap);
+            }
+        }
+        catch (Exception ex) when (ex is COMException or InvalidCastException or FileNotFoundException or ArgumentException)
+        {
+            return null;
+        }
+    });
+
+    /// <summary>A 32-bit bitmap's pixels, top row first, with the shell's premultiplied alpha undone.</summary>
+    private static Imaging.DecodedImage? Pixels(nint bitmap)
+    {
+        if (GetObject(bitmap, Marshal.SizeOf<BitmapInfo>(), out var info) == 0 || info.Width <= 0 || info.Height == 0)
+            return null;
+        int width = info.Width, height = Math.Abs(info.Height);
+        var header = new BitmapHeader
+        {
+            Size = Marshal.SizeOf<BitmapHeader>(), Width = width, Height = -height, Planes = 1, BitCount = 32,
+        };
+        var pixels = new byte[width * height * 4];
+        var dc = GetDC(0);
+        try
+        {
+            if (GetDIBits(dc, bitmap, 0, (uint)height, pixels, ref header, 0) == 0)
+                return null;
+        }
+        finally
+        {
+            ReleaseDC(0, dc);
+        }
+        var anyAlpha = false;
+        for (var i = 3; i < pixels.Length && !anyAlpha; i += 4)
+            anyAlpha = pixels[i] != 0;
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            var a = pixels[i + 3];
+            if (!anyAlpha)
+                pixels[i + 3] = 255; // an old-style bitmap without transparency
+            else if (a is > 0 and < 255)
+                for (var c = 0; c < 3; c++)
+                    pixels[i + c] = (byte)Math.Min(255, pixels[i + c] * 255 / a);
+        }
+        return new Imaging.DecodedImage(pixels, width, height);
+    }
 
     private static IEnumerable<IAssocHandler> Enumerate(string extension)
     {
