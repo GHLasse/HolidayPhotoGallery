@@ -1012,7 +1012,7 @@
                 <Button Click="FindPeopleInAll_Click" local:Busy.Gate="True"
                         ToolTipService.ToolTip="{local:Loc Text='Find the people in your photos on this PC and name them'}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE716;" FontSize="14" />
+                        <Viewbox Width="14" Height="14"><PathIcon x:Name="FindPeopleInAllIcon" Width="20" Height="20" /></Viewbox>
                         <TextBlock Text="{local:Loc Text='Find people in all photos shown'}" />
                     </StackPanel>
                 </Button>
@@ -1056,8 +1056,27 @@
                            Visibility="{x:Bind ViewModel.Editor.HasSelection, Mode=OneWay}" />
                 <!-- SD/HD/Full HD/4K/8K and HDR, filled from code (MainWindow.Details.cs). -->
                 <StackPanel x:Name="QualityBadges" Orientation="Horizontal" Spacing="6" Visibility="Collapsed" />
-                <TextBlock Text="{x:Bind ViewModel.Editor.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{x:Bind ViewModel.Editor.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <!-- The GPS position, with "Look up place" beside it while the photo has no place names yet. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                Visibility="{x:Bind local:Ui.VisibleIfText(ViewModel.Editor.Position), Mode=OneWay}">
+                        <TextBlock Text="{x:Bind ViewModel.Editor.Position, Mode=OneWay}" IsTextSelectionEnabled="True" VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Button Click="AddPlaceNames_Click" local:Busy.Gate="True" Padding="6,2" VerticalAlignment="Center"
+                                Visibility="{x:Bind ViewModel.Editor.CanLookUpPlace, Mode=OneWay}"
+                                ToolTipService.ToolTip="{local:Loc Text='Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files'}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Viewbox Width="14" Height="14"><PathIcon x:Name="LookUpPlaceIcon" Width="20" Height="20" /></Viewbox>
+                                <TextBlock Text="{local:Loc Text='Look up place'}" FontSize="12" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ViewModel.Editor.Folder, Mode=OneWay}" TextWrapping="Wrap"
+                               Visibility="{x:Bind local:Ui.VisibleIfText(ViewModel.Editor.Folder), Mode=OneWay}" IsTextSelectionEnabled="True"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
                 <!-- Camera, lens, exposure and author, read from the file when opened; which ones in Settings › App. -->
                 <Expander x:Name="MoreDetailsExpander" Header="{local:Loc Text='More details'}"
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
@@ -1114,7 +1133,7 @@
                             <Button Grid.Column="1" Click="AutoTag_Click" VerticalAlignment="Stretch" local:Busy.Gate="True"
                                     AutomationProperties.Name="{local:Loc Text='Auto-tag'}"
                                     ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list'}">
-                                <FontIcon Glyph="&#xE8EC;" FontSize="16" />
+                                <Viewbox Width="16" Height="16"><PathIcon x:Name="AutoTagIcon" Width="20" Height="20" /></Viewbox>
                             </Button>
                         </Grid>
                         <TextBlock x:Name="TagHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

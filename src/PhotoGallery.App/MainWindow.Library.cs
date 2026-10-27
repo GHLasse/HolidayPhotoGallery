@@ -38,8 +38,8 @@ public sealed partial class MainWindow
             new(Tr("Look for changes"), "\uE72C", () => Do(Rescan_Click), "F5", Tr("Look for new, changed and deleted photos")),
             null,
             new(ViewModel.HasDuplicates ? Tr("Go through duplicates ({0:N0} groups)", ViewModel.DuplicateCount) : Tr("Find duplicates"),
-                "\uE7AA", () => Do(FindDuplicatesInLibrary_Click), Tip: ViewModel.DuplicatesTip),
-            new(Tr("Find people in all photos shown"), "\uE716", () => Do(FindPeopleInAll_Click),
+                AppIcons.FindDuplicates, () => Do(FindDuplicatesInLibrary_Click), Tip: ViewModel.DuplicatesTip),
+            new(Tr("Find people in all photos shown"), AppIcons.FindPeople, () => Do(FindPeopleInAll_Click),
                 Tip: Tr("Find the people in your photos on this PC and name them")),
             new(unnamed > 0 ? Tr("Name the people found… ({0:N0} faces without a name)", unnamed) : Tr("Name the people found…"),
                 "\uE77B", () => Do(NamePeople_Click)),
@@ -71,7 +71,7 @@ public sealed partial class MainWindow
                 items.Add(new MenuFlyoutSeparator());
                 continue;
             }
-            var item = new MenuFlyoutItem { Text = job.Label, Icon = new FontIcon { Glyph = job.Glyph }, IsEnabled = job.Enabled };
+            var item = new MenuFlyoutItem { Text = job.Label, Icon = AppIcons.Make(job.Glyph), IsEnabled = job.Enabled };
             if (job.Keys is not null)
                 item.KeyboardAcceleratorTextOverride = job.Keys;
             if (job.Tip is not null)
