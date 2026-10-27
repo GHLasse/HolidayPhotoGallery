@@ -431,14 +431,8 @@
                     </Grid>
                 </Button>
             </Grid>
-            <!-- Adding and rescanning act on the folder list, so they sit on its heading, like in File Explorer. -->
-            <Grid Grid.Row="3" ColumnSpacing="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <!-- Import, Add a folder and Look for changes are in the Library menu; the pane only picks photos (Lasse, 2026-10-27). -->
+            <Grid Grid.Row="3">
                 <Button x:Name="FoldersHeading" Style="{StaticResource NavHeading}" Click="NavSection_Click">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -450,23 +444,6 @@
                         <TextBlock Grid.Column="1" Text="{local:Loc Text='Folders'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <FontIcon x:Name="FoldersChevron" Grid.Column="2" Glyph="&#xE70E;" FontSize="10" />
                     </Grid>
-                </Button>
-                <Button Grid.Column="1" Click="Import_Click" Padding="6" Background="Transparent" BorderThickness="0"
-                        local:Busy.Gate="True"
-                        AutomationProperties.Name="{local:Loc Text='Import'}"
-                        ToolTipService.ToolTip="{local:Loc Text='Import photos from a phone, camera or SD card (Ctrl+I)'}">
-                    <FontIcon Glyph="&#xE8B5;" FontSize="14" />
-                </Button>
-                <Button Grid.Column="2" Click="AddFolder_Click" Padding="6" Background="Transparent" BorderThickness="0"
-                        AutomationProperties.Name="{local:Loc Text='Add folder'}"
-                        ToolTipService.ToolTip="{local:Loc Text='Add a folder to the library'}">
-                    <FontIcon Glyph="&#xE8F4;" FontSize="14" />
-                </Button>
-                <Button Grid.Column="3" Click="Rescan_Click" Padding="6" Background="Transparent" BorderThickness="0"
-                        local:Busy.Gate="True"
-                        AutomationProperties.Name="{local:Loc Text='Look for changes'}"
-                        ToolTipService.ToolTip="{local:Loc Text='Look for new, changed and deleted photos (F5)'}">
-                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
                 </Button>
             </Grid>
             <Grid x:Name="FoldersContent" Grid.Row="4">
