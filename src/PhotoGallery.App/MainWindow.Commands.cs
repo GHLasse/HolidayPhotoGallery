@@ -35,6 +35,9 @@ public sealed partial class MainWindow
 
         public string? Tip { get; init; }
 
+        /// <summary>More words the command box (Ctrl+K) finds it by, e.g. "delete" for the Recycle Bin.</summary>
+        public string? Also { get; init; }
+
         /// <summary>The rotate-left icon is the rotate-right one mirrored.</summary>
         public bool Mirrored { get; init; }
 
@@ -82,20 +85,20 @@ public sealed partial class MainWindow
                     Tip = Tr("Reject the selected photos, or take the mark off. Nothing is deleted."), Run = () => _ = MarkAsync(ViewModel.ToggleRejectAsync) },
 
             // Look
-            new() { Label = Tr("Open large"), Glyph = "\uE740", Group = CommandGroup.Look, Keys = "E", Enabled = Any, InViewer = false,
+            new() { Label = Tr("Open large"), Also = Tr("view enlarge"), Glyph = "\uE740", Group = CommandGroup.Look, Keys = "E", Enabled = Any, InViewer = false,
                     Run = () => { if (SelectedPhotos is [var first, ..]) OpenViewer(first); } },
             new() { Label = Tr("Compare"), Glyph = "\uE8A9", Group = CommandGroup.Look, Keys = "C", Enabled = Any, InViewer = false,
                     Tip = Tr("Show 1 to 4 selected photos side by side to rate them"), Run = () => OpenCompare(SelectedPhotos) },
-            new() { Label = Tr("Rotate left"), Glyph = "\uE7AD", Mirrored = true, Group = CommandGroup.Look, Keys = "Ctrl+,", Enabled = Any,
+            new() { Label = Tr("Rotate left"), Also = Tr("turn"), Glyph = "\uE7AD", Mirrored = true, Group = CommandGroup.Look, Keys = "Ctrl+,", Enabled = Any,
                     Run = () => Do(IsViewerOpen ? (RoutedEventHandler)ViewerRotateLeft_Click : RotateLeft_Click) },
-            new() { Label = Tr("Rotate right"), Glyph = "\uE7AD", Group = CommandGroup.Look, Keys = "Ctrl+.", Enabled = Any,
+            new() { Label = Tr("Rotate right"), Also = Tr("turn"), Glyph = "\uE7AD", Group = CommandGroup.Look, Keys = "Ctrl+.", Enabled = Any,
                     Run = () => Do(IsViewerOpen ? (RoutedEventHandler)ViewerRotateRight_Click : RotateRight_Click) },
 
             // Describe
-            new() { Label = Tr("Look up place"), Glyph = "\uE707", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
+            new() { Label = Tr("Look up place"), Also = Tr("location address city country"), Glyph = "\uE707", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files"),
                     Run = () => Do(AddPlaceNames_Click) },
-            new() { Label = Tr("Auto-tag"), Glyph = "\uE8EC", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
+            new() { Label = Tr("Auto-tag"), Also = Tr("keywords AI recognise"), Glyph = "\uE8EC", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Recognise what is in the selected photos on this PC and add tags from your tag list"), Run = () => Do(AutoTag_Click) },
             new() { Label = Tr("Remove auto tags"), Glyph = "\uE75C", Group = CommandGroup.Describe, Enabled = Any, Gated = true,
                     Tip = Tr("Remove the tags auto-tagging added to the selected photos; your own tags stay"), Run = () => Do(RemoveAutoTags_Click) },
@@ -103,7 +106,7 @@ public sealed partial class MainWindow
                     Tip = Tr("Find people in the selected photos"), Run = () => Do(FindPeople_Click) },
             new() { Label = Tr("Add a person…"), Glyph = "\uE8FA", Group = CommandGroup.Describe, Enabled = Any,
                     Tip = Tr("Add a person to the selected photos, without marking a face"), Run = () => Do(AddPerson_Click) },
-            new() { Label = Tr("Adjust date and time…"), Glyph = "\uEC92", Group = CommandGroup.Describe, Keys = "Ctrl+Shift+D", Enabled = Any,
+            new() { Label = Tr("Adjust date and time…"), Also = Tr("time zone shift timestamp"), Glyph = "\uEC92", Group = CommandGroup.Describe, Keys = "Ctrl+Shift+D", Enabled = Any,
                     Tip = Tr("Correct the date and time of the selected photos"), Run = () => Do(ShiftDates_Click) },
             new() { Label = Tr("Copy details"), Glyph = "\uE779", Group = CommandGroup.Describe, Keys = "Ctrl+Shift+C", Enabled = One,
                     Tip = Tr("Copy the details of the photo (location, date, camera, tags …)"), Run = () => Do(CopyDetails_Click) },
@@ -119,7 +122,7 @@ public sealed partial class MainWindow
             new() { Label = Tr("Upload to OneDrive"), Glyph = "\uE753", Group = CommandGroup.Send, Enabled = Any,
                     LabelFor = p => p.Count > 1 ? Tr("Upload {0} photos to OneDrive", p.Count) : Tr("Upload to OneDrive"),
                     Run = () => Do(UploadPhotosToOneDrive_Click) },
-            new() { Label = Tr("Share…"), Glyph = "\uE72D", Group = CommandGroup.Send, Enabled = Any,
+            new() { Label = Tr("Share…"), Also = Tr("send email"), Glyph = "\uE72D", Group = CommandGroup.Send, Enabled = Any,
                     Tip = Tr("Send the photos with another app or to a nearby PC, as Share does in File Explorer"), Run = () => Do(Share_Click) },
             new() { Label = Tr("Open with…"), Glyph = "\uE7AC", Group = CommandGroup.Send, Enabled = One,
                     Tip = Tr("Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Back to original still works."),
@@ -128,7 +131,7 @@ public sealed partial class MainWindow
             // Organise
             new() { Label = Tr("Rename…"), Glyph = "\uE8AC", Group = CommandGroup.Organise, Keys = "F2", Enabled = Any, Gated = true, InViewer = false,
                     Tip = Tr("Rename the selected photos with a name pattern such as date and counter"), Run = () => Do(RenamePhotos_Click) },
-            new() { Label = Tr("Duplicate"), Glyph = "\uE792", Group = CommandGroup.Organise, Keys = "Ctrl+D", Enabled = Any, Gated = true,
+            new() { Label = Tr("Duplicate"), Also = Tr("copy"), Glyph = "\uE792", Group = CommandGroup.Organise, Keys = "Ctrl+D", Enabled = Any, Gated = true,
                     Tip = Tr("Make a copy of each photo next to it, with all its details"), Run = () => _ = DuplicateAsync() },
             new() { Label = Tr("Copy files"), Glyph = "\uE8C8", Group = CommandGroup.Organise, Keys = "Ctrl+C", Enabled = Any,
                     Tip = Tr("Copy the photo files, to paste them in File Explorer, another app or another folder here"), Run = () => _ = CopyFilesAsync() },
@@ -137,7 +140,7 @@ public sealed partial class MainWindow
                     Tip = Tr("Copy the files from the clipboard into the folder shown"), Run = () => _ = PasteFilesAsync() },
             new() { Label = Tr("Move to folder…"), Glyph = "\uE8DE", Group = CommandGroup.Organise, Enabled = Any, Gated = true,
                     Tip = Tr("Move the selected photos into another folder of your library"), Run = () => _ = MoveToFolderAsync() },
-            new() { Label = Tr("Make private"), Glyph = "\uE72E", Group = CommandGroup.Organise, Enabled = Any,
+            new() { Label = Tr("Make private"), Also = Tr("hide"), Glyph = "\uE72E", Group = CommandGroup.Organise, Enabled = Any,
                     LabelFor = p => SelectionIsPrivate(p) ? Tr("Not private any more") : Tr("Make private"),
                     Tip = Tr("Hide the photos until private mode is on"), Run = () => Do(PhotosPrivate_Click) },
             new() { Label = Tr("Use as album cover"), Glyph = "\uE8B9", Group = CommandGroup.Organise,
@@ -146,7 +149,7 @@ public sealed partial class MainWindow
                         ? Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album))
                         : Tr("Use as album cover (select one photo in an album)"),
                     Run = () => Do(UseAsAlbumCover_Click) },
-            new() { Label = Tr("Move to the Recycle Bin…"), Glyph = "\uE74D", Group = CommandGroup.Organise, Keys = "Del", Enabled = Any, Gated = true,
+            new() { Label = Tr("Move to the Recycle Bin…"), Also = Tr("delete remove trash"), Glyph = "\uE74D", Group = CommandGroup.Organise, Keys = "Del", Enabled = Any, Gated = true,
                     Tip = Tr("Move the selected photos to the Recycle Bin, from where they can be restored"), Run = () => _ = RecycleSelectedAsync() },
             new() { Label = Tr("Show in folder"), Glyph = "\uE838", Group = CommandGroup.Organise, Enabled = One,
                     Tip = Tr("Open the folder in File Explorer with the photo selected"), Run = () => Do(ShowInFolderMenu_Click) },
@@ -362,11 +365,18 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// The keys of the command list that are not single letters (those are in Root_KeyDown): Ctrl+C, Ctrl+V,
-    /// Ctrl+D, Ctrl+Shift+D, Ctrl+I, Ctrl+1–3, Del and F5, and in the viewer R, Ctrl+U and the rotate keys.
+    /// Ctrl+D, Ctrl+Shift+D, Ctrl+I, Ctrl+K, Ctrl+1–3, Del and F5, and in the viewer R, Ctrl+U and the rotate keys.
     /// True when the key was used. Typing in a box keeps its own Ctrl+C and Ctrl+V.
     /// </summary>
     private bool HandleCommandKeys(KeyRoutedEventArgs e)
     {
+        // The command box opens from anywhere, even while typing in the search box.
+        if (e.Key == VirtualKey.K && IsDown(VirtualKey.Control) && !IsDown(VirtualKey.Shift) && !IsDown(VirtualKey.Menu))
+        {
+            e.Handled = true;
+            _ = ShowCommandBoxAsync();
+            return true;
+        }
         if (IsTyping() || IsDown(VirtualKey.Menu) || IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows))
             return false;
         var ctrl = IsDown(VirtualKey.Control);

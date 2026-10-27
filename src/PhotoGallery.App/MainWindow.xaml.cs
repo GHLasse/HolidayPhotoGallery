@@ -548,32 +548,48 @@ public sealed partial class MainWindow : Window
 
     private bool _showingShortcuts;
 
-    /// <summary>The keyboard shortcuts as a two-column list, for the ? dialog and the Settings tab.</summary>
-    private static Grid ShortcutList()
-    {
-        (string Keys, string What)[] shortcuts =
+    /// <summary>The keyboard shortcuts in groups, for the ? dialog, the Settings tab and the command box.</summary>
+    private static (string Group, (string Keys, string What)[] Keys)[] Shortcuts() =>
+    [
+        (Tr("Move around"),
         [
-            ("G", Tr("Back to the grid")),
+            ("← →", Tr("Previous or next photo in the viewer and compare")),
+            ("W A S D", Tr("Like the arrow keys: move in the grid, previous or next photo in the viewer and compare")),
             (Tr("E or Enter"), Tr("Show the photo large (Enter with several photos: compare them)")),
+            ("G", Tr("Back to the grid")),
+            ("Esc", Tr("Close the viewer or compare")),
+            ("Tab", Tr("Next photo in compare")),
+            (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
+        ]),
+        (Tr("Views and panes"),
+        [
+            ("Ctrl+1  2  3", Tr("Library, Map or People")),
             ("C", Tr("Compare the selected photos")),
             ("M", Tr("Show or hide the map")),
+            ("I", Tr("Show or hide the info pane")),
             ("Tab", Tr("Hide or show the side panes")),
             ("Shift+Tab", Tr("Hide or show the side panes and the filter bar")),
-            ("I", Tr("Show or hide the info pane")),
             ("L", Tr("Dim the room around the photo in the viewer (press again for black)")),
+            ("F11", Tr("Full screen")),
             ("Ctrl+E  Ctrl+F", Tr("Search")),
-            ("Ctrl+1  2  3", Tr("Library, Map or People")),
+        ]),
+        (Tr("Mark"),
+        [
             ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
             ("P", Tr("Flag or unflag the selected photos")),
             ("X", Tr("Reject the selected photos, or take the mark off")),
-            ("← →", Tr("Previous or next photo in the viewer and compare")),
-            ("W A S D", Tr("Like the arrow keys: move in the grid, previous or next photo in the viewer and compare")),
-            (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
-            ("Tab", Tr("Next photo in compare")),
+        ]),
+        (Tr("Edit and describe"),
+        [
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
             ("Ctrl+Shift+D", Tr("Adjust the date and time of the selected photos")),
+            ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
+            ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
+        ]),
+        (Tr("Files"),
+        [
             ("F2", Tr("Rename the selected photos")),
             ("Ctrl+C", Tr("Copy the photo files, to paste them in File Explorer or another folder")),
             ("Ctrl+V", Tr("Paste copied photo files into the folder shown")),
@@ -581,50 +597,91 @@ public sealed partial class MainWindow : Window
             ("Del", Tr("Move the selected photos to the Recycle Bin (asks first)")),
             ("Ctrl+I", Tr("Import from a phone, camera or SD card")),
             ("F5", Tr("Look for new, changed and deleted photos")),
-            ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
-            ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
-            ("F11", Tr("Full screen")),
-            ("Esc", Tr("Close the viewer or compare")),
+        ]),
+        (Tr("Help"),
+        [
+            ("Ctrl+K", Tr("Find any command by typing a few letters of its name")),
             (Tr("? or F1"), Tr("This list")),
-        ];
-        var grid = new Grid { ColumnSpacing = 24, RowSpacing = 8 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < shortcuts.Length; i++)
+        ]),
+    ];
+
+    /// <summary>The shortcuts as lists under group headings, side by side in <paramref name="columns"/> columns.</summary>
+    private static Grid ShortcutList(int columns = 1)
+    {
+        var groups = Shortcuts();
+        var stacks = new StackPanel[columns];
+        var outer = new Grid { ColumnSpacing = 40 };
+        for (var c = 0; c < columns; c++)
         {
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var keys = new TextBlock { Text = shortcuts[i].Keys, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
-            var what = new TextBlock { Text = shortcuts[i].What, TextWrapping = TextWrapping.Wrap };
-            Grid.SetRow(keys, i);
-            Grid.SetRow(what, i);
-            Grid.SetColumn(what, 1);
-            grid.Children.Add(keys);
-            grid.Children.Add(what);
+            outer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            stacks[c] = new StackPanel { Spacing = 20 };
+            Grid.SetColumn(stacks[c], c);
+            outer.Children.Add(stacks[c]);
         }
-        return grid;
+
+        // Each group goes to the column that is shortest so far, so the columns end about level.
+        var lengths = new int[columns];
+        foreach (var (title, keys) in groups)
+        {
+            var column = Array.IndexOf(lengths, lengths.Min());
+            lengths[column] += keys.Length + 2;
+            var grid = new Grid { ColumnSpacing = 24, RowSpacing = 8 };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (var i = 0; i < keys.Length; i++)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var key = new TextBlock { Text = keys[i].Keys, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+                var what = new TextBlock { Text = keys[i].What, TextWrapping = TextWrapping.Wrap };
+                Grid.SetRow(key, i);
+                Grid.SetRow(what, i);
+                Grid.SetColumn(what, 1);
+                grid.Children.Add(key);
+                grid.Children.Add(what);
+            }
+            stacks[column].Children.Add(new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = title, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
+                    grid,
+                },
+            });
+        }
+        return outer;
     }
 
     private async Task ShowShortcutsAsync()
     {
-        if (_showingShortcuts)
+        if (_showingShortcuts || IsDialogOpen())
             return;
-        var grid = ShortcutList();
+        var grid = ShortcutList(columns: 2);
         _showingShortcuts = true;
         try
         {
-            await new ContentDialog
+            var dialog = new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
                 Title = Tr("Keyboard shortcuts"),
-                Content = new ScrollViewer { Content = grid, MaxHeight = 520 },
+                Content = new ScrollViewer { Content = grid, MaxHeight = 560 },
+                PrimaryButtonText = Tr("Find a command… (Ctrl+K)"),
                 CloseButtonText = Tr("Close"),
-            }.ShowThemedAsync();
+                DefaultButton = ContentDialogButton.Close,
+            };
+            dialog.Resources["ContentDialogMaxWidth"] = 960.0;
+            if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
+                await ShowCommandBoxAsync();
         }
         finally
         {
             _showingShortcuts = false;
         }
     }
+
+    // Only one dialog can be open at a time; ShowAsync throws for a second one.
+    private bool IsDialogOpen() =>
+        Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(Root.XamlRoot).Any(p => p.Child is ContentDialog);
 
     // ---- Flags ----
 
@@ -1364,7 +1421,7 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
 
-    private async Task ShowSettingsAsync(CloudService? cloudTab = null, bool tagsTab = false)
+    private async Task ShowSettingsAsync(CloudService? cloudTab = null, string? tab = null)
     {
         // Tagging tab
         var language = new ComboBox { Header = Tr("Language of the tags"), MinWidth = 160 };
@@ -1664,8 +1721,7 @@ public sealed partial class MainWindow : Window
                 pages[i].Page.Visibility = i == tabs.SelectedIndex ? Visibility.Visible : Visibility.Collapsed;
         };
         tabs.SelectedIndex = cloudTab is not null ? Array.FindIndex(pages, p => p.Page == linked)
-            : tagsTab ? Array.FindIndex(pages, p => p.Page == tagsPage)
-            : 0;
+            : Math.Max(0, Array.FindIndex(pages, p => p.Text == tab));
 
         var pageArea = new Grid { MinHeight = 480, Width = 580 };
         foreach (var page in pages)

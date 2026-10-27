@@ -85,6 +85,12 @@
             </TitleBar.Content>
             <TitleBar.RightHeader>
                 <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,0,4,0" VerticalAlignment="Center">
+                    <!-- The command box: find any command by name, with its key (Ctrl+K; ? lists all keys). -->
+                    <Button Padding="8" Background="Transparent" BorderThickness="0" Click="CommandBox_Click"
+                            ToolTipService.ToolTip="{local:Loc Text='Find a command by name (Ctrl+K). All keys: ?'}"
+                            AutomationProperties.Name="{local:Loc Text='Find a command'}">
+                        <FontIcon Glyph="&#xE765;" FontSize="16" />
+                    </Button>
                     <!-- Private mode is on (P-1): private photos show. One click hides them again. -->
                     <Button Padding="8" Background="Transparent" BorderThickness="0" Click="PrivateModeOff_Click"
                             Visibility="{x:Bind ViewModel.IsPrivateMode, Mode=OneWay}"
