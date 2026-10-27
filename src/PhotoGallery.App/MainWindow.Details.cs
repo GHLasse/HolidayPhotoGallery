@@ -108,23 +108,50 @@ public sealed partial class MainWindow
         if (item.IsVideo && item.FrameRateText.Length > 0)
             QualityBadges.Children.Add(QualityBadge(item.FrameRateText, Tr("Frames per second: {0:0.##}", item.Photo.FrameRate!.Value)));
         if (item.IsLive)
-            QualityBadges.Children.Add(QualityBadge("LIVE", Tr("Live Photo: its short clip is kept with it")));
+            QualityBadges.Children.Add(QualityBadge(LivePhotoIcon(), Tr("Live Photo: its short clip is kept with it")));
         if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
             QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
     }
 
-    private static Border QualityBadge(string label, string tooltip)
+    private static Border QualityBadge(string label, string tooltip) =>
+        QualityBadge(new TextBlock { Text = label, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }, tooltip);
+
+    private static Border QualityBadge(UIElement content, string tooltip)
     {
         var badge = new Border
         {
             CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(10, 2, 10, 2),
+            Padding = content is TextBlock ? new Thickness(10, 2, 10, 2) : new Thickness(8, 2, 8, 2),
             BorderThickness = new Thickness(1),
             BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush"),
-            Child = new TextBlock { Text = label, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+            Child = content,
         };
         ToolTipService.SetToolTip(badge, tooltip);
         return badge;
+    }
+
+    /// <summary>The Live Photo mark as on the iPhone: a dot, a ring around it and an outer ring of small dots.</summary>
+    private static Grid LivePhotoIcon()
+    {
+        var ink = ThemeBrush("TextFillColorPrimaryBrush");
+        Microsoft.UI.Xaml.Shapes.Ellipse Circle(double size) => new()
+        {
+            Width = size,
+            Height = size,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var dot = Circle(5);
+        dot.Fill = ink;
+        var ring = Circle(10);
+        ring.Stroke = ink;
+        ring.StrokeThickness = 1.5;
+        var dots = Circle(17);
+        dots.Stroke = ink;
+        dots.StrokeThickness = 1.5;
+        dots.StrokeDashCap = Microsoft.UI.Xaml.Media.PenLineCap.Round;
+        dots.StrokeDashArray = new Microsoft.UI.Xaml.Media.DoubleCollection { 0, 1.6 }; // round caps on zero-length dashes draw dots
+        return new Grid { Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center, Children = { dots, ring, dot } };
     }
 
     private async Task ShowMoreDetailsAsync(bool force = false)
