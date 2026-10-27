@@ -398,8 +398,8 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE71D;" FontSize="14" />
                         <TextBlock Text="{local:Loc Text='Library'}" VerticalAlignment="Center" />
-                        <InfoBadge Value="{x:Bind ViewModel.DuplicateCount, Mode=OneWay}"
-                                   Visibility="{x:Bind ViewModel.HasDuplicates, Mode=OneWay}" />
+                        <!-- A dot while something waits in the menu (duplicates, unnamed faces, damaged files); the counts are in the menu. -->
+                        <InfoBadge VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasLibraryWork, Mode=OneWay}" />
                         <FontIcon Glyph="&#xE70D;" FontSize="10" />
                     </StackPanel>
                 </Button>

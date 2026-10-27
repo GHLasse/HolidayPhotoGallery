@@ -566,6 +566,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = FindFacesInNewPhotosAsync();
         _ = CheckFilesInBackgroundAsync();
         _ = FindDuplicatesInBackgroundAsync();
+        _ = RefreshLibraryCountsAsync();
     }
 
     private async Task SearchSoonAsync()

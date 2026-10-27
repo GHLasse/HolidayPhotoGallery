@@ -13,8 +13,9 @@ public sealed partial class MainWindow
 {
     private MenuFlyout? _libraryMenu;
 
-    private void LibraryMenu_Click(object sender, RoutedEventArgs e)
+    private async void LibraryMenu_Click(object sender, RoutedEventArgs e)
     {
+        await ViewModel.RefreshLibraryCountsAsync(); // a quick count, so the menu says what waits now
         _libraryMenu ??= new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
         FillLibraryMenu(_libraryMenu.Items);
         _libraryMenu.ShowAt((FrameworkElement)sender);
@@ -28,17 +29,22 @@ public sealed partial class MainWindow
     {
         void Do(RoutedEventHandler handler) => handler(this, new RoutedEventArgs());
         var rejected = ViewModel.ShownRejectedPhotos.Count;
+        var unnamed = ViewModel.UnnamedFaceCount;
+        var damaged = ViewModel.DamagedCount;
         return
         [
             new(Tr("Import from a device…"), "\uE8B5", () => Do(Import_Click), "Ctrl+I", Tr("Import photos from a phone, camera or SD card")),
             new(Tr("Add a folder…"), "\uE8F4", () => Do(AddFolder_Click), Tip: Tr("Add a folder to the library")),
             new(Tr("Look for changes"), "\uE72C", () => Do(Rescan_Click), "F5", Tr("Look for new, changed and deleted photos")),
             null,
-            new(ViewModel.HasDuplicates ? Tr("Find duplicates ({0} found)", ViewModel.DuplicateCount) : Tr("Find duplicates"),
+            new(ViewModel.HasDuplicates ? Tr("Go through duplicates ({0:N0} groups)", ViewModel.DuplicateCount) : Tr("Find duplicates"),
                 "\uE7AA", () => Do(FindDuplicatesInLibrary_Click), Tip: ViewModel.DuplicatesTip),
             new(Tr("Find people in all photos shown"), "\uE716", () => Do(FindPeopleInAll_Click),
                 Tip: Tr("Find the people in your photos on this PC and name them")),
-            new(Tr("Name the people found…"), "\uE77B", () => Do(NamePeople_Click)),
+            new(unnamed > 0 ? Tr("Name the people found… ({0:N0} faces without a name)", unnamed) : Tr("Name the people found…"),
+                "\uE77B", () => Do(NamePeople_Click)),
+            new(damaged > 0 ? Tr("Show damaged files ({0:N0})", damaged) : Tr("Show damaged files"), "\uE90F", ShowDamagedFiles,
+                Tip: Tr("Show only the photos whose file is damaged, to repair them"), Enabled: damaged > 0),
             new(Tr("Manage tags…"), "\uE8EC", () => _ = ShowSettingsAsync(tab: Tr("Tags")),
                 Tip: Tr("Rename, merge or remove tags in all your photos at once")),
             null,
@@ -46,6 +52,13 @@ public sealed partial class MainWindow
                 "\uE74D", () => Do(RecycleRejected_Click), Tip: Tr("The rejected photos shown now go to the Recycle Bin, from where they can be restored"),
                 Enabled: rejected > 0),
         ];
+    }
+
+    private void ShowDamagedFiles()
+    {
+        if (_workspace != Workspace.Library)
+            ShowWorkspace(Workspace.Library);
+        ViewModel.ShowDamagedFiles();
     }
 
     private void FillLibraryMenu(IList<MenuFlyoutItemBase> items)

@@ -215,7 +215,8 @@ public sealed partial class MainViewModel
         }
 
         ForgetMatcher();
-        var unnamed = await Task.Run(() => _index.GetAllFaces().Count(f => f.Person is null));
+        var unnamed = await Task.Run(_index.CountUnnamedFaces);
+        UnnamedFaceCount = unnamed;
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be looked at.") + " " + string.Join(" ", failures);
         Inform(looked == 0 && failures.Count == 0
             ? Tr("These photos were already looked at.")
