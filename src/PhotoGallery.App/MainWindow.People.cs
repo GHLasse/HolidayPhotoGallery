@@ -378,11 +378,16 @@ public sealed partial class MainWindow
 
     // ---- Naming groups of faces ----
 
+    // Faces whose group was skipped, so their group comes last the next time the dialog opens (until the app closes).
+    private readonly HashSet<long> _skippedFaces = [];
+
     private async void NamePeople_Click(object sender, RoutedEventArgs e)
     {
         if (WaitsForBusyWork())
             return;
-        var groups = await ViewModel.GroupUnnamedFacesAsync();
+        var found = await ViewModel.GroupUnnamedFacesAsync();
+        // Groups skipped earlier wait behind the others.
+        var groups = found.OrderBy(g => g.Faces.Count(f => _skippedFaces.Contains(f.Id)) * 2 >= g.Faces.Count).ToList();
         if (groups.Count == 0)
         {
             ViewModel.ErrorMessage = null;
@@ -432,7 +437,7 @@ public sealed partial class MainWindow
                 },
             },
             PrimaryButtonText = Tr("Name them"),
-            SecondaryButtonText = Tr("Skip"),
+            SecondaryButtonText = Tr("Skip for now"),
             CloseButtonText = Tr("Done"),
             DefaultButton = ContentDialogButton.Primary,
         };
@@ -495,10 +500,24 @@ public sealed partial class MainWindow
             _ = ViewModel.NameFacesAsync(chosen, name);
             Next(name);
         };
+        // The group's faces not yet named go to the end of the list, and come last next time too.
         dialog.SecondaryButtonClick += (_, args) =>
         {
             args.Cancel = true;
-            Next();
+            var group = groups[index];
+            var rest = group.Faces.Skip(start).ToList();
+            foreach (var face in rest)
+                _skippedFaces.Add(face.Id);
+            start = 0;
+            lastName = null;
+            if (index == groups.Count - 1)
+            {
+                dialog.Hide();
+                return;
+            }
+            groups.RemoveAt(index);
+            groups.Add(new FaceGroup(rest, () => group.Suggestion));
+            Show();
         };
         hide.Click += (_, _) =>
         {
