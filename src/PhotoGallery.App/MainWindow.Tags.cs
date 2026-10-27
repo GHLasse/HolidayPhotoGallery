@@ -179,7 +179,7 @@ public sealed partial class MainWindow
     {
         // The count on "Clear filters" points at filters set somewhere easy to overlook.
         var active = ViewModel.ActiveFilterCount;
-        var none = active > 0 && ViewModel.Photos.Count == 0 && !ViewModel.IsAlbumView;
+        var none = active > 0 && ViewModel.Photos.Count == 0 && !ViewModel.IsAlbumView && !ViewModel.IsLoading;
         NoMatchHint.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
         if (none)
             NoMatchText.Text = active == 1

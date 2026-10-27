@@ -244,6 +244,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(SortIndex));
                 OnPropertyChanged(nameof(HeaderText));
                 OnPropertyChanged(nameof(HeaderTip));
+                // The last folder's photos go at once, and the grid says it is loading until the new ones are
+                // there: in a big album they showed for a moment as if they belonged to the new one.
+                _switchingFolder = true;
+                Photos = [];
+                OnPropertyChanged(nameof(IsLoading));
                 _ = SearchAsync();
                 _ = CheckReadOnlyAsync();
             }
@@ -449,8 +454,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool HasLoaded { get; private set; }
 
-    /// <summary>The grid or the album view is still waiting for its first content.</summary>
-    public bool IsLoading => IsAlbumView ? !_albumsLoaded : !HasLoaded;
+    /// <summary>The grid or the album view is still waiting for its first content, or the grid for another folder’s photos.</summary>
+    public bool IsLoading => IsAlbumView ? !_albumsLoaded : !HasLoaded || _switchingFolder;
+
+    private bool _switchingFolder; // from choosing another folder or album until its photos are shown
 
     public string LoadingText => IsAlbumView ? Tr("Looking for albums…") : Tr("Loading the photos…");
 
@@ -618,7 +625,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var (tags, autoTagNames, cameras, people, dates, places) = counts;
 
         photos = FilterByCloud(photos);
+        var wasSwitching = _switchingFolder;
+        _switchingFolder = false; // before the photos change, so "no photos match" can show for an empty result
         Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
+        if (wasSwitching)
+            OnPropertyChanged(nameof(IsLoading));
         AutoTagNames = autoTagNames;
         UpdateTags(tags);
         UpdatePeople(people);
