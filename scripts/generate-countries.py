@@ -6,6 +6,10 @@ from babel.languages import get_official_languages
 main = {'en':'en','de':'de','es':'es','ar':'ar','zh-Hans':'zh_Hans'}
 extra = ['fr','it','nl','pt','pl','cs','sk','sv','da','nb','fi','hu','ro','hr','sl','el','ru','uk','tr','ja','ko','th','vi','id','he','bg','sr','lt','lv','et','is','ga','ca','ms','hi','fa','zh_Hant']
 en = Locale.parse('en').territories
+# Three-letter codes ("DEU"), which some apps write as the country code instead of two letters.
+from babel.core import get_global
+alpha3 = {two[0]: three for three, two in get_global('territory_aliases').items()
+          if len(three) == 3 and three.isalpha() and len(two) == 1 and len(two[0]) == 2}
 # Names other apps and older files use that the CLDR names don't cover.
 ALIASES = {
     'US': ['USA', 'United States of America', 'Vereinigte Staaten von Amerika'],
@@ -37,6 +41,8 @@ for code in sorted(en):
         n = Locale.parse(l).territories.get(code)
         if n and n.casefold() not in seen:
             seen.add(n.casefold()); also.append(n)
+    if code in alpha3:
+        entry['a3'] = alpha3[code]
     for n in ALIASES.get(code, []):
         if n.casefold() not in seen:
             seen.add(n.casefold()); also.append(n)

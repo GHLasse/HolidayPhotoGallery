@@ -70,8 +70,9 @@ public sealed partial class MapPanel : UserControl
             Web.CoreWebView2.Settings.AreDevToolsEnabled = false;
             Web.CoreWebView2.Settings.IsStatusBarEnabled = false;
             Web.WebMessageReceived += Web_WebMessageReceived;
-            // The map's labels follow the app's language (see map.html for which tiles that picks).
-            Web.Source = new Uri($"https://{HostName}/map.html?lang={Uri.EscapeDataString(Language)}");
+            // The map’s labels follow the app’s language (see map.html). Strings.Language in full: a bare "Language"
+            // here is the control’s own XAML language, which is Windows’ language.
+            Web.Source = new Uri($"https://{HostName}/map.html?lang={Uri.EscapeDataString(PhotoGallery.Core.Localization.Strings.Language)}");
         }
         catch (Exception ex)
         {

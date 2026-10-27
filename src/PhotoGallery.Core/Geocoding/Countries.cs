@@ -9,7 +9,7 @@ namespace PhotoGallery.Core.Geocoding;
 /// </summary>
 public static class Countries
 {
-    private sealed record Entry(Dictionary<string, string> Names, string[] Also);
+    private sealed record Entry(string Code, Dictionary<string, string> Names, string[] Also);
 
     private static readonly Lazy<(Dictionary<string, Entry> ByCode, Dictionary<string, string> CodeByName)> Data = new(Load);
 
@@ -22,8 +22,15 @@ public static class Countries
         if (Data.Value.CodeByName.TryGetValue(text, out var code))
             return code;
         // A code written where the name belongs.
-        return text.Length == 2 && Data.Value.ByCode.ContainsKey(text.ToUpperInvariant()) ? text.ToUpperInvariant() : null;
+        return Normalize(text);
     }
+
+    /// <summary>
+    /// The two-letter code ("DE") for a country code as found in a file, two letters or three ("DEU", which some
+    /// apps write); null when it is no known country.
+    /// </summary>
+    public static string? Normalize(string? code) =>
+        !string.IsNullOrWhiteSpace(code) && Data.Value.ByCode.TryGetValue(code.Trim(), out var entry) ? entry.Code : null;
 
     /// <summary>
     /// The country's name in <paramref name="language"/>: "en", "de", "es", "ar", "zh-Hans", or "local" for the
@@ -31,7 +38,7 @@ public static class Countries
     /// </summary>
     public static string? Name(string? code, string language)
     {
-        if (string.IsNullOrEmpty(code) || !Data.Value.ByCode.TryGetValue(code.ToUpperInvariant(), out var entry))
+        if (string.IsNullOrWhiteSpace(code) || !Data.Value.ByCode.TryGetValue(code.Trim(), out var entry))
             return null;
         return entry.Names.TryGetValue(language, out var name) ? name : entry.Names.GetValueOrDefault("en");
     }
@@ -47,14 +54,20 @@ public static class Countries
         {
             var names = new Dictionary<string, string>();
             string[] also = [];
+            string? alpha3 = null;
             foreach (var field in country.Value.EnumerateObject())
             {
                 if (field.Name == "also")
                     also = [.. field.Value.EnumerateArray().Select(v => v.GetString()!)];
+                else if (field.Name == "a3")
+                    alpha3 = field.Value.GetString();
                 else if (field.Value.GetString() is { } name)
                     names[field.Name] = name;
             }
-            byCode[country.Name] = new Entry(names, also);
+            var entry = new Entry(country.Name, names, also);
+            byCode[country.Name] = entry;
+            if (alpha3 is not null)
+                byCode.TryAdd(alpha3, entry);
             // The first country to claim a name keeps it (the list is in code order, and clashes are rare).
             foreach (var name in names.Values.Concat(also))
                 codeByName.TryAdd(name, country.Name);

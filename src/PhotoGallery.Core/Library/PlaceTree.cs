@@ -19,7 +19,7 @@ public static class PlaceTree
     {
         var countries = new List<PlaceCountry>();
         var rows = counts.Where(c => c.Country is not null)
-            .GroupBy(c => c.CountryCode ?? Countries.Code(c.Country) ?? "?" + c.Country!.ToUpperInvariant());
+            .GroupBy(c => Countries.Normalize(c.CountryCode) ?? Countries.Code(c.Country) ?? "?" + c.Country!.ToUpperInvariant());
         foreach (var country in rows)
         {
             // An unknown country (no code, a name not in the list): the name most of its photos use.
