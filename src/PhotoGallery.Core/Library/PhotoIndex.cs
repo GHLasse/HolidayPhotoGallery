@@ -442,6 +442,13 @@ public sealed partial class PhotoIndex : IDisposable
                 cmd.Parameters.AddWithValue("$country", query.Country);
             }
 
+            if (query.Countries is { Count: > 0 } countries)
+            {
+                where.Add($"p.country COLLATE NOCASE IN ({string.Join(", ", countries.Select((_, n) => $"$country{n}"))})");
+                for (var n = 0; n < countries.Count; n++)
+                    cmd.Parameters.AddWithValue($"$country{n}", countries[n]);
+            }
+
             if (!string.IsNullOrEmpty(query.City))
             {
                 where.Add("p.city = $city COLLATE NOCASE");
@@ -639,14 +646,15 @@ public sealed partial class PhotoIndex : IDisposable
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                SELECT NULLIF(country, '') AS c, NULLIF(city, '') AS t, COUNT(*)
-                FROM photos GROUP BY c COLLATE NOCASE, t COLLATE NOCASE
-                ORDER BY c IS NULL, c COLLATE NOCASE, t IS NULL, t COLLATE NOCASE;
+                SELECT NULLIF(country, '') AS c, NULLIF(city, '') AS t, COUNT(*), UPPER(NULLIF(country_code, '')) AS k
+                FROM photos GROUP BY c COLLATE NOCASE, t COLLATE NOCASE, k
+                ORDER BY c IS NULL, c COLLATE NOCASE, t IS NULL, t COLLATE NOCASE, k;
                 """;
             var result = new List<PlaceCount>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-                result.Add(new PlaceCount(reader.IsDBNull(0) ? null : reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2)));
+                result.Add(new PlaceCount(reader.IsDBNull(0) ? null : reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2),
+                                          reader.IsDBNull(3) ? null : reader.GetString(3)));
             return result;
         }
     }
@@ -829,6 +837,6 @@ public sealed partial class PhotoIndex : IDisposable
 public sealed record DateCount(int? Year, int? Month, int Count);
 
 /// <summary>How many photos were taken in a city; no country for photos without place names, no city when only the country is known.</summary>
-public sealed record PlaceCount(string? Country, string? City, int Count);
+public sealed record PlaceCount(string? Country, string? City, int Count, string? CountryCode = null);
 
 public sealed record FolderSummary(int Count, DateTime? From, DateTime? To, string? FirstPhoto);
