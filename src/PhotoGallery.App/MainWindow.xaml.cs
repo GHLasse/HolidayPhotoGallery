@@ -1638,6 +1638,9 @@ public sealed partial class MainWindow : Window
         });
         tags.Visibility = Visibility.Collapsed;
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
+
+        // Info tab: version and credits
+        var info = InfoPage();
         var languagePage = LanguagePage(out var chosenLanguage);
 
         // Which facts "More details" in the info pane shows, two columns of ticks.
@@ -1723,6 +1726,7 @@ public sealed partial class MainWindow : Window
             (Tr("Editing"), "\uE7A8", cropping),
             (Tr("Linked apps"), "\uE71B", linked),
             (Tr("Keyboard"), "\uE765", keyboard),
+            (Tr("Info"), "\uE946", info),
         ];
         var tabs = new ListView { SelectionMode = ListViewSelectionMode.Single, Width = 200 };
         foreach (var (text, glyph, _) in pages)
