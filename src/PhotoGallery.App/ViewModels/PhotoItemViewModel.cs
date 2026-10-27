@@ -70,8 +70,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     /// <summary>A Live Photo (its clip is hidden with it) shows "LIVE" in the info pane, as on the iPhone.</summary>
     public bool IsLive => LivePhotos.Has(Path);
 
-    /// <summary>A video's frame rate from 24 fps up for its quality badge, rounded as cameras name it (29.97 → "30fps"); else empty.</summary>
-    public string FrameRateText => Photo.FrameRate is >= 23.5 and var fps ? $"{Math.Round(fps):0}fps" : "";
+    /// <summary>A video's frame rate class for its quality badge (59 → "60fps", see PhotoQuality.FrameRateClass); else empty.</summary>
+    public string FrameRateText => Core.Metadata.PhotoQuality.FrameRateClass(Photo.FrameRate) ?? "";
 
     /// <summary>A video's length as 0:42 or 1:02:03; empty when it isn't known.</summary>
     public string DurationText => FormatDuration(Photo.Duration);

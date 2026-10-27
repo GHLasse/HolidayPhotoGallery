@@ -19,6 +19,20 @@ public static class PhotoQuality
         _ => "SD",
     };
 
+    /// <summary>
+    /// A video's frame rate as one of the usual classes, for a rough idea like the resolution class: 24, 30, 60,
+    /// 120 or 240 fps (25 counts as 24, 50 and 59.94 as 60). Null below 23.5 fps or when unknown.
+    /// </summary>
+    public static string? FrameRateClass(double? fps) => fps switch
+    {
+        null or < 23.5 => null,
+        < 27 => "24fps",
+        < 45 => "30fps",
+        < 90 => "60fps",
+        < 180 => "120fps",
+        _ => "240fps",
+    };
+
     // Gain maps (Google/Adobe "hdrgm", Apple's own), Apple's HDR headroom, and the transfer curve of HEIC/AVIF.
     private static readonly string[] Tags =
         ["-XMP-hdrgm:Version", "-XMP-apdi:AuxiliaryImageType", "-MakerNotes:HDRHeadroom", "-MakerNotes:HDRGain", "-TransferCharacteristics"];
