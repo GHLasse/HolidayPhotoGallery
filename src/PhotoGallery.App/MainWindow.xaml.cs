@@ -42,6 +42,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new SizeInt32(1500, 950));
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         SetUpFrame();
+        BuildSelectionBar();
 
         SetUpZoom();
         SetUpTimeline();
@@ -560,7 +561,8 @@ public sealed partial class MainWindow : Window
             ("Shift+Tab", Tr("Hide or show the side panes and the filter bar")),
             ("I", Tr("Show or hide the info pane")),
             ("L", Tr("Dim the room around the photo in the viewer (press again for black)")),
-            ("Ctrl+E", Tr("Search")),
+            ("Ctrl+E  Ctrl+F", Tr("Search")),
+            ("Ctrl+1  2  3", Tr("Library, Map or People")),
             ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
             ("P", Tr("Flag or unflag the selected photos")),
             ("X", Tr("Reject the selected photos, or take the mark off")),
@@ -569,7 +571,16 @@ public sealed partial class MainWindow : Window
             (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
             ("Tab", Tr("Next photo in compare")),
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
+            ("R", Tr("Crop the photo in the viewer")),
+            ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
+            ("Ctrl+Shift+D", Tr("Adjust the date and time of the selected photos")),
             ("F2", Tr("Rename the selected photos")),
+            ("Ctrl+C", Tr("Copy the photo files, to paste them in File Explorer or another folder")),
+            ("Ctrl+V", Tr("Paste copied photo files into the folder shown")),
+            ("Ctrl+D", Tr("Duplicate the selected photos")),
+            ("Del", Tr("Move the selected photos to the Recycle Bin (asks first)")),
+            ("Ctrl+I", Tr("Import from a phone, camera or SD card")),
+            ("F5", Tr("Look for new, changed and deleted photos")),
             ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
             ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
             ("F11", Tr("Full screen")),
@@ -1353,7 +1364,7 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
 
-    private async Task ShowSettingsAsync(CloudService? cloudTab = null)
+    private async Task ShowSettingsAsync(CloudService? cloudTab = null, bool tagsTab = false)
     {
         // Tagging tab
         var language = new ComboBox { Header = Tr("Language of the tags"), MinWidth = 160 };
@@ -1496,7 +1507,7 @@ public sealed partial class MainWindow : Window
                 backUp,
                 new TextBlock
                 {
-                    Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere."),
+                    Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Back to original still work after editing it elsewhere."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 processorOnly,
@@ -1624,12 +1635,12 @@ public sealed partial class MainWindow : Window
         // The tabs are listed down the left side; the pages share one cell so the dialog keeps its size.
         (string Text, string Glyph, FrameworkElement Page)[] pages =
         [
-            (Tr("App"), "\uE8B9", appPage),
+            (Tr("App"), "\uECAA", appPage),
             (Tr("Appearance"), "\uE790", appearance),
             (Tr("Tags"), "\uE8EC", tagsPage),
             (Tr("Dates and places"), "\uE787", datesAndPlaces),
             (Tr("Editing"), "\uE7A8", cropping),
-            (Tr("Linked apps"), "\uE753", linked),
+            (Tr("Linked apps"), "\uE71B", linked),
             (Tr("Keyboard"), "\uE765", keyboard),
         ];
         var tabs = new ListView { SelectionMode = ListViewSelectionMode.Single, Width = 200 };
@@ -1652,7 +1663,9 @@ public sealed partial class MainWindow : Window
             for (var i = 0; i < pages.Length; i++)
                 pages[i].Page.Visibility = i == tabs.SelectedIndex ? Visibility.Visible : Visibility.Collapsed;
         };
-        tabs.SelectedIndex = cloudTab is not null ? Array.FindIndex(pages, p => p.Page == linked) : 0;
+        tabs.SelectedIndex = cloudTab is not null ? Array.FindIndex(pages, p => p.Page == linked)
+            : tagsTab ? Array.FindIndex(pages, p => p.Page == tagsPage)
+            : 0;
 
         var pageArea = new Grid { MinHeight = 480, Width = 580 };
         foreach (var page in pages)
@@ -1818,11 +1831,11 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = Tr("Revert to the original?"),
+            Title = Tr("Back to the original?"),
             Content = edits == 1
                 ? Tr("The photo goes back to how it was before it was edited. Tags, rating and other details you changed are kept.")
                 : Tr("The photo goes back to how it was before all {0} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.", edits),
-            PrimaryButtonText = Tr("Revert"),
+            PrimaryButtonText = Tr("Back to original"),
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };

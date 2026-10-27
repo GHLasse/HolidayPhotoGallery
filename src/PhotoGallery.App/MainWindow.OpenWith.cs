@@ -115,30 +115,28 @@ public sealed partial class MainWindow
         }
     }
 
-    /// <summary>Shows a button with the app's icon for each favourite app, in the command bar and the viewer.</summary>
+    // The favourite apps' icons, for their items in the Send menus (MainWindow.Commands.cs).
+    private readonly List<Microsoft.UI.Xaml.Media.ImageSource?> _favouriteIcons = [];
+
+    /// <summary>Shows a button with the app's icon for each favourite app in the viewer; the Send menus list them too.</summary>
     private async Task ShowFavouriteAppsAsync()
     {
         var apps = ViewModel.FavouriteApps;
-        AppBarButton[] bar = [FavouriteApp1Button, FavouriteApp2Button];
         Button[] viewer = [ViewerFavourite1Button, ViewerFavourite2Button];
-        for (var i = 0; i < bar.Length; i++)
+        _favouriteIcons.Clear();
+        for (var i = 0; i < viewer.Length; i++)
         {
             if (i >= apps.Count)
             {
-                bar[i].Visibility = Visibility.Collapsed;
                 viewer[i].Visibility = Visibility.Collapsed;
                 continue;
             }
             var app = apps[i];
-            var tip = Tr("Open the selected photos in {0}. A copy is kept in .originals first, so Revert still works.", app.Name);
-            bar[i].Label = Tr("Edit in {0}", app.Name);
-            ToolTipService.SetToolTip(bar[i], tip);
-            ToolTipService.SetToolTip(viewer[i], tip);
-            bar[i].Visibility = Visibility.Visible;
+            ToolTipService.SetToolTip(viewer[i], Tr("Open the selected photos in {0}. A copy is kept in .originals first, so Back to original still works.", app.Name));
             viewer[i].Visibility = Visibility.Visible;
 
             var icon = await AppIconAsync(app.Path);
-            bar[i].Icon = icon is null ? new FontIcon { Glyph = "\uE70F" } : new ImageIcon { Source = icon };
+            _favouriteIcons.Add(icon);
             viewer[i].Content = new StackPanel
             {
                 Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal,

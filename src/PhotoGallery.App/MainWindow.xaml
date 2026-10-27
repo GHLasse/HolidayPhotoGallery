@@ -78,6 +78,7 @@
                                 QueryIcon="Find" TextChanged="SearchBox_TextChanged" QuerySubmitted="SearchBox_QuerySubmitted">
                     <AutoSuggestBox.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Control" Key="E" Invoked="SearchAccelerator_Invoked" />
+                        <KeyboardAccelerator Modifiers="Control" Key="F" Invoked="SearchAccelerator_Invoked" />
                     </AutoSuggestBox.KeyboardAccelerators>
                 </AutoSuggestBox>
             </Grid>
@@ -287,11 +288,11 @@
                     <DropDownButton x:Name="MissingFilter" VerticalAlignment="Center" ToolTipService.ToolTip="{local:Loc Text='Find photos that still need tags, people or a place on the map'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE9D5;" FontSize="14" />
-                            <TextBlock Text="{local:Loc Text='Missing'}" />
+                            <TextBlock Text="{local:Loc Text='Still to do'}" />
                         </StackPanel>
                         <DropDownButton.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                                <ToggleMenuFlyoutItem Text="{local:Loc Text='No tags (auto tags don’t count)'}" IsChecked="{x:Bind ViewModel.WithoutTags, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="{local:Loc Text='No tags of your own'}" IsChecked="{x:Bind ViewModel.WithoutTags, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No people named'}" IsChecked="{x:Bind ViewModel.WithoutPeople, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No location'}" IsChecked="{x:Bind ViewModel.WithoutLocation, Mode=TwoWay}" />
                                 <MenuFlyoutSeparator />
@@ -373,11 +374,30 @@
                 <!-- The headings stay at the top; the open tree is limited to the room left (MainWindow.Frame.cs). -->
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <Button Style="{StaticResource NavRailButton}" Click="ToggleNavPane_Click"
-                    AutomationProperties.Name="{local:Loc Text='Fold the pane into icons'}"
-                    ToolTipService.ToolTip="{local:Loc Text='Fold the pane into icons'}">
-                <FontIcon Glyph="&#xE700;" FontSize="16" />
-            </Button>
+            <Grid ColumnSpacing="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Style="{StaticResource NavRailButton}" Click="ToggleNavPane_Click"
+                        AutomationProperties.Name="{local:Loc Text='Fold the pane into icons'}"
+                        ToolTipService.ToolTip="{local:Loc Text='Fold the pane into icons'}">
+                    <FontIcon Glyph="&#xE700;" FontSize="16" />
+                </Button>
+                <!-- What works on the whole library: import, add, look for changes, duplicates, people, tags (MainWindow.Library.cs). -->
+                <Button Grid.Column="1" HorizontalAlignment="Right" Margin="0,0,8,0" Padding="8,4" Click="LibraryMenu_Click"
+                        Background="Transparent" BorderThickness="0"
+                        AutomationProperties.Name="{local:Loc Text='Library'}"
+                        ToolTipService.ToolTip="{local:Loc Text='Import, add folders, find duplicates and other work on the whole library'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE71D;" FontSize="14" />
+                        <TextBlock Text="{local:Loc Text='Library'}" VerticalAlignment="Center" />
+                        <InfoBadge Value="{x:Bind ViewModel.DuplicateCount, Mode=OneWay}"
+                                   Visibility="{x:Bind ViewModel.HasDuplicates, Mode=OneWay}" />
+                        <FontIcon Glyph="&#xE70D;" FontSize="10" />
+                    </StackPanel>
+                </Button>
+            </Grid>
             <Grid Grid.Row="1">
                 <Button x:Name="AllPhotosHeading" Style="{StaticResource NavHeading}" Click="AllPhotos_Click">
                     <Grid ColumnSpacing="12">
@@ -428,18 +448,18 @@
                 <Button Grid.Column="1" Click="Import_Click" Padding="6" Background="Transparent" BorderThickness="0"
                         local:Busy.Gate="True"
                         AutomationProperties.Name="{local:Loc Text='Import'}"
-                        ToolTipService.ToolTip="{local:Loc Text='Import photos from a phone, camera or SD card'}">
-                    <FontIcon Glyph="&#xE896;" FontSize="14" />
+                        ToolTipService.ToolTip="{local:Loc Text='Import photos from a phone, camera or SD card (Ctrl+I)'}">
+                    <FontIcon Glyph="&#xE8B5;" FontSize="14" />
                 </Button>
                 <Button Grid.Column="2" Click="AddFolder_Click" Padding="6" Background="Transparent" BorderThickness="0"
                         AutomationProperties.Name="{local:Loc Text='Add folder'}"
                         ToolTipService.ToolTip="{local:Loc Text='Add a folder to the library'}">
-                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                    <FontIcon Glyph="&#xE8F4;" FontSize="14" />
                 </Button>
                 <Button Grid.Column="3" Click="Rescan_Click" Padding="6" Background="Transparent" BorderThickness="0"
                         local:Busy.Gate="True"
-                        AutomationProperties.Name="{local:Loc Text='Rescan'}"
-                        ToolTipService.ToolTip="{local:Loc Text='Look for new, changed and deleted photos'}">
+                        AutomationProperties.Name="{local:Loc Text='Look for changes'}"
+                        ToolTipService.ToolTip="{local:Loc Text='Look for new, changed and deleted photos (F5)'}">
                     <FontIcon Glyph="&#xE72C;" FontSize="14" />
                 </Button>
             </Grid>
@@ -465,7 +485,7 @@
                                                         Visibility="{x:Bind local:Ui.Collapsed(IsAlbum), Mode=OneWay}" />
                                         <MenuFlyoutItem Text="{local:Loc Text='Rename album…'}" Tag="{x:Bind}" Click="RenameFolderAlbum_Click"
                                                         Visibility="{x:Bind IsAlbum, Mode=OneWay}" />
-                                        <MenuFlyoutItem Text="{local:Loc Text='Stop being an album'}" Tag="{x:Bind}" Click="UnmakeAlbum_Click"
+                                        <MenuFlyoutItem Text="{local:Loc Text='Turn back into a folder'}" Tag="{x:Bind}" Click="UnmakeAlbum_Click"
                                                         Visibility="{x:Bind IsAlbum, Mode=OneWay}" />
                                         <MenuFlyoutItem Text="{local:Loc Text='Upload to Google Photos'}" Tag="{x:Bind}" Click="UploadAlbumToGoogle_Click"
                                                         Visibility="{x:Bind IsAlbum, Mode=OneWay}">
@@ -488,7 +508,7 @@
                                                 <FontIcon Glyph="&#xE72E;" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
-                                        <MenuFlyoutItem Text="{local:Loc Text='Make public again'}" Tag="{x:Bind}" Click="MakeFolderPublic_Click"
+                                        <MenuFlyoutItem Text="{local:Loc Text='Not private any more'}" Tag="{x:Bind}" Click="MakeFolderPublic_Click"
                                                         Visibility="{x:Bind IsPrivate, Mode=OneWay}">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE785;" />
@@ -548,7 +568,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="&#xE707;" FontSize="16" />
+                        <FontIcon Glyph="&#xE909;" FontSize="16" />
                         <TextBlock Grid.Column="1" Text="{local:Loc Text='Places'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <FontIcon x:Name="PlacesChevron" Grid.Column="2" Glyph="&#xE70D;" FontSize="10" />
                     </Grid>
@@ -571,6 +591,11 @@
                     AutomationProperties.Name="{local:Loc Text='Unfold the pane'}" ToolTipService.ToolTip="{local:Loc Text='Unfold the pane'}">
                 <FontIcon Glyph="&#xE700;" FontSize="16" />
             </Button>
+            <Button Style="{StaticResource NavRailButton}" Click="LibraryMenu_Click"
+                    AutomationProperties.Name="{local:Loc Text='Library'}"
+                    ToolTipService.ToolTip="{local:Loc Text='Import, add folders, find duplicates and other work on the whole library'}">
+                <FontIcon Glyph="&#xE71D;" FontSize="16" />
+            </Button>
             <Button Style="{StaticResource NavRailButton}" Click="AllPhotos_Click"
                     AutomationProperties.Name="{local:Loc Text='All photos'}" ToolTipService.ToolTip="{local:Loc Text='All photos'}">
                 <FontIcon Glyph="&#xE91B;" FontSize="16" />
@@ -589,7 +614,7 @@
             </Button>
             <Button Style="{StaticResource NavRailButton}" Click="RailPlaces_Click"
                     AutomationProperties.Name="{local:Loc Text='Places'}" ToolTipService.ToolTip="{local:Loc Text='Places'}">
-                <FontIcon Glyph="&#xE707;" FontSize="16" />
+                <FontIcon Glyph="&#xE909;" FontSize="16" />
             </Button>
         </StackPanel>
 
@@ -636,17 +661,6 @@
                 <controls:WrapPanel x:Name="FilterBadges" Grid.Column="1" VerticalAlignment="Center" />
                 <!-- One sort box at the top right of the photos or albums, apart from the filters, which it isn't
                      (Clear filters leaves it alone). Both are filled from code (list before index). -->
-                <Button Grid.Column="2" VerticalAlignment="Center" Padding="8,6"
-                        Background="Transparent" BorderThickness="0" Click="FindDuplicatesInLibrary_Click" local:Busy.Gate="True"
-                        Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
-                        ToolTipService.ToolTip="{x:Bind ViewModel.DuplicatesTip, Mode=OneWay}"
-                        AutomationProperties.Name="{local:Loc Text='Find duplicates'}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE8C8;" FontSize="16" />
-                        <InfoBadge Value="{x:Bind ViewModel.DuplicateCount, Mode=OneWay}"
-                                   Visibility="{x:Bind ViewModel.HasDuplicates, Mode=OneWay}" />
-                    </StackPanel>
-                </Button>
                 <ComboBox x:Name="SortCombo" Grid.Column="3" VerticalAlignment="Center" MinWidth="170"
                           Visibility="{x:Bind local:Ui.Collapsed(ViewModel.IsAlbumView), Mode=OneWay}"
                           ToolTipService.ToolTip="{local:Loc Text='Order of the photos in this folder. The default is set in Settings.'}"
@@ -665,65 +679,8 @@
                       ContextRequested="PhotoGrid_ContextRequested"
                       KeyDown="PhotoGrid_KeyDown">
                 <GridView.ContextFlyout>
-                    <MenuFlyout Opening="PhotoMenu_Opening">
-                        <MenuFlyoutItem x:Name="RepairPhotoItem" Text="{local:Loc Text='Repair damaged file'}" Click="RepairSelected_Click" Visibility="Collapsed">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE90F;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="OpenWithItem" Text="{local:Loc Text='Open with…'}" Click="OpenWith_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE7AC;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="ShowInFolderItem" Text="{local:Loc Text='Show in folder'}" Click="ShowInFolderMenu_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE838;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="RenamePhotosItem" Text="{local:Loc Text='Rename…'}" Click="RenamePhotos_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE8AC;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="PhotosPrivateItem" Text="{local:Loc Text='Make private'}" Click="PhotosPrivate_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE72E;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="CopyDetailsItem" Text="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE8C8;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="PasteDetailsItem" Text="{local:Loc Text='Paste details…'}" Click="PasteDetails_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE77F;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutSeparator />
-                        <MenuFlyoutItem x:Name="AlbumCoverItem" Text="{local:Loc Text='Use as album cover'}" Click="UseAsAlbumCover_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE8B9;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="UploadPhotosItem" Text="{local:Loc Text='Upload to Google Photos'}" Click="UploadPhotosToGoogle_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE898;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="UploadOneDrivePhotosItem" Text="{local:Loc Text='Upload to OneDrive'}" Click="UploadPhotosToOneDrive_Click">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE753;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem x:Name="SharePhotosItem" Text="{local:Loc Text='Share…'}" Click="Share_Click"
-                                        ToolTipService.ToolTip="{local:Loc Text='Send the photos with another app or to a nearby PC, as Share does in File Explorer'}">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE72D;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                    </MenuFlyout>
+                    <!-- Filled as it opens, from the command list (MainWindow.Commands.cs). -->
+                    <MenuFlyout Opening="PhotoMenu_Opening" />
                 </GridView.ContextFlyout>
                 <!-- The slot size follows the zoom slider (MainWindow.Zoom.cs); the tiles stretch to fill it. -->
                 <GridView.ItemsPanel>
@@ -892,7 +849,7 @@
                             <Grid.ContextFlyout>
                                 <MenuFlyout>
                                     <MenuFlyoutItem Text="{local:Loc Text='Rename album…'}" Tag="{x:Bind}" Click="RenameAlbumTile_Click" />
-                                    <MenuFlyoutItem Text="{local:Loc Text='Stop being an album'}" Tag="{x:Bind}" Click="UnmakeAlbumTile_Click" />
+                                    <MenuFlyoutItem Text="{local:Loc Text='Turn back into a folder'}" Tag="{x:Bind}" Click="UnmakeAlbumTile_Click" />
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem Text="{local:Loc Text='Upload to Google Photos'}" Tag="{x:Bind}" Click="UploadAlbumToGoogle_Click">
                                         <MenuFlyoutItem.Icon>
@@ -988,7 +945,8 @@
                         <TextBlock x:Name="SelectionCountText" VerticalAlignment="Center" Margin="0,0,8,0"
                                    Style="{ThemeResource BodyStrongTextBlockStyle}" />
                     </CommandBar.Content>
-                    <!-- Only while a selected photo's name claims the wrong format (shown from code). -->
+                    <!-- Only while a selected photo is damaged (shown from code); the other commands are added
+                         from the command list (MainWindow.Commands.cs). -->
                     <AppBarButton x:Name="RepairButton" Label="{local:Loc Text='Repair…'}" Click="RepairSelected_Click"
                                   Visibility="Collapsed" local:Busy.Gate="True"
                                   ToolTipService.ToolTip="{local:Loc Text='Repair damaged file'}">
@@ -996,130 +954,6 @@
                             <FontIcon Glyph="&#xE90F;" />
                         </AppBarButton.Icon>
                     </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Left'}" LabelPosition="Collapsed" Click="RotateLeft_Click"
-                                  ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
-                                <FontIcon.RenderTransform>
-                                    <ScaleTransform ScaleX="-1" />
-                                </FontIcon.RenderTransform>
-                            </FontIcon>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Right'}" LabelPosition="Collapsed" Click="RotateRight_Click"
-                                  ToolTipService.ToolTip="{local:Loc Text='Rotate right (Ctrl+.)'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE7AD;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Flag'}" Click="Flag_Click"
-                                  ToolTipService.ToolTip="{local:Loc Text='Flag or unflag (P)'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE7C1;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Compare'}" Click="Compare_Click"
-                                  ToolTipService.ToolTip="{local:Loc Text='Show 1 to 4 selected photos side by side to rate them (C)'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE89F;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <!-- Lasse's everyday batch jobs, straight on the bar (they were in the overflow menu). The bar
-                         drops commands into "…" from the end when narrow, so these come early. -->
-                    <AppBarButton Label="{local:Loc Text='Place names'}" Click="AddPlaceNames_Click"
-                                  local:Busy.Gate="True"
-                                  ToolTipService.ToolTip="{local:Loc Text='Look up country, region, city and district from the GPS position of the selected photos (OpenStreetMap) and save them in the files'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE707;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Auto-tag'}" Click="AutoTag_Click"
-                                  local:Busy.Gate="True"
-                                  ToolTipService.ToolTip="{local:Loc Text='Recognise what is in the selected photos on this PC and add tags from your tag list'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE8EC;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Find people'}"
-                                  ToolTipService.ToolTip="{local:Loc Text='Find people in the selected photos'}" Click="FindPeople_Click"
-                                  local:Busy.Gate="True">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE721;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Shift dates'}" Click="ShiftDates_Click"
-                                  ToolTipService.ToolTip="{local:Loc Text='Correct the date and time of the selected photos'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xEC92;" />
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="{local:Loc Text='Upload'}">
-                        <AppBarButton.Icon>
-                            <FontIcon Glyph="&#xE898;" />
-                        </AppBarButton.Icon>
-                        <AppBarButton.Flyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem Text="{local:Loc Text='Upload to Google Photos'}" Click="UploadPhotosToGoogle_Click" />
-                                <MenuFlyoutItem Text="{local:Loc Text='Upload to OneDrive'}" Click="UploadPhotosToOneDrive_Click" />
-                                <MenuFlyoutItem Text="{local:Loc Text='Share…'}" Click="Share_Click" />
-                            </MenuFlyout>
-                        </AppBarButton.Flyout>
-                    </AppBarButton>
-                    <!-- The two favourite apps from Settings > Linked apps; shown and labelled from code. -->
-                    <AppBarButton x:Name="FavouriteApp1Button" Tag="0" Visibility="Collapsed" Click="FavouriteApp_Click" />
-                    <AppBarButton x:Name="FavouriteApp2Button" Tag="1" Visibility="Collapsed" Click="FavouriteApp_Click" />
-                    <CommandBar.SecondaryCommands>
-                        <AppBarButton Label="{local:Loc Text='Remove auto tags'}" Click="RemoveAutoTags_Click"
-                                      local:Busy.Gate="True"
-                                      ToolTipService.ToolTip="{local:Loc Text='Remove the tags auto-tagging added to the selected photos; your own tags stay'}">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE74D;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarSeparator />
-                        <AppBarButton Label="{local:Loc Text='Add a person to the selected photos…'}" Click="AddPerson_Click">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE8FA;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarSeparator />
-                        <AppBarButton Label="{local:Loc Text='Open with…'}" Click="OpenWith_Click">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE7AC;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarButton Label="{local:Loc Text='Show in folder'}" Click="ShowInFolderMenu_Click">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE838;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarButton Label="{local:Loc Text='Rename…'}" Click="RenamePhotos_Click" local:Busy.Gate="True"
-                                      ToolTipService.ToolTip="{local:Loc Text='Rename the selected photos with a name pattern such as date and counter (F2)'}">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE8AC;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarButton x:Name="BarPrivateButton" Label="{local:Loc Text='Make private'}" Click="PhotosPrivate_Click">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE72E;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarButton x:Name="BarCopyDetailsButton" Label="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE8C8;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarButton x:Name="BarPasteDetailsButton" Label="{local:Loc Text='Paste details…'}" Click="PasteDetails_Click" local:Busy.Gate="True">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE77F;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                        <AppBarButton Label="{local:Loc Text='Reject'}" Click="Reject_Click">
-                            <AppBarButton.Icon>
-                                <FontIcon Glyph="&#xE711;" />
-                            </AppBarButton.Icon>
-                        </AppBarButton>
-                    </CommandBar.SecondaryCommands>
                 </CommandBar>
             </Border>
         </Grid>
@@ -1137,13 +971,13 @@
                 <Button Click="FindPeopleInAll_Click" local:Busy.Gate="True"
                         ToolTipService.ToolTip="{local:Loc Text='Find the people in your photos on this PC and name them'}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE721;" FontSize="14" />
+                        <FontIcon Glyph="&#xE716;" FontSize="14" />
                         <TextBlock Text="{local:Loc Text='Find people in all photos shown'}" />
                     </StackPanel>
                 </Button>
                 <Button Style="{ThemeResource AccentButtonStyle}" Click="NamePeople_Click" local:Busy.Gate="True">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE8EC;" FontSize="14" />
+                        <FontIcon Glyph="&#xE77B;" FontSize="14" />
                         <TextBlock Text="{local:Loc Text='Name the people found…'}" />
                     </StackPanel>
                 </Button>
@@ -1344,12 +1178,12 @@
                             Background="Transparent" BorderThickness="0"
                             AutomationProperties.Name="{local:Loc Text='Map'}" ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
                         <Grid>
-                            <FontIcon x:Name="SideMapIconOff" Glyph="&#xE707;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                            <FontIcon x:Name="SideMapIconOff" Glyph="&#xE800;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                                 <FontIcon.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.167" />
                                 </FontIcon.OpacityTransition>
                             </FontIcon>
-                            <FontIcon x:Name="SideMapIconOn" Glyph="&#xE707;" FontSize="14" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Opacity="0">
+                            <FontIcon x:Name="SideMapIconOn" Glyph="&#xE800;" FontSize="14" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Opacity="0">
                                 <FontIcon.OpacityTransition>
                                     <ScalarTransition Duration="0:0:0.167" />
                                 </FontIcon.OpacityTransition>
@@ -1376,7 +1210,7 @@
             </Button>
             <Button x:Name="SideRailMapButton" Style="{StaticResource NavRailButton}" Click="SideRailMap_Click"
                     AutomationProperties.Name="{local:Loc Text='Map'}" ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
-                <FontIcon Glyph="&#xE707;" FontSize="16" />
+                <FontIcon Glyph="&#xE800;" FontSize="16" />
             </Button>
         </StackPanel>
 
@@ -1412,31 +1246,31 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="ViewerTitle" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <Button x:Name="ViewerRotateLeftButton" Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate left'}">
+                    <Button x:Name="ViewerRotateLeftButton" Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
                         <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
                             <FontIcon.RenderTransform>
                                 <ScaleTransform ScaleX="-1" />
                             </FontIcon.RenderTransform>
                         </FontIcon>
                     </Button>
-                    <Button x:Name="ViewerRotateRightButton" Click="ViewerRotateRight_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate right'}">
+                    <Button x:Name="ViewerRotateRightButton" Click="ViewerRotateRight_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate right (Ctrl+.)'}">
                         <FontIcon Glyph="&#xE7AD;" />
                     </Button>
                     <AppBarSeparator x:Name="ViewerEditSeparator" />
-                    <ToggleButton x:Name="ViewerCropButton" Click="ViewerCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop'}">
+                    <ToggleButton x:Name="ViewerCropButton" Click="ViewerCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop (R)'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE7A8;" FontSize="16" />
                             <TextBlock Text="{local:Loc Text='Crop'}" />
                         </StackPanel>
                     </ToggleButton>
-                    <ToggleButton x:Name="ViewerAutoButton" Click="ViewerAuto_Click" ToolTipService.ToolTip="{local:Loc Text='Adjust contrast and brightness automatically'}">
+                    <ToggleButton x:Name="ViewerAutoButton" Click="ViewerAuto_Click" ToolTipService.ToolTip="{local:Loc Text='Adjust contrast and brightness automatically (Ctrl+U)'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE706;" FontSize="16" />
                             <TextBlock Text="{local:Loc Text='Auto adjust'}" />
                         </StackPanel>
                     </ToggleButton>
                     <Button x:Name="ViewerRepairButton" Click="ViewerRepair_Click"
-                            AutomationProperties.Name="{local:Loc Text='Repair damaged file'}"
+                            AutomationProperties.Name="{local:Loc Text='Repair…'}"
                             ToolTipService.ToolTip="{local:Loc Text='Repair damaged file'}">
                         <FontIcon Glyph="&#xE90F;" FontSize="16" />
                     </Button>
@@ -1446,12 +1280,12 @@
                     <Button x:Name="ViewerRevertButton" Click="ViewerRevert_Click" IsEnabled="False" ToolTipService.ToolTip="{local:Loc Text='Go back to the original photo, before any edits'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE81C;" FontSize="16" />
-                            <TextBlock Text="{local:Loc Text='Revert'}" />
+                            <TextBlock Text="{local:Loc Text='Back to original'}" />
                         </StackPanel>
                     </Button>
                     <Button x:Name="ViewerFavourite1Button" Tag="0" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
                     <Button x:Name="ViewerFavourite2Button" Tag="1" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
-                    <Button Click="ViewerOpenWith_Click" ToolTipService.ToolTip="{local:Loc Text='Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Revert still works.'}">
+                    <Button Click="ViewerOpenWith_Click" ToolTipService.ToolTip="{local:Loc Text='Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Back to original still works.'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE7AC;" FontSize="16" />
                             <TextBlock Text="{local:Loc Text='Open with…'}" />
@@ -1463,76 +1297,7 @@
                             ToolTipService.ToolTip="{local:Loc Text='More actions'}">
                         <FontIcon Glyph="&#xE712;" FontSize="16" />
                         <Button.Flyout>
-                            <MenuFlyout Placement="BottomEdgeAlignedRight" Opening="ViewerMoreMenu_Opening">
-                            <MenuFlyoutItem x:Name="ViewerShowInFolderItem" Text="{local:Loc Text='Show in folder'}" Click="ShowInFolderMenu_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE838;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="ViewerAlbumCoverItem" Text="{local:Loc Text='Use as album cover'}" Click="UseAsAlbumCover_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8B9;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Copy details'}" Click="CopyDetails_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8C8;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="ViewerPasteDetailsItem" Text="{local:Loc Text='Paste details…'}" Click="PasteDetails_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE77F;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="{local:Loc Text='Upload to Google Photos'}" Click="UploadPhotosToGoogle_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE898;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Upload to OneDrive'}" Click="UploadPhotosToOneDrive_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE753;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Share…'}" Click="Share_Click"
-                                            ToolTipService.ToolTip="{local:Loc Text='Send the photos with another app or to a nearby PC, as Share does in File Explorer'}">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE72D;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="{local:Loc Text='Place names'}" Click="AddPlaceNames_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE707;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Auto-tag'}" Click="AutoTag_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8EC;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Remove auto tags'}" Click="RemoveAutoTags_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE74D;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Find people'}" Click="FindPeople_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE721;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Add a person…'}" Click="AddPerson_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8FA;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="{local:Loc Text='Shift dates'}" Click="ShiftDates_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xEC92;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            </MenuFlyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight" Opening="ViewerMoreMenu_Opening" />
                         </Button.Flyout>
                     </Button>
                     <AppBarSeparator />

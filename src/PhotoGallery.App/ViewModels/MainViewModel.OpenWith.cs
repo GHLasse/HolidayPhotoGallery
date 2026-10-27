@@ -34,7 +34,7 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Gets a photo ready to open in another app: keeps a copy in .originals (unless turned off in
-    /// Settings), so Undo and Revert still work, and watches it for that app's changes.
+    /// Settings), so Undo and Back to original still work, and watches it for that app's changes.
     /// Returns false when the backup failed, so the photo is not opened unprotected.
     /// </summary>
     public bool PrepareForOtherApp(PhotoItemViewModel item)
