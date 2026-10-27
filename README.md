@@ -44,7 +44,7 @@ needed.
 - Windows' list of time zones, with summer time handled for each photo's own date
 
 **Map and places**
-- OpenStreetMap map beside the grid or full width; click the map to place the selected photos
+- OpenStreetMap map beside the grid or full width, with a satellite view; click the map to place the selected photos
 - Estimate a position for photos without GPS from the photos taken before and after
 - Look up country, region, city and district and write them into IPTC/XMP, in the language you choose
 
@@ -101,7 +101,7 @@ Microsoft Store; most Windows 11 PCs already have them. Saving HEIC also needs t
 - Windows 10 version 1809 or later, or Windows 11, 64-bit (x64).
 - The installer is per user and needs no admin rights. The zip runs without installing.
 - The tagging model (about 750 MB), the face models (about 40 MB) and the upscaling models download the first time they are needed.
-- The internet is only used for map tiles and place names (OpenStreetMap), those one-time model downloads, update checks on GitHub, and Google Photos or OneDrive once you link them.
+- The internet is only used for map tiles, satellite pictures and place names (OpenStreetMap), those one-time model downloads, update checks on GitHub, and Google Photos or OneDrive once you link them.
 - The app is not code-signed yet, so Windows SmartScreen may warn the first time ("More info", then "Run anyway").
 
 ## Downloads and branches
@@ -169,6 +169,8 @@ It builds on the work of others (Settings › Info lists the same):
 | [Leaflet](https://leafletjs.com), [MapLibre GL JS](https://maplibre.org) | The map | BSD 2-Clause, BSD 3-Clause |
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | Map data, © OpenStreetMap contributors | ODbL |
 | [OpenFreeMap](https://openfreemap.org) | Map tiles | MIT, ODbL |
+| [Sentinel-2 cloudless](https://s2maps.eu) by EOX IT Services GmbH | Satellite pictures (contains modified Copernicus Sentinel data) | CC BY-NC-SA 4.0 |
+| [Esri World Imagery](https://www.esri.com/en-us/legal/terms/full-master-agreement) | Sharp satellite pictures, when the app has an Esri key | Esri terms of use |
 | [Nominatim](https://nominatim.org) | Place names and positions | GPL 2.0 (service), ODbL (data) |
 | [Unicode CLDR](https://cldr.unicode.org) | Country names in many languages | Unicode License v3 |
 | [Inno Setup](https://jrsoftware.org/isinfo.php) by Jordan Russell | The installer | Inno Setup License |

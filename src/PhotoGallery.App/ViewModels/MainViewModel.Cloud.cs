@@ -41,6 +41,9 @@ public sealed partial class MainViewModel
         typeof(MainViewModel).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(m => m.Key == key)?.Value is { Length: > 0 } value ? value : null;
 
+    /// <summary>The app's Esri key for sharp satellite pictures on the map (from the build server), or null.</summary>
+    public static string? SatelliteKey => BuiltInValue("EsriApiKey");
+
     public static void OpenInBrowser(Uri uri) =>
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
 

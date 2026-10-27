@@ -72,7 +72,9 @@ public sealed partial class MapPanel : UserControl
             Web.WebMessageReceived += Web_WebMessageReceived;
             // The map’s labels follow the app’s language (see map.html). Strings.Language in full: a bare "Language"
             // here is the control’s own XAML language, which is Windows’ language.
-            Web.Source = new Uri($"https://{HostName}/map.html?lang={Uri.EscapeDataString(PhotoGallery.Core.Localization.Strings.Language)}");
+            // The satellite view is sharp with the app's Esri key and falls back to Sentinel-2 cloudless without it.
+            var esri = MainViewModel.SatelliteKey is { } key ? "&esri=" + Uri.EscapeDataString(key) : "";
+            Web.Source = new Uri($"https://{HostName}/map.html?lang={Uri.EscapeDataString(PhotoGallery.Core.Localization.Strings.Language)}{esri}");
         }
         catch (Exception ex)
         {
@@ -240,6 +242,9 @@ public sealed partial class MapPanel : UserControl
                     ["show"] = Tr("Show in library"),
                     ["of"] = Tr("{0} of {1}"),
                     ["estimate"] = Tr("Estimate from photos before and after"),
+                    ["map"] = Tr("Map"),
+                    ["satellite"] = Tr("Satellite"),
+                    ["labels"] = Tr("Labels"),
                 }.ToJsonString());
                 foreach (var json in _pending)
                     Web.CoreWebView2.PostWebMessageAsJson(json);
