@@ -42,6 +42,19 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Whether the photo file carries its own short clip, as Android motion photos do.</summary>
+    public async Task<bool> IsMotionPhotoAsync(string path)
+    {
+        try
+        {
+            return await Task.Run(() => MotionPhoto.HasEmbeddedVideo(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     public async Task<IReadOnlyList<(string Label, string Value)>> ReadMoreDetailsAsync(string path)
     {
         if (_exifTool is null)

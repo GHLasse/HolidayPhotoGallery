@@ -14,6 +14,19 @@ public sealed class PhotoQualityTests
         Assert.Equal(expected, PhotoQuality.ResolutionClass(width, height));
 
     [Theory]
+    [InlineData(23.976, "24fps")]
+    [InlineData(25.0, "24fps")]
+    [InlineData(29.97, "30fps")]
+    [InlineData(50.0, "60fps")]
+    [InlineData(59.0, "60fps")]
+    [InlineData(119.88, "120fps")]
+    [InlineData(240.0, "240fps")]
+    [InlineData(15.0, null)]
+    [InlineData(null, null)]
+    public void Frame_rates_round_to_the_usual_classes(double? fps, string? expected) =>
+        Assert.Equal(expected, PhotoQuality.FrameRateClass(fps));
+
+    [Theory]
     [InlineData("""[{"SourceFile":"a.jpg","XMP-hdrgm:Version":"1.0"}]""", true)]
     [InlineData("""[{"SourceFile":"a.heic","Apple:HDRHeadroom":1.01}]""", true)]
     [InlineData("""[{"SourceFile":"a.heic","QuickTime:TransferCharacteristics":"SMPTE ST 2084 (PQ)"}]""", true)]
