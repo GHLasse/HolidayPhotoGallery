@@ -58,9 +58,14 @@ public sealed partial class MainViewModel
     /// Moves the rejected photos shown now to the Recycle Bin, with their earlier versions from the
     /// .originals folder, so nothing of them is left behind. They can be restored from the Recycle Bin.
     /// </summary>
-    public async Task RecycleRejectedAsync()
+    public Task RecycleRejectedAsync() => RecycleAsync(ShownRejectedPhotos);
+
+    /// <summary>
+    /// Moves the photos to the Recycle Bin with their earlier versions from the .originals folder (Del, or the
+    /// rejected ones at once). They can be restored from the Recycle Bin.
+    /// </summary>
+    public async Task RecycleAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
-        var items = ShownRejectedPhotos;
         if (items.Count == 0)
             return;
         if (IsBusy)
@@ -79,7 +84,7 @@ public sealed partial class MainViewModel
                 if (_stopRequested)
                     break; // Stop in the progress details: what is done stays done
                 var item = items[i];
-                StatusText = Tr("Moving {0:N0} of {1:N0} rejected photos to the Recycle Bin…", i + 1, items.Count);
+                StatusText = Tr("Moving {0:N0} of {1:N0} photos to the Recycle Bin…", i + 1, items.Count);
                 try
                 {
                     await Task.Run(() =>

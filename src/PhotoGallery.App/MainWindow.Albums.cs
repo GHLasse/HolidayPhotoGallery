@@ -168,49 +168,6 @@ public sealed partial class MainWindow
         PhotoGrid.SelectedItem = photo;
     }
 
-    private void PhotoMenu_Opening(object sender, object e)
-    {
-        var photos = SelectedPhotos;
-        OpenWithItem.IsEnabled = photos.Count == 1;
-        ShowInFolderItem.IsEnabled = photos.Count == 1;
-        var album = photos.Count == 1 ? ViewModel.FindAlbumFor(photos[0].Path) : null;
-        AlbumCoverItem.IsEnabled = album is not null;
-        AlbumCoverItem.Text = album is null
-            ? Tr("Use as album cover (select one photo in an album)")
-            : Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album));
-        UploadPhotosItem.IsEnabled = photos.Count > 0;
-        UploadPhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to Google Photos", photos.Count) : Tr("Upload to Google Photos");
-        UploadOneDrivePhotosItem.IsEnabled = photos.Count > 0;
-        UploadOneDrivePhotosItem.Text = photos.Count > 1 ? Tr("Upload {0} photos to OneDrive", photos.Count) : Tr("Upload to OneDrive");
-        SharePhotosItem.IsEnabled = photos.Count > 0;
-        CopyDetailsItem.IsEnabled = photos.Count == 1;
-        RenamePhotosItem.IsEnabled = photos.Count > 0;
-        UpdatePrivateMenuItem(photos);
-        PasteDetailsItem.IsEnabled = photos.Count > 0 && ViewModel.CopiedDetails is not null;
-        PasteDetailsItem.Text = ViewModel.CopiedDetails is null ? Tr("Paste details…") : Tr("Paste details of {0}…", ViewModel.CopiedFrom);
-    }
-
-    // The selection bar's "…" holds the right-click menu's actions for several photos too; it follows the same rules.
-    private void SelectionCommands_Opening(object? sender, object e)
-    {
-        var photos = SelectedPhotos;
-        BarPrivateButton.Label = SelectionIsPrivate(photos) ? Tr("Make public again") : Tr("Make private");
-        BarCopyDetailsButton.IsEnabled = photos.Count == 1;
-        BarPasteDetailsButton.IsEnabled = photos.Count > 0 && ViewModel.CopiedDetails is not null;
-        BarPasteDetailsButton.Label = ViewModel.CopiedDetails is null ? Tr("Paste details…") : Tr("Paste details of {0}…", ViewModel.CopiedFrom);
-    }
-
-    // The viewer's menu: the photo being looked at is the grid's selection.
-    private void ViewerMoreMenu_Opening(object sender, object e)
-    {
-        var album = ViewerItem is { } photo ? ViewModel.FindAlbumFor(photo.Path) : null;
-        ViewerAlbumCoverItem.IsEnabled = album is not null;
-        ViewerAlbumCoverItem.Text = album is null
-            ? Tr("Use as album cover (select one photo in an album)")
-            : Tr("Use as cover of “{0}”", ViewModel.CurrentAlbumName(album));
-        ViewerPasteDetailsItem.IsEnabled = ViewModel.CopiedDetails is not null;
-    }
-
     private async void UseAsAlbumCover_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedPhotos is [var photo])

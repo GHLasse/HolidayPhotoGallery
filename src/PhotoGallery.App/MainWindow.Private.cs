@@ -31,12 +31,6 @@ public sealed partial class MainWindow
             await ViewModel.SetPhotosPrivateAsync(photos, !SelectionIsPrivate(photos));
     }
 
-    private void UpdatePrivateMenuItem(IReadOnlyList<PhotoItemViewModel> photos)
-    {
-        PhotosPrivateItem.IsEnabled = photos.Count > 0;
-        PhotosPrivateItem.Text = SelectionIsPrivate(photos) ? Tr("Make public again") : Tr("Make private");
-    }
-
     private async void PrivateModeOff_Click(object sender, RoutedEventArgs e) => await ViewModel.SetPrivateModeAsync(false);
 
     /// <summary>The switch in Settings › App; it takes effect at once.</summary>

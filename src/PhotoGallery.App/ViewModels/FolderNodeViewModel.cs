@@ -59,8 +59,8 @@ public sealed class FolderNodeViewModel : ObservableObject
         }
     }
 
-    /// <summary>A lock for private folders, a photo album icon for albums, a folder icon otherwise.</summary>
-    public string Glyph => IsPrivate ? "\uE72E" : IsAlbum ? "\uE8B9" : "\uE8B7";
+    /// <summary>A lock for private folders, the Albums icon for albums, a folder icon otherwise.</summary>
+    public string Glyph => IsPrivate ? "\uE72E" : IsAlbum ? "\uE8F1" : "\uE8B7";
 
     public ObservableCollection<FolderNodeViewModel> Children { get; } = [];
 

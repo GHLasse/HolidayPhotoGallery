@@ -32,7 +32,7 @@ public sealed partial class MainWindow
         if (version != _repairVersion)
             return;
         _damagedInSelection = damaged;
-        RepairButton.Visibility = RepairPhotoItem.Visibility = damaged is null ? Visibility.Collapsed : Visibility.Visible;
+        RepairButton.Visibility = damaged is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // Repair from the grid: the wizard works on the photo in the viewer, so the damaged photo opens there first.

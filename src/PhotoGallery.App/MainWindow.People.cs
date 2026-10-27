@@ -133,11 +133,25 @@ public sealed partial class MainWindow
 
         for (var i = 0; i < withoutFace.Count; i++)
             PeopleList.Children.Add(PersonRow(item, withoutFace[i], pictures[i]));
+        // Not looked at yet: the search is offered right here.
+        if (!looked)
+        {
+            var find = new Button
+            {
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children = { new FontIcon { Glyph = "\uE716", FontSize = 14 }, new TextBlock { Text = Tr("Find people") } },
+                },
+            };
+            ToolTipService.SetToolTip(find, Tr("Find people in the selected photos"));
+            find.Click += FindPeople_Click;
+            PeopleList.Children.Add(find);
+        }
         PeopleList.Children.Add(AddPersonBox([item]));
 
-        PeopleHint.Text = !looked
-            ? Tr("Use People → Find people in the selected photos to look for faces in this photo.")
-            : faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
+        PeopleHint.Text = looked && faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
         PeopleHint.Visibility = PeopleHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         PeopleSection.Visibility = Visibility.Visible;
     }

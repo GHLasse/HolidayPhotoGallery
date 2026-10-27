@@ -35,7 +35,7 @@ public sealed class ShiftDatesDialog : ContentDialog
         _datedCount = datedCount;
         _undatedCount = undatedCount;
 
-        Title = Tr("Shift date and time");
+        Title = Tr("Adjust date and time");
         PrimaryButtonText = Tr("Shift");
         CloseButtonText = Tr("Cancel");
         DefaultButton = ContentDialogButton.Primary;
