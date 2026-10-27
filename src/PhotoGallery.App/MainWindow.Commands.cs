@@ -402,7 +402,7 @@ public sealed partial class MainWindow
         var ctrl = IsDown(VirtualKey.Control);
         var shift = IsDown(VirtualKey.Shift);
         var viewer = IsViewerOpen;
-        var photoTools = viewer && !IsEditing && ViewerCropButton.Visibility == Visibility.Visible;
+        var photoTools = viewer && !IsEditing && !_viewerShowsVideo; // also when a narrow bar hides the buttons
         Action? action = (ctrl, shift, e.Key) switch
         {
             (true, false, VirtualKey.C) => () => _ = CopyFilesAsync(),
