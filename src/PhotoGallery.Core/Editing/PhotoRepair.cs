@@ -49,25 +49,13 @@ public static class PhotoRepair
 
     /// <summary>
     /// The lost part of an upright photo (8-bit BGRA), or null when nothing looks lost. <paramref name="orientation"/>
-    /// is the photo's EXIF orientation, which says which way the rows of its file run.
+    /// is the photo's EXIF orientation, which says which way the rows of its file run. When the file check
+    /// already knows the file is <paramref name="cutOff"/>, a lost strip of any size along the edge its rows end
+    /// at counts, down to part of one row of blocks.
     /// </summary>
-    public static PhotoDamage? Find(byte[] bgra, int width, int height, int orientation = 1)
+    public static PhotoDamage? Find(byte[] bgra, int width, int height, int orientation = 1, bool cutOff = false)
     {
-        PhotoDamage? worst = null;
-        foreach (var edge in Enum.GetValues<DamagedEdge>())
-        {
-            var view = new EdgeView(edge, width, height);
-            if (FindAtBottom(bgra, view) is not { } found)
-                continue;
-            var damage = new PhotoDamage(edge, found.Kept, view.Height, found.Fill);
-            if (worst is null || damage.LostShare > worst.LostShare)
-                worst = damage;
-        }
-        if (worst is not null)
-            return worst;
-
-        // No grey: maybe the colours go wrong partway. The break runs along the file's rows, which lie along
-        // the edge that the camera's turn put at the bottom of the stored picture.
+        // The edge that the camera's turn put at the bottom of the stored picture: where the file's rows end.
         DamagedEdge? stored = orientation switch
         {
             1 => DamagedEdge.Bottom,
@@ -76,6 +64,20 @@ public static class PhotoRepair
             8 => DamagedEdge.Right,
             _ => null, // mirrored: the blocks run the other way; rare enough to leave out
         };
+        PhotoDamage? worst = null;
+        foreach (var edge in Enum.GetValues<DamagedEdge>())
+        {
+            var view = new EdgeView(edge, width, height);
+            if (FindAtBottom(bgra, view, small: cutOff && edge == stored) is not { } found)
+                continue;
+            var damage = new PhotoDamage(edge, found.Kept, view.Height, found.Fill);
+            if (worst is null || damage.LostShare > worst.LostShare)
+                worst = damage;
+        }
+        if (worst is not null)
+            return worst;
+
+        // No grey: maybe the colours go wrong partway. The break runs along the file's rows.
         if (stored is not { } bottom)
             return null;
         var rows = new EdgeView(bottom, width, height);
@@ -322,7 +324,8 @@ public static class PhotoRepair
     private static float Distance(float[] a, float[] b) =>
         Math.Max(Math.Abs(a[0] - b[0]), Math.Max(Math.Abs(a[1] - b[1]), Math.Abs(a[2] - b[2])));
 
-    private static (int Kept, byte Fill)? FindAtBottom(byte[] p, EdgeView view)
+    // A small lost strip (less than a row of blocks, or than 1% of the photo) counts only when asked for.
+    private static (int Kept, byte Fill)? FindAtBottom(byte[] p, EdgeView view, bool small = false)
     {
         var (w, h) = (view.Width, view.Height);
         var corner = view.Index(w - 1, h - 1);
@@ -334,12 +337,12 @@ public static class PhotoRepair
         var top = h;
         while (top > 0 && FlatRun(p, view, top - 1, fill) == w)
             top--;
-        if (h - top < Math.Max(MinBand, h / 100) || top == 0)
+        if (top == 0 || (!small && h - top < Math.Max(MinBand, h / 100)))
             return null;
         // The row of blocks the file broke off in is lost from some point on.
         while (top > 0 && FlatRun(p, view, top - 1, fill) >= PartialRun)
             top--;
-        return (top, fill);
+        return top == h ? null : (top, fill);
     }
 
     // How many pixels at the right end of the row have the fill colour.

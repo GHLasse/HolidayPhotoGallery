@@ -117,7 +117,8 @@ public sealed partial class MainViewModel
             {
                 // Not even a broken picture: only a copy can help.
             }
-            var damage = image is null ? null : await Task.Run(() => PhotoRepair.Find(image.Pixels, image.Width, image.Height, item.Photo.Orientation));
+            var damage = image is null ? null : await Task.Run(() => PhotoRepair.Find(image.Pixels, image.Width, image.Height, item.Photo.Orientation,
+                                                                                                 cutOff: health == FileHealth.CutOff));
             double? damagedFrom = null;
             var canMend = false;
             try

@@ -37,6 +37,31 @@ public class PhotoRepairTests
     }
 
     [Fact]
+    public void A_small_strip_counts_only_when_the_file_is_known_to_be_cut_off()
+    {
+        // Only the right end of the last row of blocks is lost: too small to trust in any photo, but the
+        // file check already found the file cut off.
+        var p = new byte[W * H * 4];
+        new Random(5).NextBytes(p);
+        for (var y = H - 8; y < H; y++)
+        {
+            for (var x = 40; x < W; x++)
+            {
+                var i = (y * W + x) * 4;
+                p[i] = p[i + 1] = p[i + 2] = 128;
+                p[i + 3] = 255;
+            }
+        }
+        Assert.Null(PhotoRepair.Find(p, W, H));
+        var damage = PhotoRepair.Find(p, W, H, cutOff: true);
+        Assert.NotNull(damage);
+        Assert.Equal(DamagedEdge.Bottom, damage.Edge);
+        Assert.Equal(H - 8, damage.Kept);
+        // Along another edge than the one the file's rows end at, it still doesn't count.
+        Assert.Null(PhotoRepair.Find(p, W, H, orientation: 3, cutOff: true));
+    }
+
+    [Fact]
     public void Finds_it_on_a_photo_turned_upright()
     {
         // Turned clockwise for showing, the bottom of the stored pixels is on the left.
