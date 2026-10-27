@@ -319,7 +319,12 @@ public sealed partial class MainWindow
         {
             var button = new AppBarButton { Label = command.Label, Icon = Icon(command) };
             if (iconOnly)
+            {
+                // Without a label the button keeps the labelled width, which leaves a gap; make it square.
                 button.LabelPosition = CommandBarLabelPosition.Collapsed;
+                button.Width = 48;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, command.Label);
+            }
             if (command.Keys is { } keys)
                 button.KeyboardAcceleratorTextOverride = keys;
             ToolTipService.SetToolTip(button, WithKeys(command.Tip ?? command.Label, command.Keys));
@@ -348,7 +353,7 @@ public sealed partial class MainWindow
         }
 
         bar.PrimaryCommands.Add(MakeButton(Command(Tr("Flag"))));
-        bar.PrimaryCommands.Add(MakeButton(Command(Tr("Reject")), iconOnly: true));
+        bar.PrimaryCommands.Add(MakeButton(Command(Tr("Reject"))));
         bar.PrimaryCommands.Add(new AppBarSeparator());
         bar.PrimaryCommands.Add(MakeButton(Command(Tr("Compare"))));
         bar.PrimaryCommands.Add(MakeButton(Command(Tr("Rotate left")), iconOnly: true));
