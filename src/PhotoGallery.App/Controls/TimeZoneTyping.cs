@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.ViewModels;
 using Windows.Foundation;
 using Windows.System;
@@ -60,6 +61,31 @@ public static class TimeZoneTyping
         }), true);
     }
 
+    /// <summary>
+    /// Further down the open list the entry isn't made yet. The list is scrolled to it and the entry then
+    /// highlighted, without choosing it: closing and choosing it instead saved a zone into the photo from the
+    /// details pane after the first key ("+"), and the list didn't open again.
+    /// </summary>
+    private static void ScrollTo(ComboBox combo, int index)
+    {
+        // The list's scroller is found from an entry that is made, a few rows away.
+        var realized = Enumerable.Range(0, combo.Items.Count).Select(combo.ContainerFromIndex).OfType<ComboBoxItem>().FirstOrDefault();
+        DependencyObject? parent = realized;
+        while (parent is not null and not ScrollViewer)
+            parent = VisualTreeHelper.GetParent(parent);
+        if (parent is not ScrollViewer scroller || realized is null || realized.ActualHeight <= 0)
+            return;
+        scroller.ChangeView(null, Math.Max(0, (index - 3) * realized.ActualHeight), null, disableAnimation: true);
+        void Focus(int triesLeft)
+        {
+            if (combo.ContainerFromIndex(index) is ComboBoxItem item)
+                item.Focus(FocusState.Keyboard);
+            else if (triesLeft > 0)
+                combo.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => Focus(triesLeft - 1));
+        }
+        combo.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => Focus(3));
+    }
+
     private static void Jump(ComboBox combo, string typed, ref string lastSearch, ref int matchIndex)
     {
         if (combo.ItemsSource is not IReadOnlyList<TimeZoneChoice> choices || typed.Trim().Length == 0)
@@ -74,17 +100,9 @@ public static class TimeZoneTyping
         if (combo.IsDropDownOpen)
         {
             if (combo.ContainerFromIndex(index) is ComboBoxItem item)
-            {
                 item.Focus(FocusState.Keyboard);
-            }
             else
-            {
-                // Further down the open list the entry isn't made yet, and choosing it didn't scroll there
-                // (+8 from the top of the date shift list). Opened again, the list shows the chosen entry.
-                combo.IsDropDownOpen = false;
-                combo.SelectedIndex = index;
-                combo.DispatcherQueue.TryEnqueue(() => combo.IsDropDownOpen = true);
-            }
+                ScrollTo(combo, index);
         }
         else
         {
