@@ -27,6 +27,13 @@
   .preview .row .count { flex: 1; text-align: center; font-size: 12px; color: #555; }
   .preview button { padding: 3px 8px; border: 1px solid #8a8a8a; border-radius: 4px; background: #fff; font: inherit; font-size: 12px; cursor: pointer; }
   .preview .actions button { flex: 1; }
+  #layers { display: flex; flex-direction: column; gap: 2px; padding: 4px; background: #fff; border-radius: 4px; font-size: 13px; }
+  #layers .modes { display: flex; }
+  #layers .modes button { padding: 4px 10px; border: 1px solid #8a8a8a; background: #fff; font: inherit; cursor: pointer; }
+  #layers .modes button:first-child { border-radius: 4px 0 0 4px; }
+  #layers .modes button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+  #layers .modes button.on { background: #0067c0; border-color: #0067c0; color: #fff; }
+  #layers label { display: flex; align-items: center; gap: 4px; padding: 2px; cursor: pointer; }
   #offline { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 14px; color: #555; }
 </style>
 </head>
@@ -44,14 +51,19 @@
 //                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on},
 //                 {type:"find", q} (search for a place and go to the first found), {type:"goto", index} (another one found)
 //                 {type:"preview", path, src} (the picture of the photo clicked on the whole-library map)
-//                 {type:"texts", open, show, of, estimate} (the bubble's buttons in the app's language; "of" is like "{0} of {1}")
+//                 {type:"texts", open, show, of, estimate, map, satellite, labels} (the bubble's buttons and the map/satellite
+//                 switch in the app's language; "of" is like "{0} of {1}")
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
 //                 {type:"estimate"} (the pin's right-click menu: estimate from the photos before and after)
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
-const lang = new URLSearchParams(location.search).get("lang") || "en";
+const query = new URLSearchParams(location.search);
+const lang = query.get("lang") || "en";
+// The app's Esri key (from the build server) for sharp satellite pictures; without it the satellite view uses
+// Sentinel-2 cloudless, which is free but only 10 m per pixel.
+const esriKey = query.get("esri") || "";
 
 if (!window.L) {
   document.getElementById("offline").style.display = "flex";
@@ -60,9 +72,16 @@ if (!window.L) {
   start();
 }
 
+// The street map. Returns {gl, plain, ready}: the MapLibre map once its style has loaded (null with the plain
+// OpenStreetMap map instead), the plain map's layer, and a list of functions to run when either is in place.
 function addBaseMap(map, osm) {
-  const plain = () => L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }).addTo(map);
-  if (!L.maplibreGL || !window.maplibregl) { plain(); return; }
+  const base = { gl: null, plain: null, ready: [] };
+  const plain = () => {
+    base.gl = null;
+    base.plain = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }).addTo(map);
+    base.ready.forEach(f => f());
+  };
+  if (!L.maplibreGL || !window.maplibregl) { plain(); return base; }
   try {
     const layer = L.maplibreGL({
       style: "https://tiles.openfreemap.org/styles/liberty",
@@ -78,6 +97,8 @@ function addBaseMap(map, osm) {
         const field = gl.getLayoutProperty(l.id, "text-field");
         if (field && JSON.stringify(field).includes("name")) gl.setLayoutProperty(l.id, "text-field", label);
       }
+      base.gl = gl;
+      base.ready.forEach(f => f());
     });
     // If the map's style hasn't loaded after a while (offline or blocked), use the plain map instead.
     let loaded = false;
@@ -90,6 +111,39 @@ function addBaseMap(map, osm) {
   } catch (e) {
     plain();
   }
+  return base;
+}
+
+// Satellite pictures under the map's names, roads and borders. Esri World Imagery is sharp down to single
+// houses but needs the app's key; Sentinel-2 cloudless by EOX (free for non-commercial use) shows 10 m per
+// pixel, enough for coasts, rivers, fields and towns. Both are in WGS 84 like GPS and OpenStreetMap, so photos
+// line up with them, in China too (Chinese maps shift everything by GCJ-02; these don't).
+function imageryLayer(map) {
+  const pane = map.createPane("imagery");
+  pane.style.zIndex = 150;   // under the street map's pane (200), which then only draws the labels
+  if (esriKey) {
+    return L.tileLayer("https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=" + encodeURIComponent(esriKey), {
+      pane, maxZoom: 19, maxNativeZoom: 19,
+      attribution: 'Powered by <a href="https://www.esri.com">Esri</a> | Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    });
+  }
+  const eox = year => L.tileLayer("https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-" + year + "_3857/default/g/{z}/{y}/{x}.jpg", {
+    pane, maxZoom: 19, maxNativeZoom: 14,
+    attribution: '<a href="https://s2maps.eu">Sentinel-2 cloudless ' + year + '</a> by <a href="https://eox.at">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data ' + year + ')',
+  });
+  const layer = eox(2024);
+  // If this year's layer isn't there (yet or any more), the 2022 one is.
+  let loaded = 0, failed = 0;
+  layer.on("tileload", () => loaded++);
+  layer.on("tileerror", () => {
+    if (++failed < 4 || loaded > 0 || !map.hasLayer(layer)) return;
+    layer.off("tileerror");
+    const older = eox(2022);
+    map.removeLayer(layer);
+    older.addTo(map);
+    layer.replacedBy = older;
+  });
+  return layer;
 }
 
 function start() {
@@ -101,7 +155,62 @@ function start() {
   // languages, so a city in China reads "Chengdu" rather than 成都. Without WebGL or that map, the
   // standard OpenStreetMap map shows the names as written locally.
   const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-  addBaseMap(map, osm);
+  const base = addBaseMap(map, osm);
+  const imagery = imageryLayer(map);
+  let mode = "map", labels = true;
+  try { const v = JSON.parse(localStorage.getItem("layers")); if (v) { mode = v.mode === "satellite" ? "satellite" : "map"; labels = v.labels !== false; } } catch (e) { }
+  // Over the satellite pictures the street map keeps only names, roads and borders (or nothing, without labels).
+  const keepOnImagery = l => (l.type === "symbol" && !l.id.startsWith("poi")) || (l.type === "line" && /^(road|highway|bridge|tunnel|boundary)/.test(l.id));
+  function showLayers() {
+    const satellite = mode === "satellite";
+    const shown = satellite ? (imagery.replacedBy || imagery) : null;
+    for (const l of [imagery, imagery.replacedBy]) if (l && l !== shown && map.hasLayer(l)) map.removeLayer(l);
+    if (shown && !map.hasLayer(shown)) shown.addTo(map);
+    if (base.gl) {
+      for (const l of base.gl.getStyle().layers) {
+        const on = !satellite || (labels && keepOnImagery(l));
+        base.gl.setLayoutProperty(l.id, "visibility", on ? "visible" : "none");
+      }
+    } else if (base.plain) {
+      if (satellite && map.hasLayer(base.plain)) map.removeLayer(base.plain);
+      else if (!satellite && !map.hasLayer(base.plain)) base.plain.addTo(map);
+    }
+    for (const b of modeButtons) b.classList.toggle("on", b.dataset.mode === mode);
+    labelsBox.parentElement.style.display = satellite && base.gl ? "flex" : "none";
+    try { localStorage.setItem("layers", JSON.stringify({ mode, labels })); } catch (e) { }
+  }
+  const switcher = L.control({ position: "bottomright" });
+  const modeButtons = [], labelsBox = document.createElement("input");
+  const modeTexts = {}, labelsText = document.createElement("span");
+  switcher.onAdd = () => {
+    const box = L.DomUtil.create("div", "leaflet-bar");
+    box.id = "layers";
+    const modes = document.createElement("div");
+    modes.className = "modes";
+    for (const [key, text] of [["map", "Map"], ["satellite", "Satellite"]]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.mode = key;
+      b.textContent = text;
+      b.addEventListener("click", () => { mode = key; showLayers(); });
+      modeButtons.push(b);
+      modeTexts[key] = b;
+      modes.append(b);
+    }
+    const label = document.createElement("label");
+    labelsBox.type = "checkbox";
+    labelsBox.checked = labels;
+    labelsBox.addEventListener("change", () => { labels = labelsBox.checked; showLayers(); });
+    labelsText.textContent = "Labels";
+    label.append(labelsBox, labelsText);
+    box.append(modes, label);
+    L.DomEvent.disableClickPropagation(box);
+    L.DomEvent.disableScrollPropagation(box);
+    return box;
+  };
+  switcher.addTo(map);
+  base.ready.push(showLayers);
+  showLayers();
   map.on("moveend", () => {
     const c = map.getCenter();
     try { localStorage.setItem("view", JSON.stringify({ lat: c.lat, lon: c.lng, zoom: map.getZoom() })); } catch (e) { }
@@ -306,6 +415,9 @@ function start() {
           preview.setContent(previewContent(m.src));
       } else if (m.type === "texts") {
         texts = { open: m.open, show: m.show, of: m.of, estimate: m.estimate };
+        if (m.map) modeTexts.map.textContent = m.map;
+        if (m.satellite) modeTexts.satellite.textContent = m.satellite;
+        if (m.labels) labelsText.textContent = m.labels;
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)

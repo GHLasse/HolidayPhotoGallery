@@ -49,6 +49,11 @@
   <ItemGroup Condition="'$(OneDriveClientId)' != ''">
     <AssemblyMetadata Include="OneDriveClientId" Value="$(OneDriveClientId)" />
   </ItemGroup>
+  <!-- The app's Esri key for sharp satellite pictures on the map (-p:EsriApiKey=…). Without it the
+       satellite view uses Sentinel-2 cloudless. -->
+  <ItemGroup Condition="'$(EsriApiKey)' != ''">
+    <AssemblyMetadata Include="EsriApiKey" Value="$(EsriApiKey)" />
+  </ItemGroup>
 
   <!-- The map page, served to WebView2 from the app folder. -->
   <ItemGroup>

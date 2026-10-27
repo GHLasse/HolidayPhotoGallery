@@ -33,6 +33,8 @@ public sealed partial class MainWindow
         ("Leaflet, MapLibre GL JS", Tr("The map"), "BSD 2-Clause, BSD 3-Clause", "https://leafletjs.com"),
         ("OpenStreetMap", Tr("Map data, © OpenStreetMap contributors"), "ODbL", "https://www.openstreetmap.org/copyright"),
         ("OpenFreeMap", Tr("Map tiles"), "MIT, ODbL", "https://openfreemap.org"),
+        ("Sentinel-2 cloudless by EOX IT Services GmbH", Tr("Satellite pictures (contains modified Copernicus Sentinel data)"), "CC BY-NC-SA 4.0", "https://s2maps.eu"),
+        ("Esri World Imagery", Tr("Sharp satellite pictures, when the app has an Esri key"), "Esri terms of use", "https://www.esri.com/en-us/legal/terms/full-master-agreement"),
         ("Nominatim", Tr("Place names for a position, and positions for a place name"), "GPL 2.0, ODbL", "https://nominatim.org"),
         ("Unicode CLDR", Tr("Country names in many languages"), "Unicode License v3", "https://cldr.unicode.org"),
         ("Inno Setup by Jordan Russell", Tr("The installer"), "Inno Setup License", "https://jrsoftware.org/isinfo.php"),
