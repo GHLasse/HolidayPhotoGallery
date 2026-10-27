@@ -74,6 +74,8 @@ public sealed partial class MainWindow
         var markDamage = damaged.Damage is null && damaged.Image is not null && damaged.Health == FileHealth.Garbled;
         var lost = damaged.Damage is { Break: not null } b
             ? Tr("About {0:P0} of this photo is damaged: its picture data broke, so from there on the colours are wrong.", b.LostShare)
+            : damaged.Damage is { LostShare: < 0.005 }
+                ? Tr("A thin strip at the edge of this photo was lost: the end of its file is missing, and the lost part shows grey.")
             : damaged.Damage is { } d
                 ? Tr("About {0:P0} of this photo was lost: the end of its file is missing, and the lost part shows grey.", d.LostShare)
                 : damaged.Image is null
