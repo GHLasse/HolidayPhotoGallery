@@ -14,21 +14,67 @@ public sealed partial class MainWindow
     // Room the photo's name keeps beside the buttons before they give up their labels.
     private const double ViewerTitleRoom = 160;
 
+    // Room it keeps before buttons leave the bar; below that the name is cut short instead.
+    private const double ViewerTitleMinRoom = 48;
+
+    // A video has no rotate, crop, auto adjust, repair, undo or back to original (ShowVideoTools).
+    private bool _viewerShowsVideo;
+
     private void ViewerTopBar_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (e.NewSize.Width != e.PreviousSize.Width)
             FitViewerToolbar();
     }
 
+    /// <summary>
+    /// The buttons that may leave a narrow bar, first to go first. Their keys still work, and rotate and Open with
+    /// are in "More actions" too. "More actions" and Close always stay, so the viewer can always be left
+    /// (Lasse, 2026-10-27). Each is paired with whether it belongs on the bar at all for this photo.
+    /// </summary>
+    private (UIElement Tool, bool Wanted)[] ViewerToolsByPriority()
+    {
+        var photo = !_viewerShowsVideo;
+        var apps = ViewModel.FavouriteApps.Count;
+        return
+        [
+            (ViewerFavourite2Button, apps > 1),
+            (ViewerFavourite1Button, apps > 0),
+            (ViewerOpenWithButton, true),
+            (ViewerRevertButton, photo),
+            (ViewerUndoButton, photo),
+            (ViewerRepairButton, photo),
+            (ViewerAutoButton, photo),
+            (ViewerCropButton, photo),
+            (ViewerEditSeparator, photo),
+            (ViewerRotateRightButton, photo),
+            (ViewerRotateLeftButton, photo),
+        ];
+    }
+
     private void FitViewerToolbar()
     {
-        var available = ViewerTopBar.ActualWidth - ViewerTopBar.Padding.Left - ViewerTopBar.Padding.Right - ViewerTitleRoom;
-        if (available <= 0)
+        var tools = ViewerToolsByPriority();
+        foreach (var (tool, wanted) in tools)
+            tool.Visibility = wanted ? Visibility.Visible : Visibility.Collapsed;
+        var width = ViewerTopBar.ActualWidth - ViewerTopBar.Padding.Left - ViewerTopBar.Padding.Right;
+        if (width <= 0)
             return;
         ShowViewerLabels(true);
+        if (ToolsWidth() <= width - ViewerTitleRoom)
+            return;
+        ShowViewerLabels(false);
+        foreach (var (tool, _) in tools)
+        {
+            if (ToolsWidth() <= width - ViewerTitleMinRoom)
+                break;
+            tool.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private double ToolsWidth()
+    {
         ViewerTools.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        if (ViewerTools.DesiredSize.Width > available)
-            ShowViewerLabels(false);
+        return ViewerTools.DesiredSize.Width;
     }
 
     private void ShowViewerLabels(bool show)

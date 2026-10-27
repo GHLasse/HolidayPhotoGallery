@@ -57,12 +57,7 @@ public sealed partial class MainWindow
 
     private void ShowVideoTools(bool video)
     {
-        var photoTools = video ? Visibility.Collapsed : Visibility.Visible;
-        foreach (var tool in new UIElement[]
-                 {
-                     ViewerRotateLeftButton, ViewerRotateRightButton, ViewerEditSeparator, ViewerCropButton, ViewerAutoButton,
-                     ViewerRepairButton, ViewerUndoButton, ViewerRevertButton,
-                 })
-            tool.Visibility = photoTools;
+        _viewerShowsVideo = video;
+        FitViewerToolbar();
     }
 }
