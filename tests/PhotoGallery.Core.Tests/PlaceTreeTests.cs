@@ -25,6 +25,23 @@ public class PlaceTreeTests
     }
 
     [Fact]
+    public void Three_letter_codes_are_the_same_country()
+    {
+        // Other apps write "DEU" or "CHN" as the country code; the app writes "DE".
+        var tree = PlaceTree.Build(
+        [
+            new PlaceCount("Deutschland", null, 5, "DEU"),
+            new PlaceCount("Germany", null, 1, "DE"),
+            new PlaceCount("China", null, 3, "CHN"),
+            new PlaceCount("China", null, 2, "CN"),
+            new PlaceCount("Czech Republic", null, 4, "CZE"),
+            new PlaceCount("Czechia", null, 1, "CZ"),
+        ], "en");
+
+        Assert.Equal([("China", 5), ("Czechia", 5), ("Germany", 6)], tree.Select(c => (c.Name, c.Count)));
+    }
+
+    [Fact]
     public void Countries_are_shown_in_the_language_asked_for()
     {
         var tree = PlaceTree.Build([new PlaceCount("Germany", null, 1, "DE"), new PlaceCount("Spain", null, 1)], "de");

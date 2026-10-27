@@ -83,8 +83,7 @@ public sealed class PlaceRenamer(Func<GeoPosition, string, CancellationToken, Ta
         return (state, city, part);
     }
 
-    private static string? CodeOf(PlaceName place) =>
-        Countries.Name(place.CountryCode, "en") is not null ? place.CountryCode!.Trim().ToUpperInvariant() : Countries.Code(place.Country);
+    private static string? CodeOf(PlaceName place) => Countries.Normalize(place.CountryCode) ?? Countries.Code(place.Country);
 
     private static string Key(string? name) => name?.Trim().ToUpperInvariant() ?? "";
 
