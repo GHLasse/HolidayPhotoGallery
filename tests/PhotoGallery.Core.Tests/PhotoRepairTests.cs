@@ -62,6 +62,37 @@ public class PhotoRepairTests
     }
 
     [Fact]
+    public void Blocks_garbled_just_before_the_grey_are_lost_too()
+    {
+        // A smooth photo cut off in the block row at 32 from x 40 on, with the two blocks before the grey
+        // garbled into flat pink; the preview is a plain blue.
+        var p = PhotoRepairBreakTests.Picture(W, H);
+        for (var y = 32; y < H; y++)
+        {
+            for (var x = 0; x < W; x++)
+            {
+                var i = (y * W + x) * 4;
+                if (x >= 40 || y >= 40)
+                    (p[i], p[i + 1], p[i + 2]) = (128, 128, 128);
+                else if (y < 40 && x >= 24)
+                    (p[i], p[i + 1], p[i + 2]) = (200, 180, 250);
+            }
+        }
+        var damage = PhotoRepair.Find(p, W, H, cutOff: true)!;
+        Assert.Equal(32, damage.Kept);
+        Assert.Equal(new GarbledBlocks(24, 8), damage.Garbled);
+
+        using var preview = new Image<Bgra32>(W, H, new Bgra32(0, 0, 255, 255));
+        using var stream = new MemoryStream();
+        preview.SaveAsPng(stream);
+        var filled = PhotoRepair.Fill(p, W, H, damage, stream.ToArray(), orientation: 1)!;
+        int Blue(int x, int y) => filled[(y * W + x) * 4];
+        Assert.Equal(255, Blue(30, 35)); // the pink block is filled
+        Assert.Equal(255, Blue(50, 35)); // the grey too
+        Assert.NotEqual(255, Blue(10, 35)); // the whole blocks before them stay
+    }
+
+    [Fact]
     public void Finds_it_on_a_photo_turned_upright()
     {
         // Turned clockwise for showing, the bottom of the stored pixels is on the left.
@@ -142,15 +173,15 @@ public class PhotoRepairBreakTests
     private const int W = 320, H = 240;
 
     // A smooth picture with some noise, like a photo.
-    private static byte[] Picture()
+    internal static byte[] Picture(int width = W, int height = H)
     {
         var random = new Random(9);
-        var p = new byte[W * H * 4];
-        for (var y = 0; y < H; y++)
+        var p = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
         {
-            for (var x = 0; x < W; x++)
+            for (var x = 0; x < width; x++)
             {
-                var i = (y * W + x) * 4;
+                var i = (y * width + x) * 4;
                 (p[i], p[i + 1], p[i + 2], p[i + 3]) = ((byte)(60 + x / 4 + random.Next(6)), (byte)(80 + y / 4 + random.Next(6)), (byte)(100 + random.Next(6)), 255);
             }
         }

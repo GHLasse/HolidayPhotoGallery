@@ -26,7 +26,18 @@ public sealed record PhotoDamage(DamagedEdge Edge, int Kept, int Length, byte Fi
     /// on the colours are wrong, not grey.
     /// </summary>
     public ColourBreak? Break { get; init; }
+
+    /// <summary>
+    /// Blocks just before the grey that came out garbled (wrong colours, not grey): the data broke off in them.
+    /// </summary>
+    public GarbledBlocks? Garbled { get; init; }
 }
+
+/// <summary>
+/// In the <see cref="Rows"/> rows from Kept on (the row of blocks a cut-off file ended in), everything from
+/// <see cref="X"/> on is lost, grey or not.
+/// </summary>
+public sealed record GarbledBlocks(int X, int Rows);
 
 /// <summary>
 /// Where a JPEG's picture data broke: a flipped bit makes the decoder lose step, and every block after it comes
@@ -70,7 +81,7 @@ public static class PhotoRepair
             var view = new EdgeView(edge, width, height);
             if (FindAtBottom(bgra, view, small: cutOff && edge == stored) is not { } found)
                 continue;
-            var damage = new PhotoDamage(edge, found.Kept, view.Height, found.Fill);
+            var damage = new PhotoDamage(edge, found.Kept, view.Height, found.Fill) { Garbled = found.Garbled };
             if (worst is null || damage.LostShare > worst.LostShare)
                 worst = damage;
         }
@@ -190,7 +201,8 @@ public static class PhotoRepair
                 var i = view.Index(x, y);
                 var lost = damage.Break is { } broken
                     ? y >= damage.Kept + broken.BlockHeight || x >= broken.X
-                    : IsFill(result, i, damage.Fill);
+                    : IsFill(result, i, damage.Fill)
+                      || damage.Garbled is { } garbled && y < damage.Kept + garbled.Rows && x >= garbled.X;
                 if (lost)
                     Buffer.BlockCopy(scaled, i, result, i, 4);
             }
@@ -325,7 +337,7 @@ public static class PhotoRepair
         Math.Max(Math.Abs(a[0] - b[0]), Math.Max(Math.Abs(a[1] - b[1]), Math.Abs(a[2] - b[2])));
 
     // A small lost strip (less than a row of blocks, or than 1% of the photo) counts only when asked for.
-    private static (int Kept, byte Fill)? FindAtBottom(byte[] p, EdgeView view, bool small = false)
+    private static (int Kept, byte Fill, GarbledBlocks? Garbled)? FindAtBottom(byte[] p, EdgeView view, bool small = false)
     {
         var (w, h) = (view.Width, view.Height);
         var corner = view.Index(w - 1, h - 1);
@@ -340,9 +352,43 @@ public static class PhotoRepair
         if (top == 0 || (!small && h - top < Math.Max(MinBand, h / 100)))
             return null;
         // The row of blocks the file broke off in is lost from some point on.
+        var full = top;
         while (top > 0 && FlatRun(p, view, top - 1, fill) >= PartialRun)
             top--;
-        return top == h ? null : (top, fill);
+        if (top == h)
+            return null;
+        return (top, fill, top < full ? FindGarbled(p, view, top, full - top, w - FlatRun(p, view, top, fill)) : null);
+    }
+
+    // The blocks just before the grey in the row the file broke off in often come out with wrong colours: the
+    // last bits of data were cut. Going left from the grey, a block counts as garbled while its top edge
+    // doesn't carry on from the row above it, far more than the photo changes from one row to the next there.
+    private static GarbledBlocks? FindGarbled(byte[] p, EdgeView view, int top, int rows, int greyFrom)
+    {
+        const int MaxBlocks = 16;
+        if (top < 2)
+            return null;
+        var block = rows >= 16 ? 16 : 8;
+        var x = greyFrom;
+        for (var n = 0; n < MaxBlocks && x - block >= 0; n++)
+        {
+            double jump = 0, natural = 0;
+            for (var k = x - block; k < x; k++)
+            {
+                int a2 = view.Index(k, top - 2), a1 = view.Index(k, top - 1), b = view.Index(k, top);
+                for (var ch = 0; ch < 3; ch++)
+                {
+                    jump += Math.Abs(p[b + ch] - p[a1 + ch]);
+                    natural += Math.Abs(p[a1 + ch] - p[a2 + ch]);
+                }
+            }
+            jump /= block * 3;
+            natural /= block * 3;
+            if (jump < Math.Max(20, 3 * natural))
+                break;
+            x -= block;
+        }
+        return x < greyFrom ? new GarbledBlocks(x, rows) : null;
     }
 
     // How many pixels at the right end of the row have the fill colour.
