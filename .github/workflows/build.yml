@@ -342,9 +342,20 @@ jobs:
             echo "::error::Release $tag already exists."
             exit 1
           fi
+          # Written release notes (docs/release-notes/v0.2.0.md) are what the app's update banner shows as
+          # "What's new"; without them GitHub lists the merged pull requests.
+          notes="docs/release-notes/$tag.md"
+          if [ -f "$notes" ]; then
+            notes_args=(--notes-file "$notes")
+          else
+            notes_args=(--generate-notes)
+          fi
           if gh release view "$tag" > /dev/null 2>&1; then
             gh release upload "$tag" $files --clobber
+            if [ -f "$notes" ]; then
+              gh release edit "$tag" --notes-file "$notes"
+            fi
           else
             gh release create "$tag" $files \
-              --target "${{ github.sha }}" --title "Holiday Photo Gallery $version" --generate-notes
+              --target "${{ github.sha }}" --title "Holiday Photo Gallery $version" "${notes_args[@]}"
           fi
