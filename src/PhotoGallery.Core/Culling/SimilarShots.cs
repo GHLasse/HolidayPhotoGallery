@@ -70,7 +70,7 @@ public static class SimilarShots
                 var last = run[^1];
                 // Same camera clock: the folder's photos are compared as they were taken.
                 var apart = photo.DateTaken!.Value.Local - last.DateTaken!.Value.Local;
-                if (apart > gap || !alike(last, photo, apart))
+                if (apart > gap || !SameShape(last, photo) || !alike(last, photo, apart))
                 {
                     if (run.Count > 1)
                         groups.Add(new ShotGroup(run));
@@ -97,6 +97,17 @@ public static class SimilarShots
     /// <summary>The photo the user chose as the group's cover, if any.</summary>
     public static IndexedPhoto? Cover(ShotGroup group, IReadOnlyDictionary<string, ShotMark> marks) =>
         group.Photos.FirstOrDefault(p => marks.GetValueOrDefault(p.Path) == ShotMark.Cover);
+
+    /// <summary>
+    /// Whether two photos have about the same shape (long side to short side within 15 %): a panorama or a
+    /// square crop is never the same shot as a normal photo of the view. Unknown sizes count as the same.
+    /// </summary>
+    public static bool SameShape(IndexedPhoto a, IndexedPhoto b)
+    {
+        static double? Ratio(IndexedPhoto p) =>
+            p is { Width: > 0, Height: > 0 } ? (double)Math.Max(p.Width.Value, p.Height.Value) / Math.Min(p.Width.Value, p.Height.Value) : null;
+        return Ratio(a) is not { } x || Ratio(b) is not { } y || Math.Max(x, y) / Math.Min(x, y) <= 1.15;
+    }
 
     /// <summary>
     /// Shots this close in time are a burst: the subject moved (a flag in the wind, a wave, people), so they

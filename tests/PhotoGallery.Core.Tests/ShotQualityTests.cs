@@ -218,4 +218,16 @@ public sealed class ShotQualityTests : IDisposable
         _index.SetShotMarks([(photos[1].Path, ShotMark.None)]);
         Assert.Equal(2, _index.GetShotMarks().Count);
     }
+
+    [Fact]
+    public void A_panorama_never_stacks_with_normal_photos()
+    {
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        var pano = Photo("pano.jpg", t) with { Width = 12000, Height = 2200 };
+        var a = Photo("a.jpg", t.AddSeconds(30)) with { Width = 4000, Height = 3000 };
+        var b = Photo("b.jpg", t.AddSeconds(40)) with { Width = 3000, Height = 4000 };
+        var c = Photo("c.jpg", t.AddSeconds(50));
+        var groups = SimilarShots.Find([pano, a, b, c], (_, _, _) => true);
+        Assert.Equal([["a.jpg", "b.jpg", "c.jpg"]], groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
+    }
 }
