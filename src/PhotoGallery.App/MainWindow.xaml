@@ -74,7 +74,7 @@
                                      ToolTipService.ToolTip="{local:Loc Text='Everyone named in your photos'}" />
                 </SelectorBar>
                 <AutoSuggestBox x:Name="SearchBox" Grid.Column="2" MaxWidth="320" HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                                PlaceholderText="{local:Loc Text='Search names, captions and tags (Ctrl+E)'}"
+                                PlaceholderText="{local:Loc Text='Search names, tags or what is in the photo (Ctrl+E)'}"
                                 QueryIcon="Find" TextChanged="SearchBox_TextChanged" QuerySubmitted="SearchBox_QuerySubmitted">
                     <AutoSuggestBox.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Control" Key="E" Invoked="SearchAccelerator_Invoked" />

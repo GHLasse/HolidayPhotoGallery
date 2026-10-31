@@ -446,7 +446,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) + (_media == MediaKind.All ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
         (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
-        (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
+        (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0) + (_similarTo is null ? 0 : 1);
 
     /// <summary>
     /// True once the photos, filters and people from the index are shown (U-9): until then views show that
@@ -573,6 +573,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = FindFacesInNewPhotosAsync();
         _ = CheckFilesInBackgroundAsync();
         _ = FindDuplicatesInBackgroundAsync();
+        _ = TagInBackgroundAsync();
         _ = RefreshLibraryCountsAsync();
     }
 
@@ -622,6 +623,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var (photos, counts) = await Task.Run(() => (_index.Search(query), LibraryCounts(query.Folder)));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
+        photos = await WithMeaningAsync(query, photos);
+        if (version != _searchVersion)
+            return;
         var (tags, autoTagNames, cameras, people, dates, places) = counts;
 
         photos = FilterByCloud(photos);
@@ -1225,6 +1229,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var progress = new Progress<double>(p => StatusText = Tr("Downloading the tagging model… {0:P0}", p));
             await TagModel.DownloadAsync(TagModelFolder, progress);
             Inform(Tr("The tagging model is ready."));
+            _ = TagInBackgroundAsync();
             return true;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
@@ -1268,18 +1273,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             if (_tagger is null)
-            {
                 StatusText = Tr("Loading the tagging model…");
-                _tagger = await Task.Run(() => ImageTagger.Load(TagModelFolder));
-            }
-            if (_labelVectors is null)
-            {
-                var tagger = _tagger;
-                var language = AutoTagLanguage;
-                var prompts = labels.Select(l => AutoTags.Prompt(l, language)).ToList();
-                _labelVectors = await Task.Run(() => tagger.EmbedTexts(prompts));
-            }
-            var vectors = _labelVectors;
+            var vectors = await LabelVectorsAsync();
 
             for (var i = 0; i < items.Count; i++)
             {
@@ -1289,19 +1284,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = Tr("Tagging {0} of {1}…", i + 1, items.Count);
                 try
                 {
-                    // A small copy is plenty: the model looks at 224 × 224 pixels.
-                    // A video is tagged by the frame Windows shows as its thumbnail.
-                    // Pooled, and handed back at the end of this photo: a batch of thousands would
-                    // otherwise pile up gigabytes of pixels waiting to be freed.
-                    using var image = item.IsVideo
-                        ? await ImageLoader.ShellThumbnailPooledPixelsAsync(item.Path, 512)
-                        : await ImageLoader.DecodePooledPixelsAsync(item.Path, 512);
-                    var tagger = _tagger;
-                    var scores = await Task.Run(() =>
-                    {
-                        var vector = tagger.EmbedImage(image.Pixels, image.Width, image.Height);
-                        return ImageTagger.Scores(vector, vectors);
-                    });
+                    // The vector kept from an earlier look at the photo, so a new tag list needs no photo opened.
+                    var scores = ImageTagger.Scores(await PictureVectorAsync(item.Path, item.IsVideo), vectors);
                     var picked = AutoTags.Pick(labels, scores, threshold);
                     var (tags, autoTags) = AutoTags.Replace(item.Photo.Tags, item.Photo.AutoTags, picked);
                     tagged++;
@@ -1478,6 +1462,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // The pixels changed, so the faces found before are looked for again.
         await Task.Run(() => _index.ForgetFaces(newPath));
         ForgetMatcher();
+        // And its picture vector (L-7) is worked out again in the background.
+        await Task.Run(() => _index.ForgetPictureVector(newPath));
+        _vectors?.Remove(oldPath);
+        _vectors?.Remove(newPath);
+        _ = TagInBackgroundAsync();
         await item.ReloadThumbnailAsync();
     }
 

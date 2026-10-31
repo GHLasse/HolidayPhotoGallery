@@ -53,6 +53,11 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
                 // A file ExifTool cannot read still shows up in the gallery, just without metadata.
                 read.TryGetValue(file.FullName, out var m) ? m : new PhotoMetadata { Path = file.FullName }));
             index.Upsert(photos);
+            // New files in a folder the library already knew are new photos (a trip copied in, an import),
+            // so they get their auto tags in the background. A folder read for the first time is not: its
+            // photos are older ones the user may have tagged their own way.
+            if (known.Count > 0)
+                index.QueueAutoTag(batch.Where(f => !known.ContainsKey(f.FullName)).Select(f => f.FullName));
 
             progress?.Report(new IndexProgress(rootFolder, Math.Min(i + BatchSize, toRead.Count), toRead.Count));
         }

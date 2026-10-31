@@ -401,6 +401,7 @@ public sealed partial class MainWindow : Window
         foreach (var tag in ViewModel.Tags)
             tag.IsSelected = false;
         ViewModel.ClearPeopleFilter();
+        _ = ViewModel.StopSimilarAsync();
     }
 
     // ---- Keyboard shortcuts, like Lightroom ----
@@ -888,21 +889,8 @@ public sealed partial class MainWindow : Window
             ViewModel.Warn(Tr("Select the photos to tag."));
             return;
         }
-        if (!MainViewModel.IsTagModelInstalled)
-        {
-            var dialog = new ContentDialog
-            {
-                XamlRoot = Root.XamlRoot,
-                Title = Tr("Download the tagging model?"),
-                Content = Tr("Auto-tagging recognises what is in your photos on this PC, so no photo is sent anywhere.") + " " +
-                          Tr("It needs an image-recognition model (Google's SigLIP 2) of about {0:N0} MB, which is downloaded once from Hugging Face and kept in the app's data folder.", TagModel.DownloadSize / 1_000_000),
-                PrimaryButtonText = Tr("Download"),
-                CloseButtonText = Tr("Cancel"),
-                DefaultButton = ContentDialogButton.Primary,
-            };
-            if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadTagModelAsync())
-                return;
-        }
+        if (!await EnsureTagModelAsync())
+            return;
         // Unsaved edits in the panel would otherwise be written over the new tags afterwards.
         if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
             return;
@@ -910,6 +898,37 @@ public sealed partial class MainWindow : Window
         // The details pane shows the new tags at once.
         if (!ViewModel.Editor.IsDirty)
             ViewModel.Editor.Load(SelectedPhotos);
+    }
+
+    /// <summary>
+    /// The tagging model, downloaded after asking if it isn't yet. Auto-tagging, searching in your own words
+    /// and Find similar photos all need it. False when the user said no or the download failed.
+    /// </summary>
+    private async Task<bool> EnsureTagModelAsync()
+    {
+        if (MainViewModel.IsTagModelInstalled)
+            return true;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Download the tagging model?"),
+            Content = Tr("Auto-tagging recognises what is in your photos on this PC, so no photo is sent anywhere.") + " " +
+                      Tr("It needs an image-recognition model (Google's SigLIP 2) of about {0:N0} MB, which is downloaded once from Hugging Face and kept in the app's data folder.", TagModel.DownloadSize / 1_000_000),
+            PrimaryButtonText = Tr("Download"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary && await ViewModel.DownloadTagModelAsync();
+    }
+
+    // Find similar photos (L-7): leaves the viewer, so the look-alikes show in the grid.
+    private async Task FindSimilarAsync()
+    {
+        if (WaitsForBusyWork() || CommandTargets() is not [var photo] || !await EnsureTagModelAsync())
+            return;
+        if (IsViewerOpen)
+            CloseViewer();
+        await ViewModel.FindSimilarAsync(photo);
     }
 
     private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e)
@@ -1456,6 +1475,19 @@ public sealed partial class MainWindow : Window
         var reset = new HyperlinkButton { Content = Tr("Use the starter list"), Padding = new Thickness(0) };
         reset.Click += (_, _) => list.Tags = AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en");
 
+        // In the background (L-7): which photos get tags by themselves, and searching in your own words.
+        var automaticTagging = new ComboBox { Header = Tr("Tag photos by themselves, in the background"), MinWidth = 320 };
+        foreach (var (_, label) in MainViewModel.AutomaticTaggingChoices)
+            automaticTagging.Items.Add(label);
+        automaticTagging.SelectedIndex = Math.Max(0, MainViewModel.AutomaticTaggingChoices.ToList().FindIndex(c => c.Key == ViewModel.AutomaticTagging));
+        var searchByMeaning = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Search in my own words, e.g. “children on the beach”, and find similar photos"),
+            IsOn = ViewModel.SearchByMeaning,
+        };
+
         var tagging = new StackPanel
         {
             Spacing = 12,
@@ -1470,6 +1502,15 @@ public sealed partial class MainWindow : Window
                 list.View,
                 reset,
                 threshold,
+                new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                automaticTagging,
+                searchByMeaning,
+                new TextBlock
+                {
+                    Text = Tr("Both run quietly in the background, one photo at a time, and pause while you do something else in the app. New photos are those that arrive in a folder the library already has, for example after an import."),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+                },
             },
         };
 
@@ -1805,6 +1846,14 @@ public sealed partial class MainWindow : Window
         // Kept as "the starter list" while unchanged, so it follows the language.
         var isStarter = labels.SequenceEqual(AutoTags.StarterList(code));
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
+        // Background tagging and searching in your own words need the tagging model: ask for it now (Settings
+        // has closed), and leave both off if it isn't wanted, so the settings never say on while nothing happens.
+        var automaticKey = MainViewModel.AutomaticTaggingChoices[Math.Max(0, automaticTagging.SelectedIndex)].Key;
+        var wantsModel = searchByMeaning.IsOn || automaticKey != AutoTagSettings.AutomaticOff;
+        var changed = searchByMeaning.IsOn != ViewModel.SearchByMeaning || automaticKey != ViewModel.AutomaticTagging;
+        if (changed && wantsModel && !MainViewModel.IsTagModelInstalled && !await EnsureTagModelAsync())
+            (automaticKey, searchByMeaning.IsOn) = (AutoTagSettings.AutomaticOff, false);
+        await ViewModel.SaveMeaningSettingsAsync(automaticKey, searchByMeaning.IsOn);
         if (crop.SelectedIndex >= 0)
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
         if (startPage.SelectedIndex >= 0)
