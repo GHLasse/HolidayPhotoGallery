@@ -79,6 +79,19 @@ public sealed class PictureVectorsTests : IDisposable
     }
 
     [Fact]
+    public void Progress_counts_the_photos_with_a_vector()
+    {
+        var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(100, _index.GetVectorProgress().Percent); // an empty library is done
+        _index.Upsert([Photo("a.jpg", then), Photo("b.jpg", then), Photo("c.jpg", then)]);
+        _index.SavePictureVector("/photos/a.jpg", Toward(7));
+        Assert.Equal(new JobProgress(1, 3), _index.GetVectorProgress());
+        Assert.Equal(33, _index.GetVectorProgress().Percent);
+        Assert.Equal(new JobProgress(0, 3), _index.GetFaceScanProgress());
+        Assert.Equal(new JobProgress(0, 3), _index.GetQualityProgress());
+    }
+
+    [Fact]
     public void The_index_keeps_vectors_until_the_picture_changes()
     {
         var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
