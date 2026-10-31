@@ -15,10 +15,23 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="HintText" VerticalAlignment="Center" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+            <!-- Going through groups of similar shots (C-4). -->
+            <StackPanel x:Name="GroupBar" Grid.Column="1" Orientation="Horizontal" Spacing="4" Visibility="Collapsed" VerticalAlignment="Center">
+                <Button x:Name="PreviousGroupButton" Click="PreviousGroup_Click"
+                        ToolTipService.ToolTip="{local:Loc Text='Previous group of similar shots (Page Up)'}">
+                    <FontIcon Glyph="&#xE76B;" FontSize="12" />
+                </Button>
+                <TextBlock x:Name="GroupText" VerticalAlignment="Center" Margin="4,0" />
+                <Button x:Name="NextGroupButton" Click="NextGroup_Click"
+                        ToolTipService.ToolTip="{local:Loc Text='Next group of similar shots (Page Down)'}">
+                    <FontIcon Glyph="&#xE76C;" FontSize="12" />
+                </Button>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
                 <ToggleButton x:Name="SyncToggle" IsChecked="True" Content="{local:Loc Text='Zoom together'}"
                               ToolTipService.ToolTip="{local:Loc Text='Zoom and pan all photos at once'}" />
                 <Button x:Name="CloseButton" Click="Close_Click" ToolTipService.ToolTip="{local:Loc Text='Back to the gallery (Esc)'}">

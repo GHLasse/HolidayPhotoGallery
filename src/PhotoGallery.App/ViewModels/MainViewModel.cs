@@ -65,6 +65,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             _metadata = new PhotoMetadataService(_exifTool);
             _metadata.WrongFormatFound += path => _uiContext?.Post(_ => _ = NoteHealthAsync(path), null);
+            // M-6: a save first checks the file is as the index read it; another PC's change is merged in.
+            _metadata.BasisFor = path => _index.GetPhoto(path);
+            _metadata.ChangedElsewhere += (path, clashes) => _uiContext?.Post(_ => ChangedElsewhere(path, clashes), null);
             _indexer = new LibraryIndexer(_index, _metadata);
             _photoEditor = new PhotoEditService(_metadata);
         }
@@ -445,7 +448,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
         (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) + (_media == MediaKind.All ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
-        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
+        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (QualityHintsOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
         (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0) + (_similarTo is null ? 0 : 1);
 
     /// <summary>
@@ -574,6 +577,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = CheckFilesInBackgroundAsync();
         _ = FindDuplicatesInBackgroundAsync();
         _ = TagInBackgroundAsync();
+        _ = CheckQualityInBackgroundAsync();
         _ = RefreshLibraryCountsAsync();
     }
 
@@ -611,6 +615,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             WithoutLocation = WithoutLocation,
             WithoutDate = WithoutDate,
             DamagedOnly = DamagedOnly,
+            QualityHintsOnly = QualityHintsOnly,
             Countries = SelectedPlace?.CountryNames,
             City = SelectedPlace?.City,
             WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
@@ -1467,12 +1472,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _vectors?.Remove(oldPath);
         _vectors?.Remove(newPath);
         _ = TagInBackgroundAsync();
+        await ForgetQualityAsync(oldPath, newPath);
         await item.ReloadThumbnailAsync();
     }
 
     private async Task RefreshTagsAsync()
     {
-        var (tags, autoTagNames) = await Task.Run(() => (_index.GetTagCounts(), _index.GetAutoTagNames()));
+        var (tags, autoTagNames) = await Task.Run(() => (_index.GetTagTreeCounts(), _index.GetAutoTagNames()));
         AutoTagNames = autoTagNames;
         UpdateTags(tags);
     }

@@ -87,6 +87,7 @@ public sealed partial class MainViewModel
     {
         _counts = null;
         _geoPoints = null;
+        _qualities = null;
         RebuildFolderTree();
         if (!_isPrivateMode && SelectedFolder is { } selected && PrivateMarks.IsFolderPrivate(selected.FullPath))
             SelectedFolder = null;

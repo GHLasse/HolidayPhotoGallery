@@ -208,6 +208,10 @@ public sealed partial class MainWindow
         if (ViewModel.DamagedOnly)
             FilterBadges.Children.Add(Badge(Tr("Damaged files"), false, outlined: false, Tr("Showing photos whose file is damaged"),
                                             null, Tr("Stop filtering by damaged files"), () => ViewModel.DamagedOnly = false));
+        if (ViewModel.QualityHintsOnly)
+            FilterBadges.Children.Add(Badge(Tr("Possibly weak shots"), false, outlined: false,
+                                            Tr("Showing photos that may be blurry, too dark or too bright, not yet rated or flagged"),
+                                            null, Tr("Stop filtering by possibly weak shots"), () => ViewModel.QualityHintsOnly = false));
         if (ViewModel.OnGoogleOnly)
             FilterBadges.Children.Add(Badge(Tr("In Google Photos"), false, outlined: false, Tr("Showing photos uploaded to Google Photos"),
                                             null, Tr("Stop filtering by Google Photos"), () => ViewModel.OnGoogleOnly = false));
@@ -225,8 +229,9 @@ public sealed partial class MainWindow
                                             null, Tr("Stop showing look-alikes"), () => _ = ViewModel.StopSimilarAsync()));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
-            FilterBadges.Children.Add(Badge(tag.Tag, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", tag.Tag),
-                                            null, Tr("Stop filtering by {0}", tag.Tag), () => tag.IsSelected = false));
+            var shown = PhotoGallery.Core.Metadata.TagTree.Display(tag.Tag);
+            FilterBadges.Children.Add(Badge(shown, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", shown),
+                                            null, Tr("Stop filtering by {0}", shown), () => tag.IsSelected = false));
         }
         foreach (var person in ViewModel.People.Where(p => p.IsSelected).ToList())
         {

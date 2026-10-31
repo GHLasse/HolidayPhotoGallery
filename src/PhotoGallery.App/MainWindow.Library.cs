@@ -39,6 +39,8 @@ public sealed partial class MainWindow
             null,
             new(ViewModel.HasDuplicates ? Tr("Go through duplicates ({0})", ViewModel.DuplicatesText) : Tr("Find duplicates"),
                 AppIcons.FindDuplicates, () => Do(FindDuplicatesInLibrary_Click), Tip: ViewModel.DuplicatesTip),
+            new(Tr("Go through similar shots"), "\uE8A9", () => _ = GoThroughSimilarShotsAsync(),
+                Tip: Tr("Compare each group of similar shots among the photos shown, the sharpest highlighted, to keep the best")),
             new(Tr("Find people in all photos shown"), AppIcons.FindPeople, () => Do(FindPeopleInAll_Click),
                 Tip: Tr("Find the people in your photos on this PC and name them")),
             new(unnamed > 0 ? Tr("Name the people found… ({0:N0} faces without a name)", unnamed) : Tr("Name the people found…"),

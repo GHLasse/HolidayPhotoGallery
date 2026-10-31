@@ -217,7 +217,8 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
+                                                <CheckBox Content="{x:Bind Label}" Margin="{x:Bind Indent}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0"
+                                                          ToolTipService.ToolTip="{x:Bind Tag}" />
                                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                             </Grid>
@@ -303,6 +304,8 @@
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No location'}" IsChecked="{x:Bind ViewModel.WithoutLocation, Mode=TwoWay}" />
                                 <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='Damaged files'}" IsChecked="{x:Bind ViewModel.DamagedOnly, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="{local:Loc Text='Possibly weak shots'}" IsChecked="{x:Bind ViewModel.QualityHintsOnly, Mode=TwoWay}"
+                                                      ToolTipService.ToolTip="{local:Loc Text='Photos that may be blurry, too dark or too bright and are not rated or flagged yet'}" />
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>

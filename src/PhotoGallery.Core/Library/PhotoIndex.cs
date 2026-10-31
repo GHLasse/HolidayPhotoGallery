@@ -145,6 +145,17 @@ public sealed partial class PhotoIndex : IDisposable
                 file_mtime INTEGER NOT NULL,
                 vector BLOB NOT NULL
             );
+            -- Sharpness and exposure measured for quality hints (C-4); ignored = the user dismissed the hints.
+            CREATE TABLE IF NOT EXISTS shot_quality (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                sharpness REAL NOT NULL,
+                face_sharpness REAL,
+                brightness REAL NOT NULL,
+                dark_share REAL NOT NULL,
+                bright_share REAL NOT NULL,
+                hints INTEGER NOT NULL,
+                ignored INTEGER NOT NULL DEFAULT 0
+            );
             -- Photos that arrived in a folder already in the library, to be auto-tagged in the background (L-7).
             CREATE TABLE IF NOT EXISTS auto_tag_queue (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
@@ -388,6 +399,9 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>The photo as the index has it, or null.</summary>
+    public IndexedPhoto? GetPhoto(string path) => Search(new PhotoQuery { ExactPath = path }).FirstOrDefault();
+
     public IReadOnlyList<IndexedPhoto> Search(PhotoQuery query)
     {
         lock (_lock)
@@ -397,6 +411,12 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (!string.IsNullOrWhiteSpace(query.Folder))
                 where.Add(FolderCondition(cmd, query.Folder, query.IncludeSubfolders));
+
+            if (query.ExactPath is { } exact)
+            {
+                where.Add("p.path = $exactPath");
+                cmd.Parameters.AddWithValue("$exactPath", exact);
+            }
 
             if (query.MinRating > 0)
             {
@@ -439,6 +459,9 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.DamagedOnly)
                 where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
+
+            if (query.QualityHintsOnly)
+                where.Add(HasQualityHintSql);
 
             if (query.MisnamedOnly)
                 where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND (c.health = {(int)FileHealth.Misnamed} OR c.misnamed = 1) AND c.file_mtime = p.file_mtime)");
@@ -489,8 +512,10 @@ public sealed partial class PhotoIndex : IDisposable
             foreach (var tag in TagList.Normalize(query.Tags))
             {
                 var name = $"$tag{i++}";
-                where.Add($"EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag = {name})");
+                // A tag in a tree also finds the tags under it (M-5): "Animals" finds "Animals/Birds/Seagull".
+                where.Add($"EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND (t.tag = {name} OR t.tag LIKE {name}_under ESCAPE '\\'))");
                 cmd.Parameters.AddWithValue(name, tag);
+                cmd.Parameters.AddWithValue(name + "_under", EscapeLike(tag + "/") + "%");
             }
 
             foreach (var person in query.People.Distinct(StringComparer.CurrentCultureIgnoreCase))
@@ -569,6 +594,36 @@ public sealed partial class PhotoIndex : IDisposable
                 result.Add((reader.GetString(0), reader.GetInt32(1)));
             return result;
         }
+    }
+
+    /// <summary>
+    /// The tags for the filter (M-5): every tag, and every tree level above a tag ("Animals" and
+    /// "Animals/Birds" above "Animals/Birds/Seagull") with how many photos have a tag at or under it,
+    /// in tree order: each level followed by what is under it.
+    /// </summary>
+    private static readonly Comparer<string> TreeOrder = Comparer<string>.Create((a, b) =>
+    {
+        var pa = a.Split('/');
+        var pb = b.Split('/');
+        for (var i = 0; i < Math.Min(pa.Length, pb.Length); i++)
+        {
+            var c = StringComparer.CurrentCultureIgnoreCase.Compare(pa[i], pb[i]);
+            if (c != 0)
+                return c;
+        }
+        return pa.Length.CompareTo(pb.Length);
+    });
+
+    public IReadOnlyList<(string Tag, int Count)> GetTagTreeCounts()
+    {
+        var tags = GetTagCounts();
+        var levels = new HashSet<string>(tags.SelectMany(t => TagTree.Ancestors(t.Tag)), StringComparer.OrdinalIgnoreCase);
+        var result = tags.Where(t => !levels.Contains(t.Tag)).ToList();
+        // A level counts every photo with a tag at or under it.
+        foreach (var level in levels)
+            result.Add((level, PathsWithTag(level).Count));
+        // Part by part, so each level is followed by what is under it.
+        return result.OrderBy(t => t.Tag, TreeOrder).ToList();
     }
 
     /// <summary>The tags that auto-tagging added on every photo that has them (the hidden list in the file).</summary>
