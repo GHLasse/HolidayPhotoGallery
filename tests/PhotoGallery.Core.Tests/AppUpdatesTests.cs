@@ -119,6 +119,23 @@ public sealed class AppUpdatesTests
     }
 
     [Fact]
+    public void Setup_closes_what_holds_the_files_and_is_tried_again_after_code_5()
+    {
+        var script = AppUpdates.HandOverScript(4242, @"C:\Apps\HolidayPhotoGallery\", "HolidayPhotoGallery.exe",
+                                               @"C:\Data\Updates\Setup.exe", new Version(0, 0, 264), @"C:\Data\Updates");
+        Assert.Contains("/FORCECLOSEAPPLICATIONS", script);
+        Assert.Contains("taskkill /F /IM \"HolidayPhotoGallery.exe\"", script);
+        Assert.Contains("if \"%code%\"==\"5\" if %tries% lss 2 goto setup", script);
+    }
+
+    [Fact]
+    public void Setup_logs_reason_is_put_in_words()
+    {
+        Assert.NotNull(AppUpdates.FailureReason("2026-10-31 16:55:16.144   Some applications could not be shut down."));
+        Assert.Null(AppUpdates.FailureReason("Log closed."));
+    }
+
+    [Fact]
     public void A_hand_over_that_never_ran_is_reported_once()
     {
         var folder = Path.Combine(Path.GetTempPath(), "pg-update-" + Guid.NewGuid().ToString("N"));

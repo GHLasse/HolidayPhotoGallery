@@ -1,6 +1,8 @@
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Import;
 using PhotoGallery.Core.Metadata;
+using Windows.Devices.Enumeration;
+using Windows.Devices.Portable;
 using Windows.Media.Import;
 using Windows.Storage;
 using static PhotoGallery.Core.Localization.Strings;
@@ -8,13 +10,19 @@ using static PhotoGallery.Core.Localization.Strings;
 namespace PhotoGallery.App.ViewModels;
 
 /// <summary>Where photos can be imported from: a card or camera with a drive letter, or a phone or camera Windows reaches.</summary>
-public sealed class ImportSourceChoice(string name, string? drive, PhotoImportSource? device)
+public sealed class ImportSourceChoice(string name, string? drive, PhotoImportSource? device, StorageFolder? portable = null)
 {
     public string Name { get; } = name;
 
     public string? Drive { get; } = drive;
 
     public PhotoImportSource? Device { get; } = device;
+
+    /// <summary>
+    /// A phone as File Explorer shows it under "This PC" (MTP), for when Windows' import doesn't list it: its
+    /// files are read and copied through Windows' storage API.
+    /// </summary>
+    public StorageFolder? Portable { get; } = portable;
 
     // A phone's items, found by Windows' import API; importing selects among them.
     internal PhotoImportFindItemsResult? Found { get; set; }
@@ -72,7 +80,121 @@ public sealed partial class MainViewModel
             // Without Windows' import (or with the phone locked) cards still work.
             App.Trace($"photo import sources: {ex.Message}");
         }
+
+        // Phones File Explorer shows under "This PC" without a drive letter, which Windows' import didn't list
+        // (it missed a Pixel that Explorer showed).
+        // Windows' storage calls stay off the UI thread: they can pump messages and re-enter WinUI.
+        try
+        {
+            foreach (var info in await Task.Run(async () => await DeviceInformation.FindAllAsync(StorageDevice.GetDeviceSelector())))
+            {
+                if (choices.Any(c => c.Name.Contains(info.Name, StringComparison.CurrentCultureIgnoreCase) ||
+                                     info.Name.Contains(c.Name, StringComparison.CurrentCultureIgnoreCase)))
+                    continue;
+                try
+                {
+                    var root = await Task.Run(() => StorageDevice.FromId(info.Id));
+                    // A drive with a letter has a path and is listed above already.
+                    if (root is not null && string.IsNullOrEmpty(root.Path))
+                        choices.Add(new ImportSourceChoice(info.Name, null, null, root));
+                }
+                catch (Exception ex)
+                {
+                    App.Trace($"portable device {info.Name}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Trace($"portable devices: {ex.Message}");
+        }
         return choices;
+    }
+
+    // The folders on a phone that hold photos, in each of its storages ("Internal shared storage", a card).
+    private static readonly string[] PhoneFolders = ["DCIM", "Pictures", "Movies"];
+
+    private static async Task<List<ImportItem>> ListPortableItemsAsync(StorageFolder device)
+    {
+        var items = new List<ImportItem>();
+        async Task Walk(StorageFolder folder, int depth)
+        {
+            foreach (var file in await folder.GetFilesAsync())
+            {
+                if (!ImportPlanner.IsImportable(file.Name))
+                    continue;
+                var props = await file.GetBasicPropertiesAsync();
+                var taken = props.ItemDate.Year > 1601 ? props.ItemDate : props.DateModified;
+                items.Add(new ImportItem(file.Name, (long)props.Size, taken.LocalDateTime) { Handle = file });
+            }
+            if (depth < 8)
+            {
+                foreach (var sub in await folder.GetFoldersAsync())
+                {
+                    // Thumbnail caches and trash aren't photos to import.
+                    if (sub.Name.StartsWith('.'))
+                        continue;
+                    await Walk(sub, depth + 1);
+                }
+            }
+        }
+        foreach (var storage in await device.GetFoldersAsync())
+        {
+            var folders = await storage.GetFoldersAsync();
+            var wanted = folders.Where(f => PhoneFolders.Contains(f.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+            // A camera's storage holds DCIM; something else is looked through whole.
+            foreach (var folder in wanted.Count > 0 ? wanted : new List<StorageFolder> { storage })
+                await Walk(folder, 0);
+        }
+        return items;
+    }
+
+    // Copies each photo from the phone through a temporary name next to its target.
+    private async Task ImportFromPortableAsync(IReadOnlyList<(ImportItem Item, string Target)> plan, bool delete, List<string> imported, List<string> failures)
+    {
+        for (var i = 0; i < plan.Count; i++)
+        {
+            if (_stopRequested)
+                break;
+            var (item, target) = plan[i];
+            if (item.Handle is not StorageFile file)
+                continue;
+            StatusText = Tr("Importing {0:N0} of {1:N0}…", i + 1, plan.Count);
+            var folder = Path.GetDirectoryName(target)!;
+            var temp = Path.GetFileName(target) + ".importing";
+            try
+            {
+                Directory.CreateDirectory(folder);
+                var copy = await Task.Run(async () =>
+                {
+                    var into = await StorageFolder.GetFolderFromPathAsync(folder);
+                    return await file.CopyAsync(into, temp, NameCollisionOption.ReplaceExisting);
+                });
+                var copied = new FileInfo(copy.Path);
+                if (copied.Length != item.Size)
+                {
+                    copied.Delete();
+                    throw new IOException(Tr("The copy of {0} is not complete.", item.Name));
+                }
+                copied.Attributes = System.IO.FileAttributes.Normal;
+                copied.LastWriteTime = item.Taken;
+                File.Move(copied.FullName, target);
+                imported.Add(target);
+                if (delete)
+                    await Task.Run(async () => await file.DeleteAsync());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+            {
+                failures.Add($"{item.Name}: {ex.Message}");
+                try
+                {
+                    File.Delete(Path.Combine(folder, temp));
+                }
+                catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+        }
     }
 
     /// <summary>The photos and videos on the source.</summary>
@@ -80,6 +202,8 @@ public sealed partial class MainViewModel
     {
         if (source.Drive is { } drive)
             return await Task.Run(() => DriveImport.ListItems(drive));
+        if (source.Portable is { } phone)
+            return await Task.Run(() => ListPortableItemsAsync(phone));
         if (source.Device is not { } device)
             return [];
         var session = device.CreateImportSession();
@@ -113,6 +237,8 @@ public sealed partial class MainViewModel
         {
             if (source.Drive is not null)
                 await ImportFromDriveAsync(plan, deleteFromSource, imported, failures);
+            else if (source.Portable is not null)
+                await ImportFromPortableAsync(plan, deleteFromSource, imported, failures);
             else
                 await ImportFromDeviceAsync(source, plan, destination, deleteFromSource, imported, failures);
         }
