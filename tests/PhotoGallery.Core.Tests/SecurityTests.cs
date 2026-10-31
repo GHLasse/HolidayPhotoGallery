@@ -122,6 +122,16 @@ public sealed class SecurityTests : IDisposable
         Assert.False(File.Exists(copy.Source));
     }
 
+    [Fact]
+    public void Every_downloaded_model_file_is_pinned_by_its_hash()
+    {
+        foreach (var file in Tagging.TagModel.Files.Concat(Faces.FaceModel.Files))
+        {
+            Assert.Matches("^[0-9a-f]{64}$", file.Sha256 ?? "");
+            Assert.DoesNotContain("/resolve/main/", file.Url, StringComparison.Ordinal);
+        }
+    }
+
     private string AddPhoto(string relative, DateTime taken)
     {
         var path = Path.GetFullPath(Path.Combine(_photos.Path, relative));

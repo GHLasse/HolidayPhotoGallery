@@ -71,21 +71,17 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/tag-model"
           mkdir -p "$dir"
-          base=https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main
+          base=https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4
           for f in onnx/vision_model_fp16.onnx onnx/text_model_fp16.onnx tokenizer.model; do
             [ -f "$dir/$(basename $f)" ] || curl -sSfL --retry 3 -o "$dir/$(basename $f)" "$base/$f"
           done
           [ -f "$dir/cats.jpg" ] || curl -sSfL --retry 3 -o "$dir/cats.jpg" http://images.cocodataset.org/val2017/000000039769.jpg
           ls -l "$dir"
-          # TEMPORARY (security review): the revision and file hashes to pin in TagModel.cs.
-          rev="$(curl -sSf https://huggingface.co/api/models/onnx-community/siglip2-base-patch16-224-ONNX/revision/main | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')"
-          echo "PIN revision $rev"
-          for sub in onnx ""; do
-            curl -sSf "https://huggingface.co/api/models/onnx-community/siglip2-base-patch16-224-ONNX/tree/$rev/$sub" | python3 -c 'import json,sys
-          for f in json.load(sys.stdin):
-              print("PIN", f["path"], f.get("size"), (f.get("lfs") or {}).get("oid"), f.get("oid"))' | grep -E "vision_model_fp16.onnx |text_model_fp16.onnx |tokenizer.model " || true
-          done
-          sha256sum "$dir"/vision_model_fp16.onnx "$dir"/text_model_fp16.onnx "$dir"/tokenizer.model | sed 's/^/PIN cached /'
+          # The same revision and hashes as TagModel.cs.
+          printf '%s  %s\n' \
+            a1959f7bd3993a607e48839f6d01e25b876fe76afda301b028b78eef68aabd95 "$dir/vision_model_fp16.onnx" \
+            711da56ada0a4aa11c7dd3320df741081a3cae4f0ae1b5e5c6d5b294738d0eb0 "$dir/text_model_fp16.onnx" \
+            61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2 "$dir/tokenizer.model" | sha256sum -c
           echo "PHOTOGALLERY_TAG_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Cache face models
         uses: actions/cache@v4
@@ -144,7 +140,7 @@ jobs:
         run: |
           $dir = Join-Path $env:RUNNER_TEMP 'tag-model'
           New-Item -ItemType Directory -Force $dir | Out-Null
-          $base = 'https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main'
+          $base = 'https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4'
           foreach ($f in 'onnx/vision_model_fp16.onnx', 'onnx/text_model_fp16.onnx', 'tokenizer.model') {
             $target = Join-Path $dir (Split-Path $f -Leaf)
             if (-not (Test-Path $target)) { curl.exe -sSfL --retry 3 -o $target "$base/$f" }

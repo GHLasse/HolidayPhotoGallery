@@ -9,16 +9,19 @@ public static class TagModel
 {
     public const string Name = "siglip2-base-patch16-224";
 
-    private const string BaseUrl = "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main/";
+    // A fixed revision, and each file's SHA-256: a changed file in the repository is never downloaded.
+    public const string Revision = "ba1f3b0843f24bc5417d38e19c37b287d719b2f4";
+
+    private const string BaseUrl = "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/" + Revision + "/";
 
     /// <summary>File name in the model folder, and where it comes from.</summary>
     public static readonly IReadOnlyList<ModelFile> Files =
     [
         // Half precision: half the size of the full model and, measured on test photos, the same results.
         // The 8-bit versions are smaller still but recognised German tags noticeably worse.
-        new(VisionFile, BaseUrl + "onnx/vision_model_fp16.onnx"),
-        new(TextFile, BaseUrl + "onnx/text_model_fp16.onnx"),
-        new(TokenizerFile, BaseUrl + "tokenizer.model"),
+        new(VisionFile, BaseUrl + "onnx/vision_model_fp16.onnx", "a1959f7bd3993a607e48839f6d01e25b876fe76afda301b028b78eef68aabd95"),
+        new(TextFile, BaseUrl + "onnx/text_model_fp16.onnx", "711da56ada0a4aa11c7dd3320df741081a3cae4f0ae1b5e5c6d5b294738d0eb0"),
+        new(TokenizerFile, BaseUrl + "tokenizer.model", "61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2"),
     ];
 
     public const string VisionFile = "vision_model_fp16.onnx";
