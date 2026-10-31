@@ -71,6 +71,16 @@ public sealed partial class MainViewModel
             await SearchAsync();
     }
 
+    /// <summary>How far the background jobs have got, for Settings: "Done for 42 % of the library (1,234 of 2,938 photos)".</summary>
+    public async Task<string> VectorProgressText() => ProgressText(await Task.Run(_index.GetVectorProgress));
+
+    public async Task<string> FaceScanProgressText() => ProgressText(await Task.Run(_index.GetFaceScanProgress));
+
+    public async Task<string> QualityProgressText() => ProgressText(await Task.Run(_index.GetQualityProgress));
+
+    private static string ProgressText(JobProgress progress) =>
+        Tr("Done for {0} % of the library ({1:N0} of {2:N0} photos)", progress.Percent, progress.Done, progress.Total);
+
     /// <summary>Whether photos are measured for quality hints in the background (Settings › App).</summary>
     public bool CheckQualityAutomatically => _settings.CheckQualityAutomatically;
 

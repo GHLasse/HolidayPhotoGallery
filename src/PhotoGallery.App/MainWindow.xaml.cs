@@ -1484,6 +1484,36 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
 
+    /// <summary>
+    /// A line of secondary text that shows how far a background job has got, read again every few seconds while
+    /// it is on screen.
+    /// </summary>
+    private TextBlock ProgressText(Func<Task<string>> read)
+    {
+        var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromSeconds(5);
+        async Task Fill()
+        {
+            try
+            {
+                text.Text = await read();
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                App.Trace($"progress: {ex.Message}");
+            }
+        }
+        timer.Tick += async (_, _) => await Fill();
+        text.Loaded += async (_, _) =>
+        {
+            await Fill();
+            timer.Start();
+        };
+        text.Unloaded += (_, _) => timer.Stop();
+        return text;
+    }
+
     private async Task ShowSettingsAsync(CloudService? cloudTab = null, string? tab = null)
     {
         // Tagging tab
@@ -1525,6 +1555,11 @@ public sealed partial class MainWindow : Window
             IsOn = ViewModel.SearchByMeaning,
         };
 
+        // Background jobs show how far they have got (Lasse: there is no other way to see it).
+        var taggingProgress = ProgressText(() => ViewModel.VectorProgressText());
+        var peopleProgress = ProgressText(() => ViewModel.FaceScanProgressText());
+        var qualityProgress = ProgressText(() => ViewModel.QualityProgressText());
+
         var tagging = new StackPanel
         {
             Spacing = 12,
@@ -1542,6 +1577,7 @@ public sealed partial class MainWindow : Window
                 new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
                 automaticTagging,
                 searchByMeaning,
+                taggingProgress,
                 new TextBlock
                 {
                     Text = Tr("Both run quietly in the background, one photo at a time, and pause while you do something else in the app. New photos are those that arrive in a folder the library already has, for example after an import."),
@@ -1619,8 +1655,10 @@ public sealed partial class MainWindow : Window
                 },
                 autoAdvance,
                 findPeople,
+                peopleProgress,
                 findDuplicates,
                 checkQuality,
+                qualityProgress,
                 new TextBlock
                 {
                     Text = Tr("Photos not looked at yet are searched quietly whenever nothing else is running. Turning this on downloads the face models first if they aren't there yet."),
