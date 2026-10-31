@@ -1,0 +1,17 @@
+# Screenshots for the download page
+
+`docs/index.html` shows these files when they exist and hides a slot that has no file.
+PNG, about 1600 px wide, light mode with real holiday photos:
+
+- `library.png` – Library with folder tree, grid and details pane
+- `compare.png` – Compare view with 2 to 4 photos and stars (added 2026-10-31)
+- `map.png` – Map workspace with placed photos (added 2026-10-27)
+- `people.png` – People workspace with named faces
+- `light.png` – any view in light mode, ideally with another palette (the other shots are dark)
+- `repair.png` – Repair wizard, before and after (added 2026-10-27)
+- `duplicates.png` – Find duplicates window (added 2026-10-31)
+
+Demo photos from Wikimedia Commons under CC BY or CC BY-SA need a credit: add a
+`<span class="credit">` with author, link and licence to the figure's caption in `index.html`.
+- `albums.png` – Albums view (added 2026-10-31)
+- `library.png` – Library grid with details pane (added 2026-10-31). The #photo-credits list under the screenshots credits every Kyoto photo; add rows there for photos from other folders.
