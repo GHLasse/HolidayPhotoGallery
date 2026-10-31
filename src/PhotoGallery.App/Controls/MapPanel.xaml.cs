@@ -288,6 +288,8 @@ public sealed partial class MapPanel : UserControl
                     ["searchFailed"] = Tr("The place search did not work. Check the internet connection."),
                     ["offline"] = Tr("The map needs an internet connection."),
                     ["drag"] = Tr("Drag to move. Assign it to the selected photos with the button below the map."),
+                    ["trackLine"] = Tr("GPS track"),
+                    ["routeLine"] = Tr("Your geotagged photos in the order taken"),
                     ["zoomIn"] = Tr("Zoom in"),
                     ["zoomOut"] = Tr("Zoom out"),
                 }.ToJsonString());

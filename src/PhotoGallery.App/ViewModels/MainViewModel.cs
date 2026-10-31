@@ -628,7 +628,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var (photos, counts) = await Task.Run(() => (_index.Search(query), LibraryCounts(query.Folder)));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
-        photos = await WithMeaningAsync(query, photos);
+        (photos, var shares) = await WithMeaningAsync(query, photos);
         if (version != _searchVersion)
             return;
         var (tags, autoTagNames, cameras, people, dates, places) = counts;
@@ -636,6 +636,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         photos = FilterByCloud(photos);
         var wasSwitching = _switchingFolder;
         _switchingFolder = false; // before the photos change, so "no photos match" can show for an empty result
+        MatchShares = shares; // before the photos, which the grid groups by it
         Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
         if (wasSwitching)
             OnPropertyChanged(nameof(IsLoading));
@@ -665,7 +666,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var change = _index.ChangeCount;
         if (_counts is { } kept && kept.Change == change && string.Equals(kept.Folder, folder, StringComparison.OrdinalIgnoreCase))
             return kept.Counts;
-        var counts = new Counts(_index.GetTagCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(folder),
+        var counts = new Counts(_index.GetTagTreeCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(folder),
                                 _index.GetPeopleCounts(), _index.GetDateCounts(), _index.GetPlaceCounts());
         _counts = new KeptCounts(change, folder, counts);
         return counts;

@@ -198,6 +198,7 @@ public sealed partial class CompareView : UserControl
             Value = item.Photo.Rating > 0 ? item.Photo.Rating : -1,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        MainWindow.Tint(rating);
         var name = new TextBlock
         {
             Text = item.FileName,

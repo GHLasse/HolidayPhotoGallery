@@ -753,11 +753,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static Windows.UI.Color Blend(Windows.UI.Color top, Windows.UI.Color under)
+    // Black or white, whichever reads better on the colour.
+    private static Windows.UI.Color Readable(Windows.UI.Color back)
     {
-        var a = top.A / 255.0;
-        byte Mix(byte t, byte u) => (byte)Math.Round(t * a + u * (1 - a));
-        return Windows.UI.Color.FromArgb(255, Mix(top.R, under.R), Mix(top.G, under.G), Mix(top.B, under.B));
+        static double Linear(byte c)
+        {
+            var v = c / 255.0;
+            return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+        }
+        var luminance = 0.2126 * Linear(back.R) + 0.7152 * Linear(back.G) + 0.0722 * Linear(back.B);
+        return luminance > 0.179 ? Windows.UI.Color.FromArgb(255, 0x1B, 0x1B, 0x1B) : Windows.UI.Color.FromArgb(255, 0xFF, 0xFF, 0xFF);
     }
 
     private InfoBar NoticeBar(Notice notice)
@@ -774,16 +779,25 @@ public sealed partial class MainWindow : Window
                 _ => InfoBarSeverity.Informational,
             },
         };
-        // Informational bars are grey by default; Lasse asked for blue ones. The tints are see-through, and
-        // the bars float over the photos, so each is laid on the window's solid background colour.
-        var tint = ThemeBrush(notice.Severity switch
+        // Informational bars are grey by default; Lasse asked for blue ones. The bars float over the photos, so
+        // they get solid colours of their own for the mode the window shows, and text that stays readable on
+        // them whatever palette is chosen (WinUI's see-through tints left white text on light yellow).
+        var dark = Root.ActualTheme == ElementTheme.Dark;
+        var back = (notice.Severity, dark) switch
         {
-            NoticeSeverity.Error => "SystemFillColorCriticalBackgroundBrush",
-            NoticeSeverity.Warning => "SystemFillColorCautionBackgroundBrush",
-            _ => "SystemFillColorAttentionBackgroundBrush",
-        });
-        if (tint is SolidColorBrush { Color: var top } && ThemeBrush("SolidBackgroundFillColorBaseBrush") is SolidColorBrush { Color: var under })
-            bar.Background = new SolidColorBrush(Blend(top, under));
+            (NoticeSeverity.Error, false) => Windows.UI.Color.FromArgb(255, 0xFD, 0xE7, 0xE9),
+            (NoticeSeverity.Error, true) => Windows.UI.Color.FromArgb(255, 0x44, 0x27, 0x26),
+            (NoticeSeverity.Warning, false) => Windows.UI.Color.FromArgb(255, 0xFF, 0xF4, 0xCE),
+            (NoticeSeverity.Warning, true) => Windows.UI.Color.FromArgb(255, 0x43, 0x35, 0x19),
+            (_, false) => Windows.UI.Color.FromArgb(255, 0xE3, 0xEE, 0xFA),
+            (_, true) => Windows.UI.Color.FromArgb(255, 0x1D, 0x30, 0x45),
+        };
+        bar.Background = new SolidColorBrush(back);
+        bar.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
+        var text = new SolidColorBrush(Readable(back));
+        bar.Foreground = text;
+        foreach (var key in new[] { "InfoBarTitleForeground", "InfoBarMessageForeground", "InfoBarHyperlinkButtonForeground" })
+            bar.Resources[key] = text;
         bar.Shadow = new ThemeShadow();
         bar.Translation = new System.Numerics.Vector3(0, 0, 16);
         bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);

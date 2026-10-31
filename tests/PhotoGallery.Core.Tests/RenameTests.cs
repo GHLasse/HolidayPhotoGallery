@@ -79,6 +79,15 @@ public sealed class RenameTests : IDisposable
     }
 
     [Fact]
+    public void The_counter_is_as_wide_as_the_batch_needs()
+    {
+        Assert.Equal("{date}_{##}", RenamePattern.FitCounter("{date}_{####}", 12));
+        Assert.Equal("{date}_{####}", RenamePattern.FitCounter("{date}_{###}", 1200));
+        Assert.Equal("{#}_{name}", RenamePattern.FitCounter("{###}_{name}", 7));
+        Assert.Equal("{date}", RenamePattern.FitCounter("{date}", 50));
+    }
+
+    [Fact]
     public void Renaming_moves_the_file_its_sidecars_index_entry_and_album_cover_and_photos_can_swap_names()
     {
         var a = Photo("a.jpg");

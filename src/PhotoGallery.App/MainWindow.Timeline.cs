@@ -11,12 +11,12 @@ using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
-/// <summary>The photos of one month, under a header in the grid.</summary>
-public sealed class PhotoGroup(DateTime? month, IEnumerable<PhotoItemViewModel> photos) : List<PhotoItemViewModel>(photos)
+/// <summary>The photos of one month (or of one level of match, for a search by meaning), under a header in the grid.</summary>
+public sealed class PhotoGroup(DateTime? month, IEnumerable<PhotoItemViewModel> photos, string? title = null) : List<PhotoItemViewModel>(photos)
 {
     public DateTime? Month { get; } = month;
 
-    public string Title { get; } = month is { } m ? Capitalized(m.ToString("MMMM yyyy", CultureInfo.CurrentCulture)) : Tr("No date");
+    public string Title { get; } = title ?? (month is { } m ? Capitalized(m.ToString("MMMM yyyy", CultureInfo.CurrentCulture)) : Tr("No date"));
 
     public string CountText => Count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", Count);
 
@@ -218,13 +218,20 @@ public sealed partial class MainWindow
         TimelineBubble.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>Called when the photos change: grouped by month when sorted by date, a plain list otherwise.</summary>
+    /// <summary>
+    /// Called when the photos change: grouped by month when sorted by date, a plain list otherwise. Photos
+    /// found by meaning are in order of how well they match, so they are grouped by that instead (95–100 %,
+    /// 90–95 % …), after the ones whose words match.
+    /// </summary>
     private void ShowPhotoGroups()
     {
         var byDate = PhotoSort.All[ViewModel.SortIndex].Key is PhotoSort.Oldest or PhotoSort.Newest;
-        _photoGroups = byDate
-            ? MonthGroups.Split(ViewModel.Photos, p => p.Photo.DateTaken?.Local).Select(g => new PhotoGroup(g.Month, g.Items)).ToList()
-            : [];
+        _byMatch = ViewModel.MatchShares is not null;
+        _photoGroups = ViewModel.MatchShares is { } shares
+            ? MatchGroups(shares)
+            : byDate
+                ? MonthGroups.Split(ViewModel.Photos, p => p.Photo.DateTaken?.Local).Select(g => new PhotoGroup(g.Month, g.Items)).ToList()
+                : [];
         if (_photoGroups.Count > 0)
         {
             _photoGroupsSource.Source = _photoGroups;
@@ -234,9 +241,39 @@ public sealed partial class MainWindow
         {
             PhotoGrid.ItemsSource = ViewModel.Photos;
         }
-        TimelineRail.Visibility = _photoGroups.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        // The rail shows years, which match groups don't have.
+        TimelineRail.Visibility = _photoGroups.Count > 1 && !_byMatch ? Visibility.Visible : Visibility.Collapsed;
         ApplyGridPadding();
         DrawTimeline();
+    }
+
+    private bool _byMatch;
+
+    // Consecutive photos of the same level of match, in the order found.
+    private List<PhotoGroup> MatchGroups(IReadOnlyDictionary<string, double> shares)
+    {
+        var groups = new List<PhotoGroup>();
+        var run = new List<PhotoItemViewModel>();
+        int? runKey = null;
+        void Close()
+        {
+            if (run.Count == 0)
+                return;
+            var title = runKey is { } low ? Tr("{0}–{1} % match", low, low + 5) : Tr("Matching words");
+            groups.Add(new PhotoGroup(null, run, title));
+            run = [];
+        }
+        foreach (var item in ViewModel.Photos)
+        {
+            // Photos whose words match (tags, caption, place, name) have no share: -1, before the rest.
+            int? key = shares.TryGetValue(item.Path, out var share) ? PhotoGallery.Core.Tagging.MeaningSearch.Bucket(share) : null;
+            if (run.Count > 0 && key != runKey)
+                Close();
+            runKey = key;
+            run.Add(item);
+        }
+        Close();
+        return groups;
     }
 
     private bool TimelineShown => TimelineRail.Visibility == Visibility.Visible;

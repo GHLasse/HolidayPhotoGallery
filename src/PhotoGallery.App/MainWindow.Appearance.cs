@@ -64,8 +64,30 @@ public sealed partial class MainWindow
         ShowFilterBadges();
         _ = ShowTopPeopleAsync();
         RecolourTabMarks();
+        Tint(InfoRating);
         foreach (var tree in new[] { FolderTree, DateTree, PlaceTree })
             RecolourTreeMark(tree);
+    }
+
+    private static readonly string[] s_ratingKeys =
+        ["RatingControlSelectedForeground", "RatingControlPointerOverSelectedForeground", "RatingControlPointerOverPlaceholderForeground"];
+
+    /// <summary>
+    /// Gives a rating's stars the palette's colour. RatingControl looks its brushes up only on itself and in the
+    /// app's resources, never in the window's, so they are put on each one; then its stars are built again.
+    /// </summary>
+    internal static void Tint(RatingControl rating)
+    {
+        foreach (var key in s_ratingKeys)
+        {
+            if (s_paletteBrushes.TryGetValue(key, out var brush))
+                rating.Resources[key] = brush;
+            else
+                rating.Resources.Remove(key);
+        }
+        var max = rating.MaxRating;
+        rating.MaxRating = max + 1;
+        rating.MaxRating = max;
     }
 
     // Dialogs and their popups are not inside Root, so each dialog gets the palette and mode as it opens.
@@ -176,6 +198,10 @@ public sealed partial class MainWindow
             ["CheckBoxCheckGlyphForegroundChecked"] = Solid(s.TextOnFill),
             ["CheckBoxCheckGlyphForegroundCheckedPointerOver"] = Solid(s.TextOnFill),
             ["CheckBoxCheckGlyphForegroundCheckedPressed"] = Solid(s.TextOnFill),
+            // The stars of the rating in the details pane and in Compare.
+            ["RatingControlSelectedForeground"] = Solid(s.Fill),
+            ["RatingControlPointerOverSelectedForeground"] = Solid(s.Fill, 0.9),
+            ["RatingControlPointerOverPlaceholderForeground"] = Solid(s.Fill, 0.7),
         };
     }
 

@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PhotoGallery.Core.Library;
@@ -20,13 +19,13 @@ public sealed partial class MainWindow
             return;
         }
 
-        var pattern = new TextBox { Text = ViewModel.RenamePatternText, Header = Tr("Name") };
+        var pattern = new TextBox { Text = RenamePattern.FitCounter(ViewModel.RenamePatternText, photos.Count), Header = Tr("Name") };
         var start = new NumberBox { Header = Tr("Start counting at"), Value = 1, Minimum = 0, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
         var parts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         foreach (var (label, token) in new[]
                  {
                      (Tr("Date"), "{date}"), (Tr("Time"), "{time}"), (Tr("Place"), "{place}"), (Tr("Country"), "{country}"),
-                     (Tr("Camera"), "{camera}"), (Tr("Current name"), "{name}"), (Tr("Counter"), "{" + new string('#', Math.Max(3, photos.Count.ToString(CultureInfo.InvariantCulture).Length)) + "}"),
+                     (Tr("Camera"), "{camera}"), (Tr("Current name"), "{name}"), (Tr("Counter"), "{" + new string('#', RenamePattern.CounterDigits(photos.Count)) + "}"),
                  })
         {
             var button = new Button { Content = label, Padding = new Thickness(8, 3, 8, 4) };

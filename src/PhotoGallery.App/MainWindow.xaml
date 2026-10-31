@@ -1070,7 +1070,7 @@
                         <TextBlock Text="{local:Loc Text='Rating'}" />
                         <!-- Flag and Reject lose their words when the pane is too narrow for them (long in German). -->
                         <controls:WrapPanel x:Name="RatingRow" Spacing="10">
-                            <RatingControl VerticalAlignment="Center" IsClearEnabled="True"
+                            <RatingControl x:Name="InfoRating" VerticalAlignment="Center" IsClearEnabled="True"
                                            Value="{x:Bind ViewModel.Editor.Rating, Mode=TwoWay}" />
                             <!-- Written straight away, like the P key; filled from the selection in code. -->
                             <ToggleButton x:Name="FlagButton" VerticalAlignment="Center" Click="Flag_Click" ToolTipService.ToolTip="{local:Loc Text='Flag or unflag the selected photos (P)'}">

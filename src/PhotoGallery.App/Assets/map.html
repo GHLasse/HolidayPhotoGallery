@@ -35,6 +35,8 @@
                     font-family: var(--icons); font-size: 16px; font-weight: normal; }
   .leaflet-bar a:hover { background: #f9f9f9; color: var(--text); }
   .leaflet-bar a.leaflet-disabled { color: #bdbdbd; background: #fff; }
+  #legend { position: absolute; z-index: 1000; bottom: 56px; left: 10px; padding: 6px 10px; font-size: 12px; color: var(--text); display: none; }
+  #legend svg { vertical-align: middle; margin-right: 6px; }
   #message { position: absolute; z-index: 1000; bottom: 24px; left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
   /* The picture box has a fixed size, so the bubble is laid out right before the picture arrives; the close
      button sits above it (it covered the picture, which stuck out on the right). */
@@ -67,6 +69,7 @@
   <button type="submit" class="ctl"><i class="icon">&#xE721;</i><span id="findText">Find</span></button>
 </form>
 <div id="message"></div>
+<div id="legend" class="card"><svg width="28" height="6"><line x1="2" y1="3" x2="26" y2="3" stroke="#7a3fd1" stroke-opacity=".7" stroke-width="3" stroke-linecap="round"></line></svg><span id="legendText"></span></div>
 <div id="offline">The map needs an internet connection.</div>
 <script>
 // The page talks to the app through WebView2 messages:
@@ -77,6 +80,7 @@
 //                 {type:"texts", open, show, of, estimate, map, satellite, labels} (the bubble's buttons and the map/satellite
 //                 switch in the app's language; "of" is like "{0} of {1}")
 //                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
+//                 (also trackLine, routeLine: the legend under a drawn line)
 //                 {type:"style", accent, onAccent} (the app's accent colour and the text on it, "#rrggbb")
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
@@ -481,6 +485,13 @@ function start() {
           map.panTo([m.points[0].lat, m.points[0].lon]);
       } else if (m.type === "track") {
         trackLayer.clearLayers();
+        // A small legend says what the line is: a recorded track (solid) or the photos joined in order (dashed).
+        const legend = document.getElementById("legend");
+        legend.style.display = m.points.length > 1 ? "block" : "none";
+        legend.querySelector("line").setAttribute("stroke-dasharray", m.route ? "6 6" : "");
+        document.getElementById("legendText").textContent = m.route
+          ? (texts.routeLine || "Your geotagged photos in the order taken")
+          : (texts.trackLine || "GPS track");
         if (m.points.length > 1) {
           const line = L.polyline(m.points, {
             renderer: trackRenderer, interactive: false, color: "#7a3fd1", weight: 3, opacity: 0.55,
