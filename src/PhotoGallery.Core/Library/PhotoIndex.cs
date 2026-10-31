@@ -148,7 +148,8 @@ public sealed partial class PhotoIndex : IDisposable
             -- The user's changes to the stacks of similar shots (C-4): the cover, taken out, a new stack starts here.
             CREATE TABLE IF NOT EXISTS shot_marks (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
-                mark INTEGER NOT NULL
+                mark INTEGER NOT NULL,
+                stack TEXT -- a stack the user made: its members share this key
             );
             -- Sharpness and exposure measured for quality hints (C-4); ignored = the user dismissed the hints.
             CREATE TABLE IF NOT EXISTS shot_quality (

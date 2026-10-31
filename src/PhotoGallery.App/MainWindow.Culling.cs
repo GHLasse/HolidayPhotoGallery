@@ -108,13 +108,13 @@ public sealed partial class MainWindow
             menuItem.Click += async (_, _) => await ChangeStackAsync(item, run);
             result.Add(menuItem);
         }
-        var mark = ViewModel.ShotMarkOf(item);
+        var mark = ViewModel.ShotMarkOf(item).Mark;
         if (ViewModel.StackOf(item) is { } stack)
         {
             if (!item.IsBestShot)
                 Add(Tr("Show on top of the stack"), "\uE8A9", Tr("Shows this photo on top of its stack instead of the sharpest one"), () => ViewModel.MakeStackCoverAsync(item));
             else if (mark == ShotMark.Cover)
-                Add(Tr("Let the app choose the top photo"), "\uE8A9", Tr("The sharpest photo goes on top of the stack again"), () => ViewModel.ResetStackMarkAsync(item));
+                Add(Tr("Let the app choose the top photo"), "\uE8A9", Tr("The sharpest photo goes on top of the stack again"), () => ViewModel.ClearCoverAsync(item));
             Add(Tr("Take out of the stack"), "\uE8BB", Tr("This photo stands on its own; the other shots stay stacked"), () => ViewModel.TakeOutOfStackAsync(item));
             if (stack[0] != item)
                 Add(Tr("Start a new stack here"), "\uE8C6", Tr("Splits the stack: this photo and the ones after it form a stack of their own"), () => ViewModel.SplitStackAsync(item));
@@ -125,6 +125,15 @@ public sealed partial class MainWindow
         else if (mark == ShotMark.Split)
             Add(Tr("Join the stack before"), "\uE8A9", Tr("Joins this stack with the one before it again"), () => ViewModel.ResetStackMarkAsync(item));
         return result;
+    }
+
+    /// <summary>Several photos selected: make one stack of them (and of the stacks they top).</summary>
+    private MenuFlyoutItem StackTogetherItem(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        var menuItem = new MenuFlyoutItem { Text = Tr("Stack these photos"), Icon = new FontIcon { Glyph = "\uE8A9" } };
+        ToolTipService.SetToolTip(menuItem, Tr("Makes one stack of the selected photos, with the photos of any stack they top"));
+        menuItem.Click += async (_, _) => await ChangeStackAsync(items[0], () => ViewModel.StackTogetherAsync(items));
+        return menuItem;
     }
 
     private MenuFlyoutSubItem? StackMenu(PhotoItemViewModel item)

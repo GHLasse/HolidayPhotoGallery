@@ -25,7 +25,13 @@ public enum ShotMark
 
     /// <summary>A new stack starts with this photo.</summary>
     Split = 3,
+
+    /// <summary>In a stack the user made (<see cref="ShotMarkRow.Stack"/>).</summary>
+    Joined = 4,
 }
+
+/// <summary>A photo's mark; <paramref name="Stack"/> names the stack the user made that it is in (a cover too).</summary>
+public readonly record struct ShotMarkRow(ShotMark Mark, string? Stack = null);
 
 /// <summary>
 /// Finds similar shots (C-4): photos taken one after another, a short time apart, that look alike. "Look
@@ -86,17 +92,28 @@ public static class SimilarShots
 
     /// <summary>
     /// As <see cref="Find(IEnumerable{IndexedPhoto}, Func{IndexedPhoto, IndexedPhoto, TimeSpan, bool}, TimeSpan?)"/>, with
-    /// the user's changes: photos taken out are left out (the shots around them stay together), and a new stack
-    /// starts at a split.
+    /// the user's changes: photos taken out are left out (the shots around them stay together), a new stack
+    /// starts at a split, and the stacks the user made are kept as they are (in time order, rejected photos left
+    /// out). The groups come in time order.
     /// </summary>
     public static List<ShotGroup> Find(IEnumerable<IndexedPhoto> photos, Func<IndexedPhoto, IndexedPhoto, TimeSpan, bool> alike,
-                                       IReadOnlyDictionary<string, ShotMark> marks, TimeSpan? maxGap = null) =>
-        Find(photos.Where(p => marks.GetValueOrDefault(p.Path) != ShotMark.Out),
-             (a, b, apart) => marks.GetValueOrDefault(b.Path) != ShotMark.Split && alike(a, b, apart), maxGap);
+                                       IReadOnlyDictionary<string, ShotMarkRow> marks, TimeSpan? maxGap = null)
+    {
+        var list = photos.ToList();
+        ShotMarkRow Mark(IndexedPhoto p) => marks.GetValueOrDefault(p.Path);
+        var found = Find(list.Where(p => Mark(p) is { Stack: null, Mark: not ShotMark.Out }),
+                         (a, b, apart) => Mark(b).Mark != ShotMark.Split && alike(a, b, apart), maxGap);
+        var made = list.Where(p => Mark(p).Stack is not null && !p.Rejected)
+                       .GroupBy(p => Mark(p).Stack!, StringComparer.Ordinal)
+                       .Where(g => g.Count() > 1)
+                       .Select(g => new ShotGroup(g.OrderBy(p => p.DateTaken?.Local ?? DateTime.MaxValue)
+                                                   .ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase).ToList()));
+        return found.Concat(made).OrderBy(g => g.Photos[0].DateTaken?.Local ?? DateTime.MaxValue).ToList();
+    }
 
     /// <summary>The photo the user chose as the group's cover, if any.</summary>
-    public static IndexedPhoto? Cover(ShotGroup group, IReadOnlyDictionary<string, ShotMark> marks) =>
-        group.Photos.FirstOrDefault(p => marks.GetValueOrDefault(p.Path) == ShotMark.Cover);
+    public static IndexedPhoto? Cover(ShotGroup group, IReadOnlyDictionary<string, ShotMarkRow> marks) =>
+        group.Photos.FirstOrDefault(p => marks.GetValueOrDefault(p.Path).Mark == ShotMark.Cover);
 
     /// <summary>
     /// Whether two photos have about the same shape (long side to short side within 15 %): a panorama or a

@@ -279,36 +279,67 @@ public sealed partial class MainViewModel
             Photos = new ObservableCollection<PhotoItemViewModel>(stacked);
     }
 
-    private Dictionary<string, ShotMark>? _shotMarks;
+    private Dictionary<string, ShotMarkRow>? _shotMarks;
     private readonly Dictionary<PhotoItemViewModel, List<PhotoItemViewModel>> _stackOf = [];
 
     /// <summary>The stack the photo is in among the photos found (in time order), or null.</summary>
     public IReadOnlyList<PhotoItemViewModel>? StackOf(PhotoItemViewModel item) => _stackOf.GetValueOrDefault(item);
 
     /// <summary>The user's change to the photo's stack, if any.</summary>
-    public ShotMark ShotMarkOf(PhotoItemViewModel item) => _shotMarks?.GetValueOrDefault(item.Path) ?? ShotMark.None;
+    public ShotMarkRow ShotMarkOf(PhotoItemViewModel item) => _shotMarks?.GetValueOrDefault(item.Path) ?? default;
 
     /// <summary>Shows the photo on top of its stack, instead of the sharpest.</summary>
-    public Task MakeStackCoverAsync(PhotoItemViewModel item) =>
-        ChangeStacksAsync([.. (StackOf(item) ?? Array.Empty<PhotoItemViewModel>()).Where(i => ShotMarkOf(i) == ShotMark.Cover && i != item).Select(i => (i, ShotMark.None)), (item, ShotMark.Cover)]);
+    public Task MakeStackCoverAsync(PhotoItemViewModel item)
+    {
+        var key = ShotMarkOf(item).Stack;
+        var others = (StackOf(item) ?? Array.Empty<PhotoItemViewModel>())
+            .Where(i => i != item && ShotMarkOf(i).Mark == ShotMark.Cover)
+            .Select(i => (i, key is null ? new ShotMarkRow(ShotMark.None) : new ShotMarkRow(ShotMark.Joined, key)));
+        return ChangeStacksAsync([.. others, (item, new ShotMarkRow(ShotMark.Cover, key))]);
+    }
+
+    /// <summary>The sharpest goes on top of the photo's stack again (a stack the user made stays as it is).</summary>
+    public Task ClearCoverAsync(PhotoItemViewModel item) =>
+        ChangeStacksAsync([(item, ShotMarkOf(item).Stack is { } key ? new ShotMarkRow(ShotMark.Joined, key) : new ShotMarkRow(ShotMark.None))]);
 
     /// <summary>Takes the photo out of stacks for good (the shots around it stay together).</summary>
-    public Task TakeOutOfStackAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, ShotMark.Out)]);
+    public Task TakeOutOfStackAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, new ShotMarkRow(ShotMark.Out))]);
 
-    /// <summary>Starts a new stack with this photo.</summary>
-    public Task SplitStackAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, ShotMark.Split)]);
+    /// <summary>Starts a new stack with this photo: it and the ones after it form a stack of their own.</summary>
+    public Task SplitStackAsync(PhotoItemViewModel item)
+    {
+        if (ShotMarkOf(item).Stack is null || StackOf(item) is not { } stack)
+            return ChangeStacksAsync([(item, new ShotMarkRow(ShotMark.Split))]);
+        var key = Guid.NewGuid().ToString("N");
+        return ChangeStacksAsync(stack.Skip(stack.ToList().IndexOf(item))
+            .Select(i => (i, new ShotMarkRow(ShotMarkOf(i).Mark == ShotMark.Cover ? ShotMark.Cover : ShotMark.Joined, key))).ToList());
+    }
 
     /// <summary>Every photo of the stack stands on its own.</summary>
     public Task UnstackAsync(PhotoItemViewModel item) =>
-        ChangeStacksAsync((StackOf(item) ?? new[] { item }).Select(i => (i, ShotMark.Out)).ToList());
+        ChangeStacksAsync((StackOf(item) ?? new[] { item }).Select(i => (i, new ShotMarkRow(ShotMark.Out))).ToList());
 
     /// <summary>Takes the user's change off: the photo joins stacks again as it would by itself.</summary>
-    public Task ResetStackMarkAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, ShotMark.None)]);
+    public Task ResetStackMarkAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, new ShotMarkRow(ShotMark.None))]);
+
+    /// <summary>
+    /// Makes one stack of the photos, with every photo of the stacks they top (so two stacks become one). The
+    /// sharpest goes on top unless one of them was chosen already.
+    /// </summary>
+    public Task StackTogetherAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        var all = items.SelectMany(i => StackOf(i) ?? new[] { i }).Distinct().ToList();
+        if (all.Count < 2)
+            return Task.CompletedTask;
+        var key = Guid.NewGuid().ToString("N");
+        var cover = items.FirstOrDefault(i => ShotMarkOf(i).Mark == ShotMark.Cover);
+        return ChangeStacksAsync(all.Select(i => (i, new ShotMarkRow(i == cover ? ShotMark.Cover : ShotMark.Joined, key))).ToList());
+    }
 
     /// <summary>Raised after the stacks changed, with the photo acted on, so the grid can keep it in view.</summary>
     public event Action<PhotoItemViewModel>? StacksChanged;
 
-    private async Task ChangeStacksAsync(IReadOnlyList<(PhotoItemViewModel Item, ShotMark Mark)> changes)
+    private async Task ChangeStacksAsync(IReadOnlyList<(PhotoItemViewModel Item, ShotMarkRow Mark)> changes)
     {
         if (changes.Count == 0)
             return;

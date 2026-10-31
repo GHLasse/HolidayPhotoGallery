@@ -207,7 +207,7 @@ public sealed class ShotQualityTests : IDisposable
         var t = new DateTime(2026, 5, 1, 12, 0, 0);
         var photos = Enumerable.Range(1, 5).Select(i => Photo($"a{i}.jpg", t.AddSeconds(i))).ToList();
         _index.Upsert(photos);
-        _index.SetShotMarks([(photos[1].Path, ShotMark.Out), (photos[3].Path, ShotMark.Split), (photos[4].Path, ShotMark.Cover)]);
+        _index.SetShotMarks([(photos[1].Path, new(ShotMark.Out)), (photos[3].Path, new(ShotMark.Split)), (photos[4].Path, new(ShotMark.Cover))]);
         var marks = _index.GetShotMarks();
 
         var groups = SimilarShots.Find(photos, (_, _, _) => true, marks);
@@ -215,8 +215,23 @@ public sealed class ShotQualityTests : IDisposable
         Assert.Null(SimilarShots.Cover(groups[0], marks));
         Assert.Equal("a5.jpg", SimilarShots.Cover(groups[1], marks)!.FileName);
 
-        _index.SetShotMarks([(photos[1].Path, ShotMark.None)]);
+        _index.SetShotMarks([(photos[1].Path, new(ShotMark.None))]);
         Assert.Equal(2, _index.GetShotMarks().Count);
+    }
+
+    [Fact]
+    public void A_stack_the_user_made_holds_photos_that_dont_look_alike()
+    {
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        var photos = new[] { Photo("a.jpg", t), Photo("b.jpg", t.AddSeconds(5)), Photo("c.jpg", t.AddSeconds(9)), Photo("d.jpg", t.AddHours(2)) };
+        _index.Upsert(photos);
+        _index.SetShotMarks([(photos[3].Path, new(ShotMark.Joined, "k")), (photos[0].Path, new(ShotMark.Cover, "k"))]);
+        var marks = _index.GetShotMarks();
+
+        // b and c look alike by themselves; a and d only belong together because the user said so.
+        var groups = SimilarShots.Find(photos, (x, y, _) => x.FileName != "a.jpg" && y.FileName != "a.jpg", marks);
+        Assert.Equal([["a.jpg", "d.jpg"], ["b.jpg", "c.jpg"]], groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
+        Assert.Equal("a.jpg", SimilarShots.Cover(groups[0], marks)!.FileName);
     }
 
     [Fact]

@@ -299,6 +299,8 @@ public sealed partial class MainWindow
         AddGroup(items, CommandGroup.Look, targets, viewer);
         if (!viewer && targets is [var one] && StackMenu(one) is { } stack)
             items.Add(stack);
+        else if (!viewer && targets.Count > 1)
+            items.Add(StackTogetherItem(targets.ToList()));
         items.Add(new MenuFlyoutSeparator());
         items.Add(SubMenu(Tr("Describe"), "\uE70F", CommandGroup.Describe, targets, viewer));
         items.Add(SubMenu(Tr("Send to"), "\uE724", CommandGroup.Send, targets, viewer));
