@@ -62,7 +62,7 @@ public sealed class ShotQualityTests : IDisposable
         using var image = Detailed();
         // A blurred face on a sharp scene: the photo is possibly blurry where it matters.
         var face = new FaceBox(0.4, 0.3, 0.2, 0.25);
-        image.Mutate(x => x.GaussianBlur(5, new Rectangle(280, 140, 240, 230)));
+        image.Mutate(x => x.GaussianBlur(new Rectangle(280, 140, 240, 230), 5));
         var measure = ShotQuality.Measure(image, [face]);
         Assert.NotNull(measure.FaceSharpness);
         Assert.True(measure.Sharpness > ShotQuality.BlurryBelow);
