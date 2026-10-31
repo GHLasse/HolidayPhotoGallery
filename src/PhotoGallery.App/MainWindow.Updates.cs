@@ -208,7 +208,17 @@ public sealed partial class MainWindow
             return;
         }
         var log = Path.Combine(MainViewModel.UpdatesFolder, AppUpdates.LogFile);
-        ViewModel.Fail(Tr("The update to version {0} didn't install (Setup ended with code {1}). You can try again in Settings › App.", AppUpdates.Format(version), code),
+        string? reason = null;
+        try
+        {
+            reason = File.Exists(log) ? AppUpdates.FailureReason(File.ReadAllText(log)) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+        ViewModel.Fail(reason is not null
+            ? Tr("The update to version {0} didn't install: {1} You can try again in Settings › App.", AppUpdates.Format(version), reason)
+            : Tr("The update to version {0} didn't install (Setup ended with code {1}). You can try again in Settings › App.", AppUpdates.Format(version), code),
             File.Exists(log)
                 ? [new NoticeAction(Tr("Show Setup's log"), () =>
                     {

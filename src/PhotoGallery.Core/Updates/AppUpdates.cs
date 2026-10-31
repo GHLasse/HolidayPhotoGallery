@@ -191,7 +191,10 @@ public static partial class AppUpdates
     /// The app is opened again by <see cref="HandOverScript"/>, not by the installer, so it opens even when
     /// the install fails.
     /// </summary>
-    public static string SetupArguments(string logFile) => $"/SILENT /SUPPRESSMSGBOXES /NORESTART /NORESTARTAPPLICATIONS /LOG=\"{logFile}\"";
+    /// A program still using the app's files is closed by force (a quiet Setup otherwise gives up with code 5,
+    /// "Some applications could not be shut down"), and the log names it.
+    public static string SetupArguments(string logFile) =>
+        $"/SILENT /SUPPRESSMSGBOXES /NORESTART /NORESTARTAPPLICATIONS /FORCECLOSEAPPLICATIONS /LOGCLOSEAPPLICATIONS /LOG=\"{logFile}\"";
 
     /// <summary>The file the hand-over leaves for the next start: the version being installed and Setup's exit code.</summary>
     public const string ResultFile = "last-update.txt";
@@ -248,18 +251,41 @@ public static partial class AppUpdates
             $"taskkill /F /PID {id} >nul 2>&1",
             ":closed",
             Note("app closed"),
+            "set tries=0",
+            ":setup",
             Bat($"powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {{ $_.Path -and $_.Path.StartsWith({Ps(folder)}, [StringComparison]::OrdinalIgnoreCase) }} | Stop-Process -Force\" >nul 2>&1"),
-            "ping -n 2 127.0.0.1 >nul",
+            // Another window of the app (started twice) isn't the one waited for; it holds the files too.
+            $"taskkill /F /IM \"{Bat(appExe)}\" >nul 2>&1",
+            "ping -n 3 127.0.0.1 >nul",
             Note("starting Setup"),
             // A program started from a batch file is waited for; Setup's exit code lands in errorlevel.
             $"\"{Bat(setup)}\" {Bat(SetupArguments(log))}",
             "set code=%errorlevel%",
             Note("Setup ended with code %code%"),
+            // 5: Setup could not close something using the files. Once more, after stopping things again.
+            "set /a tries+=1",
+            "if \"%code%\"==\"5\" if %tries% lss 2 goto setup",
             $"(echo {Format(version)}& echo %code%)>\"{result}\"",
             $"del \"{pending}\" >nul 2>&1",
             Note("opening the app"),
             $"start \"\" \"{Bat(Path.Combine(appFolder, appExe))}\"",
         ]) + "\r\n";
+    }
+
+    /// <summary>
+    /// Why Setup gave up, in words for the user, from what it wrote in its log; null when the log says nothing
+    /// the app knows.
+    /// </summary>
+    public static string? FailureReason(string log)
+    {
+        if (log.Contains("could not be shut down", StringComparison.OrdinalIgnoreCase) ||
+            log.Contains("unable to automatically close all applications", StringComparison.OrdinalIgnoreCase))
+            return Tr("A program still had the app's files open and could not be closed.");
+        if (log.Contains("Access is denied", StringComparison.OrdinalIgnoreCase))
+            return Tr("Windows refused access to the app's folder.");
+        if (log.Contains("There is not enough space", StringComparison.OrdinalIgnoreCase))
+            return Tr("There is not enough space on the drive.");
+        return null;
     }
 
     /// <summary>
