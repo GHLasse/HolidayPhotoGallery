@@ -7,7 +7,7 @@ PNG, about 1600 px wide, light mode with real holiday photos:
 - `compare.png` – Compare view with 2 to 4 photos and stars (added 2026-10-31)
 - `map.png` – Map workspace with placed photos (added 2026-10-27)
 - `people.png` – People workspace with named faces
-- `dark.png` – any view in dark mode with a palette
+- `light.png` – any view in light mode, ideally with another palette (the other shots are dark)
 - `repair.png` – Repair wizard, before and after (added 2026-10-27)
 - `duplicates.png` – Find duplicates window (added 2026-10-31)
 
