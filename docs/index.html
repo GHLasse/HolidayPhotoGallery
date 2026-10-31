@@ -123,6 +123,8 @@ h2 { font-size: clamp(26px, 3.4vw, 34px); line-height: 1.2; margin: 0 0 10px; le
 .shots img { display: block; width: 100%; height: auto; }
 .shots figcaption { padding: 12px 16px; font-size: 14px; color: var(--muted); }
 .shots .credit { display: block; margin-top: 4px; font-size: 12px; }
+#photo-credits { padding: 0 0 24px; }
+.credits-list { color: var(--muted); font-size: 14px; margin: 0 0 16px; padding-left: 18px; }
 @media (max-width: 700px) { .shots { grid-template-columns: 1fr; } }
 
 /* Features */
@@ -250,7 +252,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: 
     <h2>A look inside</h2>
     <p class="sub">A Windows 11 app with the familiar Photo Gallery layout: folders on the left, photos in the middle, details on the right.</p>
     <div class="shots">
-      <figure><img src="assets/screenshots/library.png" alt="Library with folder tree, photo grid and details pane"><figcaption>The Library: folder, date and place trees, photo grid and details.</figcaption></figure>
+      <figure><img src="assets/screenshots/library.png" alt="Library with filter bar, photo grid and details pane"><figcaption>The Library: filter bar, photos grouped by month, and every detail of the selected photo, with tags the AI added marked by a sparkle.<span class="credit">Photos from Wikimedia Commons, see <a href="#photo-credits">photo credits</a>. Screenshot under CC BY-SA 4.0.</span></figcaption></figure>
       <figure><img src="assets/screenshots/compare.png" alt="Comparing photos side by side"><figcaption>Compare up to four photos with shared zoom, rate them with the number keys and flag the keeper.<span class="credit">Photos of Kinkaku-ji: Basile Morin, <a href="https://commons.wikimedia.org/wiki/File:Water_reflection_of_Kinkaku-ji_Temple_trees_and_clouds_under_blue_sky_in_Kyoto_Japan.jpg">1</a>, <a href="https://commons.wikimedia.org/wiki/File:Water_reflection_of_Kinkaku-ji_Temple_with_blue_sky_and_white_clouds,_Kyoto,_Japan.jpg">2</a>, <a href="https://commons.wikimedia.org/wiki/File:Water_reflection_of_Kinkaku-ji_Temple_a_sunny_day,_Kyoto,_Japan.jpg">3</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>, via Wikimedia Commons. Screenshot under the same licence.</span></figcaption></figure>
       <figure><img src="assets/screenshots/map.png" alt="Map workspace with placed photos"><figcaption>Every trip on one map, with photos counted by country in the Places tree.</figcaption></figure>
       <figure><img src="assets/screenshots/albums.png" alt="Albums view with one cover per trip"><figcaption>Every trip folder can be an album, with its own cover, travelling with the folder.<span class="credit">Album covers: CREDITS-TODO</span></figcaption></figure>
@@ -259,6 +261,29 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: 
       <figure><img src="assets/screenshots/repair.png" alt="Repair wizard showing a damaged photo before and after" ><figcaption>Repair a damaged photo: the lost part is filled in and sharpened with AI, right on your PC.</figcaption></figure>
       <figure><img src="assets/screenshots/dark.png" alt="The app in dark mode"><figcaption>Light, dark and colour palettes.</figcaption></figure>
     </div>
+  </div>
+</section>
+
+<section id="photo-credits" hidden>
+  <div class="wrap">
+    <details>
+      <summary>Photo credits for the screenshots</summary>
+      <p>The demo photos in the screenshots come from Wikimedia Commons. Their dates, places, tags and ratings are made up for the demo.</p>
+      <ul class="credits-list">
+        <li><a href="https://commons.wikimedia.org/wiki/File:20181110_Fushimi_Inari_shrine_5.jpg">20181110 Fushimi Inari shrine 5</a> by Balon Greyjoy, <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:20181110_Fushimi_Inari_Torii_12.jpg">20181110 Fushimi Inari Torii 12</a> by Balon Greyjoy, <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine,_Kyoto,_Japan.jpg">Torii path with lantern at Fushimi Inari Taisha Shrine, Kyoto, Japan</a> by Basile Morin, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:20181110_Fushimi_Inari_shrine_6.jpg">20181110 Fushimi Inari shrine 6</a> by Balon Greyjoy, <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Water_reflection_of_Kinkaku-ji_Temple_with_blue_sky_and_white_clouds,_Kyoto,_Japan.jpg">Water reflection of Kinkaku-ji Temple with blue sky and white clouds, Kyoto, Japan</a> by Basile Morin, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Water_reflection_of_Kinkaku-ji_Temple_trees_and_clouds_under_blue_sky_in_Kyoto_Japan.jpg">Water reflection of Kinkaku-ji Temple trees and clouds under blue sky in Kyoto Japan</a> by Basile Morin, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Water_reflection_of_Kinkaku-ji_Temple_a_sunny_day,_Kyoto,_Japan.jpg">Water reflection of Kinkaku-ji Temple a sunny day, Kyoto, Japan</a> by Basile Morin, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Golden_Pavilion_Kinkaku-ji_2024.jpg">Golden Pavilion Kinkaku-ji 2024</a> by Nacaru, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Kyoto-Arashiyama-Station-Keifuku.jpg">Kyoto-Arashiyama-Station-Keifuku</a> by Petr Vodička, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Macaca_fuscata_Iwatayama.jpg">Macaca fuscata Iwatayama</a> by Leyo, <a href="https://creativecommons.org/licenses/by-sa/2.5/ch/deed.en">CC BY-SA 2.5 ch</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Kimono_Forest_at_night,_Arashiyama_Station,_Arashiyama,_Kyoto,_Japan.jpg">Kimono Forest at night, Arashiyama Station, Arashiyama, Kyoto, Japan</a> by Basile Morin (photo, design by Yasumichi Morita), <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+        <li><a href="https://commons.wikimedia.org/wiki/File:Bamboo_Forest,_Arashiyama,_Kyoto,_Japan.jpg">Bamboo Forest, Arashiyama, Kyoto, Japan</a> by Basile Morin, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></li>
+      </ul>
+    </details>
   </div>
 </section>
 
@@ -481,7 +506,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: 
   var section = document.getElementById('screenshots');
   section.querySelectorAll('figure').forEach(function (fig) {
     var img = fig.querySelector('img');
-    var loaded = function () { section.hidden = false; };
+    var loaded = function () { section.hidden = false; if (img.src.indexOf('library.png') >= 0) document.getElementById('photo-credits').hidden = false; };
     var failed = function () { fig.remove(); };
     if (img.complete) { img.naturalWidth ? loaded() : failed(); }
     else { img.addEventListener('load', loaded); img.addEventListener('error', failed); }

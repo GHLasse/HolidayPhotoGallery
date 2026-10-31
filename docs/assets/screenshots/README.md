@@ -14,3 +14,4 @@ PNG, about 1600 px wide, light mode with real holiday photos:
 Demo photos from Wikimedia Commons under CC BY or CC BY-SA need a credit: add a
 `<span class="credit">` with author, link and licence to the figure's caption in `index.html`.
 - `albums.png` – Albums view (added 2026-10-31)
+- `library.png` – Library grid with details pane (added 2026-10-31). The #photo-credits list under the screenshots credits every Kyoto photo; add rows there for photos from other folders.
