@@ -148,6 +148,22 @@ public sealed partial class MapPanel : UserControl
         UpdateButtons();
     }
 
+    /// <summary>
+    /// Draws a thin line under the photo dots (G-4): a recorded GPS track, or with <paramref name="isRoute"/> the
+    /// geotagged photos joined in time order. An empty list takes the line away; <paramref name="fit"/> zooms to it.
+    /// </summary>
+    public void ShowTrack(IReadOnlyList<GeoPosition> line, bool isRoute, bool fit = false)
+    {
+        var points = new JsonArray();
+        // A long Timeline export can have tens of thousands of points in a day; every few is plenty for a line.
+        var step = Math.Max(1, line.Count / 5000);
+        for (var i = 0; i < line.Count; i += step)
+            points.Add(new JsonArray(Math.Round(line[i].Latitude, 6), Math.Round(line[i].Longitude, 6)));
+        if (line.Count > 0 && (line.Count - 1) % step != 0)
+            points.Add(new JsonArray(Math.Round(line[^1].Latitude, 6), Math.Round(line[^1].Longitude, 6)));
+        Post(new JsonObject { ["type"] = "track", ["points"] = points, ["route"] = isRoute, ["fit"] = fit });
+    }
+
     /// <summary>Raised when the picture or Open in a photo's bubble on the whole-library map is clicked.</summary>
     public event Action<string>? PhotoOpened;
 
@@ -376,10 +392,17 @@ public sealed partial class MapPanel : UserControl
             SetPin(null, tellMap: true);
             _pinIsEstimate = true;
         }
-        var rough = found.Max(f => f.Item2.Gap);
+        var rough = found.Where(f => f.Item2.Track is null).Select(f => f.Item2.Gap).DefaultIfEmpty().Max();
+        var fromTrack = found.Count(f => f.Item2.Track is not null);
         var text = found.Count == 1 && _selection.Count == 1
-            ? Tr("Estimated from the photos before and after. Drag the pin to correct it, then assign it.")
-            : Tr("Estimated {0} of {1} photos from the photos before and after (red dots).", found.Count, _selection.Count);
+            ? fromTrack == 1
+                ? Tr("Placed from the GPS track {0}. Drag the pin to correct it, then assign it.", found[0].Item2.Track)
+                : Tr("Estimated from the photos before and after. Drag the pin to correct it, then assign it.")
+            : fromTrack == found.Count
+                ? Tr("Placed {0} of {1} photos from the GPS tracks (red dots).", found.Count, _selection.Count)
+                : fromTrack > 0
+                    ? Tr("Placed {0} of {1} photos (red dots): {2} from the GPS tracks, the others from the photos before and after.", found.Count, _selection.Count, fromTrack)
+                    : Tr("Estimated {0} of {1} photos from the photos before and after (red dots).", found.Count, _selection.Count);
         if (rough > LocationEstimate.RoughAfter)
             text += " " + Tr("The photos around them are {0:N0} hours apart, so it may be rough.", rough.TotalHours);
         PinText.Text = text;

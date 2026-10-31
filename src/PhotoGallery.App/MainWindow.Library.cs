@@ -47,6 +47,8 @@ public sealed partial class MainWindow
                 Tip: Tr("Show only the photos whose file is damaged, to repair them"), Enabled: damaged > 0),
             new(Tr("Manage tags…"), "\uE8EC", () => _ = ShowSettingsAsync(tab: Tr("Tags")),
                 Tip: Tr("Rename, merge or remove tags in all your photos at once")),
+            new(Tr("GPS tracks…"), "\uE81D", () => _ = ShowTracksAsync(),
+                Tip: Tr("Add tracks from your phone, watch or GPS logger to place photos without a location")),
             new(Tr("Write all place names in {0}…", ViewModel.PlaceLanguageName), "\uE774", () => _ = WritePlaceNamesAsync(),
                 Tip: Tr("For photos tagged in different languages: write every country, region and city name in one language")),
             null,

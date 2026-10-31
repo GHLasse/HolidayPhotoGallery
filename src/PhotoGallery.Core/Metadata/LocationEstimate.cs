@@ -10,6 +10,9 @@ public sealed record LocationGuess(GeoPosition Position, GeoTimePoint Before, Ge
 
     /// <summary>The neighbours are hours apart, so the route between them is a guess.</summary>
     public bool IsRough => Gap > LocationEstimate.RoughAfter;
+
+    /// <summary>The GPS track the position comes from (G-4), or null when it comes from the photos around it.</summary>
+    public string? Track { get; init; }
 }
 
 /// <summary>
