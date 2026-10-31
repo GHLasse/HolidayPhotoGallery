@@ -17,7 +17,7 @@ internal static class ShellDevices
     internal sealed record DeviceFile(string Name, long Size, DateTime Taken, string ParsingName);
 
     /// <summary>The devices under "This PC" that have no file system path (phones, cameras, media players).</summary>
-    public static Task<List<Device>> FindAsync() => OnSta(() =>
+    public static Task<List<Device>> FindAsync(Action<string>? log = null) => OnSta(() =>
     {
         var result = new List<Device>();
         Guid folder = FOLDERID_ComputerFolder, iid = IID_IShellItem;
@@ -27,9 +27,9 @@ internal static class ShellDevices
         {
             item.GetAttributes(SFGAO_FILESYSTEM | SFGAO_FOLDER, out var attributes);
             var parsing = Name(item, SIGDN_DESKTOPABSOLUTEPARSING);
+            log?.Invoke($"This PC: {Name(item, SIGDN_NORMALDISPLAY)} · attributes {attributes:X8} · {parsing}");
             // A portable device's parsing name holds its device path (\\?\usb#… or \\?\swd#wpdbusenum…).
-            if ((attributes & SFGAO_FILESYSTEM) == 0 && (attributes & SFGAO_FOLDER) != 0 &&
-                parsing.Contains(@"\\?\", StringComparison.Ordinal))
+            if ((attributes & SFGAO_FILESYSTEM) == 0 && LooksLikeDevice(parsing))
                 result.Add(new Device(Name(item, SIGDN_NORMALDISPLAY), parsing));
         }
         return result;
@@ -128,6 +128,13 @@ internal static class ShellDevices
         }
         return true;
     });
+
+    // A portable device's parsing name holds its device path: \\?\usb#…, \\?\swd#wpdbusenum…, or the WPD device class.
+    internal static bool LooksLikeDevice(string parsing) =>
+        parsing.Contains(@"\\?\", StringComparison.Ordinal) ||
+        parsing.Contains("usb#", StringComparison.OrdinalIgnoreCase) ||
+        parsing.Contains("wpdbusenum", StringComparison.OrdinalIgnoreCase) ||
+        parsing.Contains("6ac27878-a6fa-4155-ba85-f98f491d4f33", StringComparison.OrdinalIgnoreCase);
 
     private static Task<T> OnSta<T>(Func<T> work)
     {

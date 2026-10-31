@@ -36,7 +36,11 @@ public static class SimilarShots
     /// photos left out), each in time order, the groups in time order. A photo joins the group when it was
     /// taken within <paramref name="maxGap"/> of the one before it and looks like it.
     /// </summary>
-    public static List<ShotGroup> Find(IEnumerable<IndexedPhoto> photos, Func<IndexedPhoto, IndexedPhoto, bool> alike, TimeSpan? maxGap = null)
+    public static List<ShotGroup> Find(IEnumerable<IndexedPhoto> photos, Func<IndexedPhoto, IndexedPhoto, bool> alike, TimeSpan? maxGap = null) =>
+        Find(photos, (a, b, _) => alike(a, b), maxGap);
+
+    /// <summary>As above, <paramref name="alike"/> also told how far apart the two were taken.</summary>
+    public static List<ShotGroup> Find(IEnumerable<IndexedPhoto> photos, Func<IndexedPhoto, IndexedPhoto, TimeSpan, bool> alike, TimeSpan? maxGap = null)
     {
         var gap = maxGap ?? MaxGap;
         var ordered = photos.Where(p => p.DateTaken is not null && !p.IsVideo && !p.Rejected)
@@ -51,7 +55,7 @@ public static class SimilarShots
                 var last = run[^1];
                 // Same camera clock: the folder's photos are compared as they were taken.
                 var apart = photo.DateTaken!.Value.Local - last.DateTaken!.Value.Local;
-                if (apart > gap || !alike(last, photo))
+                if (apart > gap || !alike(last, photo, apart))
                 {
                     if (run.Count > 1)
                         groups.Add(new ShotGroup(run));
@@ -66,23 +70,41 @@ public static class SimilarShots
     }
 
     /// <summary>
-    /// Whether two photos look alike: by picture vectors when both have one, else by fingerprints when both
-    /// have one, else not.
+    /// Shots this close in time are a burst: the subject moved (a flag in the wind, a wave, people), so they
+    /// count as alike with a looser test.
     /// </summary>
-    public static bool Alike(float[]? vectorA, float[]? vectorB, ulong? hashA, ulong? hashB)
+    public static readonly TimeSpan BurstGap = TimeSpan.FromSeconds(30);
+
+    /// <summary>The looser tests for a burst (see <see cref="BurstGap"/>).</summary>
+    public const float BurstVectorCloseness = 0.7f;
+
+    public const int BurstHashDistance = 22;
+
+    /// <summary>
+    /// Whether two photos look alike: by picture vectors when both have one, else by fingerprints when both
+    /// have one, else not. Within a burst (<paramref name="apart"/> up to <see cref="BurstGap"/>) the tests are looser.
+    /// </summary>
+    public static bool Alike(float[]? vectorA, float[]? vectorB, ulong? hashA, ulong? hashB, TimeSpan? apart = null)
     {
-        if (vectorA is not null && vectorB is not null && vectorA.Length == vectorB.Length)
+        var burst = apart is { } t && t.Duration() <= BurstGap;
+        if (Closeness(vectorA, vectorB) is { } closeness)
+            return closeness >= (burst ? BurstVectorCloseness : MinVectorCloseness);
+        return hashA is { } x && hashB is { } y && Duplicates.PictureHash.Distance(x, y) <= (burst ? BurstHashDistance : MaxHashDistance);
+    }
+
+    /// <summary>How alike two picture vectors are (cosine, 1 = the same), or null without both.</summary>
+    public static float? Closeness(float[]? vectorA, float[]? vectorB)
+    {
+        if (vectorA is null || vectorB is null || vectorA.Length != vectorB.Length)
+            return null;
+        float dot = 0, a = 0, b = 0;
+        for (var i = 0; i < vectorA.Length; i++)
         {
-            float dot = 0, a = 0, b = 0;
-            for (var i = 0; i < vectorA.Length; i++)
-            {
-                dot += vectorA[i] * vectorB[i];
-                a += vectorA[i] * vectorA[i];
-                b += vectorB[i] * vectorB[i];
-            }
-            return a > 0 && b > 0 && dot / MathF.Sqrt(a * b) >= MinVectorCloseness;
+            dot += vectorA[i] * vectorB[i];
+            a += vectorA[i] * vectorA[i];
+            b += vectorB[i] * vectorB[i];
         }
-        return hashA is { } x && hashB is { } y && Duplicates.PictureHash.Distance(x, y) <= MaxHashDistance;
+        return a > 0 && b > 0 ? dot / MathF.Sqrt(a * b) : null;
     }
 
     /// <summary>

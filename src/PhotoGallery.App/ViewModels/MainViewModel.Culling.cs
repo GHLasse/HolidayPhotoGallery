@@ -204,8 +204,8 @@ public sealed partial class MainViewModel
         var vectors = await VectorsAsync();
         var hashes = await Task.Run(_index.GetPictureHashes);
         var qualities = await QualitiesAsync();
-        var groups = await Task.Run(() => SimilarShots.Find(photos, (a, b) =>
-            SimilarShots.Alike(vectors.Get(a.Path), vectors.Get(b.Path), hashes.GetValueOrDefault(a.Path), hashes.GetValueOrDefault(b.Path))));
+        var groups = await Task.Run(() => SimilarShots.Find(photos, (a, b, apart) =>
+            SimilarShots.Alike(vectors.Get(a.Path), vectors.Get(b.Path), hashes.GetValueOrDefault(a.Path), hashes.GetValueOrDefault(b.Path), apart)));
         var result = new List<(List<PhotoItemViewModel>, int)>();
         foreach (var group in groups)
         {
