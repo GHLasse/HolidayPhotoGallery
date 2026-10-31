@@ -222,6 +222,32 @@ public sealed partial class MapPanel : UserControl
         }
     }
 
+    private void AssignRow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.NewSize.Width != e.PreviousSize.Width)
+            FitButtons();
+    }
+
+    /// <summary>
+    /// Keeps the buttons on one line: when they don't fit, Estimate and then Remove location show only their icons
+    /// (their tooltips still say what they do). Wrapping put Remove location below the window (Lasse, 2026-10-31).
+    /// </summary>
+    private void FitButtons()
+    {
+        var width = AssignRow.ActualWidth;
+        if (width <= 0)
+            return;
+        foreach (var label in new[] { EstimateLabel, RemoveLabel })
+            label.Visibility = Visibility.Visible;
+        foreach (var label in new[] { EstimateLabel, RemoveLabel })
+        {
+            AssignButtons.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (AssignButtons.DesiredSize.Width <= width)
+                break;
+            label.Visibility = Visibility.Collapsed;
+        }
+    }
+
     private void UpdateButtons()
     {
         var count = _selection.Count;
@@ -239,6 +265,7 @@ public sealed partial class MapPanel : UserControl
         }
         EstimateButton.IsEnabled = _selection.Any(p => p.Photo.Location is null && p.Photo.DateTaken is not null) && Estimator is not null;
         RemoveButton.IsEnabled = _selection.Any(p => p.Photo.Location is not null);
+        FitButtons(); // the Assign text changes with the selection
     }
 
     private void Post(JsonObject message)

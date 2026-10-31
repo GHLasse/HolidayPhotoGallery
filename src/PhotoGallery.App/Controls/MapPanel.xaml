@@ -3,8 +3,7 @@
     x:Class="PhotoGallery.App.Controls.MapPanel"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:PhotoGallery.App"
-    xmlns:controls="using:PhotoGallery.App.Controls">
+    xmlns:local="using:PhotoGallery.App">
 
     <Grid RowSpacing="6">
         <Grid.RowDefinitions>
@@ -18,17 +17,18 @@
             <WebView2 x:Name="Web" />
         </Border>
         <!-- Placing photos needs the grid to pick them in, so the Map workspace hides this row. The hint has a line of
-             its own: beside the buttons a narrow pane squeezed it away. Icons from AppIcons (pin + clock, + and ×). -->
-        <StackPanel x:Name="AssignRow" Grid.Row="1" Spacing="6">
+             its own: beside the buttons a narrow pane squeezed it away. Icons from AppIcons (pin + clock, + and ×).
+             The buttons stay on one line: in a narrow pane Estimate and Remove show only their icons (FitButtons). -->
+        <StackPanel x:Name="AssignRow" Grid.Row="1" Spacing="6" SizeChanged="AssignRow_SizeChanged">
             <TextBlock x:Name="PinText" TextWrapping="Wrap" FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Text="{local:Loc Text='Click the map or search for a place to set a pin.'}" />
-            <controls:WrapPanel HorizontalAlignment="Right">
-                <Button x:Name="EstimateButton" IsEnabled="False" Click="Estimate_Click"
+            <StackPanel x:Name="AssignButtons" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                <Button x:Name="EstimateButton" IsEnabled="False" Click="Estimate_Click" AutomationProperties.Name="{local:Loc Text='Estimate'}"
                         ToolTipService.ToolTip="{local:Loc Text='Estimate where the selected photos were taken from the geotagged photos before and after them'}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Viewbox Width="16" Height="16"><PathIcon x:Name="EstimateIcon" Width="20" Height="20" /></Viewbox>
-                        <TextBlock Text="{local:Loc Text='Estimate'}" />
+                        <TextBlock x:Name="EstimateLabel" Text="{local:Loc Text='Estimate'}" />
                     </StackPanel>
                 </Button>
                 <Button x:Name="AssignButton" Style="{ThemeResource AccentButtonStyle}" IsEnabled="False"
@@ -38,14 +38,14 @@
                         <TextBlock x:Name="AssignText" Text="{local:Loc Text='Assign to selected'}" />
                     </StackPanel>
                 </Button>
-                <Button x:Name="RemoveButton" IsEnabled="False" Click="Remove_Click"
+                <Button x:Name="RemoveButton" IsEnabled="False" Click="Remove_Click" AutomationProperties.Name="{local:Loc Text='Remove location'}"
                         ToolTipService.ToolTip="{local:Loc Text='Delete the GPS position from the selected photos'}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Viewbox Width="16" Height="16"><PathIcon x:Name="RemoveIcon" Width="20" Height="20" /></Viewbox>
-                        <TextBlock Text="{local:Loc Text='Remove location'}" />
+                        <TextBlock x:Name="RemoveLabel" Text="{local:Loc Text='Remove location'}" />
                     </StackPanel>
                 </Button>
-            </controls:WrapPanel>
+            </StackPanel>
         </StackPanel>
     </Grid>
 </UserControl>
