@@ -19,14 +19,17 @@ public sealed record ShotGroup(IReadOnlyList<IndexedPhoto> Photos)
 /// </summary>
 public static class SimilarShots
 {
-    /// <summary>Two shots further apart than this are never one group, however alike.</summary>
-    public static readonly TimeSpan MaxGap = TimeSpan.FromMinutes(2);
+    /// <summary>
+    /// Two shots further apart than this are never one group, however alike. Not only bursts: the same view
+    /// taken again a few minutes later (a flag on a boat, a sunset) is a choice to make too.
+    /// </summary>
+    public static readonly TimeSpan MaxGap = TimeSpan.FromMinutes(5);
 
     /// <summary>Picture vectors at least this close count as the same shot.</summary>
-    public const float MinVectorCloseness = 0.85f;
+    public const float MinVectorCloseness = 0.8f;
 
     /// <summary>Fingerprints (64 bits) at most this many bits apart count as the same shot.</summary>
-    public const int MaxHashDistance = 14;
+    public const int MaxHashDistance = 16;
 
     /// <summary>
     /// The groups of two or more among <paramref name="photos"/> (photos without a date, videos and rejected

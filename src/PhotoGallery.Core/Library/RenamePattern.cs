@@ -24,6 +24,16 @@ public static partial class RenamePattern
     [GeneratedRegex(@"[ _]{2,}")]
     private static partial Regex Gaps();
 
+    /// <summary>
+    /// The pattern with each counter ({#}, {##} …) as wide as <paramref name="count"/> photos need: 12 photos
+    /// get {##}, 1200 get {####}. A remembered pattern so doesn't keep the width of an earlier, bigger batch.
+    /// </summary>
+    public static string FitCounter(string pattern, int count) =>
+        Part().Replace(pattern, m => m.Groups[1].Value[0] == '#' ? "{" + new string('#', CounterDigits(count)) + "}" : m.Value);
+
+    /// <summary>How many digits a counter for <paramref name="count"/> photos needs.</summary>
+    public static int CounterDigits(int count) => Math.Max(1, count).ToString(CultureInfo.InvariantCulture).Length;
+
     /// <summary>The new name, without the extension, for the photo with this counter.</summary>
     /// <paramref name="digits"/> is the fewest digits the counter has, whatever the pattern says.
     public static string Format(string pattern, IndexedPhoto photo, int counter, int digits = 0)

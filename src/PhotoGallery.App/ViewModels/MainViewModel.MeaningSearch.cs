@@ -261,7 +261,14 @@ public sealed partial class MainViewModel
     /// look-alikes of the chosen photo, most alike first; with words in the search box, the photos those
     /// words name in a file name, caption or tag, followed by the photos that show what the words describe.
     /// </summary>
-    private async Task<IReadOnlyList<IndexedPhoto>> WithMeaningAsync(PhotoQuery query, IReadOnlyList<IndexedPhoto> found)
+    /// <summary>
+    /// How well each photo shown matches a search in your own words or Find similar photos (0 to 1, the best
+    /// near 1), for grouping the grid by match instead of by month; photos the words match literally aren't in
+    /// it. Null when the photos aren't ranked by match.
+    /// </summary>
+    public IReadOnlyDictionary<string, double>? MatchShares { get; private set; }
+
+    private async Task<(IReadOnlyList<IndexedPhoto> Photos, IReadOnlyDictionary<string, double>? Shares)> WithMeaningAsync(PhotoQuery query, IReadOnlyList<IndexedPhoto> found)
     {
         try
         {
@@ -269,18 +276,20 @@ public sealed partial class MainViewModel
             {
                 var vectors = await VectorsAsync();
                 if (vectors.Get(target) is not { } like)
-                    return found;
+                    return (found, null);
                 var byPath = found.ToDictionary(p => p.Path, StringComparer.OrdinalIgnoreCase);
                 var ranked = await Task.Run(() => vectors.Closest(like, MeaningSearch.MaxMatches, MeaningSearch.MinSimilarCloseness, byPath.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)));
-                return ranked.Select(r => byPath[r.Path]).ToList();
+                // Closeness to the chosen photo is already a share: the photo itself is 1.
+                var similar = ranked.ToDictionary(r => r.Path, r => Math.Clamp(r.Closeness, 0, 1), StringComparer.OrdinalIgnoreCase);
+                return (ranked.Select(r => byPath[r.Path]).ToList(), similar);
             }
 
             var text = query.Text?.Trim();
             if (string.IsNullOrEmpty(text) || !SearchByMeaning || !IsTagModelInstalled)
-                return found;
+                return (found, null);
             var all = await VectorsAsync();
             if (all.Count == 0)
-                return found;
+                return (found, null);
             var queryVector = await TextVectorAsync(text);
             // The same filters without the words, so the photos that show it are found within them.
             var candidates = await Task.Run(() => _index.Search(query with { Text = null }));
@@ -288,12 +297,18 @@ public sealed partial class MainViewModel
             var ranked2 = await Task.Run(() => all.Closest(queryVector, MeaningSearch.MaxMatches * 2, MeaningSearch.MinTextCloseness,
                                                            candidatesByPath.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)));
             var literal = found.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            return found.Concat(MeaningSearch.TextMatches(ranked2).Where(p => !literal.Contains(p)).Select(p => candidatesByPath[p])).ToList();
+            var added = MeaningSearch.TextMatches(ranked2).Where(p => !literal.Contains(p)).ToList();
+            if (added.Count == 0)
+                return (found, null);
+            var shares = MeaningSearch.Shares(ranked2);
+            foreach (var path in literal)
+                shares.Remove(path); // shown first, as matching their words
+            return (found.Concat(added.Select(p => candidatesByPath[p])).ToList(), shares);
         }
         catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidDataException)
         {
             App.Trace($"Search in your own words failed: {ex.Message}");
-            return found;
+            return (found, null);
         }
     }
 

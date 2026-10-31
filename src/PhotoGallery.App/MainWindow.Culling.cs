@@ -31,7 +31,7 @@ public sealed partial class MainWindow
         var groups = await ViewModel.SimilarShotGroupsAsync(shown);
         if (groups.Count == 0)
         {
-            ViewModel.Inform(Tr("No similar shots among the photos shown. Shots count as similar when they look alike and were taken within 2 minutes of each other."));
+            ViewModel.Inform(Tr("No similar shots among the photos shown. Shots count as similar when they look alike and were taken within 5 minutes of each other."));
             return;
         }
         var start = startAt is null ? 0 : Math.Max(0, groups.FindIndex(g => g.Items.Contains(startAt)));
