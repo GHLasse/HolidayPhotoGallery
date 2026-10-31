@@ -13,3 +13,4 @@ PNG, about 1600 px wide, light mode with real holiday photos:
 
 Demo photos from Wikimedia Commons under CC BY or CC BY-SA need a credit: add a
 `<span class="credit">` with author, link and licence to the figure's caption in `index.html`.
+- `albums.png` – Albums view (added 2026-10-31)
