@@ -23,6 +23,10 @@
             <TextBlock x:Name="PinText" TextWrapping="Wrap" FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Text="{local:Loc Text='Click the map or search for a place to set a pin.'}" />
+            <!-- GPS tracks (G-4) are added and managed in their own dialog; this opens it from where they are used. -->
+            <HyperlinkButton Padding="0" FontSize="12" Click="Tracks_Click"
+                             Content="{local:Loc Text='GPS tracks…'}"
+                             ToolTipService.ToolTip="{local:Loc Text='Add GPS tracks from your phone, watch or GPS logger, so photos without a location are placed on them'}" />
             <StackPanel x:Name="AssignButtons" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
                 <Button x:Name="EstimateButton" IsEnabled="False" Click="Estimate_Click" AutomationProperties.Name="{local:Loc Text='Estimate'}"
                         ToolTipService.ToolTip="{local:Loc Text='Estimate where the selected photos were taken from the geotagged photos before and after them'}">

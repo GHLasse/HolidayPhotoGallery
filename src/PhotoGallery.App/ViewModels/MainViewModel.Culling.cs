@@ -71,6 +71,19 @@ public sealed partial class MainViewModel
             await SearchAsync();
     }
 
+    /// <summary>Whether photos are measured for quality hints in the background (Settings › App).</summary>
+    public bool CheckQualityAutomatically => _settings.CheckQualityAutomatically;
+
+    public void SaveCheckQualityAutomatically(bool on)
+    {
+        if (on == _settings.CheckQualityAutomatically)
+            return;
+        _settings.CheckQualityAutomatically = on;
+        _settings.Save(SettingsPath);
+        if (on)
+            _ = CheckQualityInBackgroundAsync();
+    }
+
     /// <summary>
     /// Quietly measures every photo not measured yet, one at a time and pausing while the app is busy with
     /// something the user asked for. Faces found by the face search are judged on their own. Never marks the
@@ -78,7 +91,7 @@ public sealed partial class MainViewModel
     /// </summary>
     public async Task CheckQualityInBackgroundAsync()
     {
-        if (_checkingQuality)
+        if (_checkingQuality || !_settings.CheckQualityAutomatically)
             return;
         _checkingQuality = true;
         var unreadable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -96,13 +109,36 @@ public sealed partial class MainViewModel
                 {
                     while (IsBusy)
                         await Task.Delay(2000);
-                    if (await MeasureAsync(path, orientation) is { } measure)
+                    if (!_settings.CheckQualityAutomatically)
+                        break;
+                    QualityMeasure? measure = null;
+                    try
+                    {
+                        measure = await MeasureAsync(path, orientation);
+                    }
+                    // One photo that can't be measured is skipped; before, its error ended the whole job every
+                    // start, before anything was saved, so no photo ever got a hint.
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        App.Trace($"Quality hint for {path} skipped: {ex.GetType().Name}: {ex.Message}");
+                    }
+                    if (measure is not null)
                         measured.Add((path, measure));
                     else
                         unreadable.Add(path);
+                    // Saved every few photos, so the work done counts even if the app closes.
+                    if (measured.Count >= 10)
+                    {
+                        var save = measured.ToList();
+                        measured.Clear();
+                        await Task.Run(() => _index.SaveShotQuality(save));
+                        _qualities = null;
+                    }
                 }
                 await Task.Run(() => _index.SaveShotQuality(measured));
                 _qualities = null; // read again with the new rows when next needed
+                if (!_settings.CheckQualityAutomatically)
+                    break;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

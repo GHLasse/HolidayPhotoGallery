@@ -217,9 +217,11 @@ public sealed partial class MainViewModel
         var newName = name.Length == 0 || name == Album.DefaultName(folder) ? null : name;
         if (!TryChangeAlbums(folder, () => AlbumFile.Write(folder, info with { Name = newName })))
             return;
-        await RenameCloudAlbumsAsync(folder, oldName);
+        // The app shows the new name first; Google Photos and OneDrive follow (a slow or failing service held
+        // the app's own update back, so the old name stayed and renaming again found no folder of that name).
         await AlbumsChangedAsync();
         await SearchAsync();
+        await RenameCloudAlbumsAsync(folder, oldName);
     }
 
     private async Task RenameFolderWhenIdleAsync(string folder, string name)
@@ -294,14 +296,16 @@ public sealed partial class MainViewModel
             if (AlbumFile.Read(folder)?.Link(service) is not { } link)
                 continue;
             var known = link with { Title = link.Title ?? oldName };
-            await RenameCloudAlbumAsync(folder, service, known);
+            await RenameCloudAlbumAsync(folder, service, known, tell: true);
         }
     }
 
-    private async Task<bool> RenameCloudAlbumAsync(string folder, CloudService service, CloudAlbumLink link)
+    private async Task<bool> RenameCloudAlbumAsync(string folder, CloudService service, CloudAlbumLink link, bool tell = false)
     {
         var name = AlbumName(folder);
         var renamed = false;
+        if (link.Title != name && !IsSignedIn(service) && tell)
+            Warn(Tr("The album is renamed here. Sign in to {0} in Settings › Linked apps, and it is renamed there too.", DisplayName(service)));
         if (link.Title != name && IsSignedIn(service) && CreateCloud(service) is { } cloud)
         {
             try
@@ -310,10 +314,12 @@ public sealed partial class MainViewModel
                 link = link with { Title = name };
                 renamed = true;
             }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException
-                                           or Core.GooglePhotos.GooglePhotosException or Core.OneDrive.OneDriveException)
+            // Whatever went wrong (a timeout, a sign-in that ran out), the rename is tried again later.
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                App.Trace($"cloud album rename ({service}) failed, tried again later: {ex.Message}");
+                App.Trace($"cloud album rename ({service}) failed, tried again later: {ex.GetType().Name}: {ex.Message}");
+                if (tell)
+                    Warn(Tr("The album is renamed here, but {0} did not take the new name: {1} The app tries again later.", DisplayName(service), ex.Message));
             }
             finally
             {

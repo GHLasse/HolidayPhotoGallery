@@ -33,8 +33,11 @@ public sealed partial class MainWindow
                 ? (badge.IsAuto ? Tr("Show only photos tagged {0} (added by auto-tagging)", tag) : Tr("Show only photos tagged {0}", tag))
                 : Tr("{0} of the {1} selected photos have this tag. Click to add it to all of them.", badge.Count, badge.Of);
             Action click = badge.IsOnAll ? () => ViewModel.FilterByTag(tag) : () => ViewModel.Editor.AddTags([tag]);
+            // A tag in a tree (M-5): each level can be clicked on its own, "Animals" shows every animal.
+            var levels = badge.IsOnAll && TagTree.IsPath(tag) ? TagTree.Ancestors(tag).Append(tag).ToList() : null;
             TagBadges.Children.Add(Badge(badge.Label, badge.IsAuto, outlined: !badge.IsOnAll, tooltip, click,
-                                         Tr("Remove {0}", tag), () => ViewModel.Editor.RemoveTag(tag)));
+                                         Tr("Remove {0}", tag), () => ViewModel.Editor.RemoveTag(tag),
+                                         levels: levels, clickLevel: ViewModel.FilterByTag));
         }
         var partial = badges.Count(b => !b.IsOnAll);
         TagHint.Text = partial > 0 ? Tr("Outlined tags are on only some of the selected photos; click one to add it to all.") : "";
@@ -332,17 +335,46 @@ public sealed partial class MainWindow
     /// Auto tags get a mark, people a person symbol.
     /// </summary>
     private static Border Badge(string label, bool isAuto, bool outlined, string tooltip, Action? click,
-                                string removeTooltip, Action remove, bool person = false)
+                                string removeTooltip, Action remove, bool person = false,
+                                IReadOnlyList<string>? levels = null, Action<string>? clickLevel = null)
     {
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         if (person)
             content.Children.Add(new FontIcon { Glyph = "\uE77B", FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
         else if (isAuto)
             content.Children.Add(new Controls.AiSparkle { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center });
-        content.Children.Add(new TextBlock { Text = isAuto ? Core.Tagging.AutoTags.Label(label) : label, VerticalAlignment = VerticalAlignment.Center });
 
         UIElement body = content;
-        if (click is not null)
+        if (levels is { Count: > 1 } && clickLevel is not null)
+        {
+            // One button per level of the tree, with › between them.
+            for (var i = 0; i < levels.Count; i++)
+            {
+                if (i > 0)
+                    content.Children.Add(new TextBlock { Text = "›", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 });
+                var level = levels[i];
+                var part = new Button
+                {
+                    Content = new TextBlock { Text = TagTree.Leaf(level) },
+                    Padding = new Thickness(0),
+                    MinHeight = 0,
+                    MinWidth = 0,
+                    Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                    BorderThickness = new Thickness(0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                part.Click += (_, _) => clickLevel(level);
+                ToolTipService.SetToolTip(part, Tr("Show only photos tagged {0}", TagTree.Display(level)));
+                content.Children.Add(part);
+            }
+            tooltip = "";
+        }
+        else
+        {
+            content.Children.Add(new TextBlock { Text = isAuto ? Core.Tagging.AutoTags.Label(label) : label, VerticalAlignment = VerticalAlignment.Center });
+        }
+
+        if (click is not null && levels is not { Count: > 1 })
         {
             var button = new Button
             {
@@ -356,7 +388,8 @@ public sealed partial class MainWindow
             button.Click += (_, _) => click();
             body = button;
         }
-        ToolTipService.SetToolTip(body, tooltip);
+        if (tooltip.Length > 0)
+            ToolTipService.SetToolTip(body, tooltip);
 
         var close = new Button
         {

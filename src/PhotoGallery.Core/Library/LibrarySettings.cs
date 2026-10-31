@@ -41,6 +41,9 @@ public sealed class LibrarySettings
     /// <summary>Photos get their picture fingerprints in the background, so duplicates are ready to go through.</summary>
     public bool FindDuplicatesAutomatically { get; set; } = true;
 
+    /// <summary>Photos are measured in the background for hints that they may be blurry, too dark or too bright (C-4).</summary>
+    public bool CheckQualityAutomatically { get; set; } = true;
+
     /// <summary>
     /// The Windows time zone the camera's clock was set to, for matching photos without a saved UTC offset to GPS
     /// tracks (G-4); null means this PC's own time zone.
