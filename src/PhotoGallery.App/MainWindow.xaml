@@ -303,6 +303,8 @@
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No location'}" IsChecked="{x:Bind ViewModel.WithoutLocation, Mode=TwoWay}" />
                                 <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='Damaged files'}" IsChecked="{x:Bind ViewModel.DamagedOnly, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="{local:Loc Text='Possibly weak shots'}" IsChecked="{x:Bind ViewModel.QualityHintsOnly, Mode=TwoWay}"
+                                                      ToolTipService.ToolTip="{local:Loc Text='Photos that may be blurry, too dark or too bright and are not rated or flagged yet'}" />
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>

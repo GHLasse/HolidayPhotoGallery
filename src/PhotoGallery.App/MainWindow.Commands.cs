@@ -84,6 +84,9 @@ public sealed partial class MainWindow
                     Tip = Tr("Flag or unflag the selected photos"), Run = () => _ = MarkAsync(ViewModel.ToggleFlagAsync) },
             new() { Label = Tr("Reject"), Glyph = "\uE711", Group = CommandGroup.Mark, Keys = "X", Enabled = Any,
                     Tip = Tr("Reject the selected photos, or take the mark off. Nothing is deleted."), Run = () => _ = MarkAsync(ViewModel.ToggleRejectAsync) },
+            new() { Label = Tr("Ignore quality hints"), Also = Tr("blurry dark bright weak dismiss"), Glyph = "\uE7BA", Group = CommandGroup.Mark, Enabled = Any,
+                    Tip = Tr("Stop pointing out that the selected photos may be blurry, too dark or too bright"),
+                    Run = () => _ = ViewModel.IgnoreQualityHintsAsync(SelectedPhotos.ToList()) },
 
             // Look
             new() { Label = Tr("Open large"), Also = Tr("view enlarge"), Glyph = "\uE740", Group = CommandGroup.Look, Keys = "E", Enabled = Any, InViewer = false,
@@ -92,6 +95,9 @@ public sealed partial class MainWindow
                     Tip = Tr("Show 1 to 4 selected photos side by side to rate them"), Run = () => OpenCompare(SelectedPhotos) },
             new() { Label = Tr("Find similar photos"), Also = Tr("alike look-alikes same"), Glyph = AppIcons.FindSimilar, Group = CommandGroup.Look, Enabled = One, Gated = true,
                     Tip = Tr("Show the photos that look like this one, most alike first"), Run = () => _ = FindSimilarAsync() },
+            new() { Label = Tr("Compare similar shots"), Also = Tr("burst series best sharpest cull"), Glyph = "\uE8A9", Group = CommandGroup.Look, Enabled = One, InViewer = false,
+                    Tip = Tr("Compare the shots taken just before and after this one that look alike, the sharpest highlighted"),
+                    Run = () => { if (SelectedPhotos is [var first, ..]) _ = GoThroughSimilarShotsAsync(first); } },
             new() { Label = Tr("Rotate left"), Also = Tr("turn"), Glyph = "\uE7AD", Mirrored = true, Group = CommandGroup.Look, Keys = "Ctrl+,", Enabled = Any,
                     Run = () => Do(IsViewerOpen ? (RoutedEventHandler)ViewerRotateLeft_Click : RotateLeft_Click) },
             new() { Label = Tr("Rotate right"), Also = Tr("turn"), Glyph = "\uE7AD", Group = CommandGroup.Look, Keys = "Ctrl+.", Enabled = Any,

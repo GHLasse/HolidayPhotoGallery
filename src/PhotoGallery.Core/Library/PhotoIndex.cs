@@ -145,6 +145,17 @@ public sealed partial class PhotoIndex : IDisposable
                 file_mtime INTEGER NOT NULL,
                 vector BLOB NOT NULL
             );
+            -- Sharpness and exposure measured for quality hints (C-4); ignored = the user dismissed the hints.
+            CREATE TABLE IF NOT EXISTS shot_quality (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                sharpness REAL NOT NULL,
+                face_sharpness REAL,
+                brightness REAL NOT NULL,
+                dark_share REAL NOT NULL,
+                bright_share REAL NOT NULL,
+                hints INTEGER NOT NULL,
+                ignored INTEGER NOT NULL DEFAULT 0
+            );
             -- Photos that arrived in a folder already in the library, to be auto-tagged in the background (L-7).
             CREATE TABLE IF NOT EXISTS auto_tag_queue (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
@@ -439,6 +450,9 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (query.DamagedOnly)
                 where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
+
+            if (query.QualityHintsOnly)
+                where.Add(HasQualityHintSql);
 
             if (query.MisnamedOnly)
                 where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND (c.health = {(int)FileHealth.Misnamed} OR c.misnamed = 1) AND c.file_mtime = p.file_mtime)");

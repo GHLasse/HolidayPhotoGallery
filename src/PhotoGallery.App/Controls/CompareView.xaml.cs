@@ -44,6 +44,7 @@ public sealed partial class CompareView : UserControl
             (VirtualKey.Tab, VirtualKeyModifiers.None), (VirtualKey.Tab, VirtualKeyModifiers.Shift),
             (VirtualKey.Left, VirtualKeyModifiers.None), (VirtualKey.Right, VirtualKeyModifiers.None),
             (VirtualKey.Up, VirtualKeyModifiers.None), (VirtualKey.Down, VirtualKeyModifiers.None),
+            (VirtualKey.PageUp, VirtualKeyModifiers.None), (VirtualKey.PageDown, VirtualKeyModifiers.None),
         };
         for (var i = 0; i <= 5; i++)
         {
@@ -75,6 +76,7 @@ public sealed partial class CompareView : UserControl
         VirtualKey.Escape or VirtualKey.G or VirtualKey.P or VirtualKey.X or VirtualKey.Tab => true,
         VirtualKey.Left or VirtualKey.Right => true,
         VirtualKey.Up or VirtualKey.Down => _panes.Count == 4,
+        VirtualKey.PageUp or VirtualKey.PageDown => _inGroups,
         _ => Stars(key) >= 0,
     };
 
@@ -103,8 +105,38 @@ public sealed partial class CompareView : UserControl
 
     public IReadOnlyList<PhotoItemViewModel> Photos => _panes.Select(p => p.Item).ToList();
 
-    public void Show(IReadOnlyList<PhotoItemViewModel> photos)
+    /// <summary>The quality hint to show under a photo (C-4), or null for none.</summary>
+    public Func<PhotoItemViewModel, string?>? HintFor { get; set; }
+
+    /// <summary>"Ignore" was clicked on a photo's hint: it should never show again for that photo.</summary>
+    public event Func<PhotoItemViewModel, Task>? IgnoreHintRequested;
+
+    /// <summary>Raised with -1 or +1 to go to the previous or next group of similar shots (Page Up, Page Down).</summary>
+    public event Action<int>? GroupStepRequested;
+
+    private bool _inGroups;
+
+    /// <summary>
+    /// Going through groups of similar shots: <paramref name="text"/> ("Similar shots 2 of 9") shows above the
+    /// photos with buttons to the previous and next group; null ends it.
+    /// </summary>
+    public void SetGroup(string? text, bool hasPrevious = false, bool hasNext = false)
     {
+        _inGroups = text is not null;
+        GroupBar.Visibility = _inGroups ? Visibility.Visible : Visibility.Collapsed;
+        GroupText.Text = text ?? "";
+        PreviousGroupButton.IsEnabled = hasPrevious;
+        NextGroupButton.IsEnabled = hasNext;
+    }
+
+    private void PreviousGroup_Click(object sender, RoutedEventArgs e) => GroupStepRequested?.Invoke(-1);
+
+    private void NextGroup_Click(object sender, RoutedEventArgs e) => GroupStepRequested?.Invoke(1);
+
+    /// <summary>Shows the photos, with the one at <paramref name="highlight"/> highlighted (the sharpest of a group).</summary>
+    public void Show(IReadOnlyList<PhotoItemViewModel> photos, int highlight = 0)
+    {
+        _activeIndex = 0;
         PaneGrid.Children.Clear();
         PaneGrid.RowDefinitions.Clear();
         PaneGrid.ColumnDefinitions.Clear();
@@ -131,7 +163,8 @@ public sealed partial class CompareView : UserControl
         HintText.Text = items.Count == 1
             ? Tr("Keys 1–5 rate this photo, 0 clears the rating. Left and Right go to the previous or next photo. Ctrl + mouse wheel zooms.")
             : Tr("Click a photo to highlight it. Keys 1–5 rate it, 0 clears the rating, Tab moves to the next photo. Ctrl + mouse wheel zooms.");
-        SetActive(0, FocusState.Programmatic);
+        _activeIndex = Math.Clamp(highlight, 0, Math.Max(0, items.Count - 1));
+        SetActive(_activeIndex, FocusState.Programmatic);
         _ = LoadImagesAsync();
     }
 
@@ -180,11 +213,29 @@ public sealed partial class CompareView : UserControl
         };
         var flag = new FontIcon { FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
         ShowMark(flag, item);
+
+        // A quality hint (C-4) as a quiet line under the name, never on the photo itself.
+        var hintText = new TextBlock
+        {
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = ThemeBrush("TextFillColorSecondaryBrush", Colors.Gray),
+        };
+        var ignore = new HyperlinkButton { Content = Tr("Ignore"), Padding = new Thickness(4, 0, 4, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        ToolTipService.SetToolTip(ignore, Tr("Don’t point this out for this photo again"));
+        var hint = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Children = { new FontIcon { Glyph = "\uE7BA", FontSize = 12, Foreground = ThemeBrush("TextFillColorSecondaryBrush", Colors.Gray) }, hintText, ignore },
+        };
+        var nameAndHint = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { name, hint } };
         var footer = new Grid { ColumnSpacing = 8, Padding = new Thickness(8, 4, 8, 4) };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footer.Children.Add(name);
+        footer.Children.Add(nameAndHint);
         Grid.SetColumn(flag, 1);
         footer.Children.Add(flag);
         Grid.SetColumn(rating, 2);
@@ -217,7 +268,15 @@ public sealed partial class CompareView : UserControl
             VerticalContentAlignment = VerticalAlignment.Stretch,
         };
 
-        var pane = new Pane(item, host, root, scroller, image, rating, status, flag);
+        var pane = new Pane(item, host, root, scroller, image, rating, status, flag) { Hint = hint, HintText = hintText };
+        ShowHint(pane);
+        ignore.Click += async (_, _) =>
+        {
+            if (IgnoreHintRequested is { } handler)
+                await handler(item);
+            hint.Visibility = Visibility.Collapsed;
+            FocusHighlighted();
+        };
         // handledEventsToo: the scroll viewer and rating control mark clicks as handled,
         // which used to stop the click from highlighting the photo.
         // A pane cannot take focus before it is on screen, so the first one grabs it once loaded.
@@ -351,6 +410,24 @@ public sealed partial class CompareView : UserControl
     {
         if (RatingChanged is { } handler)
             await handler(pane.Item, stars);
+        ShowHint(pane);
+    }
+
+    /// <summary>Shows each photo's hint again, e.g. once the hints are loaded.</summary>
+    public void RefreshHints()
+    {
+        foreach (var pane in _panes)
+            ShowHint(pane);
+    }
+
+    // A rated, flagged or rejected photo has been judged, so its hint goes.
+    private void ShowHint(Pane pane)
+    {
+        if (pane.Hint is null || pane.HintText is null)
+            return;
+        var text = HintFor?.Invoke(pane.Item);
+        pane.HintText.Text = text ?? "";
+        pane.Hint.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // PreviewKeyDown runs before the focused control sees the key, so the scroll viewer and
@@ -390,12 +467,17 @@ public sealed partial class CompareView : UserControl
                 if (FlagRequested is { } flag)
                     await flag(flagged.Item);
                 ShowMark(flagged.Flag, flagged.Item);
+                ShowHint(flagged);
                 return;
             case VirtualKey.X:
                 var rejected = _panes[_activeIndex];
                 if (RejectRequested is { } reject)
                     await reject(rejected.Item);
                 ShowMark(rejected.Flag, rejected.Item);
+                ShowHint(rejected);
+                return;
+            case VirtualKey.PageUp or VirtualKey.PageDown:
+                GroupStepRequested?.Invoke(key == VirtualKey.PageUp ? -1 : 1);
                 return;
             case VirtualKey.Tab:
                 SetActive((_activeIndex + (shift ? _panes.Count - 1 : 1)) % _panes.Count, FocusState.Keyboard);
@@ -445,5 +527,7 @@ public sealed partial class CompareView : UserControl
         public RatingControl Rating { get; } = rating;
         public TextBlock Status { get; } = status;
         public bool SettingRating { get; set; }
+        public StackPanel? Hint { get; init; }
+        public TextBlock? HintText { get; init; }
     }
 }

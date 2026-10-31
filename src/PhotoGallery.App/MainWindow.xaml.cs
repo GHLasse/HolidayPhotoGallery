@@ -62,6 +62,9 @@ public sealed partial class MainWindow : Window
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
         CompareLayer.OpenRequested += OpenFromCompare;
+        CompareLayer.HintFor = ViewModel.QualityHintText;
+        CompareLayer.IgnoreHintRequested += item => ViewModel.IgnoreQualityHintsAsync([item]);
+        CompareLayer.GroupStepRequested += step => _ = StepShotGroupAsync(step);
 
         MapView.AssignRequested += async (items, position) =>
         {
@@ -390,6 +393,7 @@ public sealed partial class MainWindow : Window
         ViewModel.WithoutLocation = false;
         ViewModel.WithoutDate = false;
         ViewModel.DamagedOnly = false;
+        ViewModel.QualityHintsOnly = false;
         ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;
@@ -1125,14 +1129,17 @@ public sealed partial class MainWindow : Window
             ViewModel.Warn(Tr("Select at most {0} photos to compare; {1} are selected.", CompareView.MaxPhotos, photos.Count));
             return;
         }
+        EndShotGroups();
         CompareLayer.Visibility = Visibility.Visible;
         CompareLayer.Show(photos);
+        _ = ShowQualityHintsAsync();
         TipForCompare();
     }
 
     private void CloseCompare()
     {
         var shown = CompareLayer.Photos;
+        EndShotGroups();
         CompareLayer.Visibility = Visibility.Collapsed;
         if (shown.Count > 0)
             PhotoGrid.ScrollIntoView(shown[0]);
