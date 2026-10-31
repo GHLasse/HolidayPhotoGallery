@@ -8,6 +8,9 @@ public sealed record LocationGuess(GeoPosition Position, GeoTimePoint Before, Ge
 {
     public TimeSpan Gap => After.Utc - Before.Utc;
 
+    /// <summary>How far apart the photos before and after are, as the crow flies.</summary>
+    public double Kilometres => LocationEstimate.Kilometres(Before.Position, After.Position);
+
     /// <summary>The neighbours are hours apart, so the route between them is a guess.</summary>
     public bool IsRough => Gap > LocationEstimate.RoughAfter;
 
@@ -72,5 +75,15 @@ public static class LocationEstimate
         else if (lon < -180)
             lon += 360;
         return new GeoPosition(a.Latitude + (b.Latitude - a.Latitude) * share, lon);
+    }
+
+    /// <summary>The distance between two places on the earth's surface, as the crow flies (haversine).</summary>
+    public static double Kilometres(GeoPosition a, GeoPosition b)
+    {
+        static double Rad(double degrees) => degrees * Math.PI / 180;
+        var dLat = Rad(b.Latitude - a.Latitude);
+        var dLon = Rad(b.Longitude - a.Longitude);
+        var h = Math.Pow(Math.Sin(dLat / 2), 2) + Math.Cos(Rad(a.Latitude)) * Math.Cos(Rad(b.Latitude)) * Math.Pow(Math.Sin(dLon / 2), 2);
+        return 2 * 6371.0 * Math.Asin(Math.Min(1, Math.Sqrt(h)));
     }
 }

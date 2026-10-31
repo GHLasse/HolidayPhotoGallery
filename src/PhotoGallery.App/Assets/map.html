@@ -86,7 +86,7 @@
 //                 {type:"texts", open, show, of, estimate, map, satellite, labels} (the bubble's buttons and the map/satellite
 //                 switch in the app's language; "of" is like "{0} of {1}")
 //                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
-//                 (also trackLine, routeLine: the legend under a drawn line)
+//                 (also trackLine, routeLine: the legend under a drawn line; a track message's label replaces it)
 //                 {type:"style", accent, onAccent} (the app's accent colour and the text on it, "#rrggbb")
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
@@ -495,12 +495,13 @@ function start() {
         const legend = document.getElementById("legend");
         legend.style.display = m.points.length > 1 ? "block" : "none";
         legend.querySelector("line").setAttribute("stroke-dasharray", m.route ? "6 6" : "");
-        document.getElementById("legendText").textContent = m.route
+        // The leg an estimate lies on comes with its own text: how far and how long apart its two ends are.
+        document.getElementById("legendText").textContent = m.label ? m.label : m.route
           ? (texts.routeLine || "Your geotagged photos in the order taken")
           : (texts.trackLine || "GPS track");
         if (m.points.length > 1) {
           const line = L.polyline(m.points, {
-            renderer: trackRenderer, interactive: false, color: "#7a3fd1", weight: 3, opacity: 0.55,
+            renderer: trackRenderer, interactive: false, color: "#7a3fd1", weight: m.label ? 4 : 3, opacity: m.label ? 0.85 : 0.55,
             dashArray: m.route ? "6 6" : null, lineCap: "round", lineJoin: "round",
           }).addTo(trackLayer);
           if (m.fit) map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 15 });
