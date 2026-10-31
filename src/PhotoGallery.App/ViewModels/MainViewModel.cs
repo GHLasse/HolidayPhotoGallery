@@ -59,6 +59,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _settings = LibrarySettings.Load(SettingsPath);
         _index = new PhotoIndex(Path.Combine(DataFolder, "index.db"));
+        // Copies without the GPS position left from the last run (a share keeps its copies until the next one).
+        _ = Task.Run(() => Core.Cloud.OutgoingCopies.Clear(OutgoingFolder));
 
         _exifTool = ExifToolProcess.TryStart();
         if (_exifTool is not null)

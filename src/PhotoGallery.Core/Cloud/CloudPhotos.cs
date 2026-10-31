@@ -9,8 +9,15 @@ public enum CloudService
     OneDrive,
 }
 
-/// <summary>One photo to upload, with its caption (Google shows it as the description).</summary>
-public sealed record UploadPhoto(string Path, string? Caption);
+/// <summary>
+/// One photo to upload, with its caption (Google shows it as the description). <see cref="SendPath"/> is a copy
+/// to send instead of the photo itself (with the same file name), e.g. one without the GPS position.
+/// </summary>
+public sealed record UploadPhoto(string Path, string? Caption, string? SendPath = null)
+{
+    /// <summary>The file whose bytes go up.</summary>
+    public string Source => SendPath ?? Path;
+}
 
 public sealed record UploadProgress(int Done, int Total);
 

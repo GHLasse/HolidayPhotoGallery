@@ -4,11 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.20/leaflet-maplibre-gl.js"></script>
+<!-- Pinned by hash (integrity): if the CDN served anything else, the browser refuses it. When a version changes,
+     work out the new hash from the npm package: openssl dgst -sha384 -binary FILE | openssl base64 -A -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.20/leaflet-maplibre-gl.js" integrity="sha384-9fwNQRJPT6L1x49HAfKyw8GVB2Mk5nMTugqwaVgpJbJC/JObdUDN6uqDIW6jGYpG" crossorigin="anonymous"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
   body { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
@@ -94,6 +96,8 @@
 //                 {type:"estimate"} (the pin's right-click menu: estimate from the photos before and after)
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
+// File names go into tooltips as text, never as HTML (Leaflet reads a string as HTML).
+const textNode = text => document.createTextNode(text == null ? "" : String(text));
 const query = new URLSearchParams(location.search);
 const lang = query.get("lang") || "en";
 // The app's Esri key (from the build server) for sharp satellite pictures; without it the satellite view uses
@@ -442,7 +446,7 @@ function start() {
           const marker = L.circleMarker([p.lat, p.lon], { ...normal, bubblingMouseEvents: false });
           marker.photo = p;
           // The name is attached on first hover: tens of thousands of tooltips up front slow the map down.
-          marker.once("mouseover", () => marker.bindTooltip(p.name).openTooltip());
+          marker.once("mouseover", () => marker.bindTooltip(textNode(p.name)).openTooltip());
           marker.on("click", ev => {
             send({ type: "select", path: p.path, add: ev.originalEvent.ctrlKey });
             // Over the whole library the photo itself shows above its dot; the app sends its picture.
@@ -484,7 +488,7 @@ function start() {
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)
-          L.circleMarker([p.lat, p.lon], { ...estimated, bubblingMouseEvents: false }).bindTooltip(p.name).addTo(estimateLayer);
+          L.circleMarker([p.lat, p.lon], { ...estimated, bubblingMouseEvents: false }).bindTooltip(textNode(p.name)).addTo(estimateLayer);
         if (m.points.length > 1)
           map.fitBounds(L.latLngBounds(m.points.map(p => [p.lat, p.lon])), { padding: [40, 40], maxZoom: 14 });
         else if (m.points.length === 1 && !map.getBounds().contains([m.points[0].lat, m.points[0].lon]))

@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using PhotoGallery.App.ViewModels;
+using PhotoGallery.Core;
 using PhotoGallery.Core.Cloud;
 using static PhotoGallery.Core.Localization.Strings;
 
@@ -43,8 +44,8 @@ public sealed partial class MainWindow
 
     private static void OpenInBrowser(string? url)
     {
-        if (url is not null)
-            MainViewModel.OpenInBrowser(new Uri(url));
+        if (WebLinks.Parse(url) is { } uri)
+            MainViewModel.OpenInBrowser(uri);
     }
 
     private void CancelUpload_Click(object sender, RoutedEventArgs e) => ViewModel.CancelUpload();

@@ -63,7 +63,7 @@ public sealed class OneDriveClient : ICloudPhotos, IDisposable
             {
                 var id = _syncedPath?.Invoke(photos[i].Path) is { } drivePath
                     ? await FindAsync(drivePath, cancellationToken).ConfigureAwait(false)
-                    : await UploadAsync(photos[i].Path, folder, cancellationToken).ConfigureAwait(false);
+                    : await UploadAsync(photos[i].Source, folder, cancellationToken).ConfigureAwait(false);
                 results[i] = new CreatedItem(id, null);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OneDriveException)
