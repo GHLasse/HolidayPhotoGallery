@@ -105,14 +105,17 @@ public static class TimeZoneTyping
     /// </summary>
     private static void ScrollTo(ComboBox combo, int index)
     {
-        // The list's scroller is found from an entry that is made, a few rows away.
-        var realized = Enumerable.Range(0, combo.Items.Count).Select(combo.ContainerFromIndex).OfType<ComboBoxItem>().FirstOrDefault();
-        DependencyObject? parent = realized;
-        while (parent is not null and not ScrollViewer)
-            parent = VisualTreeHelper.GetParent(parent);
-        if (parent is not ScrollViewer scroller || realized is null || realized.ActualHeight <= 0)
+        // The open list's scroller, found in its popup (the entries further down aren't made yet, so the scroller
+        // can't be found from them).
+        var scroller = combo.XamlRoot is null ? null :
+            VisualTreeHelper.GetOpenPopupsForXamlRoot(combo.XamlRoot)
+                .Select(p => p.Child).OfType<DependencyObject>()
+                .Select(FindScroller).FirstOrDefault(s => s is not null && s.ScrollableHeight > 0);
+        if (scroller is null || combo.Items.Count == 0)
             return;
-        scroller.ChangeView(null, Math.Max(0, (index - 3) * realized.ActualHeight), null, disableAnimation: true);
+        // Every entry is one row high, so the entry's place in the list gives its place in the scroller.
+        var rowHeight = scroller.ExtentHeight / combo.Items.Count;
+        scroller.ChangeView(null, Math.Clamp((index - 3) * rowHeight, 0, scroller.ScrollableHeight), null, disableAnimation: true);
         void Focus(int triesLeft)
         {
             if (combo.ContainerFromIndex(index) is ComboBoxItem item)
@@ -120,7 +123,19 @@ public static class TimeZoneTyping
             else if (triesLeft > 0)
                 combo.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => Focus(triesLeft - 1));
         }
-        combo.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => Focus(3));
+        combo.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => Focus(10));
+    }
+
+    private static ScrollViewer? FindScroller(DependencyObject element)
+    {
+        if (element is ScrollViewer scroller)
+            return scroller;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+        {
+            if (FindScroller(VisualTreeHelper.GetChild(element, i)) is { } found)
+                return found;
+        }
+        return null;
     }
 
     private static void Jump(ComboBox combo, string typed, ref string lastSearch, ref int matchIndex)
