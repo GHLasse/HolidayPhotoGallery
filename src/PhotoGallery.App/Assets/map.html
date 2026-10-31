@@ -23,12 +23,18 @@
   .ctl:hover { background: #f9f9f9; }
   .ctl:active { background: #f5f5f5; color: var(--text-2); }
   .icon { font-family: var(--icons); font-size: 16px; line-height: 1; font-style: normal; }
-  #search { position: absolute; z-index: 1000; top: 10px; left: 54px; right: 10px; max-width: 360px; display: flex; gap: 4px;
-            padding: 4px; }
-  #search input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--stroke);
-                  border-bottom: 1px solid #868686; border-radius: 4px; color: var(--text); font: inherit; font-size: 14px; outline: none; }
-  #search input:focus { border-bottom: 2px solid var(--accent); }
+  /* The search box is the app's own (WinUI AutoSuggestBox): one box, the magnifier inside it on the right. */
+  #search { position: absolute; z-index: 1000; top: 10px; left: 56px; right: 10px; max-width: 360px; display: flex;
+            border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
+  #search input { flex: 1; min-width: 0; height: 36px; padding: 0 40px 1px 11px; box-sizing: border-box; border: 1px solid var(--stroke);
+                  border-bottom: 1px solid #868686; border-radius: 4px; background: #fff; color: var(--text); font: inherit; font-size: 14px; outline: none; }
+  #search input:hover { background: #f9f9f9; }
+  #search input:focus { background: #fff; border-bottom: 2px solid var(--accent); padding-bottom: 0; }
   #search input::placeholder { color: var(--text-2); }
+  #search input::-webkit-search-cancel-button { display: none; }
+  #search button { position: absolute; right: 3px; top: 4px; width: 32px; height: 28px; padding: 0; border: none; border-radius: 4px;
+                   background: transparent; color: var(--text-2); cursor: pointer; }
+  #search button:hover { background: rgba(0,0,0,.04); color: var(--text); }
   /* Leaflet's + and − as the app's buttons. */
   .leaflet-touch .leaflet-bar, .leaflet-bar { border: 1px solid var(--stroke) !important; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); overflow: hidden; }
   .leaflet-bar a, .leaflet-touch .leaflet-bar a { width: 36px; height: 36px; line-height: 36px; color: var(--text); border-bottom: 1px solid var(--stroke);
@@ -62,9 +68,9 @@
 </head>
 <body>
 <div id="map"></div>
-<form id="search" class="card" autocomplete="off">
+<form id="search" autocomplete="off">
   <input id="query" type="search" placeholder="Find a place, e.g. Tortuguero">
-  <button type="submit" class="ctl"><i class="icon">&#xE721;</i><span id="findText">Find</span></button>
+  <button type="submit" id="findButton" title="Find"><i class="icon">&#xE721;</i></button>
 </form>
 <div id="message"></div>
 <div id="offline">The map needs an internet connection.</div>
@@ -460,7 +466,7 @@ function start() {
           preview.setContent(previewContent(m.src));
       } else if (m.type === "texts") {
         texts = m;
-        if (m.find) document.getElementById("findText").textContent = m.find;
+        if (m.find) document.getElementById("findButton").title = m.find;
         if (m.placeholder) document.getElementById("query").placeholder = m.placeholder;
         if (m.offline) document.getElementById("offline").textContent = m.offline;
         if (m.zoomIn) document.querySelector(".leaflet-control-zoom-in").title = m.zoomIn;
