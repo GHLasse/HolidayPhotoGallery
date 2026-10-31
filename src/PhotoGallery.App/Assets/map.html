@@ -12,36 +12,59 @@
 <style>
   html, body, #map { height: 100%; margin: 0; }
   body { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
-  #search { position: absolute; z-index: 1000; top: 10px; left: 54px; right: 10px; max-width: 360px; display: flex; gap: 4px; }
-  #search input { flex: 1; padding: 6px 8px; border: 1px solid #8a8a8a; border-radius: 4px; font: inherit; font-size: 14px; }
-  #search button { padding: 6px 10px; border: 1px solid #8a8a8a; border-radius: 4px; background: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+  /* The controls look like the app's (Windows 11 Fluent): white for contrast over the map, rounded, a thin
+     border, Segoe Fluent Icons and the app's accent colour, which the app sends ({type:"style"}). */
+  :root { --accent: #0067c0; --on-accent: #fff; --stroke: rgba(0,0,0,.0578); --stroke-bottom: rgba(0,0,0,.1622);
+          --text: #1b1b1b; --text-2: #5d5d5d; --icons: "Segoe Fluent Icons", "Segoe MDL2 Assets"; }
+  .card { background: #fff; border: 1px solid var(--stroke); border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
+  .ctl { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 32px; padding: 4px 11px;
+         box-sizing: border-box; border: 1px solid var(--stroke); border-bottom-color: var(--stroke-bottom); border-radius: 4px;
+         background: #fff; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+  .ctl:hover { background: #f9f9f9; }
+  .ctl:active { background: #f5f5f5; color: var(--text-2); }
+  .icon { font-family: var(--icons); font-size: 16px; line-height: 1; font-style: normal; }
+  #search { position: absolute; z-index: 1000; top: 10px; left: 54px; right: 10px; max-width: 360px; display: flex; gap: 4px;
+            padding: 4px; }
+  #search input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--stroke);
+                  border-bottom: 1px solid #868686; border-radius: 4px; color: var(--text); font: inherit; font-size: 14px; outline: none; }
+  #search input:focus { border-bottom: 2px solid var(--accent); }
+  #search input::placeholder { color: var(--text-2); }
+  /* Leaflet's + and − as the app's buttons. */
+  .leaflet-touch .leaflet-bar, .leaflet-bar { border: 1px solid var(--stroke) !important; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); overflow: hidden; }
+  .leaflet-bar a, .leaflet-touch .leaflet-bar a { width: 36px; height: 36px; line-height: 36px; color: var(--text); border-bottom: 1px solid var(--stroke);
+                    font-family: var(--icons); font-size: 16px; font-weight: normal; }
+  .leaflet-bar a:hover { background: #f9f9f9; color: var(--text); }
+  .leaflet-bar a.leaflet-disabled { color: #bdbdbd; background: #fff; }
   #message { position: absolute; z-index: 1000; bottom: 24px; left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
   /* The picture box has a fixed size, so the bubble is laid out right before the picture arrives; the close
      button sits above it (it covered the picture, which stuck out on the right). */
   .leaflet-popup-content:has(.preview) { margin: 26px 12px 10px; }
   .preview { width: 240px; }
+  .leaflet-popup-content-wrapper { border-radius: 8px; }
   .preview .pic { width: 240px; height: 180px; display: flex; align-items: center; justify-content: center; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
   .preview .pic img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; cursor: pointer; }
   .preview .name { margin-top: 4px; font-size: 12px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview .row { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
   .preview .row .count { flex: 1; text-align: center; font-size: 12px; color: #555; }
-  .preview button { padding: 3px 8px; border: 1px solid #8a8a8a; border-radius: 4px; background: #fff; font: inherit; font-size: 12px; cursor: pointer; }
+  .preview button { flex: none; }
   .preview .actions button { flex: 1; }
-  #layers { display: flex; flex-direction: column; gap: 2px; padding: 4px; background: #fff; border-radius: 4px; font-size: 13px; }
-  #layers .modes { display: flex; }
-  #layers .modes button { padding: 4px 10px; border: 1px solid #8a8a8a; background: #fff; font: inherit; cursor: pointer; }
-  #layers .modes button:first-child { border-radius: 4px 0 0 4px; }
-  #layers .modes button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
-  #layers .modes button.on { background: #0067c0; border-color: #0067c0; color: #fff; }
-  #layers label { display: flex; align-items: center; gap: 4px; padding: 2px; cursor: pointer; }
+  #layers { display: flex; flex-direction: column; gap: 6px; padding: 6px; font-size: 14px; color: var(--text); }
+  /* Map | Satellite as one switch, the chosen side filled with the accent colour like the app's selected tab. */
+  #layers .modes { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--stroke); border-radius: 6px; background: #f3f3f3; }
+  #layers .modes button { flex: 1; padding: 4px 12px; border: none; border-radius: 4px; background: transparent; color: var(--text);
+                          font: inherit; cursor: pointer; }
+  #layers .modes button:hover:not(.on) { background: rgba(0,0,0,.04); }
+  #layers .modes button.on { background: var(--accent); color: var(--on-accent); }
+  #layers label { display: flex; align-items: center; gap: 8px; padding: 2px 4px; cursor: pointer; }
+  #layers input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
   #offline { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 14px; color: #555; }
 </style>
 </head>
 <body>
 <div id="map"></div>
-<form id="search" autocomplete="off">
+<form id="search" class="card" autocomplete="off">
   <input id="query" type="search" placeholder="Find a place, e.g. Tortuguero">
-  <button type="submit">Find</button>
+  <button type="submit" class="ctl"><i class="icon">&#xE721;</i><span id="findText">Find</span></button>
 </form>
 <div id="message"></div>
 <div id="offline">The map needs an internet connection.</div>
@@ -53,6 +76,8 @@
 //                 {type:"preview", path, src} (the picture of the photo clicked on the whole-library map)
 //                 {type:"texts", open, show, of, estimate, map, satellite, labels} (the bubble's buttons and the map/satellite
 //                 switch in the app's language; "of" is like "{0} of {1}")
+//                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
+//                 {type:"style", accent, onAccent} (the app's accent colour and the text on it, "#rrggbb")
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
@@ -151,6 +176,9 @@ function start() {
   try { saved = JSON.parse(localStorage.getItem("view")); } catch (e) { }
   const map = L.map("map", { zoomControl: true, worldCopyJump: true, preferCanvas: true })
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
+  // Fluent's plus and minus on the zoom buttons, like the app's own zoom.
+  map.zoomControl._zoomInButton.firstChild.textContent = "\uE710";
+  map.zoomControl._zoomOutButton.firstChild.textContent = "\uE738";
   // Labels in the app's language: OpenFreeMap's free map (no key) carries every place's name in many
   // languages, so a city in China reads "Chengdu" rather than 成都. Without WebGL or that map, the
   // standard OpenStreetMap map shows the names as written locally.
@@ -183,7 +211,7 @@ function start() {
   const modeButtons = [], labelsBox = document.createElement("input");
   const modeTexts = {}, labelsText = document.createElement("span");
   switcher.onAdd = () => {
-    const box = L.DomUtil.create("div", "leaflet-bar");
+    const box = L.DomUtil.create("div", "card");
     box.id = "layers";
     const modes = document.createElement("div");
     modes.className = "modes";
@@ -235,17 +263,25 @@ function start() {
     }
   }
 
+  // The app's pin (Fluent "location", filled) in the accent colour instead of Leaflet's blue marker.
+  const pinIcon = L.divIcon({
+    className: "", iconSize: [36, 36], iconAnchor: [18, 34],
+    html: '<svg width="36" height="36" viewBox="0 0 20 20" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,.4))">' +
+          '<path fill="var(--accent)" stroke="#fff" stroke-width=".8" d="M5.05 4.05a7 7 0 1 1 9.9 9.9l-1.13 1.12-2.43 2.37a2 2 0 0 1-2.64.12l-.14-.12-2.04-1.99-1.52-1.5a7 7 0 0 1 0-9.9M10 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5"/></svg>'
+  });
+
   function setPin(lat, lon, notify) {
     if (lat === null || lat === undefined) {
       if (pin) { map.removeLayer(pin); pin = null; }
       return;
     }
     if (!pin) {
-      pin = L.marker([lat, lon], { draggable: true, autoPan: true, title: "Drag to move. Assign it to the selected photos with the button below the map." }).addTo(map);
+      pin = L.marker([lat, lon], { draggable: true, autoPan: true, icon: pinIcon, title: texts.drag || "Drag to move. Assign it to the selected photos with the button below the map." }).addTo(map);
       pin.on("dragend", () => { const p = pin.getLatLng(); send({ type: "pin", lat: p.lat, lon: p.lng }); });
       // Right-click: estimate from the photos before and after instead (G-3).
       pin.on("contextmenu", () => {
         const b = document.createElement("button");
+        b.className = "ctl";
         b.textContent = texts.estimate || "Estimate from photos before and after";
         b.addEventListener("click", () => { map.closePopup(); send({ type: "estimate" }); });
         L.popup({ offset: [0, -30] }).setLatLng(pin.getLatLng()).setContent(b).openOn(map);
@@ -272,18 +308,18 @@ function start() {
   async function findPlace(q) {
     q = (q || "").trim();
     if (!q) return;
-    showMessage("Searching…");
+    showMessage(texts.searching || "Searching…");
     try {
       const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=" + encodeURIComponent(q) +
                   "&accept-language=" + encodeURIComponent(lang);
       const response = await fetch(url);
       found = await response.json();
       send({ type: "places", q, names: found.map(r => r.display_name) });
-      if (!found.length) { showMessage(placing ? "No place found for \"" + q + "\"." : ""); return; }
+      if (!found.length) { showMessage(placing ? (texts.notFound || "No place found for “{0}”.").replace("{0}", q) : ""); return; }
       goTo(found[0]);
       showMessage("");
     } catch (err) {
-      showMessage("The place search did not work. Check the internet connection.");
+      showMessage(texts.searchFailed || "The place search did not work. Check the internet connection.");
     }
   }
 
@@ -316,6 +352,7 @@ function start() {
   function button(text, onClick) {
     const b = document.createElement("button");
     b.type = "button";
+    b.className = "ctl";
     b.textContent = text;
     b.addEventListener("click", ev => { ev.stopPropagation(); onClick(); });
     return b;
@@ -414,10 +451,18 @@ function start() {
         if (preview && preview.isOpen() && m.path === previewPath && m.src)
           preview.setContent(previewContent(m.src));
       } else if (m.type === "texts") {
-        texts = { open: m.open, show: m.show, of: m.of, estimate: m.estimate };
+        texts = m;
+        if (m.find) document.getElementById("findText").textContent = m.find;
+        if (m.placeholder) document.getElementById("query").placeholder = m.placeholder;
+        if (m.offline) document.getElementById("offline").textContent = m.offline;
+        if (m.zoomIn) document.querySelector(".leaflet-control-zoom-in").title = m.zoomIn;
+        if (m.zoomOut) document.querySelector(".leaflet-control-zoom-out").title = m.zoomOut;
         if (m.map) modeTexts.map.textContent = m.map;
         if (m.satellite) modeTexts.satellite.textContent = m.satellite;
         if (m.labels) labelsText.textContent = m.labels;
+      } else if (m.type === "style") {
+        document.documentElement.style.setProperty("--accent", m.accent);
+        document.documentElement.style.setProperty("--on-accent", m.onAccent);
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)
