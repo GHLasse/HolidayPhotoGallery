@@ -84,7 +84,15 @@ public sealed partial class MainWindow
                 search.IsEnabled = true;
                 undo.Visibility = lastChange is { Undone: false } ? Visibility.Visible : Visibility.Collapsed;
             }
+            // The list stays where it was, so going through the tags one by one goes on from there.
+            var scroller = ScrollerOf(list);
+            var offset = scroller?.VerticalOffset ?? 0;
             await ReloadAsync();
+            if (scroller is not null)
+            {
+                list.UpdateLayout();
+                scroller.ChangeView(null, offset, null, disableAnimation: true);
+            }
         }
 
         undo.Click += async (_, _) =>
@@ -270,5 +278,16 @@ public sealed partial class MainWindow
                      Tr("Local uses the names as people there write them. Photos that already have place names keep them until you add them again.")),
             },
         };
+    }
+
+    private static ScrollViewer? ScrollerOf(DependencyObject element)
+    {
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, i);
+            if ((child as ScrollViewer ?? ScrollerOf(child)) is { } found)
+                return found;
+        }
+        return null;
     }
 }

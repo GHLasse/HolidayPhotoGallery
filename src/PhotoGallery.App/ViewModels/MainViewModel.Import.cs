@@ -83,11 +83,13 @@ public sealed partial class MainViewModel
         // (it missed a Pixel that Explorer showed). Read through the shell, like Explorer does.
         try
         {
-            foreach (var device in await ShellDevices.FindAsync())
+            foreach (var device in await ShellDevices.FindAsync(PhoneFolders, line => App.Trace($"portable devices: {line}")))
             {
                 App.Trace($"portable device found: {device.Name}");
-                if (choices.Any(c => c.Name.Contains(device.Name, StringComparison.CurrentCultureIgnoreCase) ||
-                                     device.Name.Contains(c.Name, StringComparison.CurrentCultureIgnoreCase)))
+                // Listed by Windows' import already (by the same name); an empty name matches nothing.
+                if (choices.Any(c => c.Name.Length > 0 && device.Name.Length > 0 &&
+                                     (c.Name.Contains(device.Name, StringComparison.CurrentCultureIgnoreCase) ||
+                                      device.Name.Contains(c.Name, StringComparison.CurrentCultureIgnoreCase))))
                     continue;
                 choices.Add(new ImportSourceChoice(device.Name, null, null, device.ParsingName));
             }

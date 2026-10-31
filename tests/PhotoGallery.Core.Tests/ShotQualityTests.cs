@@ -154,6 +154,17 @@ public sealed class ShotQualityTests : IDisposable
     }
 
     [Fact]
+    public void A_burst_counts_as_alike_with_a_looser_test()
+    {
+        float[] a = [1, 0], b = [0.75f, 0.66f]; // about 0.75 alike
+        Assert.False(SimilarShots.Alike(a, b, null, null, TimeSpan.FromMinutes(2)));
+        Assert.True(SimilarShots.Alike(a, b, null, null, TimeSpan.FromSeconds(14)));
+        const ulong twentyBits = (1UL << 20) - 1;
+        Assert.False(SimilarShots.Alike(null, null, twentyBits, 0UL, TimeSpan.FromMinutes(2)));
+        Assert.True(SimilarShots.Alike(null, null, twentyBits, 0UL, TimeSpan.FromSeconds(14)));
+    }
+
+    [Fact]
     public void Hints_are_kept_shown_until_judged_or_ignored_and_survive_detail_changes()
     {
         var t = new DateTime(2026, 5, 1, 12, 0, 0);
