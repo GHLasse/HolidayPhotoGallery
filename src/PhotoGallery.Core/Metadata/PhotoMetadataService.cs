@@ -22,6 +22,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     private static readonly string[] ReadTags =
     [
         "-XMP-dc:Subject", "-IPTC:Keywords", "-XMP-microsoft:LastKeywordXMP", "-IFD0:XPKeywords",
+        "-XMP-lr:HierarchicalSubject", "-XMP-digiKam:TagsList",
         "-XMP-xmp:Rating", "-XMP-microsoft:RatingPercent", "-IFD0:Rating", "-XMP-digiKam:PickLabel",
         "-XMP-dc:Title", "-XMP-dc:Description", "-IFD0:XPTitle", "-IFD0:ImageDescription", "-IPTC:Caption-Abstract",
         "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal",
@@ -157,7 +158,16 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var current = changes.People is not null || changes.Orientation is not null
             ? await ReadAsync(path, cancellationToken).ConfigureAwait(false)
             : null;
-        var args = BuildWriteArguments(path, changes, current);
+        // Tag trees (M-5): a tag list from before the app knew trees ("Seagull" for "Animals/Birds/Seagull")
+        // keeps the file's tree, and a file without trees gets no tree fields.
+        IReadOnlyList<string>? fileTrees = null;
+        if (changes.Tags is { } newTags)
+        {
+            fileTrees = current?.Tags.Where(TagTree.IsPath).ToList() ?? await ReadTreesAsync(target, cancellationToken).ConfigureAwait(false);
+            if (fileTrees.Count > 0)
+                changes = changes with { Tags = TagTree.KeepTrees(newTags, fileTrees) };
+        }
+        var args = BuildWriteArguments(path, changes, current, fileTrees);
         for (var attempt = 1; ; attempt++)
         {
             await RemoveStaleTempFileAsync(target, cancellationToken).ConfigureAwait(false);
@@ -263,7 +273,32 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
     }
 
-    internal static List<string> BuildWriteArguments(string path, MetadataChanges changes, PhotoMetadata? current = null)
+    // The tag trees in the file, as the app's paths ("Animals/Birds/Seagull").
+    private async Task<IReadOnlyList<string>> ReadTreesAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+            return [];
+        var output = await exifTool.RunAsync(["-json", "-G1", "-XMP-lr:HierarchicalSubject", "-XMP-digiKam:TagsList", path], cancellationToken)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(output.Output))
+            return [];
+        try
+        {
+            using var json = JsonDocument.Parse(output.Output);
+            return json.RootElement.EnumerateArray().SelectMany(item =>
+                    GetList(item, "XMP-lr:HierarchicalSubject").Select(TagTree.FromLightroom)
+                        .Concat(GetList(item, "XMP-digiKam:TagsList").Select(TagTree.FromDigiKam)))
+                .Where(TagTree.IsPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    /// <param name="fileTrees">The tag trees the file has; null when unknown, then the tree fields are always rewritten.</param>
+    internal static List<string> BuildWriteArguments(string path, MetadataChanges changes, PhotoMetadata? current = null,
+                                                     IReadOnlyList<string>? fileTrees = null)
     {
         var hasIptc = HasIptc(path);
         var args = new List<string>
@@ -277,6 +312,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.Tags is { } tags)
         {
             tags = TagList.Normalize(tags);
+            // Tag trees (M-5): the plain fields get each part, Windows' own field and the tree fields the paths.
+            var plain = TagTree.Plain(tags);
+            var paths = TagTree.Paths(tags);
             if (tags.Count == 0)
             {
                 args.AddRange(["-XMP-dc:Subject=", "-XMP-microsoft:LastKeywordXMP=", "-IFD0:XPKeywords="]);
@@ -285,14 +323,25 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
             else
             {
-                foreach (var tag in tags)
+                foreach (var tag in plain)
                 {
                     args.Add($"-XMP-dc:Subject={tag}");
-                    args.Add($"-XMP-microsoft:LastKeywordXMP={tag}");
                     if (hasIptc)
                         args.Add($"-IPTC:Keywords={tag}");
                 }
-                args.Add($"-IFD0:XPKeywords={string.Join(";", tags)}");
+                foreach (var tag in tags)
+                    args.Add($"-XMP-microsoft:LastKeywordXMP={tag}");
+                args.Add($"-IFD0:XPKeywords={string.Join(";", plain)}");
+            }
+            // Only touched when there is a tree now or was one, so files without trees get no new fields.
+            if (paths.Count > 0 || fileTrees is null || fileTrees.Count > 0)
+            {
+                args.AddRange(["-XMP-lr:HierarchicalSubject=", "-XMP-digiKam:TagsList="]);
+                foreach (var tree in paths)
+                {
+                    args.Add($"-XMP-lr:HierarchicalSubject={TagTree.ToLightroom(tree)}");
+                    args.Add($"-XMP-digiKam:TagsList={tree}");
+                }
             }
         }
 
@@ -540,6 +589,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             tags.AddRange(GetList(item, "XMP-microsoft:LastKeywordXMP"));
         if (tags.Count == 0)
             tags.AddRange(TagList.Parse(GetString(item, "IFD0:XPKeywords")));
+        // Tag trees from Lightroom and digiKam (M-5) become one tag with its path.
+        var paths = GetList(item, "XMP-lr:HierarchicalSubject").Select(TagTree.FromLightroom)
+            .Concat(GetList(item, "XMP-digiKam:TagsList").Select(TagTree.FromDigiKam))
+            .Where(p => p.Length > 0).ToList();
+        if (paths.Count > 0)
+            tags = [.. TagTree.Merge(tags, paths)];
 
         var rating = 0;
         if (GetNumber(item, "XMP-xmp:Rating") is { } xmpRating)

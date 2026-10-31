@@ -9,6 +9,12 @@ public sealed class TagFilterViewModel(string tag, int count, Action selectionCh
 
     public string Tag { get; } = tag;
 
+    /// <summary>What the list shows: a tag in a tree (M-5) by its last part, indented under the level above.</summary>
+    public string Label { get; } = PhotoGallery.Core.Metadata.TagTree.Leaf(tag);
+
+    public Microsoft.UI.Xaml.Thickness Indent { get; } =
+        new(PhotoGallery.Core.Metadata.TagTree.IsPath(tag) ? 16 * (PhotoGallery.Core.Metadata.TagTree.Parts(tag).Length - 1) : 0, 0, 0, 0);
+
     public int Count { get; set; } = count;
 
     public string CountText => Count.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);

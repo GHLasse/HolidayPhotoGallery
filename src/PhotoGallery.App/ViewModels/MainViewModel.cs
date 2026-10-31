@@ -1475,7 +1475,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task RefreshTagsAsync()
     {
-        var (tags, autoTagNames) = await Task.Run(() => (_index.GetTagCounts(), _index.GetAutoTagNames()));
+        var (tags, autoTagNames) = await Task.Run(() => (_index.GetTagTreeCounts(), _index.GetAutoTagNames()));
         AutoTagNames = autoTagNames;
         UpdateTags(tags);
     }

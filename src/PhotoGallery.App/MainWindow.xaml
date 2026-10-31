@@ -217,7 +217,8 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <CheckBox Content="{x:Bind Tag}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0" />
+                                                <CheckBox Content="{x:Bind Label}" Margin="{x:Bind Indent}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="0"
+                                                          ToolTipService.ToolTip="{x:Bind Tag}" />
                                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind CountText}"
                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                             </Grid>

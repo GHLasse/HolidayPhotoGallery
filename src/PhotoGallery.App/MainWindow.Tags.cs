@@ -229,8 +229,9 @@ public sealed partial class MainWindow
                                             null, Tr("Stop showing look-alikes"), () => _ = ViewModel.StopSimilarAsync()));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
-            FilterBadges.Children.Add(Badge(tag.Tag, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", tag.Tag),
-                                            null, Tr("Stop filtering by {0}", tag.Tag), () => tag.IsSelected = false));
+            var shown = PhotoGallery.Core.Metadata.TagTree.Display(tag.Tag);
+            FilterBadges.Children.Add(Badge(shown, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", shown),
+                                            null, Tr("Stop filtering by {0}", shown), () => tag.IsSelected = false));
         }
         foreach (var person in ViewModel.People.Where(p => p.IsSelected).ToList())
         {

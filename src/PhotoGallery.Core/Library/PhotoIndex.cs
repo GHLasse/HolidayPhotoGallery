@@ -503,8 +503,10 @@ public sealed partial class PhotoIndex : IDisposable
             foreach (var tag in TagList.Normalize(query.Tags))
             {
                 var name = $"$tag{i++}";
-                where.Add($"EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag = {name})");
+                // A tag in a tree also finds the tags under it (M-5): "Animals" finds "Animals/Birds/Seagull".
+                where.Add($"EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND (t.tag = {name} OR t.tag LIKE {name}_under ESCAPE '\\'))");
                 cmd.Parameters.AddWithValue(name, tag);
+                cmd.Parameters.AddWithValue(name + "_under", EscapeLike(tag + "/") + "%");
             }
 
             foreach (var person in query.People.Distinct(StringComparer.CurrentCultureIgnoreCase))
@@ -583,6 +585,36 @@ public sealed partial class PhotoIndex : IDisposable
                 result.Add((reader.GetString(0), reader.GetInt32(1)));
             return result;
         }
+    }
+
+    /// <summary>
+    /// The tags for the filter (M-5): every tag, and every tree level above a tag ("Animals" and
+    /// "Animals/Birds" above "Animals/Birds/Seagull") with how many photos have a tag at or under it,
+    /// in tree order: each level followed by what is under it.
+    /// </summary>
+    private static readonly Comparer<string> TreeOrder = Comparer<string>.Create((a, b) =>
+    {
+        var pa = a.Split('/');
+        var pb = b.Split('/');
+        for (var i = 0; i < Math.Min(pa.Length, pb.Length); i++)
+        {
+            var c = StringComparer.CurrentCultureIgnoreCase.Compare(pa[i], pb[i]);
+            if (c != 0)
+                return c;
+        }
+        return pa.Length.CompareTo(pb.Length);
+    });
+
+    public IReadOnlyList<(string Tag, int Count)> GetTagTreeCounts()
+    {
+        var tags = GetTagCounts();
+        var levels = new HashSet<string>(tags.SelectMany(t => TagTree.Ancestors(t.Tag)), StringComparer.OrdinalIgnoreCase);
+        var result = tags.Where(t => !levels.Contains(t.Tag)).ToList();
+        // A level counts every photo with a tag at or under it.
+        foreach (var level in levels)
+            result.Add((level, PathsWithTag(level).Count));
+        // Part by part, so each level is followed by what is under it.
+        return result.OrderBy(t => t.Tag, TreeOrder).ToList();
     }
 
     /// <summary>The tags that auto-tagging added on every photo that has them (the hidden list in the file).</summary>
