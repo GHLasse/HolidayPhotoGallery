@@ -85,6 +85,7 @@ public sealed partial class MainWindow : Window
         MapView.PhotoClicked += MapPhotoClicked;
         MapView.PhotoOpened += MapPhotoOpened;
         MapView.PhotoShown += MapPhotoShown;
+        MapView.TracksRequested += () => _ = ShowTracksAsync();
         MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
@@ -413,9 +414,11 @@ public sealed partial class MainWindow : Window
     private static bool IsDown(VirtualKey key) =>
         Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
-    // Typing in a text box, a search box or a date picker must not set ratings or open views.
+    // Typing in a text box, a search box, a date picker or a list such as the time zones must not set ratings
+    // or open views. With a list open the focus is on one of its entries, which typing searches too (D-3:
+    // "EST" opened the photo on E, and digits rated it instead of finding "+8").
     private bool IsTyping() =>
-        FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or CalendarDatePicker or ComboBox;
+        FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or CalendarDatePicker or ComboBox or ComboBoxItem;
 
     private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -1570,6 +1573,13 @@ public sealed partial class MainWindow : Window
             Header = Tr("Look for duplicates in new photos by itself"),
             IsOn = ViewModel.FindDuplicatesAutomatically,
         };
+        var checkQuality = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Look for possibly blurry, too dark or too bright photos by itself"),
+            IsOn = ViewModel.CheckQualityAutomatically,
+        };
         var tips = new ToggleSwitch
         {
             OnContent = Tr("On"),
@@ -1601,6 +1611,7 @@ public sealed partial class MainWindow : Window
                 autoAdvance,
                 findPeople,
                 findDuplicates,
+                checkQuality,
                 new TextBlock
                 {
                     Text = Tr("Photos not looked at yet are searched quietly whenever nothing else is running. Turning this on downloads the face models first if they aren't there yet."),
@@ -1893,6 +1904,8 @@ public sealed partial class MainWindow : Window
         ViewModel.SaveFindPeopleAutomatically(findPeopleOn);
         if (findDuplicates.IsOn != ViewModel.FindDuplicatesAutomatically)
             ViewModel.SaveFindDuplicatesAutomatically(findDuplicates.IsOn);
+        if (checkQuality.IsOn != ViewModel.CheckQualityAutomatically)
+            ViewModel.SaveCheckQualityAutomatically(checkQuality.IsOn);
         ViewModel.SaveDetailKeys(detailBoxes.Where(d => d.Box.IsChecked == true).Select(d => d.Key).ToList());
         _ = ShowMoreDetailsAsync();
         ViewModel.SaveFavouriteApps(chosenApps());

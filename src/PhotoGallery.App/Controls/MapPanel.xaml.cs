@@ -164,6 +164,11 @@ public sealed partial class MapPanel : UserControl
         Post(new JsonObject { ["type"] = "track", ["points"] = points, ["route"] = isRoute, ["fit"] = fit });
     }
 
+    /// <summary>Raised by the "GPS tracks…" link under the map.</summary>
+    public event Action? TracksRequested;
+
+    private void Tracks_Click(object sender, RoutedEventArgs e) => TracksRequested?.Invoke();
+
     /// <summary>Raised when the picture or Open in a photo's bubble on the whole-library map is clicked.</summary>
     public event Action<string>? PhotoOpened;
 
