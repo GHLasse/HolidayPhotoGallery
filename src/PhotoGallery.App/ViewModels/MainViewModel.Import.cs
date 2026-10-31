@@ -272,7 +272,7 @@ public sealed partial class MainViewModel
             }
             foreach (var item in found.FoundItems)
                 item.IsSelected = targets.ContainsKey(item.ItemKey);
-            found.Session.DestinationFolder = await StorageFolder.GetFolderFromPathAsync(staging.FullName);
+            found.Session.DestinationFolder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(staging.FullName);
             found.Session.SubfolderCreationMode = PhotoImportSubfolderCreationMode.DoNotCreateSubfolders;
 
             var operation = found.ImportItemsAsync();
