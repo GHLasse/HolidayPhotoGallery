@@ -8,7 +8,7 @@ namespace PhotoGallery.Core.Tests;
 public class JpegScanTests
 {
     // A smooth picture with some detail, like a photo: 4:2:0 colour, as cameras store it.
-    private static byte[] Jpeg(JpegColorType color = JpegColorType.YCbCrRatio420)
+    private static byte[] Jpeg(JpegEncodingColor color = JpegEncodingColor.YCbCrRatio420)
     {
         using var image = new Image<Rgb24>(320, 240);
         var random = new Random(3);
@@ -38,10 +38,10 @@ public class JpegScanTests
     private static JpegScanResult? Scan(byte[] bytes) => JpegScan.Check(new MemoryStream(bytes));
 
     [Theory]
-    [InlineData(JpegColorType.YCbCrRatio420)]
-    [InlineData(JpegColorType.YCbCrRatio444)]
-    [InlineData(JpegColorType.Luminance)]
-    public void Whole_picture_data_adds_up(JpegColorType color)
+    [InlineData(JpegEncodingColor.YCbCrRatio420)]
+    [InlineData(JpegEncodingColor.YCbCrRatio444)]
+    [InlineData(JpegEncodingColor.Luminance)]
+    public void Whole_picture_data_adds_up(JpegEncodingColor color)
     {
         var result = Scan(Jpeg(color));
         Assert.NotNull(result);
