@@ -79,4 +79,13 @@ public sealed class LocationEstimateTests
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     }
+
+    [Fact]
+    public void Distance_is_as_the_crow_flies()
+    {
+        // Berlin to Munich is about 504 km; a degree of latitude about 111 km.
+        Assert.InRange(LocationEstimate.Kilometres(new GeoPosition(52.52, 13.405), new GeoPosition(48.137, 11.575)), 500, 510);
+        Assert.InRange(LocationEstimate.Kilometres(new GeoPosition(0, 0), new GeoPosition(1, 0)), 110, 112);
+        Assert.Equal(0, LocationEstimate.Kilometres(new GeoPosition(10, 10), new GeoPosition(10, 10)), 6);
+    }
 }

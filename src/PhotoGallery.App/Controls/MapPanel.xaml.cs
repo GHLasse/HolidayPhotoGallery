@@ -151,8 +151,9 @@ public sealed partial class MapPanel : UserControl
     /// <summary>
     /// Draws a thin line under the photo dots (G-4): a recorded GPS track, or with <paramref name="isRoute"/> the
     /// geotagged photos joined in time order. An empty list takes the line away; <paramref name="fit"/> zooms to it.
+    /// A <paramref name="label"/> marks the line as the leg an estimate lies on: drawn stronger, with that legend.
     /// </summary>
-    public void ShowTrack(IReadOnlyList<GeoPosition> line, bool isRoute, bool fit = false)
+    public void ShowTrack(IReadOnlyList<GeoPosition> line, bool isRoute, bool fit = false, string? label = null)
     {
         var points = new JsonArray();
         // A long Timeline export can have tens of thousands of points in a day; every few is plenty for a line.
@@ -161,7 +162,7 @@ public sealed partial class MapPanel : UserControl
             points.Add(new JsonArray(Math.Round(line[i].Latitude, 6), Math.Round(line[i].Longitude, 6)));
         if (line.Count > 0 && (line.Count - 1) % step != 0)
             points.Add(new JsonArray(Math.Round(line[^1].Latitude, 6), Math.Round(line[^1].Longitude, 6)));
-        Post(new JsonObject { ["type"] = "track", ["points"] = points, ["route"] = isRoute, ["fit"] = fit });
+        Post(new JsonObject { ["type"] = "track", ["points"] = points, ["route"] = isRoute, ["fit"] = fit, ["label"] = label });
     }
 
     /// <summary>Raised by the "GPS tracks…" link under the map.</summary>

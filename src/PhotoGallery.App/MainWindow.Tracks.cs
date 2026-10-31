@@ -25,14 +25,25 @@ public sealed partial class MainWindow
         var current = SelectedPhotos is [var first, ..] ? first : null;
         try
         {
-            var (line, isRoute) = await ViewModel.TrackLineAsync(current);
+            var (line, isRoute, leg) = await ViewModel.TrackLineAsync(current);
             if (run == _trackLineRun && IsMapOpen)
-                MapView.ShowTrack(line, isRoute);
+                MapView.ShowTrack(line, isRoute, label: leg is null ? null : LegText(leg));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             App.Trace($"Track line: {ex.Message}");
         }
+    }
+
+    /// <summary>The legend for the leg an estimate lies on: how far and how long apart its two ends are.</summary>
+    private static string LegText(PhotoGallery.Core.Metadata.LocationGuess leg)
+    {
+        var gap = leg.Gap;
+        var time = gap.TotalMinutes < 90 ? Tr("{0:N0} minutes", Math.Max(1, Math.Round(gap.TotalMinutes)))
+            : gap.TotalHours < 48 ? Tr("{0:N1} hours", gap.TotalHours)
+            : Tr("{0:N0} days", gap.TotalDays);
+        var km = leg.Kilometres;
+        return Tr("From the photo before to the photo after: {0} km, {1} apart", km < 10 ? km.ToString("N1") : km.ToString("N0"), time);
     }
 
     private async Task ShowTracksAsync()
