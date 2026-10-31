@@ -31,6 +31,26 @@ public sealed partial class MapPanel : UserControl
     public MapPanel()
     {
         InitializeComponent();
+        EstimateIcon.Data = AppIcons.Geometry(AppIcons.EstimatePlace);
+        AssignIcon.Data = AppIcons.Geometry(AppIcons.AssignPlace);
+        RemoveIcon.Data = AppIcons.Geometry(AppIcons.RemovePlace);
+        // A new palette or light/dark re-reads the theme brushes; the map's controls follow.
+        ActualThemeChanged += (_, _) => SendStyle();
+    }
+
+    /// <summary>Gives the map page the app's accent colour for its pin, switch and focused search box.</summary>
+    private void SendStyle()
+    {
+        if (!_ready || AccentProbe.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush accent)
+            return;
+        static string Hex(Windows.UI.Color c) => $"#{c.R:x2}{c.G:x2}{c.B:x2}";
+        var onAccent = (AccentProbe.BorderBrush as Microsoft.UI.Xaml.Media.SolidColorBrush)?.Color ?? Microsoft.UI.Colors.White;
+        Web.CoreWebView2.PostWebMessageAsJson(new JsonObject
+        {
+            ["type"] = "style",
+            ["accent"] = Hex(accent.Color),
+            ["onAccent"] = Hex(onAccent),
+        }.ToJsonString());
     }
 
     /// <summary>Raised when the user assigns the pin to the selected photos.</summary>
@@ -245,7 +265,17 @@ public sealed partial class MapPanel : UserControl
                     ["map"] = Tr("Map"),
                     ["satellite"] = Tr("Satellite"),
                     ["labels"] = Tr("Labels"),
+                    ["find"] = Tr("Find"),
+                    ["placeholder"] = Tr("Find a place, e.g. Tortuguero"),
+                    ["searching"] = Tr("Searching…"),
+                    ["notFound"] = Tr("No place found for “{0}”."),
+                    ["searchFailed"] = Tr("The place search did not work. Check the internet connection."),
+                    ["offline"] = Tr("The map needs an internet connection."),
+                    ["drag"] = Tr("Drag to move. Assign it to the selected photos with the button below the map."),
+                    ["zoomIn"] = Tr("Zoom in"),
+                    ["zoomOut"] = Tr("Zoom out"),
                 }.ToJsonString());
+                SendStyle();
                 foreach (var json in _pending)
                     Web.CoreWebView2.PostWebMessageAsJson(json);
                 _pending.Clear();
