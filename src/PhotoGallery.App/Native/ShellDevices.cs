@@ -4,7 +4,7 @@ using ComTypes = System.Runtime.InteropServices.ComTypes;
 namespace PhotoGallery.App.Native;
 
 /// <summary>
-/// Phones and cameras as File Explorer shows them under "This PC" (MTP, without a drive letter), reached
+/// Phones and cameras as File Explorer shows them, under "This PC" (MTP, without a drive letter) or next to it, reached
 /// through the shell the way Explorer reaches them. Windows' storage API for such devices
 /// (Windows.Devices.Portable) needs a packaged app with the removable storage capability, which this app
 /// isn't, and Windows' import API doesn't list every phone. Every call runs on its own STA thread, as the
@@ -16,8 +16,12 @@ internal static class ShellDevices
 
     internal sealed record DeviceFile(string Name, long Size, DateTime Taken, string ParsingName);
 
-    /// <summary>The devices under "This PC" that have no file system path (phones, cameras, media players).</summary>
-    public static Task<List<Device>> FindAsync(Action<string>? log = null) => OnSta(() =>
+    /// <summary>
+    /// The phones and cameras File Explorer shows: under "This PC" (MTP, no file system path), and next to it
+    /// at the top of Explorer's tree, where Windows 11 puts a phone (Mobile devices, Phone Link). A top level
+    /// entry counts when it holds a photo folder (DCIM, Pictures) in it or one level down.
+    /// </summary>
+    public static Task<List<Device>> FindAsync(IReadOnlyCollection<string> photoFolders, Action<string>? log = null) => OnSta(() =>
     {
         var result = new List<Device>();
         Guid folder = FOLDERID_ComputerFolder, iid = IID_IShellItem;
@@ -28,12 +32,76 @@ internal static class ShellDevices
             item.GetAttributes(SFGAO_FILESYSTEM | SFGAO_FOLDER, out var attributes);
             var parsing = Name(item, SIGDN_DESKTOPABSOLUTEPARSING);
             log?.Invoke($"This PC: {Name(item, SIGDN_NORMALDISPLAY)} · attributes {attributes:X8} · {parsing}");
-            // A portable device's parsing name holds its device path (\\?\usb#… or \\?\swd#wpdbusenum…).
             if ((attributes & SFGAO_FILESYSTEM) == 0 && LooksLikeDevice(parsing))
                 result.Add(new Device(Name(item, SIGDN_NORMALDISPLAY), parsing));
         }
+
+        // The top of Explorer's tree (the desktop of the shell's namespace, an empty ID list).
+        var empty = Marshal.AllocCoTaskMem(2);
+        try
+        {
+            Marshal.WriteInt16(empty, 0);
+            SHCreateItemFromIDList(empty, ref iid, out var rootObject);
+            foreach (var item in Children((IShellItem)rootObject))
+            {
+                try
+                {
+                    item.GetAttributes(SFGAO_FILESYSTEM | SFGAO_FOLDER, out var attributes);
+                    var parsing = Name(item, SIGDN_DESKTOPABSOLUTEPARSING);
+                    var name = Name(item, SIGDN_NORMALDISPLAY);
+                    log?.Invoke($"Top level: {name} · attributes {attributes:X8} · {parsing}");
+                    if ((attributes & SFGAO_FILESYSTEM) != 0 || (attributes & SFGAO_FOLDER) == 0 || IsKnownPlace(parsing) ||
+                        result.Any(d => string.Equals(d.ParsingName, parsing, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    if (HoldsPhotoFolder(item, photoFolders, log))
+                        result.Add(new Device(name, parsing));
+                }
+                catch (Exception ex) when (ex is COMException or InvalidCastException or UnauthorizedAccessException)
+                {
+                    log?.Invoke($"Top level entry skipped: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(empty);
+        }
         return result;
     });
+
+    // Explorer's own places at the top of its tree, never a phone: This PC, Network, Control Panel, Recycle
+    // Bin, Libraries, Home, Gallery, the user's folder, OneDrive, Linux.
+    private static readonly string[] KnownPlaces =
+    [
+        "20D04FE0-3AEA-1069-A2D8-08002B30309D", "F02C1A0D-BE21-4350-88B0-7367FC96EF3C", "26EE0668-A00A-44D7-9371-BEB064C98683",
+        "5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0", "21EC2020-3AEA-1069-A2DD-08002B30309D", "645FF040-5081-101B-9F08-00AA002F954E",
+        "031E4825-7B94-4DC3-B131-E946B44C8DD5", "F874310E-B6B7-47DC-BC84-B9E6B38F5903", "E88865EA-0E1C-4E20-9AA6-EDCD0212C87C",
+        "59031A47-3F72-44A7-89C5-5595FE6B30EE", "018D5C66-4533-4307-9B53-224DE2ED1FE6", "B4FB3F98-C1EA-428D-A78A-D1F5659CBA93",
+        "679F85CB-0220-4080-B29B-5540CC05AAB6", "4234D49B-0245-4DF3-B780-3893943456E1", "B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6",
+    ];
+
+    private static bool IsKnownPlace(string parsing) =>
+        KnownPlaces.Any(id => parsing.Contains(id, StringComparison.OrdinalIgnoreCase));
+
+    private static bool HoldsPhotoFolder(IShellItem device, IReadOnlyCollection<string> photoFolders, Action<string>? log)
+    {
+        var children = Children(device);
+        if (children.Any(c => photoFolders.Contains(FileName(c), StringComparer.OrdinalIgnoreCase)))
+            return true;
+        foreach (var storage in children.Take(4))
+        {
+            try
+            {
+                if (Children(storage).Any(c => photoFolders.Contains(FileName(c), StringComparer.OrdinalIgnoreCase)))
+                    return true;
+            }
+            catch (Exception ex) when (ex is COMException or InvalidCastException or UnauthorizedAccessException)
+            {
+                log?.Invoke($"  {FileName(storage)}: {ex.Message}");
+            }
+        }
+        return false;
+    }
 
     /// <summary>
     /// The files on the device that <paramref name="wanted"/> accepts (by file name), in the folders named in
@@ -64,7 +132,12 @@ internal static class ShellDevices
                 }
             }
         }
-        foreach (var storage in Children(Parse(device)))
+        var top = Children(Parse(device));
+        // A phone that shows its photo folders straight away (Windows 11's Mobile devices) is read from them.
+        var direct = top.Where(f => photoFolders.Contains(FileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
+        foreach (var folder in direct)
+            Walk(folder, 0);
+        foreach (var storage in direct.Count > 0 ? new List<IShellItem>() : top)
         {
             var folders = Children(storage).Where(f => photoFolders.Contains(FileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
             // A camera's storage holds DCIM; something else is looked through whole.
@@ -262,6 +335,9 @@ internal static class ShellDevices
     [DllImport("shell32.dll", PreserveSig = false)]
     private static extern void SHGetKnownFolderItem(ref Guid folder, int flags, IntPtr token, ref Guid iid,
                                                     [MarshalAs(UnmanagedType.Interface)] out object item);
+
+    [DllImport("shell32.dll", PreserveSig = false)]
+    private static extern void SHCreateItemFromIDList(IntPtr idList, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out object item);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
     [return: MarshalAs(UnmanagedType.Interface)]

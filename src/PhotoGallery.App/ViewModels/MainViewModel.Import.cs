@@ -83,7 +83,7 @@ public sealed partial class MainViewModel
         // (it missed a Pixel that Explorer showed). Read through the shell, like Explorer does.
         try
         {
-            foreach (var device in await ShellDevices.FindAsync(line => App.Trace($"portable devices: {line}")))
+            foreach (var device in await ShellDevices.FindAsync(PhoneFolders, line => App.Trace($"portable devices: {line}")))
             {
                 App.Trace($"portable device found: {device.Name}");
                 // Listed by Windows' import already (by the same name); an empty name matches nothing.
