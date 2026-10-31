@@ -252,7 +252,7 @@ public sealed partial class MainWindow
             Workspace.People => Tr("Search people (Ctrl+E)"),
             Workspace.Map => Tr("Find a place (Ctrl+E)"),
             Workspace.Albums => Tr("Search albums (Ctrl+E)"),
-            _ => Tr("Search names, captions and tags (Ctrl+E)"),
+            _ => Tr("Search names, tags or what is in the photo (Ctrl+E)"),
         };
     }
 

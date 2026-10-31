@@ -30,6 +30,36 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task New_files_in_a_known_folder_wait_for_auto_tagging()
+    {
+        var service = new PhotoMetadataService(_exifTool!);
+        var indexer = new LibraryIndexer(_index!, service);
+
+        // The first reading of a folder brings older photos: they are not queued.
+        _photos.CopySample(".jpg", "old");
+        await indexer.SyncFolderAsync(_photos.Path);
+        Assert.Empty(_index!.GetAutoTagQueue(10));
+
+        var arrived = _photos.CopySample(".jpg", "arrived");
+        await indexer.SyncFolderAsync(_photos.Path);
+        Assert.Equal([arrived], _index.GetAutoTagQueue(10));
+
+        _index.DequeueAutoTag([arrived]);
+        Assert.Empty(_index.GetAutoTagQueue(10));
+
+        // "Existing photos too" queues every photo without auto tags; turning it off forgets them.
+        var tagged = _photos.CopySample(".jpg", "tagged");
+        await service.WriteAsync(tagged, new MetadataChanges { Tags = ["Beach"], AutoTags = ["Beach"] });
+        await indexer.SyncFolderAsync(_photos.Path);
+        _index.DequeueAutoTag([tagged]);
+        _index.QueueAllWithoutAutoTags();
+        Assert.Equal(2, _index.CountAutoTagQueue());
+        Assert.DoesNotContain(tagged, _index.GetAutoTagQueue(10));
+        _index.ClearAutoTagQueue();
+        Assert.Equal(0, _index.CountAutoTagQueue());
+    }
+
+    [ExifToolFact]
     public async Task Finds_photos_without_tags_people_or_location()
     {
         var service = new PhotoMetadataService(_exifTool!);

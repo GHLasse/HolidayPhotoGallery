@@ -177,4 +177,21 @@ public sealed class AutoTagSettings
     public double Threshold { get; set; } = DefaultThreshold;
 
     public const double DefaultThreshold = 0.15;
+
+    /// <summary>
+    /// Which photos are tagged in the background, without being asked (Lasse, 2026-10-31): "new" (photos that
+    /// arrive in a folder the library already knew, e.g. an import), "all" (existing photos without auto tags
+    /// too) or "off".
+    /// </summary>
+    public string Automatic { get; set; } = AutomaticNew;
+
+    public const string AutomaticNew = "new";
+    public const string AutomaticAll = "all";
+    public const string AutomaticOff = "off";
+
+    /// <summary>
+    /// The search box also finds photos by what they show, in your own words (L-7), and the photos are got
+    /// ready for that in the background, once the tagging model is downloaded.
+    /// </summary>
+    public bool SearchByMeaning { get; set; } = true;
 }

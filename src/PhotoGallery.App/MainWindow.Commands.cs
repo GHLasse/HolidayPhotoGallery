@@ -90,6 +90,8 @@ public sealed partial class MainWindow
                     Run = () => { if (SelectedPhotos is [var first, ..]) OpenViewer(first); } },
             new() { Label = Tr("Compare"), Glyph = "\uE8A9", Group = CommandGroup.Look, Keys = "C", Enabled = Any, InViewer = false,
                     Tip = Tr("Show 1 to 4 selected photos side by side to rate them"), Run = () => OpenCompare(SelectedPhotos) },
+            new() { Label = Tr("Find similar photos"), Also = Tr("alike look-alikes same"), Glyph = AppIcons.FindSimilar, Group = CommandGroup.Look, Enabled = One, Gated = true,
+                    Tip = Tr("Show the photos that look like this one, most alike first"), Run = () => _ = FindSimilarAsync() },
             new() { Label = Tr("Rotate left"), Also = Tr("turn"), Glyph = "\uE7AD", Mirrored = true, Group = CommandGroup.Look, Keys = "Ctrl+,", Enabled = Any,
                     Run = () => Do(IsViewerOpen ? (RoutedEventHandler)ViewerRotateLeft_Click : RotateLeft_Click) },
             new() { Label = Tr("Rotate right"), Also = Tr("turn"), Glyph = "\uE7AD", Group = CommandGroup.Look, Keys = "Ctrl+.", Enabled = Any,

@@ -21,6 +21,7 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(IsPrivateMode));
         await Task.Run(() => _index.ShowPrivate = on);
         FolderNodeViewModel.ShowPrivate = on;
+        _vectors = null; // loaded again with or without the private photos
         await PrivacyChangedAsync();
     }
 

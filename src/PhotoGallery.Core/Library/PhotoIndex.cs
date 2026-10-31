@@ -139,6 +139,16 @@ public sealed partial class PhotoIndex : IDisposable
             );
             -- Groups of look-alikes the user kept all of; a new copy joining the group changes its key.
             CREATE TABLE IF NOT EXISTS kept_duplicates (group_key TEXT PRIMARY KEY);
+            -- The tagging model's picture vector (L-7), half precision, for the file as it was then.
+            CREATE TABLE IF NOT EXISTS picture_vectors (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                file_mtime INTEGER NOT NULL,
+                vector BLOB NOT NULL
+            );
+            -- Photos that arrived in a folder already in the library, to be auto-tagged in the background (L-7).
+            CREATE TABLE IF NOT EXISTS auto_tag_queue (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
+            );
             PRAGMA user_version = {SchemaVersion};
             """);
         // Checks saved before the level was kept count as level 1, so those files are checked again.

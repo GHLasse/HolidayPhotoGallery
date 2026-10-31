@@ -220,6 +220,9 @@ public sealed partial class MainWindow
         if (ViewModel.NotOnOneDriveOnly)
             FilterBadges.Children.Add(Badge(Tr("Not in OneDrive"), false, outlined: false, Tr("Showing photos not in OneDrive yet"),
                                             null, Tr("Stop filtering by OneDrive"), () => ViewModel.NotOnOneDriveOnly = false));
+        if (ViewModel.SimilarTo is { } similar)
+            FilterBadges.Children.Add(Badge(Tr("Like {0}", System.IO.Path.GetFileName(similar)), false, outlined: false, Tr("Showing photos that look like {0}, most alike first", System.IO.Path.GetFileName(similar)),
+                                            null, Tr("Stop showing look-alikes"), () => _ = ViewModel.StopSimilarAsync()));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
             FilterBadges.Children.Add(Badge(tag.Tag, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", tag.Tag),
