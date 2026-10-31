@@ -84,4 +84,18 @@ public static class SimilarShots
         }
         return hashA is { } x && hashB is { } y && Duplicates.PictureHash.Distance(x, y) <= MaxHashDistance;
     }
+
+    /// <summary>
+    /// The photos to show with similar shots stacked: each group's other shots are left out where its top shot
+    /// (index <c>Best</c> in the group) is, the order of everything else kept.
+    /// </summary>
+    public static List<T> Stack<T>(IReadOnlyList<T> shown, IEnumerable<(List<T> Items, int Best)> groups) where T : class
+    {
+        var hidden = new HashSet<T>(ReferenceEqualityComparer.Instance);
+        foreach (var (items, best) in groups)
+            for (var i = 0; i < items.Count; i++)
+                if (i != best)
+                    hidden.Add(items[i]);
+        return hidden.Count == 0 ? [.. shown] : shown.Where(p => !hidden.Contains(p)).ToList();
+    }
 }

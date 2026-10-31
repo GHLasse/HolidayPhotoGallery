@@ -57,6 +57,60 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
         set => SetProperty(ref _isOnOneDrive, value);
     }
 
+    private int _shotCount;
+    private bool _isBestShot;
+
+    /// <summary>
+    /// How many similar shots (C-4) this photo is one of among the photos shown, 0 when none; the tile then shows
+    /// a badge with the number that opens them in Compare.
+    /// </summary>
+    public int ShotCount
+    {
+        get => _shotCount;
+        private set
+        {
+            if (SetProperty(ref _shotCount, value))
+            {
+                OnPropertyChanged(nameof(ShotBadgeVisibility));
+                OnPropertyChanged(nameof(ShotBadgeText));
+                OnPropertyChanged(nameof(ShotTip));
+            }
+        }
+    }
+
+    /// <summary>The sharpest of its similar shots (its badge is coloured).</summary>
+    public bool IsBestShot
+    {
+        get => _isBestShot;
+        private set
+        {
+            if (SetProperty(ref _isBestShot, value))
+            {
+                OnPropertyChanged(nameof(BestShotBadgeVisibility));
+                OnPropertyChanged(nameof(ShotBadgeVisibility));
+                OnPropertyChanged(nameof(ShotTip));
+            }
+        }
+    }
+
+    public void SetShots(int count, bool best)
+    {
+        ShotCount = count;
+        IsBestShot = count > 0 && best;
+    }
+
+    public Microsoft.UI.Xaml.Visibility ShotBadgeVisibility =>
+        ShotCount > 0 && !IsBestShot ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility BestShotBadgeVisibility =>
+        ShotCount > 0 && IsBestShot ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public string ShotBadgeText => ShotCount > 0 ? ShotCount.ToString(System.Globalization.CultureInfo.CurrentCulture) : "";
+
+    public string ShotTip => ShotCount == 0 ? ""
+        : IsBestShot ? Core.Localization.Strings.Tr("The sharpest of {0} similar shots. Click to compare them", ShotCount)
+        : Core.Localization.Strings.Tr("One of {0} similar shots. Click to compare them", ShotCount);
+
     public string FileName => Photo.FileName;
 
     public bool CanRotate => SupportedFormats.CanRotate(Path);

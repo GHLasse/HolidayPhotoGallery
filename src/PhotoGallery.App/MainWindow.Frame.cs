@@ -514,6 +514,12 @@ public sealed partial class MainWindow
             ViewModel.Editor.Load(SelectedPhotos);
     }
 
+    private async void TileShots_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is PhotoItemViewModel item)
+            await GoThroughSimilarShotsAsync(item);
+    }
+
     private async void TileFlag_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is PhotoItemViewModel item)

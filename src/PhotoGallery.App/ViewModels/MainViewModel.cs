@@ -637,7 +637,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var wasSwitching = _switchingFolder;
         _switchingFolder = false; // before the photos change, so "no photos match" can show for an empty result
         MatchShares = shares; // before the photos, which the grid groups by it
-        Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
+        var items = photos.Select(NewPhotoItem).ToList();
+        // Similar shots stacked before the photos show, when that is quick; else right after.
+        var stacked = _vectors is not null ? await StackShotsAsync(version, items) : null;
+        if (version != _searchVersion)
+            return;
+        AllShown = items;
+        Photos = new ObservableCollection<PhotoItemViewModel>(stacked ?? items);
+        if (stacked is null)
+            _ = RestackAsync(version, items);
         if (wasSwitching)
             OnPropertyChanged(nameof(IsLoading));
         AutoTagNames = autoTagNames;
