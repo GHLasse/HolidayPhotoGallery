@@ -27,7 +27,7 @@ public sealed partial class PhotoIndex
             cmd.Transaction = tx;
             cmd.CommandText = """
                 INSERT INTO picture_hashes (photo_id, file_mtime, dhash)
-                SELECT id, file_mtime, $hash FROM photos WHERE path = $path
+                SELECT id, file_mtime, $hash FROM main.photos WHERE path = $path
                 ON CONFLICT (photo_id) DO UPDATE SET file_mtime = excluded.file_mtime, dhash = excluded.dhash;
                 """;
             var path = cmd.Parameters.Add("$path", Microsoft.Data.Sqlite.SqliteType.Text);
@@ -49,7 +49,7 @@ public sealed partial class PhotoIndex
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                SELECT p.path FROM photos p
+                SELECT p.path FROM main.photos p
                 WHERE NOT EXISTS (SELECT 1 FROM picture_hashes h WHERE h.photo_id = p.id AND h.file_mtime = p.file_mtime)
                 ORDER BY p.id DESC LIMIT $limit;
                 """;

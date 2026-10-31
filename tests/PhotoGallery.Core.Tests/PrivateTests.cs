@@ -56,6 +56,24 @@ public sealed class PrivateTests : IDisposable
     }
 
     [Fact]
+    public void Background_jobs_get_through_private_photos_while_they_are_hidden()
+    {
+        Add("Trip/a.jpg");
+        var hidden = Add("Secret/b.jpg");
+        PrivateMarks.SetFolder(Path.Combine(_photos.Path, "Secret"), true);
+        _index.RefreshPrivate(_photos.Path);
+
+        Assert.Contains(hidden, _index.GetNotQualityChecked(10).Select(p => p.Path));
+        Assert.Contains(hidden, _index.GetNotPictureHashed(10));
+        Assert.Contains(hidden, _index.GetNotFaceScanned(10).Select(p => p.Path));
+        Assert.Equal(2, _index.GetQualityProgress().Total);
+
+        _index.SavePictureHashes([(hidden, 42UL)]);
+        Assert.DoesNotContain(hidden, _index.GetNotPictureHashed(10));
+        Assert.Empty(_index.GetPictureHashes().Keys.Where(k => k == hidden)); // still hidden from what's shown
+    }
+
+    [Fact]
     public void New_photos_in_a_private_folder_are_private_and_the_mark_is_a_hidden_file()
     {
         var folder = Directory.CreateDirectory(Path.Combine(_photos.Path, "Secret")).FullName;

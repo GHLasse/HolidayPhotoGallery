@@ -128,8 +128,11 @@ public sealed partial class MainViewModel
                     .Where(p => !failed.Contains(p)).Take(Batch).ToList();
                 if (todo.Count == 0)
                     break;
+                var waiting = await Task.Run(_index.CountAutoTagQueue);
+                var n = 0;
                 foreach (var path in todo)
                 {
+                    ShowBackground("tagging", Tr("Auto-tagging new photos: {0:N0} to go", Math.Max(1, waiting - n++)));
                     while (IsBusy)
                         await Task.Delay(2000);
                     if (tagging.Automatic == AutoTagSettings.AutomaticOff)
@@ -159,8 +162,11 @@ public sealed partial class MainViewModel
                     .Where(p => !failed.Contains(p)).Take(Batch).ToList();
                 if (todo.Count == 0)
                     break;
+                var progress = await Task.Run(_index.GetVectorProgress);
+                var n = 0;
                 foreach (var path in todo)
                 {
+                    ShowBackground("tagging", Tr("Preparing search by meaning: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     while (IsBusy)
                         await Task.Delay(2000);
                     if (!tagging.SearchByMeaning)
@@ -192,6 +198,7 @@ public sealed partial class MainViewModel
         }
         finally
         {
+            ShowBackground("tagging", null);
             _taggingInBackground = false;
             if (tagged > 0)
                 Inform(Tr("Auto-tagged {0} in the background.", PhotoCount(tagged)));

@@ -11,18 +11,18 @@ public sealed partial class PhotoIndex
 {
     /// <summary>Photos and videos with a picture vector (search in your own words, auto-tagging), of all.</summary>
     public JobProgress GetVectorProgress() => Progress(
-        "SELECT COUNT(*) FROM photos p WHERE EXISTS (SELECT 1 FROM picture_vectors v WHERE v.photo_id = p.id);",
-        "SELECT COUNT(*) FROM photos;");
+        "SELECT COUNT(*) FROM main.photos p WHERE EXISTS (SELECT 1 FROM picture_vectors v WHERE v.photo_id = p.id);",
+        "SELECT COUNT(*) FROM main.photos;");
 
     /// <summary>Photos looked at for faces, of all photos (videos aren't).</summary>
     public JobProgress GetFaceScanProgress() => Progress(
-        "SELECT COUNT(*) FROM photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM face_scans s WHERE s.photo_id = p.id);",
-        "SELECT COUNT(*) FROM photos WHERE video = 0;");
+        "SELECT COUNT(*) FROM main.photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM face_scans s WHERE s.photo_id = p.id);",
+        "SELECT COUNT(*) FROM main.photos WHERE video = 0;");
 
     /// <summary>Photos measured for quality hints, of all photos.</summary>
     public JobProgress GetQualityProgress() => Progress(
-        "SELECT COUNT(*) FROM photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id);",
-        "SELECT COUNT(*) FROM photos WHERE video = 0;");
+        "SELECT COUNT(*) FROM main.photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id);",
+        "SELECT COUNT(*) FROM main.photos WHERE video = 0;");
 
     private JobProgress Progress(string doneSql, string totalSql)
     {

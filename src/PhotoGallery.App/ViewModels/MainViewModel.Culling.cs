@@ -115,9 +115,12 @@ public sealed partial class MainViewModel
                     .Where(p => !unreadable.Contains(p.Path)).Take(Batch).ToList();
                 if (todo.Count == 0)
                     break;
+                var progress = await Task.Run(_index.GetQualityProgress);
                 var measured = new List<(string, QualityMeasure)>();
+                var n = 0;
                 foreach (var (path, orientation) in todo)
                 {
+                    ShowBackground("quality", Tr("Checking photo quality: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     while (IsBusy)
                         await Task.Delay(2000);
                     if (!_settings.CheckQualityAutomatically)
@@ -158,6 +161,7 @@ public sealed partial class MainViewModel
         }
         finally
         {
+            ShowBackground("quality", null);
             _checkingQuality = false;
         }
     }

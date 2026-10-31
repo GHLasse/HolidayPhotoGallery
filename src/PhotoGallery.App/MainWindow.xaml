@@ -100,15 +100,15 @@
                     </Button>
                     <!-- Long work (tagging, finding people, uploads) runs in the background; the ring opens the details. -->
                     <Button Padding="8" Background="Transparent" BorderThickness="0"
-                            Visibility="{x:Bind local:Ui.VisibleIfAny(ViewModel.IsBusy, ViewModel.IsUploading), Mode=OneWay}"
-                            ToolTipService.ToolTip="{x:Bind ViewModel.StatusText, Mode=OneWay}">
-                        <!-- What is happening, beside the ring that shows it is still going. -->
+                            Visibility="{x:Bind local:Ui.VisibleIfAny3(ViewModel.IsBusy, ViewModel.IsUploading, ViewModel.IsWorkingInBackground), Mode=OneWay}"
+                            ToolTipService.ToolTip="{x:Bind local:Ui.BusyOrBackground(ViewModel.IsBusy, ViewModel.StatusText, ViewModel.BackgroundDetails), Mode=OneWay}">
+                        <!-- What is happening (else what runs quietly in the background), beside the ring that shows it is still going. -->
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" VerticalAlignment="Center" MaxWidth="280"
-                                       TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                            <TextBlock Text="{x:Bind local:Ui.BusyOrBackground(ViewModel.IsBusy, ViewModel.StatusText, ViewModel.BackgroundText), Mode=OneWay}"
+                                       VerticalAlignment="Center" MaxWidth="280"
+                                       TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <ProgressRing Width="16" Height="16" Foreground="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center"
-                                          IsActive="{x:Bind local:Ui.Any(ViewModel.IsBusy, ViewModel.IsUploading), Mode=OneWay}" />
+                                          IsActive="{x:Bind local:Ui.Any3(ViewModel.IsBusy, ViewModel.IsUploading, ViewModel.IsWorkingInBackground), Mode=OneWay}" />
                         </StackPanel>
                         <Button.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight">
@@ -129,6 +129,12 @@
                                         <TextBlock Text="{x:Bind ViewModel.QueuedText, Mode=OneWay}" TextWrapping="Wrap"
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                    Visibility="{x:Bind ViewModel.HasQueuedWork, Mode=OneWay}" />
+                                    </StackPanel>
+                                    <!-- Quiet work: it pauses while the app does what you asked for. -->
+                                    <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.IsWorkingInBackground, Mode=OneWay}">
+                                        <TextBlock Text="{x:Bind ViewModel.BackgroundDetails, Mode=OneWay}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{local:Loc Text='Runs quietly in the background and pauses while the app does something you asked for. Settings › App turns it on or off.'}"
+                                                   TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ViewModel.IsUploading, Mode=OneWay}">
                                         <TextBlock Text="{x:Bind ViewModel.UploadText, Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" />

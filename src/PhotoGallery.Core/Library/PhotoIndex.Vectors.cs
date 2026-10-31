@@ -63,7 +63,7 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO picture_vectors (photo_id, file_mtime, vector)
-                SELECT id, file_mtime, $vector FROM photos WHERE path = $path
+                SELECT id, file_mtime, $vector FROM main.photos WHERE path = $path
                 ON CONFLICT (photo_id) DO UPDATE SET file_mtime = excluded.file_mtime, vector = excluded.vector;
                 """;
             cmd.Parameters.AddWithValue("$path", path);
@@ -79,7 +79,7 @@ public sealed partial class PhotoIndex
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                SELECT p.path FROM photos p
+                SELECT p.path FROM main.photos p
                 WHERE NOT EXISTS (SELECT 1 FROM picture_vectors v WHERE v.photo_id = p.id)
                 ORDER BY p.id DESC LIMIT $limit;
                 """;
