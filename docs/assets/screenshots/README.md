@@ -10,3 +10,6 @@ PNG, about 1600 px wide, light mode with real holiday photos:
 - `dark.png` – any view in dark mode with a palette
 - `repair.png` – Repair wizard, before and after (added 2026-10-27)
 - `duplicates.png` – Find duplicates window (added 2026-10-31)
+
+Demo photos from Wikimedia Commons under CC BY or CC BY-SA need a credit: add a
+`<span class="credit">` with author, link and licence to the figure's caption in `index.html`.
