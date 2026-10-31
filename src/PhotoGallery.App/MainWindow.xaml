@@ -264,6 +264,13 @@
                             <TextBlock Text="{local:Loc Text='Rejected'}" />
                         </StackPanel>
                     </ToggleButton>
+                    <ToggleButton x:Name="StacksFilter" VerticalAlignment="Center" IsChecked="{x:Bind ViewModel.StackSimilarShots, Mode=TwoWay}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Stack similar shots under the sharpest one. The number on a stack opens its shots in Compare'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8A9;" FontSize="14" />
+                            <TextBlock Text="{local:Loc Text='Stacks'}" />
+                        </StackPanel>
+                    </ToggleButton>
                     <ComboBox x:Name="MediaFilter" VerticalAlignment="Center" MinWidth="120"
                               SelectedIndex="{x:Bind ViewModel.MediaIndex, Mode=TwoWay}"
                               ToolTipService.ToolTip="{local:Loc Text='Show photos, videos or both'}">
@@ -727,6 +734,26 @@
                                     <TextBlock Text="{x:Bind DurationText, Mode=OneWay}" FontSize="11" />
                                 </StackPanel>
                             </Border>
+                            <!-- One of a group of similar shots (C-4): the number in the group; opens them in Compare. The
+                                 sharpest one's badge is coloured; with stacking on it is the one shown. -->
+                            <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,32" Padding="5,2" MinHeight="0" MinWidth="0"
+                                    CornerRadius="4" Click="TileShots_Click" Style="{StaticResource TileActionButton}"
+                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    Visibility="{x:Bind ShotBadgeVisibility, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ShotTip, Mode=OneWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="&#xE8A9;" FontSize="10" />
+                                    <TextBlock Text="{x:Bind ShotBadgeText, Mode=OneWay}" FontSize="11" />
+                                </StackPanel>
+                            </Button>
+                            <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,32" Padding="5,2" MinHeight="0" MinWidth="0"
+                                    CornerRadius="4" Click="TileShots_Click" Style="{StaticResource TileActionButton}"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    Visibility="{x:Bind BestShotBadgeVisibility, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ShotTip, Mode=OneWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="&#xE8A9;" FontSize="10" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                    <TextBlock Text="{x:Bind ShotBadgeText, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                </StackPanel>
+                            </Button>
                             <!-- The rating under the photo, like Windows Live Photo Gallery: the photo sits on it and never
                                  hides it. The file name only shows on hover. -->
                             <StackPanel x:Name="StarLine" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5">

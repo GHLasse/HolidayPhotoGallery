@@ -20,9 +20,9 @@ public sealed partial class MainWindow
 
     private void SetUpFilterFolding()
     {
-        _filtersInOrder = [PeopleGroup, TagsFilter, CameraCombo, RatingFilter, FlaggedFilter, RejectedFilter, MediaFilter,
+        _filtersInOrder = [PeopleGroup, TagsFilter, CameraCombo, RatingFilter, FlaggedFilter, RejectedFilter, StacksFilter, MediaFilter,
                            TakenFromFilter, TakenToFilter, CloudFilter, MissingFilter];
-        _filtersByFoldOrder = [CloudFilter, MediaFilter, CameraCombo, MissingFilter, RejectedFilter, TakenToFilter,
+        _filtersByFoldOrder = [StacksFilter, CloudFilter, MediaFilter, CameraCombo, MissingFilter, RejectedFilter, TakenToFilter,
                                TakenFromFilter, TagsFilter, PeopleGroup, FlaggedFilter, RatingFilter];
         foreach (var filter in _filtersInOrder.Append(MoreFiltersButton).Append(RecycleButton).Append(ClearFiltersButton))
         {

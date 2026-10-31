@@ -179,4 +179,15 @@ public sealed class ShotQualityTests : IDisposable
         _index.ForgetShotQuality("/photos/blurry.jpg");
         Assert.Equal(["/photos/blurry.jpg"], _index.GetNotQualityChecked(10).Select(p => p.Path));
     }
+
+    [Fact]
+    public void Stack_keeps_only_each_groups_top_shot_in_place()
+    {
+        string a = new('a', 1), b = new('b', 1), c = new('c', 1), d = new('d', 1), e = new('e', 1);
+        var shown = new List<string> { a, b, c, d, e };
+        var stacked = SimilarShots.Stack(shown, [([b, c, d], 1)]);
+        Assert.Equal([a, c, e], stacked);
+        Assert.Equal(shown, SimilarShots.Stack(shown, []));
+    }
 }
+

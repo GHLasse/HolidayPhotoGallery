@@ -22,7 +22,7 @@ public sealed partial class MainWindow
     /// <summary>Library › Similar shots: every group among the photos shown, one after another in Compare.</summary>
     private async Task GoThroughSimilarShotsAsync(PhotoItemViewModel? startAt = null)
     {
-        var shown = ViewModel.Photos.ToList();
+        var shown = ViewModel.AllShown.ToList(); // the shots stacked away too
         if (shown.Count < 2)
         {
             ViewModel.Inform(Tr("No similar shots among the photos shown."));

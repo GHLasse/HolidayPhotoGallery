@@ -58,11 +58,17 @@ public sealed partial class MainWindow
             undo.Visibility = Visibility.Collapsed;
             list.IsEnabled = false;
             search.IsEnabled = false;
+            working.IsIndeterminate = true;
             working.Visibility = Visibility.Visible;
             void Progress(object? s, System.ComponentModel.PropertyChangedEventArgs e)
             {
                 if (e.PropertyName == nameof(ViewModel.StatusText))
                     workingText.Text = ViewModel.StatusText;
+                else if (e.PropertyName == nameof(ViewModel.TagJobPercent) && ViewModel.TagJobPercent is { } percent)
+                {
+                    working.IsIndeterminate = false;
+                    working.Value = percent;
+                }
             }
             ViewModel.PropertyChanged += Progress;
             try

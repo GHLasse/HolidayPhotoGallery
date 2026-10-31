@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.Core.Culling;
 using PhotoGallery.Core.Faces;
@@ -200,7 +201,7 @@ public sealed partial class MainViewModel
     {
         var byPath = items.GroupBy(i => i.Path, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var photos = byPath.Values.Select(i => i.Photo).ToList();
-        var vectors = await Task.Run(_index.GetPictureVectors);
+        var vectors = await VectorsAsync();
         var hashes = await Task.Run(_index.GetPictureHashes);
         var qualities = await QualitiesAsync();
         var groups = await Task.Run(() => SimilarShots.Find(photos, (a, b) =>
@@ -213,5 +214,57 @@ public sealed partial class MainViewModel
             result.Add((list, list.FindIndex(i => i.Photo == best)));
         }
         return result;
+    }
+
+    /// <summary>Similar shots fold into their sharpest one in the grid (the filter bar's Stacks switch).</summary>
+    public bool StackSimilarShots
+    {
+        get => _settings.StackSimilarShots;
+        set
+        {
+            if (value == _settings.StackSimilarShots)
+                return;
+            _settings.StackSimilarShots = value;
+            _settings.Save(SettingsPath);
+            OnPropertyChanged();
+            _ = SearchAsync();
+        }
+    }
+
+    /// <summary>All photos the search found, the ones stacked under a similar shot too (Photos leaves those out).</summary>
+    public IReadOnlyList<PhotoItemViewModel> AllShown { get; private set; } = [];
+
+    /// <summary>
+    /// Marks which of the photos found are one of a group of similar shots, for the badge on their tiles, and
+    /// gives the photos to show: each group's sharpest only when stacking. Null when a newer search started.
+    /// </summary>
+    private async Task<List<PhotoItemViewModel>?> StackShotsAsync(int version, List<PhotoItemViewModel> items)
+    {
+        List<(List<PhotoItemViewModel> Items, int Best)> groups = [];
+        try
+        {
+            if (items.Count > 1)
+                groups = await SimilarShotGroupsAsync(items);
+        }
+        catch (Exception ex)
+        {
+            App.Trace($"similar shots: {ex.Message}");
+        }
+        if (version != _searchVersion)
+            return null;
+        foreach (var item in items)
+            item.SetShots(0, false);
+        foreach (var (list, best) in groups)
+            for (var i = 0; i < list.Count; i++)
+                list[i].SetShots(list.Count, i == best);
+        return StackSimilarShots ? SimilarShots.Stack(items, groups) : items;
+    }
+
+    // The first search after starting shows the photos at once; the shots are stacked once the vectors are loaded.
+    private async Task RestackAsync(int version, List<PhotoItemViewModel> items)
+    {
+        var stacked = await StackShotsAsync(version, items);
+        if (stacked is not null && version == _searchVersion && stacked.Count != Photos.Count)
+            Photos = new ObservableCollection<PhotoItemViewModel>(stacked);
     }
 }
