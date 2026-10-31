@@ -200,5 +200,22 @@ public sealed class ShotQualityTests : IDisposable
         Assert.Equal([a, c, e], stacked);
         Assert.Equal(shown, SimilarShots.Stack(shown, []));
     }
-}
 
+    [Fact]
+    public void Stacks_follow_the_users_changes_and_keep_them_in_the_index()
+    {
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        var photos = Enumerable.Range(1, 5).Select(i => Photo($"a{i}.jpg", t.AddSeconds(i))).ToList();
+        _index.Upsert(photos);
+        _index.SetShotMarks([(photos[1].Path, ShotMark.Out), (photos[3].Path, ShotMark.Split), (photos[4].Path, ShotMark.Cover)]);
+        var marks = _index.GetShotMarks();
+
+        var groups = SimilarShots.Find(photos, (_, _, _) => true, marks);
+        Assert.Equal([["a1.jpg", "a3.jpg"], ["a4.jpg", "a5.jpg"]], groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
+        Assert.Null(SimilarShots.Cover(groups[0], marks));
+        Assert.Equal("a5.jpg", SimilarShots.Cover(groups[1], marks)!.FileName);
+
+        _index.SetShotMarks([(photos[1].Path, ShotMark.None)]);
+        Assert.Equal(2, _index.GetShotMarks().Count);
+    }
+}

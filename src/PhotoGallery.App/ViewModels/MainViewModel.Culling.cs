@@ -208,12 +208,13 @@ public sealed partial class MainViewModel
         var vectors = await VectorsAsync();
         var hashes = await Task.Run(_index.GetPictureHashes);
         var qualities = await QualitiesAsync();
+        var marks = _shotMarks ??= await Task.Run(_index.GetShotMarks);
         var groups = await Task.Run(() => SimilarShots.Find(photos, (a, b, apart) =>
-            SimilarShots.Alike(vectors.Get(a.Path), vectors.Get(b.Path), hashes.GetValueOrDefault(a.Path), hashes.GetValueOrDefault(b.Path), apart)));
+            SimilarShots.Alike(vectors.Get(a.Path), vectors.Get(b.Path), hashes.GetValueOrDefault(a.Path), hashes.GetValueOrDefault(b.Path), apart), marks));
         var result = new List<(List<PhotoItemViewModel>, int)>();
         foreach (var group in groups)
         {
-            var best = group.Best(p => qualities.TryGetValue(p.Path, out var row) ? row.Measure.Judged : null);
+            var best = SimilarShots.Cover(group, marks) ?? group.Best(p => qualities.TryGetValue(p.Path, out var row) ? row.Measure.Judged : null);
             var list = group.Photos.Select(p => byPath[p.Path]).ToList();
             result.Add((list, list.FindIndex(i => i.Photo == best)));
         }
@@ -258,9 +259,15 @@ public sealed partial class MainViewModel
             return null;
         foreach (var item in items)
             item.SetShots(0, false);
+        _stackOf.Clear();
         foreach (var (list, best) in groups)
+        {
             for (var i = 0; i < list.Count; i++)
+            {
                 list[i].SetShots(list.Count, i == best);
+                _stackOf[list[i]] = list;
+            }
+        }
         return StackSimilarShots ? SimilarShots.Stack(items, groups) : items;
     }
 
@@ -270,5 +277,47 @@ public sealed partial class MainViewModel
         var stacked = await StackShotsAsync(version, items);
         if (stacked is not null && version == _searchVersion && stacked.Count != Photos.Count)
             Photos = new ObservableCollection<PhotoItemViewModel>(stacked);
+    }
+
+    private Dictionary<string, ShotMark>? _shotMarks;
+    private readonly Dictionary<PhotoItemViewModel, List<PhotoItemViewModel>> _stackOf = [];
+
+    /// <summary>The stack the photo is in among the photos found (in time order), or null.</summary>
+    public IReadOnlyList<PhotoItemViewModel>? StackOf(PhotoItemViewModel item) => _stackOf.GetValueOrDefault(item);
+
+    /// <summary>The user's change to the photo's stack, if any.</summary>
+    public ShotMark ShotMarkOf(PhotoItemViewModel item) => _shotMarks?.GetValueOrDefault(item.Path) ?? ShotMark.None;
+
+    /// <summary>Shows the photo on top of its stack, instead of the sharpest.</summary>
+    public Task MakeStackCoverAsync(PhotoItemViewModel item) =>
+        ChangeStacksAsync([.. (StackOf(item) ?? Array.Empty<PhotoItemViewModel>()).Where(i => ShotMarkOf(i) == ShotMark.Cover && i != item).Select(i => (i, ShotMark.None)), (item, ShotMark.Cover)]);
+
+    /// <summary>Takes the photo out of stacks for good (the shots around it stay together).</summary>
+    public Task TakeOutOfStackAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, ShotMark.Out)]);
+
+    /// <summary>Starts a new stack with this photo.</summary>
+    public Task SplitStackAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, ShotMark.Split)]);
+
+    /// <summary>Every photo of the stack stands on its own.</summary>
+    public Task UnstackAsync(PhotoItemViewModel item) =>
+        ChangeStacksAsync((StackOf(item) ?? new[] { item }).Select(i => (i, ShotMark.Out)).ToList());
+
+    /// <summary>Takes the user's change off: the photo joins stacks again as it would by itself.</summary>
+    public Task ResetStackMarkAsync(PhotoItemViewModel item) => ChangeStacksAsync([(item, ShotMark.None)]);
+
+    /// <summary>Raised after the stacks changed, with the photo acted on, so the grid can keep it in view.</summary>
+    public event Action<PhotoItemViewModel>? StacksChanged;
+
+    private async Task ChangeStacksAsync(IReadOnlyList<(PhotoItemViewModel Item, ShotMark Mark)> changes)
+    {
+        if (changes.Count == 0)
+            return;
+        await Task.Run(() => _index.SetShotMarks(changes.Select(c => (c.Item.Path, c.Mark))));
+        _shotMarks = null;
+        var version = _searchVersion;
+        var items = AllShown.ToList();
+        if (await StackShotsAsync(version, items) is { } stacked && version == _searchVersion)
+            Photos = new ObservableCollection<PhotoItemViewModel>(stacked);
+        StacksChanged?.Invoke(changes[^1].Item);
     }
 }

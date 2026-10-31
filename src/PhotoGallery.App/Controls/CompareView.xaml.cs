@@ -114,6 +114,9 @@ public sealed partial class CompareView : UserControl
     /// <summary>Raised with -1 or +1 to go to the previous or next group of similar shots (Page Up, Page Down).</summary>
     public event Action<int>? GroupStepRequested;
 
+    /// <summary>The right-click menu for a photo (changes to its stack of similar shots); none when empty.</summary>
+    public Func<PhotoItemViewModel, IReadOnlyList<MenuFlyoutItem>>? MenuItemsFor { get; set; }
+
     private bool _inGroups;
 
     /// <summary>
@@ -287,6 +290,19 @@ public sealed partial class CompareView : UserControl
                 host.Focus(FocusState.Programmatic);
         };
         host.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => SetActive(index, FocusState.Pointer)), handledEventsToo: true);
+        host.ContextRequested += (_, e) =>
+        {
+            if (MenuItemsFor?.Invoke(item) is not { Count: > 0 } items)
+                return;
+            e.Handled = true;
+            var menu = new MenuFlyout();
+            foreach (var menuItem in items)
+                menu.Items.Add(menuItem);
+            if (e.TryGetPosition(host, out var point))
+                menu.ShowAt(host, point);
+            else
+                menu.ShowAt(host);
+        };
         host.DoubleTapped += (_, e) =>
         {
             e.Handled = true;

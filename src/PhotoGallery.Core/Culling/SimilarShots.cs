@@ -12,6 +12,21 @@ public sealed record ShotGroup(IReadOnlyList<IndexedPhoto> Photos)
               .First();
 }
 
+/// <summary>The user's change to a photo's stack of similar shots.</summary>
+public enum ShotMark
+{
+    None = 0,
+
+    /// <summary>The photo shown on top of its stack, instead of the sharpest.</summary>
+    Cover = 1,
+
+    /// <summary>Never part of a stack.</summary>
+    Out = 2,
+
+    /// <summary>A new stack starts with this photo.</summary>
+    Split = 3,
+}
+
 /// <summary>
 /// Finds similar shots (C-4): photos taken one after another, a short time apart, that look alike. "Look
 /// alike" comes from the caller: the tagging model's picture vectors (L-7) when there are some, else the
@@ -68,6 +83,20 @@ public static class SimilarShots
             groups.Add(new ShotGroup(run));
         return groups;
     }
+
+    /// <summary>
+    /// As <see cref="Find(IEnumerable{IndexedPhoto}, Func{IndexedPhoto, IndexedPhoto, TimeSpan, bool}, TimeSpan?)"/>, with
+    /// the user's changes: photos taken out are left out (the shots around them stay together), and a new stack
+    /// starts at a split.
+    /// </summary>
+    public static List<ShotGroup> Find(IEnumerable<IndexedPhoto> photos, Func<IndexedPhoto, IndexedPhoto, TimeSpan, bool> alike,
+                                       IReadOnlyDictionary<string, ShotMark> marks, TimeSpan? maxGap = null) =>
+        Find(photos.Where(p => marks.GetValueOrDefault(p.Path) != ShotMark.Out),
+             (a, b, apart) => marks.GetValueOrDefault(b.Path) != ShotMark.Split && alike(a, b, apart), maxGap);
+
+    /// <summary>The photo the user chose as the group's cover, if any.</summary>
+    public static IndexedPhoto? Cover(ShotGroup group, IReadOnlyDictionary<string, ShotMark> marks) =>
+        group.Photos.FirstOrDefault(p => marks.GetValueOrDefault(p.Path) == ShotMark.Cover);
 
     /// <summary>
     /// Shots this close in time are a burst: the subject moved (a flag in the wind, a wave, people), so they
