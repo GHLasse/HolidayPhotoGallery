@@ -51,17 +51,28 @@ public sealed partial class MainViewModel
                 StatusText = newName is null
                     ? Tr("Removing “{0}” from {1:N0} of {2:N0} photos…", tag, i + 1, paths.Count)
                     : Tr("Renaming “{0}” in {1:N0} of {2:N0} photos…", tag, i + 1, paths.Count);
+                TagJobPercent = 100.0 * i / paths.Count;
                 try
                 {
-                    var metadata = await _metadata.ReadAsync(path);
-                    var current = metadata.Tags;
-                    if (TagList.Rename(current, tag, newName) is not { } tags)
+                    // Reading, writing and indexing run off the UI thread, so the app stays responsive.
+                    var metadata = _metadata;
+                    var indexer = _indexer;
+                    var done = await Task.Run<(TagChange.File File, IndexedPhoto? Updated)?>(async () =>
+                    {
+                        var read = await metadata.ReadAsync(path).ConfigureAwait(false);
+                        var current = read.Tags;
+                        if (TagList.Rename(current, tag, newName) is not { } tags)
+                            return null;
+                        // A renamed auto tag stays an auto tag.
+                        var autoTags = TagList.Rename(read.AutoTags, tag, newName);
+                        await metadata.WriteAsync(path, new MetadataChanges { Tags = tags, AutoTags = autoTags }).ConfigureAwait(false);
+                        var updated = await indexer.RefreshFileAsync(path).ConfigureAwait(false);
+                        return (File: new TagChange.File(path, current, tags, read.AutoTags), Updated: updated);
+                    });
+                    if (done is not { } result)
                         continue;
-                    // A renamed auto tag stays an auto tag.
-                    var autoTags = TagList.Rename(metadata.AutoTags, tag, newName);
-                    await _metadata.WriteAsync(path, new MetadataChanges { Tags = tags, AutoTags = autoTags });
-                    changed.Add(new TagChange.File(path, current, tags, metadata.AutoTags));
-                    await RefreshPhotoAsync(path);
+                    changed.Add(result.File);
+                    ShowRefreshed(path, result.Updated);
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
@@ -72,6 +83,7 @@ public sealed partial class MainViewModel
         finally
         {
             IsBusy = false;
+            TagJobPercent = null;
             StatusText = _countText;
         }
 
@@ -113,17 +125,26 @@ public sealed partial class MainViewModel
             {
                 var (path, before, after, autoBefore) = change.Files[i];
                 StatusText = Tr("Undoing the tag change in {0:N0} of {1:N0} photos…", i + 1, change.Files.Count);
+                TagJobPercent = 100.0 * i / change.Files.Count;
                 try
                 {
-                    var current = (await _metadata.ReadAsync(path)).Tags;
-                    if (!new HashSet<string>(current, StringComparer.OrdinalIgnoreCase).SetEquals(after))
+                    var metadata = _metadata;
+                    var indexer = _indexer;
+                    var done = await Task.Run<(bool Restored, IndexedPhoto? Updated)>(async () =>
+                    {
+                        var current = (await metadata.ReadAsync(path).ConfigureAwait(false)).Tags;
+                        if (!new HashSet<string>(current, StringComparer.OrdinalIgnoreCase).SetEquals(after))
+                            return (false, null);
+                        await metadata.WriteAsync(path, new MetadataChanges { Tags = before, AutoTags = autoBefore }).ConfigureAwait(false);
+                        return (true, indexer is null ? null : await indexer.RefreshFileAsync(path).ConfigureAwait(false));
+                    });
+                    if (!done.Restored)
                     {
                         skipped++;
                         continue;
                     }
-                    await _metadata.WriteAsync(path, new MetadataChanges { Tags = before, AutoTags = autoBefore });
                     restored++;
-                    await RefreshPhotoAsync(path);
+                    ShowRefreshed(path, done.Updated);
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
@@ -134,6 +155,7 @@ public sealed partial class MainViewModel
         finally
         {
             IsBusy = false;
+            TagJobPercent = null;
             StatusText = _countText;
         }
 
@@ -145,10 +167,22 @@ public sealed partial class MainViewModel
         await RefreshTagsAsync();
     }
 
-    private async Task RefreshPhotoAsync(string path)
+    private double? _tagJobPercent;
+
+    /// <summary>How far a tag rename, removal or undo has got (0 to 100), null while none runs; Settings › Tags shows it.</summary>
+    public double? TagJobPercent
     {
-        if (await _indexer!.RefreshFileAsync(path) is { } updated &&
-            Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
+        get => _tagJobPercent;
+        private set => SetProperty(ref _tagJobPercent, value);
+    }
+
+    private async Task RefreshPhotoAsync(string path) =>
+        ShowRefreshed(path, await _indexer!.RefreshFileAsync(path));
+
+    // The tile of a changed photo shows its new details, when it is shown.
+    private void ShowRefreshed(string path, IndexedPhoto? updated)
+    {
+        if (updated is not null && _photoItems.TryGetValue(path, out var item))
             item.Photo = updated;
     }
 }
