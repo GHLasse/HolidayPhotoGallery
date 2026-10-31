@@ -31,8 +31,11 @@ The app's updater relies on this order: a release (BUILD 0) is newer than every 
 
 ## Making a release
 
-1. Open a pull request from `prep` into `main`, titled e.g. "Release 0.2.0".
-2. Merging it builds the app once more and publishes GitHub Release `v0.2.0` with
+1. Write the release notes in `docs/release-notes/v0.2.0.md` (into `prep`, like any change): a short, plain
+   list of what is new for people using the app. The app's update banner shows them as "What's new"
+   (headings, bold and links are shown as plain text). Without the file, GitHub lists the merged pull requests.
+2. Open a pull request from `prep` into `main`, titled e.g. "Release 0.2.0".
+3. Merging it builds the app once more and publishes GitHub Release `v0.2.0` with
    `HolidayPhotoGallery-Setup-x64.exe`, its `.sha256` checksum and `HolidayPhotoGallery-win-x64.zip`.
    The app offers it to everyone on the Stable channel (Settings › App › Updates).
 
