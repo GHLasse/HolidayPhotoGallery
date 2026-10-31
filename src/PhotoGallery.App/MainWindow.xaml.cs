@@ -859,7 +859,10 @@ public sealed partial class MainWindow : Window
             SyncFlagButton();
             _ = RefreshPeoplePanelAsync();
             if (IsMapOpen)
+            {
                 MapView.ShowSelection(SelectedPhotos, fit: !_selectingFromMap); // don't jump away from a clicked marker
+                _ = ShowTrackLineAsync();
+            }
         }
         finally
         {
@@ -993,6 +996,7 @@ public sealed partial class MainWindow : Window
             MapView.ShowPhotos(ViewModel.Photos);
         }
         MapView.ShowSelection(SelectedPhotos, fit);
+        _ = ShowTrackLineAsync();
     }
 
     // The photos on the whole-library map, for opening one from its bubble.

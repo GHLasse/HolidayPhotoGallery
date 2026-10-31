@@ -41,6 +41,18 @@ public sealed class LibrarySettings
     /// <summary>Photos get their picture fingerprints in the background, so duplicates are ready to go through.</summary>
     public bool FindDuplicatesAutomatically { get; set; } = true;
 
+    /// <summary>
+    /// The Windows time zone the camera's clock was set to, for matching photos without a saved UTC offset to GPS
+    /// tracks (G-4); null means this PC's own time zone.
+    /// </summary>
+    public string? TrackTimeZone { get; set; }
+
+    /// <summary>How many minutes the camera's clock was ahead (negative: behind) of the track's clock.</summary>
+    public int TrackClockErrorMinutes { get; set; }
+
+    /// <summary>A photo between two track points further apart than this many minutes gets no position from the track.</summary>
+    public int TrackMaxGapMinutes { get; set; } = 30;
+
     /// <summary>After a rating, flag or reject in the viewer, move on to the next photo.</summary>
     public bool AutoAdvance { get; set; }
 

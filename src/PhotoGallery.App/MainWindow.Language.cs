@@ -15,7 +15,11 @@ public sealed partial class MainWindow
         var list = new ComboBox { Header = Tr("Language of the app"), MinWidth = 260 };
         foreach (var pack in packs)
             list.Items.Add(pack.Name);
-        var current = Math.Max(0, packs.ToList().FindIndex(p => p.Code.Equals(Strings.Language, StringComparison.OrdinalIgnoreCase)));
+        // A language chosen earlier waits for the next start; the list shows it, not the one still on screen.
+        var saved = ViewModel.SavedUiLanguage ?? Strings.Language;
+        var current = packs.ToList().FindIndex(p => p.Code.Equals(saved, StringComparison.OrdinalIgnoreCase));
+        if (current < 0)
+            current = Math.Max(0, packs.ToList().FindIndex(p => p.Code.Equals(Strings.Language, StringComparison.OrdinalIgnoreCase)));
         list.SelectedIndex = current;
         chosen = () => list.SelectedIndex >= 0 && list.SelectedIndex != current ? packs[list.SelectedIndex].Code : null;
 

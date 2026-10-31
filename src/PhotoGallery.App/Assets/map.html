@@ -244,6 +244,14 @@ function start() {
     try { localStorage.setItem("view", JSON.stringify({ lat: c.lat, lon: c.lng, zoom: map.getZoom() })); } catch (e) { }
   });
 
+  // A GPS track or the route between photos (G-4): a thin, see-through line under the photo dots, in a colour of
+  // its own. Drawn as SVG in a pane below the dots' canvas, so it never covers them or takes their clicks.
+  const trackPane = map.createPane("track");
+  trackPane.style.zIndex = 390;
+  trackPane.style.pointerEvents = "none";
+  const trackRenderer = L.svg({ pane: "track" });
+  const trackLayer = L.layerGroup().addTo(map);
+
   const photoLayer = L.layerGroup().addTo(map);
   // Suggested positions for photos without GPS: red until they are assigned, then they become photo dots.
   const estimateLayer = L.layerGroup().addTo(map);
@@ -471,6 +479,15 @@ function start() {
           map.fitBounds(L.latLngBounds(m.points.map(p => [p.lat, p.lon])), { padding: [40, 40], maxZoom: 14 });
         else if (m.points.length === 1 && !map.getBounds().contains([m.points[0].lat, m.points[0].lon]))
           map.panTo([m.points[0].lat, m.points[0].lon]);
+      } else if (m.type === "track") {
+        trackLayer.clearLayers();
+        if (m.points.length > 1) {
+          const line = L.polyline(m.points, {
+            renderer: trackRenderer, interactive: false, color: "#7a3fd1", weight: 3, opacity: 0.55,
+            dashArray: m.route ? "6 6" : null, lineCap: "round", lineJoin: "round",
+          }).addTo(trackLayer);
+          if (m.fit) map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 15 });
+        }
       } else if (m.type === "find") {
         findPlace(m.q);
       } else if (m.type === "goto") {

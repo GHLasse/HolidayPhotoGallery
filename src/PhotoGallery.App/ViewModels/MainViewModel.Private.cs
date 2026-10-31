@@ -94,6 +94,9 @@ public sealed partial class MainViewModel
             await SearchAsync();
         await LoadAlbumsAsync();
         await AfterPeopleChangedAsync();
+        // The duplicates in the Library menu and banner count only the photos that are shown.
+        if (_duplicateCount > 0 || _settings.FindDuplicatesAutomatically)
+            await CountDuplicatesAsync();
     }
 
     private void RebuildFolderTree()

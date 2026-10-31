@@ -305,6 +305,34 @@ internal static class ThemedDialogs
     public static Windows.Foundation.IAsyncOperation<ContentDialogResult> ShowThemedAsync(this ContentDialog dialog)
     {
         MainWindow.ApplyAppearance(dialog);
+        FitButtons(dialog);
         return dialog.ShowAsync();
+    }
+
+    // The dialog's buttons share its width equally, so a long label in some languages is cut off. Widen
+    // the dialog until the longest label fits in each button (the dialog never gets wider than the window).
+    private static void FitButtons(ContentDialog dialog)
+    {
+        var labels = new[] { dialog.PrimaryButtonText, dialog.SecondaryButtonText, dialog.CloseButtonText }
+            .Where(t => !string.IsNullOrEmpty(t)).ToList();
+        if (labels.Count == 0)
+            return;
+        var widest = labels.Max(label =>
+        {
+            var text = new TextBlock { Text = label, FontSize = 14 };
+            text.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            return text.DesiredSize.Width;
+        });
+        // Each button pads its text by 11 on each side, buttons are 8 apart, the dialog pads by 24.
+        var needed = Math.Ceiling(labels.Count * (widest + 30) + (labels.Count - 1) * 8 + 48);
+        if (dialog.XamlRoot is { } root && root.Size.Width > 0)
+            needed = Math.Min(needed, root.Size.Width - 32);
+        double Resource(string key, double fallback) =>
+            dialog.Resources.TryGetValue(key, out var value) && value is double d ? d
+            : Application.Current.Resources.TryGetValue(key, out var app) && app is double a ? a : fallback;
+        if (needed > Resource("ContentDialogMinWidth", 320))
+            dialog.Resources["ContentDialogMinWidth"] = needed;
+        if (needed > Resource("ContentDialogMaxWidth", 548))
+            dialog.Resources["ContentDialogMaxWidth"] = needed;
     }
 }
