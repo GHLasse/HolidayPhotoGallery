@@ -34,8 +34,7 @@ public static class TimeZoneTyping
             typed = "";
         };
 
-        // Characters typed while the list is closed or open (the open list's items route up to the box).
-        combo.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>((_, e) =>
+        void OnCharacter(object sender, CharacterReceivedRoutedEventArgs e)
         {
             if (char.IsControl(e.Character) || (e.Character == ' ' && typed.Length == 0))
                 return;
@@ -50,15 +49,44 @@ public static class TimeZoneTyping
                 Jump(combo, typed, ref last, ref index);
             }
             timer.Start();
-        }), true);
-        combo.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, e) =>
+        }
+        void OnKey(object sender, KeyRoutedEventArgs e)
         {
             if (e.Key == VirtualKey.Back && typed.Length > 0)
             {
                 typed = typed[..^1];
                 e.Handled = true;
             }
+        }
+
+        // Characters typed while the list is closed (while open, the popup's handler below takes them, so a key
+        // that reaches both counts once).
+        var listening = new HashSet<UIElement>();
+        combo.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>((s, e) =>
+        {
+            if (!(combo.IsDropDownOpen && listening.Count > 0))
+                OnCharacter(s, e);
         }), true);
+        combo.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((s, e) =>
+        {
+            if (!(combo.IsDropDownOpen && listening.Count > 0))
+                OnKey(s, e);
+        }), true);
+        // The open list lives in a popup of its own, whose keys may not reach the box: listened to there too.
+        combo.DropDownOpened += (_, _) =>
+        {
+            typed = "";
+            if (combo.XamlRoot is null)
+                return;
+            foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(combo.XamlRoot))
+            {
+                if (popup.Child is UIElement child && listening.Add(child))
+                {
+                    child.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(OnCharacter), true);
+                    child.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnKey), true);
+                }
+            }
+        };
     }
 
     /// <summary>
