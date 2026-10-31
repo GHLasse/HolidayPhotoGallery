@@ -399,6 +399,9 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>The photo as the index has it, or null.</summary>
+    public IndexedPhoto? GetPhoto(string path) => Search(new PhotoQuery { ExactPath = path }).FirstOrDefault();
+
     public IReadOnlyList<IndexedPhoto> Search(PhotoQuery query)
     {
         lock (_lock)
@@ -408,6 +411,12 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (!string.IsNullOrWhiteSpace(query.Folder))
                 where.Add(FolderCondition(cmd, query.Folder, query.IncludeSubfolders));
+
+            if (query.ExactPath is { } exact)
+            {
+                where.Add("p.path = $exactPath");
+                cmd.Parameters.AddWithValue("$exactPath", exact);
+            }
 
             if (query.MinRating > 0)
             {

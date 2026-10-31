@@ -142,10 +142,28 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         return JsonSerializer.SerializeToElement(merged);
     }
 
+    /// <summary>
+    /// How the app last read a file (from the index), so a save can find out that another PC or program changed
+    /// it since (M-6); null when not known.
+    /// </summary>
+    public Func<string, Library.IndexedPhoto?>? BasisFor { get; set; }
+
+    /// <summary>
+    /// A save found the file changed by someone else and merged: the path, and the fields both sides changed
+    /// differently (the user's value was saved). Raised on a background thread.
+    /// </summary>
+    public event Action<string, IReadOnlyList<string>>? ChangedElsewhere;
+
     public async Task WriteAsync(string path, MetadataChanges changes, CancellationToken cancellationToken = default)
     {
         if (changes.IsEmpty)
             return;
+        if (BasisFor?.Invoke(path) is { } basis && SaveCheck.ChangedSince(basis, new FileInfo(path)))
+        {
+            var theirs = await ReadAsync(path, cancellationToken).ConfigureAwait(false);
+            changes = SaveCheck.Merge(basis, theirs, changes, out var clashes);
+            ChangedElsewhere?.Invoke(path, clashes);
+        }
         if (SupportedFormats.IsVideo(path) && (changes.Orientation is not null || changes.People is not null))
             throw new NotSupportedException(Tr("Videos can't be turned or have people marked yet."));
 

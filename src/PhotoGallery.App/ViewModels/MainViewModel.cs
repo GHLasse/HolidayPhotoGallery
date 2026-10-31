@@ -65,6 +65,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             _metadata = new PhotoMetadataService(_exifTool);
             _metadata.WrongFormatFound += path => _uiContext?.Post(_ => _ = NoteHealthAsync(path), null);
+            // M-6: a save first checks the file is as the index read it; another PC's change is merged in.
+            _metadata.BasisFor = path => _index.GetPhoto(path);
+            _metadata.ChangedElsewhere += (path, clashes) => _uiContext?.Post(_ => ChangedElsewhere(path, clashes), null);
             _indexer = new LibraryIndexer(_index, _metadata);
             _photoEditor = new PhotoEditService(_metadata);
         }

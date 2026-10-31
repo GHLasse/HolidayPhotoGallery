@@ -74,6 +74,9 @@ public sealed record PhotoQuery
 
     /// <summary>Only photos with a quality hint to show (C-4): possibly blurry, too dark or too bright.</summary>
     public bool QualityHintsOnly { get; init; }
+
+    /// <summary>Only the photo with this path.</summary>
+    public string? ExactPath { get; init; }
 }
 
 /// <summary>Which kind of files the grid shows.</summary>
