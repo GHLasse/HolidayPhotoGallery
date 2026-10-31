@@ -82,8 +82,17 @@ public static class TimeZoneTyping
             {
                 if (popup.Child is UIElement child && listening.Add(child))
                 {
-                    child.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(OnCharacter), true);
-                    child.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnKey), true);
+                    // Another open popup (a dialog the box is in) is listened to as well: only while the list is open.
+                    child.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>((s, e) =>
+                    {
+                        if (combo.IsDropDownOpen)
+                            OnCharacter(s, e);
+                    }), true);
+                    child.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((s, e) =>
+                    {
+                        if (combo.IsDropDownOpen)
+                            OnKey(s, e);
+                    }), true);
                 }
             }
         };
