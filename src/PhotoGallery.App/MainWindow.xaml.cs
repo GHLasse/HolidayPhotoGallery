@@ -92,6 +92,15 @@ public sealed partial class MainWindow : Window
         // exits at the first await, leaving ExifTool running and the app folder locked.
         Closed += (_, _) =>
         {
+            // The app must really end once its window is gone: a process left behind without a window kept the
+            // app's files open, so the next update's Setup could not replace them (code 5). If shutting down
+            // hangs (a background job holding the index, a stuck helper), it is ended after 10 seconds.
+            new Thread(() =>
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(10));
+                App.Trace("The app had not ended 10 s after its window closed; ending it.");
+                System.Diagnostics.Process.GetCurrentProcess().Kill();
+            }) { IsBackground = true, Name = "exit watchdog" }.Start();
             ViewModel.SaveLastPlace(CurrentPlace());
             ViewModel.Dispose();
         };
