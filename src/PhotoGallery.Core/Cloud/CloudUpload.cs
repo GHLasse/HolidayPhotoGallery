@@ -15,9 +15,14 @@ public static class CloudUpload
     /// up there, and added to; the caller keeps it.
     /// </param>
     /// <param name="intoAlbum">Without an album: an album already on the service to put the photos in, and its name.</param>
+    /// <param name="prepare">
+    /// Makes the copy to send for a photo (see <see cref="UploadPhoto.SendPath"/>), e.g. without its GPS position. The
+    /// copies are made batch by batch and deleted once the batch is up.
+    /// </param>
     public static async Task<UploadResult> UploadAsync(ICloudPhotos cloud, string? albumFolder, IReadOnlyList<UploadPhoto> photos,
         IProgress<UploadProgress>? progress = null, CancellationToken cancellationToken = default,
-        IDictionary<string, string>? looseUploads = null, (CloudAlbumLink Link, string Name)? intoAlbum = null)
+        IDictionary<string, string>? looseUploads = null, (CloudAlbumLink Link, string Name)? intoAlbum = null,
+        Func<UploadPhoto, CancellationToken, Task<UploadPhoto>>? prepare = null)
     {
         var info = albumFolder is null ? null : AlbumFile.Read(albumFolder) ?? new AlbumInfo();
         var link = albumFolder is null ? intoAlbum?.Link : info!.Link(cloud.Service);
@@ -39,7 +44,23 @@ public static class CloudUpload
         foreach (var chunk in todo.Chunk(cloud.BatchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var batch = await cloud.UploadBatchAsync(chunk, link, albumName, cancellationToken).ConfigureAwait(false);
+            var sent = chunk;
+            CloudBatch batch;
+            try
+            {
+                if (prepare is not null)
+                {
+                    sent = new UploadPhoto[chunk.Length];
+                    for (var i = 0; i < chunk.Length; i++)
+                        sent[i] = await prepare(chunk[i], cancellationToken).ConfigureAwait(false);
+                }
+                batch = await cloud.UploadBatchAsync(sent, link, albumName, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                foreach (var photo in sent)
+                    OutgoingCopies.Delete(photo);
+            }
             // The album is made with the first batch; the ids uploaded before stay with it.
             if (albumFolder is not null && batch.Album is { } album)
                 link = album with { Items = link?.Items ?? album.Items, Title = link?.Title ?? albumName };

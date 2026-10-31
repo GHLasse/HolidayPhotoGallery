@@ -1605,6 +1605,13 @@ public sealed partial class MainWindow : Window
             Header = Tr("Move to the next photo after rating it in the viewer (also after P and X)"),
             IsOn = ViewModel.AutoAdvance,
         };
+        var withoutGps = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Leave out the GPS position when uploading or sharing photos"),
+            IsOn = ViewModel.SendWithoutGps,
+        };
         var findPeople = new ToggleSwitch
         {
             OnContent = Tr("On"),
@@ -1746,7 +1753,24 @@ public sealed partial class MainWindow : Window
             Content = new StackPanel
             {
                 Spacing = 24,
-                Children = { GoogleSection(dialogClosed.Token), new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, OneDriveSection(dialogClosed.Token) },
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Spacing = 4,
+                        Children =
+                        {
+                            withoutGps,
+                            new TextBlock
+                            {
+                                Text = Tr("A copy without the position is sent; your photo keeps it. Place names, people and tags stay. Photos already in your OneDrive folder are linked as they are."),
+                                TextWrapping = TextWrapping.Wrap,
+                                Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+                            },
+                        },
+                    },
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    GoogleSection(dialogClosed.Token), new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, OneDriveSection(dialogClosed.Token) },
             },
         };
 
@@ -1945,6 +1969,7 @@ public sealed partial class MainWindow : Window
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
+        ViewModel.SaveSendWithoutGps(withoutGps.IsOn);
         ViewModel.SaveShowTips(tips.IsOn);
         // The search in the background needs the face models: ask for them now (Settings has closed), and
         // leave it off if they aren't wanted, so the setting never says on while nothing happens.

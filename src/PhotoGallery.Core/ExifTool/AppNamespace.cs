@@ -28,7 +28,8 @@ public static class AppNamespace
     /// <summary>Writes the config file (again, so it matches this version of the app) and returns its path.</summary>
     public static string WriteConfig()
     {
-        var folder = Path.Combine(Path.GetTempPath(), "HolidayPhotoGallery");
+        // ExifTool runs its config as Perl code, so it lives in the app's own data folder, not the temp folder.
+        var folder = Library.LibrarySettings.DefaultDataFolder;
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "exiftool.config");
         var temp = $"{path}.{Guid.NewGuid():N}";

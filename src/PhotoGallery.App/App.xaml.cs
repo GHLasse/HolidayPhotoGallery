@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using PhotoGallery.App.Native;
+using PhotoGallery.Core;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Localization;
 
@@ -66,7 +67,7 @@ public partial class App : Application
         try
         {
             lock (_logLock)
-                File.AppendAllText(ActivityLog, $"{DateTime.Now:HH:mm:ss.fff} {text}{Environment.NewLine}");
+                File.AppendAllText(ActivityLog, $"{DateTime.Now:HH:mm:ss.fff} {LogText.Redact(text)}{Environment.NewLine}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -80,7 +81,7 @@ public partial class App : Application
         {
             var log = Path.Combine(LibrarySettings.DefaultDataFolder, "crash.log");
             Directory.CreateDirectory(LibrarySettings.DefaultDataFolder);
-            File.AppendAllText(log, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {exception}{Environment.NewLine}{Environment.NewLine}");
+            File.AppendAllText(log, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {LogText.Redact(exception?.ToString() ?? "")}{Environment.NewLine}{Environment.NewLine}");
         }
         catch (IOException)
         {

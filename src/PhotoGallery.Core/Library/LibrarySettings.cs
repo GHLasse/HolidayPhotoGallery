@@ -138,6 +138,9 @@ public sealed class LibrarySettings
     /// <summary>The user's own Microsoft app registration, when they use one instead of the app's built-in one.</summary>
     public string? OneDriveClientId { get; set; }
 
+    /// <summary>Uploaded and shared photos leave without their GPS position (a copy is sent; the photo keeps it).</summary>
+    public bool SendWithoutGps { get; set; }
+
     /// <summary>The Microsoft account signed in, for display.</summary>
     public string? OneDriveAccount { get; set; }
 

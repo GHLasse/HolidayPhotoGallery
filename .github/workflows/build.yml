@@ -27,6 +27,10 @@ on:
         required: false
         default: ''
 
+# The token each job gets can only read the repository; the release job asks for more on its own.
+permissions:
+  contents: read
+
 concurrency:
   group: build-${{ github.event.pull_request.number || github.ref }}
   # A release (push to main) is never stopped halfway.
@@ -73,6 +77,15 @@ jobs:
           done
           [ -f "$dir/cats.jpg" ] || curl -sSfL --retry 3 -o "$dir/cats.jpg" http://images.cocodataset.org/val2017/000000039769.jpg
           ls -l "$dir"
+          # TEMPORARY (security review): the revision and file hashes to pin in TagModel.cs.
+          rev="$(curl -sSf https://huggingface.co/api/models/onnx-community/siglip2-base-patch16-224-ONNX/revision/main | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')"
+          echo "PIN revision $rev"
+          for sub in onnx ""; do
+            curl -sSf "https://huggingface.co/api/models/onnx-community/siglip2-base-patch16-224-ONNX/tree/$rev/$sub" | python3 -c 'import json,sys
+          for f in json.load(sys.stdin):
+              print("PIN", f["path"], f.get("size"), (f.get("lfs") or {}).get("oid"), f.get("oid"))' | grep -E "vision_model_fp16.onnx |text_model_fp16.onnx |tokenizer.model " || true
+          done
+          sha256sum "$dir"/vision_model_fp16.onnx "$dir"/text_model_fp16.onnx "$dir"/tokenizer.model | sed 's/^/PIN cached /'
           echo "PHOTOGALLERY_TAG_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Cache face models
         uses: actions/cache@v4

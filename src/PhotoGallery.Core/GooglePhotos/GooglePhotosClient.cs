@@ -60,7 +60,7 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                tokens.Add((i, await UploadAsync(photos[i].Path, cancellationToken).ConfigureAwait(false)));
+                tokens.Add((i, await UploadAsync(photos[i].Source, cancellationToken).ConfigureAwait(false)));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or GooglePhotosException)
             {

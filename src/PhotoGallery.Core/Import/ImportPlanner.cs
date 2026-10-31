@@ -72,20 +72,35 @@ public static partial class ImportPlanner
         foreach (var item in items.Where(i => IsImportable(i.Name)).OrderBy(i => i.Taken).ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase))
         {
             var folder = Path.Combine(destination, FolderFor(pattern, item.Taken, eventName));
-            var target = Path.Combine(folder, item.Name);
+            // The name comes from the phone or camera: only its last part, so it can't point into another folder.
+            if (SafeFileName(item.Name) is not { } name)
+            {
+                skipped++;
+                continue;
+            }
+            var target = Path.Combine(folder, name);
             if (alreadyHave(item.Name, item.Size) || SameFile(target, item.Size, fileExists))
             {
                 skipped++;
                 continue;
             }
-            var stem = Path.GetFileNameWithoutExtension(item.Name);
-            var ext = Path.GetExtension(item.Name);
+            var stem = Path.GetFileNameWithoutExtension(name);
+            var ext = Path.GetExtension(name);
             for (var n = 2; planned.Contains(target) || fileExists(target); n++)
                 target = Path.Combine(folder, $"{stem} ({n}){ext}");
             planned.Add(target);
             result.Add((item, target));
         }
         return (result, skipped);
+    }
+
+    /// <summary>The last part of a file name from a device, or null when nothing usable is left (".." and the like).</summary>
+    internal static string? SafeFileName(string name)
+    {
+        var last = name.Replace('\\', '/').Split('/').LastOrDefault()?.Trim() ?? "";
+        if (last.Trim('.').Length == 0 || last.IndexOfAny(['<', '>', ':', '"', '|', '?', '*', '\0']) >= 0)
+            return null;
+        return last;
     }
 
     // Copied before into the same place (e.g. a folder not in the library).

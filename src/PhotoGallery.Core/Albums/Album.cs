@@ -55,8 +55,9 @@ public sealed record Album
     {
         var info = AlbumFile.Read(folder) ?? new AlbumInfo();
         var summary = index.GetFolderSummary(folder);
-        var cover = info.Cover is { } relative ? Path.GetFullPath(Path.Combine(folder, relative)) : null;
-        if (cover is null || !File.Exists(cover))
+        var cover = CoverIn(folder, info.Cover);
+        // A private photo is no cover while private mode is off (the summary already leaves them out).
+        if (cover is null || !File.Exists(cover) || (!index.ShowPrivate && PrivateMarks.IsPrivate(cover)))
             cover = summary.FirstPhoto;
         return new Album
         {
@@ -71,6 +72,26 @@ public sealed record Album
             OneDriveUrl = info.OneDrive?.Url,
             OneDrivePhotoCount = info.OneDrive?.Items.Count ?? 0,
         };
+    }
+
+    /// <summary>
+    /// The cover's full path from the album file, or null. It must be inside the album folder: the file can be
+    /// written by anyone who made the folder, and must not show some other picture on the PC.
+    /// </summary>
+    internal static string? CoverIn(string folder, string? relative)
+    {
+        if (string.IsNullOrWhiteSpace(relative))
+            return null;
+        try
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+            var cover = Path.GetFullPath(Path.Combine(root, relative));
+            return cover.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ? cover : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
     }
 
     public static string DefaultName(string folder) =>
