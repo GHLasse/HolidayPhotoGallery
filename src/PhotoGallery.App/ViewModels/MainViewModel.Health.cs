@@ -138,6 +138,7 @@ public sealed partial class MainViewModel
                     break;
                 foreach (var (path, modified) in todo)
                 {
+                    ShowBackground("files", Tr("Checking files for damage…"));
                     while (IsBusy)
                         await Task.Delay(2000);
                     try
@@ -155,6 +156,7 @@ public sealed partial class MainViewModel
         }
         finally
         {
+            ShowBackground("files", null);
             _checkingFiles = false;
         }
 

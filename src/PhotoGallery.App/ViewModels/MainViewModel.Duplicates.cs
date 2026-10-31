@@ -165,6 +165,7 @@ public sealed partial class MainViewModel
                 var fresh = new List<(string, ulong?)>();
                 foreach (var path in todo)
                 {
+                    ShowBackground("hashes", Tr("Fingerprinting photos to find duplicates…"));
                     while (IsBusy || _findingDuplicates)
                         await Task.Delay(2000);
                     if (!_settings.FindDuplicatesAutomatically)
@@ -193,6 +194,7 @@ public sealed partial class MainViewModel
         }
         finally
         {
+            ShowBackground("hashes", null);
             _hashingInBackground = false;
         }
     }

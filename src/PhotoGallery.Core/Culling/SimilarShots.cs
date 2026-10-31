@@ -12,6 +12,27 @@ public sealed record ShotGroup(IReadOnlyList<IndexedPhoto> Photos)
               .First();
 }
 
+/// <summary>The user's change to a photo's stack of similar shots.</summary>
+public enum ShotMark
+{
+    None = 0,
+
+    /// <summary>The photo shown on top of its stack, instead of the sharpest.</summary>
+    Cover = 1,
+
+    /// <summary>Never part of a stack.</summary>
+    Out = 2,
+
+    /// <summary>A new stack starts with this photo.</summary>
+    Split = 3,
+
+    /// <summary>In a stack the user made (<see cref="ShotMarkRow.Stack"/>).</summary>
+    Joined = 4,
+}
+
+/// <summary>A photo's mark; <paramref name="Stack"/> names the stack the user made that it is in (a cover too).</summary>
+public readonly record struct ShotMarkRow(ShotMark Mark, string? Stack = null);
+
 /// <summary>
 /// Finds similar shots (C-4): photos taken one after another, a short time apart, that look alike. "Look
 /// alike" comes from the caller: the tagging model's picture vectors (L-7) when there are some, else the
@@ -55,7 +76,7 @@ public static class SimilarShots
                 var last = run[^1];
                 // Same camera clock: the folder's photos are compared as they were taken.
                 var apart = photo.DateTaken!.Value.Local - last.DateTaken!.Value.Local;
-                if (apart > gap || !alike(last, photo, apart))
+                if (apart > gap || !SameShape(last, photo) || !alike(last, photo, apart))
                 {
                     if (run.Count > 1)
                         groups.Add(new ShotGroup(run));
@@ -67,6 +88,42 @@ public static class SimilarShots
         if (run.Count > 1)
             groups.Add(new ShotGroup(run));
         return groups;
+    }
+
+    /// <summary>
+    /// As <see cref="Find(IEnumerable{IndexedPhoto}, Func{IndexedPhoto, IndexedPhoto, TimeSpan, bool}, TimeSpan?)"/>, with
+    /// the user's changes: photos taken out are left out (the shots around them stay together), a new stack
+    /// starts at a split, and the stacks the user made are kept as they are (in time order, rejected photos left
+    /// out). The groups come in time order.
+    /// </summary>
+    public static List<ShotGroup> Find(IEnumerable<IndexedPhoto> photos, Func<IndexedPhoto, IndexedPhoto, TimeSpan, bool> alike,
+                                       IReadOnlyDictionary<string, ShotMarkRow> marks, TimeSpan? maxGap = null)
+    {
+        var list = photos.ToList();
+        ShotMarkRow Mark(IndexedPhoto p) => marks.GetValueOrDefault(p.Path);
+        var found = Find(list.Where(p => Mark(p) is { Stack: null, Mark: not ShotMark.Out }),
+                         (a, b, apart) => Mark(b).Mark != ShotMark.Split && alike(a, b, apart), maxGap);
+        var made = list.Where(p => Mark(p).Stack is not null && !p.Rejected)
+                       .GroupBy(p => Mark(p).Stack!, StringComparer.Ordinal)
+                       .Where(g => g.Count() > 1)
+                       .Select(g => new ShotGroup(g.OrderBy(p => p.DateTaken?.Local ?? DateTime.MaxValue)
+                                                   .ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase).ToList()));
+        return found.Concat(made).OrderBy(g => g.Photos[0].DateTaken?.Local ?? DateTime.MaxValue).ToList();
+    }
+
+    /// <summary>The photo the user chose as the group's cover, if any.</summary>
+    public static IndexedPhoto? Cover(ShotGroup group, IReadOnlyDictionary<string, ShotMarkRow> marks) =>
+        group.Photos.FirstOrDefault(p => marks.GetValueOrDefault(p.Path).Mark == ShotMark.Cover);
+
+    /// <summary>
+    /// Whether two photos have about the same shape (long side to short side within 15 %): a panorama or a
+    /// square crop is never the same shot as a normal photo of the view. Unknown sizes count as the same.
+    /// </summary>
+    public static bool SameShape(IndexedPhoto a, IndexedPhoto b)
+    {
+        static double? Ratio(IndexedPhoto p) =>
+            p is { Width: > 0, Height: > 0 } ? (double)Math.Max(p.Width.Value, p.Height.Value) / Math.Min(p.Width.Value, p.Height.Value) : null;
+        return Ratio(a) is not { } x || Ratio(b) is not { } y || Math.Max(x, y) / Math.Min(x, y) <= 1.15;
     }
 
     /// <summary>

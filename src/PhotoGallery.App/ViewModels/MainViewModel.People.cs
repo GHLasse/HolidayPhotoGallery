@@ -293,9 +293,12 @@ public sealed partial class MainViewModel
                     .Where(p => !_facesNotFound.Contains(p.Path)).Take(Batch).ToList();
                 if (todo.Count == 0)
                     return;
+                var progress = await Task.Run(_index.GetFaceScanProgress);
                 var found = 0;
+                var n = 0;
                 foreach (var (path, orientation) in todo)
                 {
+                    ShowBackground("faces", Tr("Looking for faces: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     // What the user asked for goes first.
                     while (IsBusy)
                         await Task.Delay(2000);
@@ -325,6 +328,7 @@ public sealed partial class MainViewModel
         }
         finally
         {
+            ShowBackground("faces", null);
             _findingNewFaces = false;
         }
     }

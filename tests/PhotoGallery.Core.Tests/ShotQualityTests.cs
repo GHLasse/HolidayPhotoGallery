@@ -200,5 +200,49 @@ public sealed class ShotQualityTests : IDisposable
         Assert.Equal([a, c, e], stacked);
         Assert.Equal(shown, SimilarShots.Stack(shown, []));
     }
-}
 
+    [Fact]
+    public void Stacks_follow_the_users_changes_and_keep_them_in_the_index()
+    {
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        var photos = Enumerable.Range(1, 5).Select(i => Photo($"a{i}.jpg", t.AddSeconds(i))).ToList();
+        _index.Upsert(photos);
+        _index.SetShotMarks([(photos[1].Path, new(ShotMark.Out)), (photos[3].Path, new(ShotMark.Split)), (photos[4].Path, new(ShotMark.Cover))]);
+        var marks = _index.GetShotMarks();
+
+        var groups = SimilarShots.Find(photos, (_, _, _) => true, marks);
+        Assert.Equal([["a1.jpg", "a3.jpg"], ["a4.jpg", "a5.jpg"]], groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
+        Assert.Null(SimilarShots.Cover(groups[0], marks));
+        Assert.Equal("a5.jpg", SimilarShots.Cover(groups[1], marks)!.FileName);
+
+        _index.SetShotMarks([(photos[1].Path, new(ShotMark.None))]);
+        Assert.Equal(2, _index.GetShotMarks().Count);
+    }
+
+    [Fact]
+    public void A_stack_the_user_made_holds_photos_that_dont_look_alike()
+    {
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        var photos = new[] { Photo("a.jpg", t), Photo("b.jpg", t.AddSeconds(5)), Photo("c.jpg", t.AddSeconds(9)), Photo("d.jpg", t.AddHours(2)) };
+        _index.Upsert(photos);
+        _index.SetShotMarks([(photos[3].Path, new(ShotMark.Joined, "k")), (photos[0].Path, new(ShotMark.Cover, "k"))]);
+        var marks = _index.GetShotMarks();
+
+        // b and c look alike by themselves; a and d only belong together because the user said so.
+        var groups = SimilarShots.Find(photos, (x, y, _) => x.FileName != "a.jpg" && y.FileName != "a.jpg", marks);
+        Assert.Equal([["a.jpg", "d.jpg"], ["b.jpg", "c.jpg"]], groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
+        Assert.Equal("a.jpg", SimilarShots.Cover(groups[0], marks)!.FileName);
+    }
+
+    [Fact]
+    public void A_panorama_never_stacks_with_normal_photos()
+    {
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        var pano = Photo("pano.jpg", t) with { Width = 12000, Height = 2200 };
+        var a = Photo("a.jpg", t.AddSeconds(30)) with { Width = 4000, Height = 3000 };
+        var b = Photo("b.jpg", t.AddSeconds(40)) with { Width = 3000, Height = 4000 };
+        var c = Photo("c.jpg", t.AddSeconds(50));
+        var groups = SimilarShots.Find([pano, a, b, c], (_, _, _) => true);
+        Assert.Equal([["a.jpg", "b.jpg", "c.jpg"]], groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
+    }
+}

@@ -65,6 +65,7 @@ public sealed partial class MainWindow : Window
         CompareLayer.HintFor = ViewModel.QualityHintText;
         CompareLayer.IgnoreHintRequested += item => ViewModel.IgnoreQualityHintsAsync([item]);
         CompareLayer.GroupStepRequested += step => _ = StepShotGroupAsync(step);
+        CompareLayer.MenuItemsFor = StackMenuItems;
 
         MapView.AssignRequested += async (items, position) =>
         {
