@@ -284,6 +284,8 @@ public sealed partial class MainViewModel
             _settings.Save(SettingsPath);
             OnPropertyChanged();
             _ = SearchAsync();
+            if (value)
+                _ = FindDuplicatesInBackgroundAsync(); // the fingerprints stack shots without a picture vector
         }
     }
 

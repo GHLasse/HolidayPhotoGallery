@@ -131,6 +131,8 @@ public sealed partial class MainViewModel
     /// <summary>Whether new photos get their fingerprints in the background (Settings › App).</summary>
     public bool FindDuplicatesAutomatically => _settings.FindDuplicatesAutomatically;
 
+    private bool Fingerprinting => _settings.FindDuplicatesAutomatically || _settings.StackSimilarShots;
+
     public void SaveFindDuplicatesAutomatically(bool on)
     {
         if (on != _settings.FindDuplicatesAutomatically)
@@ -152,9 +154,11 @@ public sealed partial class MainViewModel
     /// </summary>
     public async Task FindDuplicatesInBackgroundAsync()
     {
-        if (_hashingInBackground || _findingDuplicates || !_settings.FindDuplicatesAutomatically)
+        // The fingerprints also stack similar shots that have no picture vector yet, so they are taken for either.
+        if (_hashingInBackground || _findingDuplicates || !Fingerprinting)
             return;
         _hashingInBackground = true;
+        var taken = 0;
         var unreadable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
@@ -171,7 +175,7 @@ public sealed partial class MainViewModel
                     ShowBackground("hashes", Tr("Fingerprinting photos to find duplicates…"));
                     while (IsBusy || _findingDuplicates)
                         await Task.Delay(2000);
-                    if (!_settings.FindDuplicatesAutomatically)
+                    if (!Fingerprinting)
                         return;
                     if (!File.Exists(path))
                     {
@@ -181,7 +185,14 @@ public sealed partial class MainViewModel
                     fresh.Add((path, await Task.Run(() => HashOf(path))));
                 }
                 await Task.Run(() => _index.SavePictureHashes(fresh));
+                taken += fresh.Count;
             }
+            // The new fingerprints stack the shots shown now (after all fingerprints were taken again, the stacks
+            // come back here, or with the next search).
+            if (taken > 0 && StackSimilarShots && AllShown.Count > 1)
+                _ = RestackAsync(_searchVersion, AllShown.ToList());
+            if (!_settings.FindDuplicatesAutomatically)
+                return;
 
             while (IsBusy || _findingDuplicates)
                 await Task.Delay(2000);
