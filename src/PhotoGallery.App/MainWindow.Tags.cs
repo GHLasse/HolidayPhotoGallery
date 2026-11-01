@@ -105,7 +105,39 @@ public sealed partial class MainWindow
         list = [];
         box.ItemsSource = list;
         _suggestions.Add(box, list);
+        NoTextPrediction(box);
         return list;
+    }
+
+    /// <summary>
+    /// Turns off Windows' own word suggestions (and spell check) in a box with the app's suggestions: its row of
+    /// guessed words ("Normandy", "Normanby") opens right over the app's list of names and tags.
+    /// </summary>
+    private static void NoTextPrediction(AutoSuggestBox box)
+    {
+        void Apply()
+        {
+            if (FindChild<TextBox>(box) is { } text)
+            {
+                text.IsTextPredictionEnabled = false;
+                text.IsSpellCheckEnabled = false;
+            }
+        }
+        box.Loaded += (_, _) => Apply();
+        Apply();
+    }
+
+    private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T found)
+                return found;
+            if (FindChild<T>(child) is { } deeper)
+                return deeper;
+        }
+        return null;
     }
 
     private void TagBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>

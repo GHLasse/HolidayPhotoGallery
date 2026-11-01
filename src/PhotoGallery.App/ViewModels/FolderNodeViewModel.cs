@@ -72,6 +72,49 @@ public sealed class FolderNodeViewModel : ObservableObject
             child.LoadChildren();
     }
 
+    /// <summary>
+    /// Lists the folder's subfolders again where they were listed: new ones (an import, a rescan) join in
+    /// order, gone ones leave. The nodes that stay are kept, so what is open stays open.
+    /// </summary>
+    public void Refresh()
+    {
+        if (!_childrenLoaded)
+            return;
+        List<string> dirs;
+        try
+        {
+            dirs = EnumerateSubfolders(FullPath).Where(d => ShowPrivate || !PrivateMarks.IsMarked(d)).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return; // a drive that is gone: the tree stays as it was
+        }
+        var wanted = new HashSet<string>(dirs, StringComparer.OrdinalIgnoreCase);
+        for (var i = Children.Count - 1; i >= 0; i--)
+            if (!wanted.Contains(Children[i].FullPath))
+                Children.RemoveAt(i);
+        for (var i = 0; i < dirs.Count; i++)
+        {
+            if (i < Children.Count && string.Equals(Children[i].FullPath, dirs[i], StringComparison.OrdinalIgnoreCase))
+                continue;
+            var at = -1;
+            for (var j = i + 1; j < Children.Count; j++)
+                if (string.Equals(Children[j].FullPath, dirs[i], StringComparison.OrdinalIgnoreCase))
+                    at = j;
+            if (at >= 0)
+                Children.Move(at, i);
+            else
+            {
+                var node = new FolderNodeViewModel(dirs[i], isRoot: false);
+                if (_childrenLoaded && Children.Any(c => c._childrenLoaded))
+                    node.LoadChildren(); // for its arrow, like its brothers and sisters
+                Children.Insert(i, node);
+            }
+        }
+        foreach (var child in Children)
+            child.Refresh();
+    }
+
     private void LoadChildren()
     {
         if (_childrenLoaded)

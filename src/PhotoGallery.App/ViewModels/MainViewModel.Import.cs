@@ -269,6 +269,7 @@ public sealed partial class MainViewModel
             await IndexImportedAsync(imported);
         if (tags.Count > 0)
             await TagImportedAsync(imported, tags);
+        RefreshFolderTree();
         Inform(Tr("Imported {0} into {1}.", PhotoCount(imported.Count), destination));
         SelectedFolder = new FolderNodeViewModel(Path.GetDirectoryName(imported[0])!, isRoot: false);
     }

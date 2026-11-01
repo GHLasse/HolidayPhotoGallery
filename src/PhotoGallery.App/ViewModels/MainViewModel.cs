@@ -80,6 +80,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<FolderNodeViewModel> Folders { get; } = [];
 
+    /// <summary>Lists the library's subfolders again, so folders made by an import or outside the app show.</summary>
+    public void RefreshFolderTree()
+    {
+        foreach (var root in Folders)
+            root.Refresh();
+    }
+
     public ObservableCollection<TagFilterViewModel> Tags { get; } = [];
 
     /// <summary>"All cameras" followed by the cameras in the current folder.</summary>
@@ -566,6 +573,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+        RefreshFolderTree();
         App.Trace($"Rescan of {folders.Count} folder(s): {read} new or changed, {removed} removed");
         if (report)
             Inform(read == 0 && removed == 0 ? Tr("No new, changed or deleted photos found.")

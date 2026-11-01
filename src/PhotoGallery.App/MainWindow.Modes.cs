@@ -326,6 +326,43 @@ public sealed partial class MainWindow
         }
         button.Click += (_, _) => Open();
         button.Tag = (Action)Open; // for Enter in the search box
+        var rename = new MenuFlyoutItem { Text = Tr("Rename…"), Icon = new FontIcon { Glyph = "\uE8AC" } };
+        rename.Click += (_, _) => _ = RenamePersonAsync(person.Tag);
+        button.ContextFlyout = new MenuFlyout { Items = { rename } };
         return button;
+    }
+
+    /// <summary>Asks for a person's new name and renames them in every photo; a name already used merges the two.</summary>
+    private async Task RenamePersonAsync(string name)
+    {
+        var box = NameBox(_ => Task.CompletedTask);
+        box.Header = Tr("New name");
+        box.Text = name;
+        var note = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+        ContentDialog? dialog = null;
+        void Check()
+        {
+            var to = box.Text.Trim();
+            var other = ViewModel.KnownNames.FirstOrDefault(n => string.Equals(n, to, StringComparison.CurrentCultureIgnoreCase) &&
+                                                                 !string.Equals(n, name, StringComparison.CurrentCultureIgnoreCase));
+            note.Text = other is null ? Tr("The name is changed in every photo of {0}.", name)
+                                      : Tr("{0} is already in your library: the photos of both are joined under that name.", other);
+            if (dialog is not null)
+                dialog.IsPrimaryButtonEnabled = to.Length > 0 && !string.Equals(to, name, StringComparison.Ordinal);
+        }
+        box.TextChanged += (_, _) => Check();
+        dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Rename {0}", name),
+            Content = new StackPanel { Spacing = 8, MinWidth = 320, Children = { box, note } },
+            PrimaryButtonText = Tr("Rename"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        Check();
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return;
+        await ViewModel.RenamePersonAsync(name, box.Text);
     }
 }
