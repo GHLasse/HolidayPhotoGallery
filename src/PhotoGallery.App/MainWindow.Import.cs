@@ -66,7 +66,7 @@ public sealed partial class MainWindow
         var kindsPanel = new StackPanel { Spacing = 0, Visibility = Visibility.Collapsed };
         var fromDate = new CalendarDatePicker { Header = Tr("Taken from"), PlaceholderText = Tr("Any day") };
         var toDate = new CalendarDatePicker { Header = Tr("to"), PlaceholderText = Tr("Any day") };
-        var dates = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Visibility = Visibility.Collapsed, Children = { fromDate, toDate } };
+        var dates = new StackPanel { Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 12, Visibility = Visibility.Collapsed, Children = { fromDate, toDate } };
 
         List<ImportItem> items = [];
         List<(ImportItem Item, string Target)> plan = [];
