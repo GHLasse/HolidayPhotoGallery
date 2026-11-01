@@ -176,12 +176,16 @@ public sealed partial class MainViewModel
                 if (delete)
                     await ShellDevices.DeleteAsync(file);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or ArgumentException or InvalidCastException)
             {
+                App.Trace($"import {item.Name}: {ex.GetType().Name}: {ex.Message}");
                 failures.Add($"{item.Name}: {ex.Message}");
                 try
                 {
                     File.Delete(Path.Combine(folder, temp));
+                    // A dated folder made for photos that then didn't come isn't left behind empty.
+                    if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any())
+                        Directory.Delete(folder);
                 }
                 catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
                 {

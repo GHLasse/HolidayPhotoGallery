@@ -286,19 +286,39 @@ internal sealed class ImportPreview
             Microsoft.UI.Xaml.Media.ImageSource? source = null;
             if (item.Handle is Windows.Media.Import.PhotoImportItem device)
             {
-                var picture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
-                await picture.SetSourceAsync(await device.Thumbnail.OpenReadAsync());
-                source = picture;
+                // Read whole into memory first: a BitmapImage decoding a stream later, after it closed, crashed WinUI.
+                using var stream = await device.Thumbnail.OpenReadAsync();
+                var bytes = new byte[stream.Size];
+                await stream.AsStreamForRead().ReadExactlyAsync(bytes);
+                source = await PhotoGallery.App.Imaging.ImageLoader.FromEncodedAsync(bytes);
             }
-            else if ((item.SourcePath ?? item.Handle as string) is { } where &&
-                     await PhotoGallery.App.Native.ShellDevices.ThumbnailAsync(where, 192) is { } thumb)
+            else if ((item.SourcePath ?? item.Handle as string) is { } where)
             {
-                source = await PhotoGallery.App.Imaging.ImageLoader.ToImageSourceAsync(new PhotoGallery.App.Imaging.DecodedImage(thumb.Pixels, thumb.Width, thumb.Height));
+                // The picture Explorer shows; a phone over the cable often has none to hand out, so then the
+                // photo itself is fetched into a temporary file and made small here.
+                if (await PhotoGallery.App.Native.ShellDevices.ThumbnailAsync(where, 192) is { } thumb)
+                    source = await PhotoGallery.App.Imaging.ImageLoader.ToImageSourceAsync(new PhotoGallery.App.Imaging.DecodedImage(thumb.Pixels, thumb.Width, thumb.Height));
+                else if (item.SourcePath is { } path)
+                    source = await PhotoGallery.App.Imaging.ImageLoader.DecodeAsync(path, 192);
+                else
+                {
+                    var temp = Path.Combine(Path.GetTempPath(), "HolidayPhotoGallery-preview-" + Guid.NewGuid().ToString("N") + Path.GetExtension(item.Name));
+                    try
+                    {
+                        await PhotoGallery.App.Native.ShellDevices.CopyAsync(where, temp);
+                        source = await PhotoGallery.App.Imaging.ImageLoader.DecodeAsync(temp, 192);
+                    }
+                    finally
+                    {
+                        try { File.Delete(temp); } catch (IOException) { }
+                    }
+                }
             }
+            App.Trace($"import preview {item.Name}: {(source is null ? "none" : "shown")}");
             if (ReferenceEquals(item, _shown))
                 _image.Source = source;
         }
-        catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException or InvalidCastException or NotSupportedException)
         {
             App.Trace($"import preview {item.Name}: {ex.Message}");
         }

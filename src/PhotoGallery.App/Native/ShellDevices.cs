@@ -119,7 +119,8 @@ internal static class ShellDevices
         var askTaken = 20;
         void Walk(IShellItem folder, string path, int depth)
         {
-            foreach (var item in Children(folder))
+            // Streamed, so the count starts with the first files of a big folder (DCIM/Camera with thousands).
+            foreach (var item in Each(folder))
             {
                 cancel.ThrowIfCancellationRequested();
                 item.GetAttributes(SFGAO_FOLDER | SFGAO_STREAM, out var attributes);
@@ -141,7 +142,7 @@ internal static class ShellDevices
                         askTaken = taken is null ? askTaken - 1 : 20;
                     }
                     taken ??= TryTime(file, PKEY_DateModified) ?? TryTime(file, PKEY_DateCreated) ?? DateTime.Now;
-                    files.Add(new DeviceFile(name, (long)(size ?? 0), taken.Value, Name(item, SIGDN_DESKTOPABSOLUTEPARSING), path));
+                    files.Add(new DeviceFile(name, (long)(size ?? 0), taken.Value, IdOf(item), path));
                     if (files.Count % 50 == 0)
                         found?.Invoke(files.Count);
                 }
@@ -171,7 +172,15 @@ internal static class ShellDevices
     public static Task<(byte[] Pixels, int Width, int Height)?> ThumbnailAsync(string item, int size) => OnSta<(byte[], int, int)?>(() =>
     {
         Guid iid = IID_IShellItemImageFactory;
-        var factory = (IShellItemImageFactory)SHCreateItemFromParsingName(item, IntPtr.Zero, ref iid);
+        IShellItemImageFactory factory;
+        try
+        {
+            factory = (IShellItemImageFactory)Resolve(item, iid);
+        }
+        catch (Exception ex) when (ex is COMException or InvalidCastException)
+        {
+            return null; // then the photo itself is read
+        }
         IntPtr bitmap = IntPtr.Zero;
         try
         {
@@ -290,27 +299,70 @@ internal static class ShellDevices
         return done.Task;
     }
 
-    private static IShellItem Parse(string parsingName)
+    private static IShellItem Parse(string parsingName) => (IShellItem)Resolve(parsingName, IID_IShellItem);
+
+    // A file on a phone can't always be found again by its parsing name (Windows answers "invalid argument"),
+    // so it is kept by its item ID list, written as "pidl:" and the list in Base64, as Explorer keeps it.
+    private const string IdPrefix = "pidl:";
+
+    private static object Resolve(string item, Guid iid)
     {
-        Guid iid = IID_IShellItem;
-        return (IShellItem)SHCreateItemFromParsingName(parsingName, IntPtr.Zero, ref iid);
+        if (!item.StartsWith(IdPrefix, StringComparison.Ordinal))
+            return SHCreateItemFromParsingName(item, IntPtr.Zero, ref iid);
+        var bytes = Convert.FromBase64String(item[IdPrefix.Length..]);
+        var list = Marshal.AllocCoTaskMem(bytes.Length);
+        try
+        {
+            Marshal.Copy(bytes, 0, list, bytes.Length);
+            SHCreateItemFromIDList(list, ref iid, out var result);
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(list);
+        }
     }
 
-    private static List<IShellItem> Children(IShellItem folder)
+    private static string IdOf(IShellItem item)
     {
-        var result = new List<IShellItem>();
+        SHGetIDListFromObject(item, out var list);
+        try
+        {
+            var bytes = new byte[ILGetSize(list)];
+            Marshal.Copy(list, bytes, 0, bytes.Length);
+            return IdPrefix + Convert.ToBase64String(bytes);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(list);
+        }
+    }
+
+    /// <summary>The items in a folder as the device hands them over, many per call (each call is a round trip over the cable).</summary>
+    private static IEnumerable<IShellItem> Each(IShellItem folder)
+    {
         Guid bind = BHID_EnumItems, iid = IID_IEnumShellItems;
         folder.BindToHandler(IntPtr.Zero, ref bind, ref iid, out var enumObject);
         var items = (IEnumShellItems)enumObject;
-        int hr;
-        while ((hr = items.Next(1, out var item, out var fetched)) == 0 && fetched == 1)
-            result.Add(item);
-        // A phone unplugged or switched to another USB mode midway fails here: stop rather than go on folder
-        // after folder, each failing again.
-        if (hr < 0)
-            Marshal.ThrowExceptionForHR(hr);
-        return result;
+        var batch = new IShellItem[64];
+        while (true)
+        {
+            var hr = items.Next((uint)batch.Length, batch, out var fetched);
+            if (hr < 0)
+                Marshal.ThrowExceptionForHR(hr);
+            for (var i = 0; i < fetched; i++)
+            {
+                yield return batch[i];
+                batch[i] = null!;
+            }
+            if (hr != 0 || fetched == 0)
+                yield break;
+        }
     }
+
+    // A phone unplugged or switched to another USB mode midway fails in Each: it stops rather than going on folder
+    // after folder, each failing again.
+    private static List<IShellItem> Children(IShellItem folder) => Each(folder).ToList();
 
     private static string Name(IShellItem item, uint form)
     {
@@ -456,6 +508,12 @@ internal static class ShellDevices
                                                     [MarshalAs(UnmanagedType.Interface)] out object item);
 
     [DllImport("shell32.dll", PreserveSig = false)]
+    private static extern void SHGetIDListFromObject([MarshalAs(UnmanagedType.IUnknown)] object item, out IntPtr list);
+
+    [DllImport("shell32.dll")]
+    private static extern uint ILGetSize(IntPtr list);
+
+    [DllImport("shell32.dll", PreserveSig = false)]
     private static extern void SHCreateItemFromIDList(IntPtr idList, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out object item);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
@@ -499,7 +557,7 @@ internal static class ShellDevices
     private interface IEnumShellItems
     {
         [PreserveSig]
-        int Next(uint count, out IShellItem item, out uint fetched);
+        int Next(uint count, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] IShellItem[] items, out uint fetched);
         void Skip(uint count);
         void Reset();
         void Clone(out IEnumShellItems copy);
