@@ -640,6 +640,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _switchingFolder = false; // before the photos change, so "no photos match" can show for an empty result
         MatchShares = shares; // before the photos, which the grid groups by it
         var items = photos.Select(NewPhotoItem).ToList();
+        // The tiles' quality hint icons: at once when the hints are loaded, else as soon as they are.
+        if (_qualities is { } qualities)
+            ShowQualityHints(items, qualities);
+        else
+            _ = ShowQualityHintsAsync(items);
         // Similar shots stacked before the photos show, when that is quick; else right after.
         var stacked = _vectors is not null ? await StackShotsAsync(version, items) : null;
         if (version != _searchVersion)

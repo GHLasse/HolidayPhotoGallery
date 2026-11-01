@@ -38,6 +38,17 @@
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
             </Style>
+            <!-- A quality hint's icon (C-4) on a tile or in the viewer: a caution colour on its pale background. -->
+            <Style x:Key="QualityHintButton" TargetType="Button">
+                <Setter Property="Padding" Value="4" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorCautionBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}" />
+            </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -741,6 +752,26 @@
                                     <TextBlock Text="{x:Bind DurationText, Mode=OneWay}" FontSize="11" />
                                 </StackPanel>
                             </Border>
+                            <!-- Quality hints (C-4): a small warning icon per check (blurry, too dark, too bright), on the picture's
+                                 lower left corner (videos, which show their length there, have none). Hidden once the photo
+                                 is rated, flagged or rejected, or the hints were ignored; a click offers Ignore. -->
+                            <StackPanel HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,32" Orientation="Horizontal" Spacing="3"
+                                        Visibility="{x:Bind QualityHintsVisibility, Mode=OneWay}">
+                                <Button Click="TileQualityHint_Click" Style="{StaticResource QualityHintButton}"
+                                        Visibility="{x:Bind BlurryHintVisibility, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind BlurryHintTip, Mode=OneWay}">
+                                    <Viewbox Width="12" Height="12">
+                                        <PathIcon Foreground="{ThemeResource SystemFillColorCautionBrush}" Data="F1 M2,10 A5,5 0 1 1 12,10 A5,5 0 1 1 2,10 Z M3.4,10 A3.6,3.6 0 1 0 10.6,10 A3.6,3.6 0 1 0 3.4,10 Z M8,10 A5,5 0 1 1 18,10 A5,5 0 1 1 8,10 Z M9.4,10 A3.6,3.6 0 1 0 16.6,10 A3.6,3.6 0 1 0 9.4,10 Z" />
+                                    </Viewbox>
+                                </Button>
+                                <Button Click="TileQualityHint_Click" Style="{StaticResource QualityHintButton}"
+                                        Visibility="{x:Bind DarkHintVisibility, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind DarkHintTip}">
+                                    <FontIcon Glyph="&#xE708;" FontSize="12" Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                                </Button>
+                                <Button Click="TileQualityHint_Click" Style="{StaticResource QualityHintButton}"
+                                        Visibility="{x:Bind BrightHintVisibility, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind BrightHintTip}">
+                                    <FontIcon Glyph="&#xE706;" FontSize="12" Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                                </Button>
+                            </StackPanel>
                             <!-- One of a group of similar shots (C-4): the number in the group; opens them in Compare. The
                                  sharpest one's badge is coloured; with stacking on it is the one shown. -->
                             <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,32" Padding="5,2" MinHeight="0" MinWidth="0"
@@ -1312,8 +1343,16 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <!-- One line: the style wraps, and a narrow window then stacked the name a letter per line (Lasse, 2026-10-27). -->
-                <TextBlock x:Name="ViewerTitle" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}"
-                           TextWrapping="NoWrap" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <!-- The photo's quality hint icons (C-4), as on its tile, before its name; filled by UpdateViewerHints. -->
+                    <StackPanel x:Name="ViewerHints" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" />
+                    <TextBlock x:Name="ViewerTitle" Grid.Column="1" VerticalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}"
+                               TextWrapping="NoWrap" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                </Grid>
                 <!-- The buttons drop their labels when the window is too narrow, then leave the bar one by one; More actions and Close always stay (FitViewerToolbar). -->
                 <StackPanel x:Name="ViewerTools" Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                     <Button x:Name="ViewerRotateLeftButton" Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">

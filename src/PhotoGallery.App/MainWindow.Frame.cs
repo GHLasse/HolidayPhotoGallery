@@ -520,6 +520,22 @@ public sealed partial class MainWindow
             await GoThroughSimilarShotsAsync(item);
     }
 
+    // A quality hint's icon offers to ignore the hints for this photo (C-4); the tooltip says what it means.
+    private void TileQualityHint_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: PhotoItemViewModel item } button)
+            return;
+        var ignore = new MenuFlyoutItem
+        {
+            Text = Tr("Ignore quality hints for this photo"),
+            Icon = new FontIcon { Glyph = "\uE7BA" },
+        };
+        ignore.Click += async (_, _) => await ViewModel.IgnoreQualityHintsAsync([item]);
+        var menu = new MenuFlyout();
+        menu.Items.Add(ignore);
+        menu.ShowAt(button);
+    }
+
     private async void TileFlag_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is PhotoItemViewModel item)
