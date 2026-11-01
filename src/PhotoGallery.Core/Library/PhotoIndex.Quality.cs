@@ -19,7 +19,7 @@ public sealed partial class PhotoIndex
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                SELECT p.path, q.sharpness, q.face_sharpness, q.brightness, q.dark_share, q.bright_share, q.hints, q.ignored
+                SELECT p.path, q.sharpness, q.face_sharpness, q.brightness, q.dark_share, q.bright_share, q.hints, q.ignored, q.bright_end
                 FROM shot_quality q JOIN photos p ON p.id = q.photo_id;
                 """;
             var result = new Dictionary<string, ShotQualityRow>(StringComparer.OrdinalIgnoreCase);
@@ -27,7 +27,8 @@ public sealed partial class PhotoIndex
             while (r.Read())
             {
                 var measure = new QualityMeasure((float)r.GetDouble(1), r.IsDBNull(2) ? null : (float)r.GetDouble(2),
-                                                 (float)r.GetDouble(3), (float)r.GetDouble(4), (float)r.GetDouble(5));
+                                                 (float)r.GetDouble(3), (float)r.GetDouble(4), (float)r.GetDouble(5),
+                                                 r.IsDBNull(8) ? null : (float)r.GetDouble(8));
                 result[r.GetString(0)] = new ShotQualityRow(measure, (QualityHint)r.GetInt32(6), r.GetInt32(7) != 0);
             }
             return result;
@@ -43,11 +44,11 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = """
-                INSERT INTO shot_quality (photo_id, sharpness, face_sharpness, brightness, dark_share, bright_share, hints)
-                SELECT id, $sharpness, $face, $brightness, $dark, $bright, $hints FROM main.photos WHERE path = $path
+                INSERT INTO shot_quality (photo_id, sharpness, face_sharpness, brightness, dark_share, bright_share, hints, bright_end)
+                SELECT id, $sharpness, $face, $brightness, $dark, $bright, $hints, $end FROM main.photos WHERE path = $path
                 ON CONFLICT (photo_id) DO UPDATE SET sharpness = excluded.sharpness, face_sharpness = excluded.face_sharpness,
                     brightness = excluded.brightness, dark_share = excluded.dark_share, bright_share = excluded.bright_share,
-                    hints = excluded.hints;
+                    hints = excluded.hints, bright_end = excluded.bright_end;
                 """;
             var path = cmd.Parameters.Add("$path", Microsoft.Data.Sqlite.SqliteType.Text);
             var sharpness = cmd.Parameters.Add("$sharpness", Microsoft.Data.Sqlite.SqliteType.Real);
@@ -56,6 +57,7 @@ public sealed partial class PhotoIndex
             var dark = cmd.Parameters.Add("$dark", Microsoft.Data.Sqlite.SqliteType.Real);
             var bright = cmd.Parameters.Add("$bright", Microsoft.Data.Sqlite.SqliteType.Real);
             var hints = cmd.Parameters.Add("$hints", Microsoft.Data.Sqlite.SqliteType.Integer);
+            var end = cmd.Parameters.Add("$end", Microsoft.Data.Sqlite.SqliteType.Real);
             foreach (var (p, m) in measured)
             {
                 path.Value = p;
@@ -65,6 +67,7 @@ public sealed partial class PhotoIndex
                 dark.Value = (double)m.DarkShare;
                 bright.Value = (double)m.BrightShare;
                 hints.Value = (int)ShotQuality.Hints(m);
+                end.Value = m.BrightEnd is { } e ? (double)e : DBNull.Value;
                 cmd.ExecuteNonQuery();
             }
             tx.Commit();
@@ -110,7 +113,10 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 SELECT p.path, p.orientation FROM main.photos p
-                WHERE p.video = 0 AND NOT EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id)
+                WHERE p.video = 0 AND (NOT EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id)
+                    -- Dark photos measured before the brightest part was kept are measured again for it.
+                    OR EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id AND q.bright_end IS NULL
+                               AND q.brightness < 50 AND q.ignored = 0 AND q.hints = 0))
                 ORDER BY p.id DESC LIMIT $limit;
                 """;
             cmd.Parameters.AddWithValue("$limit", limit);

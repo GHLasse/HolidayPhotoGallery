@@ -15,9 +15,11 @@ public enum QualityHint
 
 /// <summary>
 /// What was measured on a photo (C-4): how sharp its sharpest part is, how sharp its faces are (null without
-/// faces), its mean brightness (0 to 255) and the share of nearly black and nearly white pixels.
+/// faces), its mean brightness (0 to 255) and the share of nearly black and nearly white pixels, and the
+/// brightness of its brightest 1 % (<see cref="BrightEnd"/>; null when measured before it was kept).
 /// </summary>
-public sealed record QualityMeasure(float Sharpness, float? FaceSharpness, float Brightness, float DarkShare, float BrightShare)
+public sealed record QualityMeasure(float Sharpness, float? FaceSharpness, float Brightness, float DarkShare, float BrightShare,
+                                    float? BrightEnd = null)
 {
     /// <summary>The sharpness that counts: the faces' when there are faces, as a blurred face spoils a photo.</summary>
     public float Judged => FaceSharpness ?? Sharpness;
@@ -40,6 +42,9 @@ public static class ShotQuality
 
     /// <summary>Faces are smooth by nature, so they need less detail to count as sharp.</summary>
     public const float BlurryFaceBelow = 12;
+
+    /// <summary>A photo whose brightest 1 % stays below this (of 255) is too dark.</summary>
+    public const float DimBelow = 80;
 
     private const int Grid = 6;
 
@@ -69,9 +74,11 @@ public static class ShotQuality
 
         long sum = 0;
         int dark = 0, bright = 0;
+        var histogram = new int[256];
         foreach (var v in grey)
         {
             sum += v;
+            histogram[v]++;
             if (v < 16)
                 dark++;
             else if (v > 245)
@@ -106,7 +113,17 @@ public static class ShotQuality
             faceSharpness = Math.Max(faceSharpness ?? 0, value);
         }
 
-        return new QualityMeasure(sharpness, faceSharpness, (float)sum / count, (float)dark / count, (float)bright / count);
+        // The level only the brightest 1 % of the picture reach.
+        var top = 0;
+        var level = 255;
+        for (; level > 0; level--)
+        {
+            top += histogram[level];
+            if (top >= count / 100.0)
+                break;
+        }
+
+        return new QualityMeasure(sharpness, faceSharpness, (float)sum / count, (float)dark / count, (float)bright / count, level);
     }
 
     /// <summary>The hints a measure gives: possibly blurry, too dark, too bright.</summary>
@@ -117,6 +134,10 @@ public static class ShotQuality
             hints |= QualityHint.Blurry;
         // Night shots and snow are dark or bright on purpose; only call it when most of the picture is lost.
         if (m.Brightness < 20 && m.DarkShare > 0.75)
+            hints |= QualityHint.TooDark;
+        // Nothing in the picture gets even half bright: not a night scene (its lights are bright), just too dark,
+        // however much the sensor's noise in it looks like detail.
+        if (m.BrightEnd is { } end && end < DimBelow && m.Brightness < 50)
             hints |= QualityHint.TooDark;
         if (m.Brightness > 230 && m.BrightShare > 0.5)
             hints |= QualityHint.TooBright;

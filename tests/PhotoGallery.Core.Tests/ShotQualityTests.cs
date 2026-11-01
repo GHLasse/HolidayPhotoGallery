@@ -75,6 +75,29 @@ public sealed class ShotQualityTests : IDisposable
     }
 
     [Fact]
+    public void A_dim_noisy_photo_is_too_dark_but_a_night_scene_with_lights_is_not()
+    {
+        // Sensor noise around a dark grey: the noise looks sharp, but nothing gets even half bright.
+        var dim = Measure(Detailed(around: 25, spread: 20), []);
+        Assert.True(dim.DarkShare < 0.75);
+        Assert.Equal(QualityHint.TooDark, ShotQuality.Hints(dim));
+        // The same with a few street lights: a night scene.
+        var lit = Detailed(around: 25, spread: 20).Draw(Detailed(60, 60, seed: 4, around: 230, spread: 20), 100, 100)
+                                                   .Draw(Detailed(60, 60, seed: 5, around: 230, spread: 20), 500, 300);
+        Assert.Equal(QualityHint.None, ShotQuality.Hints(Measure(lit, [])));
+    }
+
+    [Fact]
+    public void Dark_photos_measured_before_the_brightest_part_was_kept_are_measured_again()
+    {
+        _index.Upsert([Photo("dark.jpg", null)]);
+        _index.SaveShotQuality([("/photos/dark.jpg", new QualityMeasure(200, null, 25, 0.4f, 0))]);
+        Assert.Single(_index.GetNotQualityChecked(10));
+        _index.SaveShotQuality([("/photos/dark.jpg", new QualityMeasure(200, null, 25, 0.4f, 0, 60))]);
+        Assert.Empty(_index.GetNotQualityChecked(10));
+    }
+
+    [Fact]
     public void Large_photos_are_measured_at_the_same_size()
     {
         var large = Detailed(2048, 1536);
