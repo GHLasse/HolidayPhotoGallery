@@ -172,7 +172,15 @@ internal static class ShellDevices
     public static Task<(byte[] Pixels, int Width, int Height)?> ThumbnailAsync(string item, int size) => OnSta<(byte[], int, int)?>(() =>
     {
         Guid iid = IID_IShellItemImageFactory;
-        var factory = (IShellItemImageFactory)SHCreateItemFromParsingName(item, IntPtr.Zero, ref iid);
+        IShellItemImageFactory factory;
+        try
+        {
+            factory = (IShellItemImageFactory)SHCreateItemFromParsingName(item, IntPtr.Zero, ref iid);
+        }
+        catch (Exception ex) when (ex is COMException or InvalidCastException)
+        {
+            return null; // then the photo itself is read
+        }
         IntPtr bitmap = IntPtr.Zero;
         try
         {
