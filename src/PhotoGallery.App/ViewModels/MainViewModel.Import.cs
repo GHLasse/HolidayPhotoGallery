@@ -134,8 +134,8 @@ public sealed partial class MainViewModel
     // The folders on a phone that hold photos, in each of its storages ("Internal shared storage", a card).
     private static readonly string[] PhoneFolders = ["DCIM", "Pictures", "Movies"];
 
-    private static async Task<List<ImportItem>> ListPortableItemsAsync(string device, CancellationToken cancel) =>
-        (await ShellDevices.ListFilesAsync(device, PhoneFolders, ImportPlanner.IsImportable, cancel))
+    private static async Task<List<ImportItem>> ListPortableItemsAsync(string device, CancellationToken cancel, Action<int>? found) =>
+        (await ShellDevices.ListFilesAsync(device, PhoneFolders, ImportPlanner.IsImportable, cancel, found))
             .Select(f => new ImportItem(f.Name, f.Size, f.Taken) { Handle = f.ParsingName, Folder = f.Folder })
             .ToList();
 
@@ -184,18 +184,19 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>The photos and videos on the source.</summary>
-    public async Task<List<ImportItem>> ListImportItemsAsync(ImportSourceChoice source, CancellationToken cancel = default)
+    /// <summary>The photos and videos on the source; <paramref name="found"/> hears how many so far, from any thread.</summary>
+    public async Task<List<ImportItem>> ListImportItemsAsync(ImportSourceChoice source, CancellationToken cancel = default, Action<int>? found = null)
     {
         if (source.Drive is { } drive)
             return await Task.Run(() => DriveImport.ListItems(drive), cancel);
         if (source.PhoneFolder is { } folder)
-            return await Task.Run(() => DriveImport.ListPhoneItems(folder, PhoneFolders, cancel), cancel);
+            return await Task.Run(() => DriveImport.ListPhoneItems(folder, PhoneFolders, cancel, found), cancel);
         if (source.Portable is { } phone)
-            return await ListPortableItemsAsync(phone, cancel);
+            return await ListPortableItemsAsync(phone, cancel, found);
         if (source.Device is not { } device)
             return [];
         var session = device.CreateImportSession();
-        source.Found = await session.FindItemsAsync(PhotoImportContentTypeFilter.ImagesAndVideos, PhotoImportItemSelectionMode.SelectNone).AsTask(cancel);
+        source.Found = await session.FindItemsAsync(PhotoImportContentTypeFilter.ImagesAndVideos, PhotoImportItemSelectionMode.SelectNone).AsTask(cancel, new Progress<uint>(count => found?.Invoke((int)count)));
         return source.Found.FoundItems
             .Select(i => new ImportItem(i.Name, (long)i.SizeInBytes, i.Date.LocalDateTime) { Handle = i })
             .ToList();

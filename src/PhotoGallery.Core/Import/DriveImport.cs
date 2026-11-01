@@ -43,7 +43,8 @@ public static class DriveImport
     /// ("Internal storage\DCIM"), else the whole folder. Only names, sizes and times are read, so a phone whose
     /// files aren't on the PC yet isn't asked for them.
     /// </summary>
-    public static List<ImportItem> ListPhoneItems(string root, IReadOnlyCollection<string> photoFolders, CancellationToken cancel = default)
+    public static List<ImportItem> ListPhoneItems(string root, IReadOnlyCollection<string> photoFolders, CancellationToken cancel = default,
+                                                  Action<int>? found = null)
     {
         var starts = new List<(string Folder, string Storage)>();
         void Look(string folder, int depth)
@@ -70,6 +71,8 @@ public static class DriveImport
                     continue;
                 var file = new FileInfo(path);
                 items.Add(new ImportItem(file.Name, file.Length, file.LastWriteTime) { SourcePath = file.FullName, Folder = FolderBelow(storage, file.DirectoryName) });
+                if (items.Count % 200 == 0)
+                    found?.Invoke(items.Count);
             }
         }
         return items;

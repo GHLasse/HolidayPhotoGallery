@@ -61,4 +61,14 @@ public static class ImportKinds
                          (from is not { } start || i.Taken.Date >= start.Date) &&
                          (to is not { } end || i.Taken.Date <= end.Date))
              .ToList();
+
+    /// <summary>
+    /// The folders the items are in, biggest first, each as its first two levels ("DCIM/Camera"), so a choice
+    /// can say where its photos are.
+    /// </summary>
+    public static List<(string Folder, int Count)> Folders(IEnumerable<ImportItem> items) =>
+        items.GroupBy(i => string.Join('/', (i.Folder ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries).Take(2)), StringComparer.OrdinalIgnoreCase)
+             .Select(g => (g.Key, g.Count()))
+             .OrderByDescending(f => f.Item2)
+             .ToList();
 }
