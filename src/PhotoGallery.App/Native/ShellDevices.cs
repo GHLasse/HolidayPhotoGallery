@@ -14,7 +14,7 @@ internal static class ShellDevices
 {
     internal sealed record Device(string Name, string ParsingName);
 
-    internal sealed record DeviceFile(string Name, long Size, DateTime Taken, string ParsingName);
+    internal sealed record DeviceFile(string Name, long Size, DateTime Taken, string ParsingName, string Folder);
 
     /// <summary>
     /// The phones and cameras File Explorer shows: under "This PC" (MTP, no file system path), and next to it
@@ -48,11 +48,13 @@ internal static class ShellDevices
                 {
                     item.GetAttributes(SFGAO_FILESYSTEM | SFGAO_FOLDER, out var attributes);
                     var parsing = Name(item, SIGDN_DESKTOPABSOLUTEPARSING);
-                    var name = Name(item, SIGDN_NORMALDISPLAY);
-                    log?.Invoke($"Top level: {name} · attributes {attributes:X8} · {parsing}");
+                    // Folders on the disk (a phone in Windows' Mobile devices is found by its folder instead),
+                    // files on the desktop and Explorer's own places are passed over without a word.
                     if ((attributes & SFGAO_FILESYSTEM) != 0 || (attributes & SFGAO_FOLDER) == 0 || IsKnownPlace(parsing) ||
                         result.Any(d => string.Equals(d.ParsingName, parsing, StringComparison.OrdinalIgnoreCase)))
                         continue;
+                    var name = Name(item, SIGDN_NORMALDISPLAY);
+                    log?.Invoke($"Top level: {name} · attributes {attributes:X8} · {parsing}");
                     if (HoldsPhotoFolder(item, photoFolders, log))
                         result.Add(new Device(name, parsing));
                 }
@@ -108,27 +110,38 @@ internal static class ShellDevices
     /// <paramref name="photoFolders"/> of each storage ("Internal shared storage", a card), or in the whole
     /// storage when it has none of them.
     /// </summary>
-    public static Task<List<DeviceFile>> ListFilesAsync(string device, IReadOnlyCollection<string> photoFolders, Func<string, bool> wanted) => OnSta(() =>
+    public static Task<List<DeviceFile>> ListFilesAsync(string device, IReadOnlyCollection<string> photoFolders, Func<string, bool> wanted,
+                                                        CancellationToken cancel = default) => OnSta(() =>
     {
         var files = new List<DeviceFile>();
-        void Walk(IShellItem folder, int depth)
+        // The date taken has to be read from the file itself over the cable, which is slow and which many phones
+        // don't offer: it is only asked for while the first files have one.
+        var askTaken = 20;
+        void Walk(IShellItem folder, string path, int depth)
         {
             foreach (var item in Children(folder))
             {
+                cancel.ThrowIfCancellationRequested();
                 item.GetAttributes(SFGAO_FOLDER | SFGAO_STREAM, out var attributes);
                 var name = FileName(item);
                 if ((attributes & SFGAO_FOLDER) != 0 && (attributes & SFGAO_STREAM) == 0)
                 {
                     // Thumbnail caches and trash aren't photos to import.
                     if (depth < 8 && !name.StartsWith('.'))
-                        Walk(item, depth + 1);
+                        Walk(item, path + "/" + name, depth + 1);
                 }
                 else if (wanted(name))
                 {
                     var file = (IShellItem2)item;
                     var size = TryUInt64(file, PKEY_Size);
-                    var taken = TryTime(file, PKEY_DateTaken) ?? TryTime(file, PKEY_DateModified) ?? DateTime.Now;
-                    files.Add(new DeviceFile(name, (long)(size ?? 0), taken, Name(item, SIGDN_DESKTOPABSOLUTEPARSING)));
+                    DateTime? taken = null;
+                    if (askTaken > 0)
+                    {
+                        taken = TryTime(file, PKEY_DateTaken);
+                        askTaken = taken is null ? askTaken - 1 : 20;
+                    }
+                    taken ??= TryTime(file, PKEY_DateModified) ?? TryTime(file, PKEY_DateCreated) ?? DateTime.Now;
+                    files.Add(new DeviceFile(name, (long)(size ?? 0), taken.Value, Name(item, SIGDN_DESKTOPABSOLUTEPARSING), path));
                 }
             }
         }
@@ -136,15 +149,15 @@ internal static class ShellDevices
         // A phone that shows its photo folders straight away (Windows 11's Mobile devices) is read from them.
         var direct = top.Where(f => photoFolders.Contains(FileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
         foreach (var folder in direct)
-            Walk(folder, 0);
+            Walk(folder, FileName(folder), 0);
         foreach (var storage in direct.Count > 0 ? new List<IShellItem>() : top)
         {
             var folders = Children(storage).Where(f => photoFolders.Contains(FileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
             // A camera's storage holds DCIM; something else is looked through whole.
             if (folders.Count == 0)
-                Walk(storage, 0);
+                Walk(storage, "", 0);
             foreach (var folder in folders)
-                Walk(folder, 0);
+                Walk(folder, FileName(folder), 0);
         }
         return files;
     });
@@ -216,6 +229,8 @@ internal static class ShellDevices
         {
             try
             {
+                // No "device not ready" message boxes from Windows on this thread: a failure comes back as an error.
+                SetThreadErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX, out _);
                 done.SetResult(work());
             }
             catch (Exception ex)
@@ -240,8 +255,13 @@ internal static class ShellDevices
         Guid bind = BHID_EnumItems, iid = IID_IEnumShellItems;
         folder.BindToHandler(IntPtr.Zero, ref bind, ref iid, out var enumObject);
         var items = (IEnumShellItems)enumObject;
-        while (items.Next(1, out var item, out var fetched) == 0 && fetched == 1)
+        int hr;
+        while ((hr = items.Next(1, out var item, out var fetched)) == 0 && fetched == 1)
             result.Add(item);
+        // A phone unplugged or switched to another USB mode midway fails here: stop rather than go on folder
+        // after folder, each failing again.
+        if (hr < 0)
+            Marshal.ThrowExceptionForHR(hr);
         return result;
     }
 
@@ -323,6 +343,7 @@ internal static class ShellDevices
     private static readonly PropertyKey PKEY_FileName = new(new Guid("41CF5AE0-F75A-4806-BD87-59C7D9248EB9"), 100);
     private static readonly PropertyKey PKEY_Size = new(new Guid("B725F130-47EF-101A-A5F1-02608C9EEBAC"), 12);
     private static readonly PropertyKey PKEY_DateModified = new(new Guid("B725F130-47EF-101A-A5F1-02608C9EEBAC"), 14);
+    private static readonly PropertyKey PKEY_DateCreated = new(new Guid("B725F130-47EF-101A-A5F1-02608C9EEBAC"), 15);
     private static readonly PropertyKey PKEY_DateTaken = new(new Guid("14B81DA1-0135-4D31-96D9-6CBFC9671A99"), 36867);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -331,6 +352,11 @@ internal static class ShellDevices
         public readonly Guid Format = format;
         public readonly uint Id = id;
     }
+
+    private const uint SEM_FAILCRITICALERRORS = 0x1, SEM_NOOPENFILEERRORBOX = 0x8000;
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetThreadErrorMode(uint mode, out uint oldMode);
 
     [DllImport("shell32.dll", PreserveSig = false)]
     private static extern void SHGetKnownFolderItem(ref Guid folder, int flags, IntPtr token, ref Guid iid,

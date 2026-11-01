@@ -8,7 +8,7 @@ using static PhotoGallery.Core.Localization.Strings;
 namespace PhotoGallery.App.ViewModels;
 
 /// <summary>Where photos can be imported from: a card or camera with a drive letter, or a phone or camera Windows reaches.</summary>
-public sealed class ImportSourceChoice(string name, string? drive, PhotoImportSource? device, string? portable = null)
+public sealed class ImportSourceChoice(string name, string? drive, PhotoImportSource? device, string? portable = null, string? phoneFolder = null)
 {
     public string Name { get; } = name;
 
@@ -21,6 +21,15 @@ public sealed class ImportSourceChoice(string name, string? drive, PhotoImportSo
     /// shell's name for it, through which its files are read and copied (<see cref="ShellDevices"/>).
     /// </summary>
     public string? Portable { get; } = portable;
+
+    /// <summary>
+    /// A phone Windows 11 shows as a folder (Mobile devices, in %USERPROFILE%\CrossDevice), reached without a
+    /// cable: its files are read like a card's, but are only fetched from the phone when copied.
+    /// </summary>
+    public string? PhoneFolder { get; } = phoneFolder;
+
+    /// <summary>The files are copied as files (a card, a camera with a drive letter, a phone folder).</summary>
+    public bool IsFiles => Drive is not null || PhoneFolder is not null;
 
     // A phone's items, found by Windows' import API; importing selects among them.
     internal PhotoImportFindItemsResult? Found { get; set; }
@@ -68,8 +77,13 @@ public sealed partial class MainViewModel
                     var isCard = source.Type == PhotoImportSourceType.Generic &&
                                  source.StorageMedia.Count > 0 &&
                                  source.StorageMedia.All(m => m.StorageMediumType == PhotoImportStorageMediumType.Removable);
+                    App.Trace($"photo import source: \"{source.DisplayName}\" · {source.Type} · {source.StorageMedia.Count} storage(s)");
+                    // A device that gives no name still gets one, so the list has no empty line.
+                    var name = string.IsNullOrWhiteSpace(source.DisplayName)
+                        ? string.IsNullOrWhiteSpace(source.Model) ? Tr("Phone or camera") : source.Model
+                        : source.DisplayName;
                     if (!(isCard && cards > 0))
-                        choices.Add(new ImportSourceChoice(source.DisplayName, null, source));
+                        choices.Add(new ImportSourceChoice(name, null, source));
                 }
             }
         }
@@ -98,15 +112,31 @@ public sealed partial class MainViewModel
         {
             App.Trace($"portable devices: {ex.Message}");
         }
+
+        // Windows 11's Mobile devices: a phone linked without a cable, as a folder in the user's folder.
+        try
+        {
+            var crossDevice = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "CrossDevice");
+            if (Directory.Exists(crossDevice))
+                foreach (var phone in Directory.GetDirectories(crossDevice))
+                {
+                    App.Trace($"mobile device folder: {phone}");
+                    choices.Add(new ImportSourceChoice(Tr("{0} (wireless)", Path.GetFileName(phone)), null, null, phoneFolder: phone));
+                }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            App.Trace($"mobile device folders: {ex.Message}");
+        }
         return choices;
     }
 
     // The folders on a phone that hold photos, in each of its storages ("Internal shared storage", a card).
     private static readonly string[] PhoneFolders = ["DCIM", "Pictures", "Movies"];
 
-    private static async Task<List<ImportItem>> ListPortableItemsAsync(string device) =>
-        (await ShellDevices.ListFilesAsync(device, PhoneFolders, ImportPlanner.IsImportable))
-            .Select(f => new ImportItem(f.Name, f.Size, f.Taken) { Handle = f.ParsingName })
+    private static async Task<List<ImportItem>> ListPortableItemsAsync(string device, CancellationToken cancel) =>
+        (await ShellDevices.ListFilesAsync(device, PhoneFolders, ImportPlanner.IsImportable, cancel))
+            .Select(f => new ImportItem(f.Name, f.Size, f.Taken) { Handle = f.ParsingName, Folder = f.Folder })
             .ToList();
 
     // Copies each photo from the phone through a temporary name next to its target.
@@ -154,16 +184,18 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>The photos and videos on the source.</summary>
-    public async Task<List<ImportItem>> ListImportItemsAsync(ImportSourceChoice source)
+    public async Task<List<ImportItem>> ListImportItemsAsync(ImportSourceChoice source, CancellationToken cancel = default)
     {
         if (source.Drive is { } drive)
-            return await Task.Run(() => DriveImport.ListItems(drive));
+            return await Task.Run(() => DriveImport.ListItems(drive), cancel);
+        if (source.PhoneFolder is { } folder)
+            return await Task.Run(() => DriveImport.ListPhoneItems(folder, PhoneFolders, cancel), cancel);
         if (source.Portable is { } phone)
-            return await ListPortableItemsAsync(phone);
+            return await ListPortableItemsAsync(phone, cancel);
         if (source.Device is not { } device)
             return [];
         var session = device.CreateImportSession();
-        source.Found = await session.FindItemsAsync(PhotoImportContentTypeFilter.ImagesAndVideos, PhotoImportItemSelectionMode.SelectNone);
+        source.Found = await session.FindItemsAsync(PhotoImportContentTypeFilter.ImagesAndVideos, PhotoImportItemSelectionMode.SelectNone).AsTask(cancel);
         return source.Found.FoundItems
             .Select(i => new ImportItem(i.Name, (long)i.SizeInBytes, i.Date.LocalDateTime) { Handle = i })
             .ToList();
@@ -191,7 +223,7 @@ public sealed partial class MainViewModel
         IsBusy = true;
         try
         {
-            if (source.Drive is not null)
+            if (source.IsFiles)
                 await ImportFromDriveAsync(plan, deleteFromSource, imported, failures);
             else if (source.Portable is not null)
                 await ImportFromPortableAsync(plan, deleteFromSource, imported, failures);

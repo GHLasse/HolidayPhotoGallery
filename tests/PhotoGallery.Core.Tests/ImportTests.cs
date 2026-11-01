@@ -68,4 +68,53 @@ public sealed class ImportTests : IDisposable
         Assert.False(File.Exists(target + ".importing"));
         File.SetAttributes(photo, FileAttributes.Normal);
     }
+
+    [Theory]
+    [InlineData("DCIM/Camera", "PXL_20261012_090000.jpg", ImportKind.Camera)]
+    [InlineData("DCIM/Screenshots", "Screenshot_20261012.png", ImportKind.Screenshot)]
+    [InlineData("Pictures/Screenshots", "a.png", ImportKind.Screenshot)]
+    [InlineData("Pictures/Signal", "signal-2026-10-12-090000.jpg", ImportKind.Messenger)]
+    [InlineData("Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images", "IMG-20261012-WA0001.jpg", ImportKind.Messenger)]
+    [InlineData("Download", "map.jpg", ImportKind.Download)]
+    [InlineData("Pictures/Holiday", "x.jpg", ImportKind.Other)]
+    [InlineData(null, "IMG-20261012-WA0001.jpg", ImportKind.Messenger)]
+    [InlineData(null, "Screenshot_20261012-090000.png", ImportKind.Screenshot)]
+    [InlineData(null, "IMG_1234.HEIC", ImportKind.Camera)]
+    [InlineData("DCIM/100CANON", "IMG_1.JPG", ImportKind.Camera)]
+    public void Phone_photos_are_sorted_by_folder_then_name(string? folder, string name, ImportKind kind) =>
+        Assert.Equal(kind, ImportKinds.Of(folder, name));
+
+    [Fact]
+    public void Choosing_keeps_the_kinds_and_days_asked_for()
+    {
+        var day = new DateTime(2026, 10, 12, 23, 30, 0);
+        ImportItem[] items =
+        [
+            new("a.jpg", 1, day) { Folder = "DCIM/Camera" },
+            new("b.jpg", 1, day.AddDays(2)) { Folder = "DCIM/Camera" },
+            new("Screenshot_1.png", 1, day) { Folder = "DCIM/Screenshots" },
+        ];
+        var chosen = ImportKinds.Choose(items, new HashSet<ImportKind> { ImportKind.Camera }, day.Date, day.Date.AddDays(1));
+        Assert.Equal(["a.jpg"], chosen.Select(i => i.Name));
+        Assert.Equal(2, ImportKinds.Choose(items, new HashSet<ImportKind> { ImportKind.Camera }, null, null).Count);
+    }
+
+    [Fact]
+    public void A_phone_folder_lists_only_its_photo_folders_with_their_place()
+    {
+        var storage = Path.Combine(_card.Path, "Internal storage");
+        var camera = Directory.CreateDirectory(Path.Combine(storage, "DCIM", "Camera")).FullName;
+        var shots = Directory.CreateDirectory(Path.Combine(storage, "Pictures", "Screenshots")).FullName;
+        var other = Directory.CreateDirectory(Path.Combine(storage, "Documents")).FullName;
+        var thumbs = Directory.CreateDirectory(Path.Combine(storage, "DCIM", ".thumbnails")).FullName;
+        File.WriteAllBytes(Path.Combine(camera, "PXL_1.jpg"), [1]);
+        File.WriteAllBytes(Path.Combine(shots, "Screenshot_1.png"), [1]);
+        File.WriteAllBytes(Path.Combine(other, "scan.jpg"), [1]);
+        File.WriteAllBytes(Path.Combine(thumbs, "t.jpg"), [1]);
+
+        var items = DriveImport.ListPhoneItems(_card.Path, ["DCIM", "Pictures", "Movies"]).OrderBy(i => i.Name).ToList();
+
+        Assert.Equal(["PXL_1.jpg", "Screenshot_1.png"], items.Select(i => i.Name));
+        Assert.Equal(["DCIM/Camera", "Pictures/Screenshots"], items.Select(i => i.Folder));
+    }
 }

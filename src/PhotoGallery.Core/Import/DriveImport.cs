@@ -33,8 +33,66 @@ public static class DriveImport
         return Directory.EnumerateFiles(start, "*", options)
             .Where(ImportPlanner.IsImportable)
             .Select(path => new FileInfo(path))
-            .Select(f => new ImportItem(f.Name, f.Length, f.LastWriteTime) { SourcePath = f.FullName })
+            .Select(f => new ImportItem(f.Name, f.Length, f.LastWriteTime) { SourcePath = f.FullName, Folder = FolderBelow(root, f.DirectoryName) })
             .ToList();
+    }
+
+    /// <summary>
+    /// The photos and videos of a phone that shows up as a folder (Windows 11's Mobile devices puts it in
+    /// %USERPROFILE%\CrossDevice): only its photo folders (DCIM, Pictures, Movies), found up to two levels down
+    /// ("Internal storage\DCIM"), else the whole folder. Only names, sizes and times are read, so a phone whose
+    /// files aren't on the PC yet isn't asked for them.
+    /// </summary>
+    public static List<ImportItem> ListPhoneItems(string root, IReadOnlyCollection<string> photoFolders, CancellationToken cancel = default)
+    {
+        var starts = new List<(string Folder, string Storage)>();
+        void Look(string folder, int depth)
+        {
+            foreach (var sub in SafeDirectories(folder))
+            {
+                if (photoFolders.Contains(Path.GetFileName(sub), StringComparer.OrdinalIgnoreCase))
+                    starts.Add((sub, folder));
+                else if (depth < 2)
+                    Look(sub, depth + 1);
+            }
+        }
+        Look(root, 1);
+        if (starts.Count == 0)
+            starts.Add((root, root));
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.System };
+        var items = new List<ImportItem>();
+        foreach (var (start, storage) in starts)
+        {
+            foreach (var path in Directory.EnumerateFiles(start, "*", options))
+            {
+                cancel.ThrowIfCancellationRequested();
+                if (!ImportPlanner.IsImportable(path) || path.Contains(Path.DirectorySeparatorChar + ".", StringComparison.Ordinal))
+                    continue;
+                var file = new FileInfo(path);
+                items.Add(new ImportItem(file.Name, file.Length, file.LastWriteTime) { SourcePath = file.FullName, Folder = FolderBelow(storage, file.DirectoryName) });
+            }
+        }
+        return items;
+    }
+
+    private static IEnumerable<string> SafeDirectories(string folder)
+    {
+        try
+        {
+            return Directory.GetDirectories(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    private static string FolderBelow(string root, string? folder)
+    {
+        if (folder is null)
+            return "";
+        var relative = Path.GetRelativePath(root, folder).Replace('\\', '/');
+        return relative == "." ? "" : relative;
     }
 
     /// <summary>
