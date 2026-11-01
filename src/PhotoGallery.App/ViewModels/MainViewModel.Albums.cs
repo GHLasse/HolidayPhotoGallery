@@ -318,6 +318,8 @@ public sealed partial class MainViewModel
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 App.Trace($"cloud album rename ({service}) failed, tried again later: {ex.GetType().Name}: {ex.Message}");
+                if (ex is CloudSignInRequiredException)
+                    CloudSignInExpired(service);
                 if (tell)
                     Warn(Tr("The album is renamed here, but {0} did not take the new name: {1} The app tries again later.", DisplayName(service), ex.Message));
             }
