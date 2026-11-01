@@ -119,7 +119,8 @@ internal static class ShellDevices
         var askTaken = 20;
         void Walk(IShellItem folder, string path, int depth)
         {
-            foreach (var item in Children(folder))
+            // Streamed, so the count starts with the first files of a big folder (DCIM/Camera with thousands).
+            foreach (var item in Each(folder))
             {
                 cancel.ThrowIfCancellationRequested();
                 item.GetAttributes(SFGAO_FOLDER | SFGAO_STREAM, out var attributes);
@@ -296,21 +297,31 @@ internal static class ShellDevices
         return (IShellItem)SHCreateItemFromParsingName(parsingName, IntPtr.Zero, ref iid);
     }
 
-    private static List<IShellItem> Children(IShellItem folder)
+    /// <summary>The items in a folder as the device hands them over, many per call (each call is a round trip over the cable).</summary>
+    private static IEnumerable<IShellItem> Each(IShellItem folder)
     {
-        var result = new List<IShellItem>();
         Guid bind = BHID_EnumItems, iid = IID_IEnumShellItems;
         folder.BindToHandler(IntPtr.Zero, ref bind, ref iid, out var enumObject);
         var items = (IEnumShellItems)enumObject;
-        int hr;
-        while ((hr = items.Next(1, out var item, out var fetched)) == 0 && fetched == 1)
-            result.Add(item);
-        // A phone unplugged or switched to another USB mode midway fails here: stop rather than go on folder
-        // after folder, each failing again.
-        if (hr < 0)
-            Marshal.ThrowExceptionForHR(hr);
-        return result;
+        var batch = new IShellItem[64];
+        while (true)
+        {
+            var hr = items.Next((uint)batch.Length, batch, out var fetched);
+            if (hr < 0)
+                Marshal.ThrowExceptionForHR(hr);
+            for (var i = 0; i < fetched; i++)
+            {
+                yield return batch[i];
+                batch[i] = null!;
+            }
+            if (hr != 0 || fetched == 0)
+                yield break;
+        }
     }
+
+    // A phone unplugged or switched to another USB mode midway fails in Each: it stops rather than going on folder
+    // after folder, each failing again.
+    private static List<IShellItem> Children(IShellItem folder) => Each(folder).ToList();
 
     private static string Name(IShellItem item, uint form)
     {
@@ -499,7 +510,7 @@ internal static class ShellDevices
     private interface IEnumShellItems
     {
         [PreserveSig]
-        int Next(uint count, out IShellItem item, out uint fetched);
+        int Next(uint count, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] IShellItem[] items, out uint fetched);
         void Skip(uint count);
         void Reset();
         void Clone(out IEnumShellItems copy);
