@@ -111,7 +111,7 @@ internal static class ShellDevices
     /// storage when it has none of them.
     /// </summary>
     public static Task<List<DeviceFile>> ListFilesAsync(string device, IReadOnlyCollection<string> photoFolders, Func<string, bool> wanted,
-                                                        CancellationToken cancel = default) => OnSta(() =>
+                                                        CancellationToken cancel = default, Action<int>? found = null) => OnSta(() =>
     {
         var files = new List<DeviceFile>();
         // The date taken has to be read from the file itself over the cable, which is slow and which many phones
@@ -142,6 +142,8 @@ internal static class ShellDevices
                     }
                     taken ??= TryTime(file, PKEY_DateModified) ?? TryTime(file, PKEY_DateCreated) ?? DateTime.Now;
                     files.Add(new DeviceFile(name, (long)(size ?? 0), taken.Value, Name(item, SIGDN_DESKTOPABSOLUTEPARSING), path));
+                    if (files.Count % 50 == 0)
+                        found?.Invoke(files.Count);
                 }
             }
         }
@@ -160,6 +162,51 @@ internal static class ShellDevices
                 Walk(folder, FileName(folder), 0);
         }
         return files;
+    });
+
+    /// <summary>
+    /// The picture Explorer shows for a file on the device or on the disk (by its shell parsing name or path), as
+    /// top-down BGRA pixels; null when Windows has none.
+    /// </summary>
+    public static Task<(byte[] Pixels, int Width, int Height)?> ThumbnailAsync(string item, int size) => OnSta<(byte[], int, int)?>(() =>
+    {
+        Guid iid = IID_IShellItemImageFactory;
+        var factory = (IShellItemImageFactory)SHCreateItemFromParsingName(item, IntPtr.Zero, ref iid);
+        IntPtr bitmap = IntPtr.Zero;
+        try
+        {
+            if (factory.GetImage(new NativeSize { Width = size, Height = size }, SIIGBF_BIGGERSIZEOK | SIIGBF_THUMBNAILONLY, out bitmap) < 0 || bitmap == IntPtr.Zero)
+                return null;
+            var info = new BitmapHeader();
+            if (GetObject(bitmap, Marshal.SizeOf<NativeBitmap>(), out NativeBitmap bm) == 0 || bm.Width <= 0 || bm.Height <= 0)
+                return null;
+            info.Size = Marshal.SizeOf<BitmapHeader>();
+            info.Width = bm.Width;
+            info.Height = -bm.Height; // top-down
+            info.Planes = 1;
+            info.BitCount = 32;
+            var pixels = new byte[bm.Width * bm.Height * 4];
+            var dc = GetDC(IntPtr.Zero);
+            try
+            {
+                if (GetDIBits(dc, bitmap, 0, (uint)bm.Height, pixels, ref info, 0) == 0)
+                    return null;
+            }
+            finally
+            {
+                ReleaseDC(IntPtr.Zero, dc);
+            }
+            // Photos have no see-through parts; thumbnails often leave alpha at 0.
+            for (var i = 3; i < pixels.Length; i += 4)
+                pixels[i] = 255;
+            return (pixels, bm.Width, bm.Height);
+        }
+        finally
+        {
+            if (bitmap != IntPtr.Zero)
+                DeleteObject(bitmap);
+            Marshal.ReleaseComObject(factory);
+        }
     });
 
     /// <summary>Copies a file from the device to <paramref name="target"/>; returns the bytes copied.</summary>
@@ -354,6 +401,52 @@ internal static class ShellDevices
     }
 
     private const uint SEM_FAILCRITICALERRORS = 0x1, SEM_NOOPENFILEERRORBOX = 0x8000;
+    private const int SIIGBF_BIGGERSIZEOK = 0x1, SIIGBF_THUMBNAILONLY = 0x8;
+    private static readonly Guid IID_IShellItemImageFactory = new("bcc18b79-ba16-442f-80c4-8a59c30c463b");
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeSize
+    {
+        public int Width, Height;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeBitmap
+    {
+        public int Type, Width, Height, WidthBytes;
+        public ushort Planes, BitsPixel;
+        public IntPtr Bits;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BitmapHeader
+    {
+        public int Size, Width, Height;
+        public ushort Planes, BitCount;
+        public int Compression, SizeImage, XPelsPerMeter, YPelsPerMeter, ClrUsed, ClrImportant;
+    }
+
+    [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItemImageFactory
+    {
+        [PreserveSig]
+        int GetImage(NativeSize size, int flags, out IntPtr bitmap);
+    }
+
+    [DllImport("gdi32.dll", EntryPoint = "GetObjectW")]
+    private static extern int GetObject(IntPtr handle, int size, out NativeBitmap bitmap);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDIBits(IntPtr dc, IntPtr bitmap, uint start, uint lines, [Out] byte[] bits, ref BitmapHeader info, uint usage);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr handle);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr window, IntPtr dc);
 
     [DllImport("kernel32.dll")]
     private static extern bool SetThreadErrorMode(uint mode, out uint oldMode);

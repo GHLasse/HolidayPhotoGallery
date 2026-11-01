@@ -117,4 +117,17 @@ public sealed class ImportTests : IDisposable
         Assert.Equal(["PXL_1.jpg", "Screenshot_1.png"], items.Select(i => i.Name));
         Assert.Equal(["DCIM/Camera", "Pictures/Screenshots"], items.Select(i => i.Folder));
     }
+
+    [Fact]
+    public void The_folders_of_a_choice_are_listed_biggest_first()
+    {
+        var day = new DateTime(2026, 10, 12);
+        ImportItem[] items =
+        [
+            new("a.jpg", 1, day) { Folder = "DCIM/Camera" },
+            new("b.jpg", 1, day) { Folder = "DCIM/Camera" },
+            new("c.jpg", 1, day) { Folder = "Pictures/Holiday/Day 1" },
+        ];
+        Assert.Equal([("DCIM/Camera", 2), ("Pictures/Holiday", 1)], ImportKinds.Folders(items));
+    }
 }
