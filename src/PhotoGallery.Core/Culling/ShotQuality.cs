@@ -16,10 +16,11 @@ public enum QualityHint
 /// <summary>
 /// What was measured on a photo (C-4): how sharp its sharpest part is, how sharp its faces are (null without
 /// faces), its mean brightness (0 to 255) and the share of nearly black and nearly white pixels, and the
-/// brightness of its brightest 1 % (<see cref="BrightEnd"/>; null when measured before it was kept).
+/// brightness of its brightest 1 % (<see cref="BrightEnd"/>) and how sharp its middle third is
+/// (<see cref="MiddleSharpness"/>); both null when measured before they were kept.
 /// </summary>
 public sealed record QualityMeasure(float Sharpness, float? FaceSharpness, float Brightness, float DarkShare, float BrightShare,
-                                    float? BrightEnd = null)
+                                    float? BrightEnd = null, float? MiddleSharpness = null)
 {
     /// <summary>The sharpness that counts: the faces' when there are faces, as a blurred face spoils a photo.</summary>
     public float Judged => FaceSharpness ?? Sharpness;
@@ -42,6 +43,9 @@ public static class ShotQuality
 
     /// <summary>Faces are smooth by nature, so they need less detail to count as sharp.</summary>
     public const float BlurryFaceBelow = 12;
+
+    /// <summary>A middle tile counts for the middle's sharpness when its grey levels spread at least this much.</summary>
+    public const double MiddleContentSpread = 20;
 
     /// <summary>A photo whose brightest 1 % stays below this (of 255) is too dark.</summary>
     public const float DimBelow = 80;
@@ -97,6 +101,16 @@ public static class ShotQuality
                 tiles.Add(LaplacianVariance(grey, w, h, x0, y0, (tx + 1) * w / Grid, (ty + 1) * h / Grid));
             }
         }
+        // The middle third (the 2 × 2 tiles in the middle of the 6 × 6), where the subject usually is: sharp if one
+        // of them is. Only tiles with something in them count: a calm sea or a clear sky has no edges to be sharp
+        // with, a person moving through the picture does. No such tile: nothing to judge (null).
+        float? middle = null;
+        foreach (var (tx, ty) in new[] { (2, 2), (3, 2), (2, 3), (3, 3) })
+        {
+            var (x0, y0, x1, y1) = (tx * w / Grid, ty * h / Grid, (tx + 1) * w / Grid, (ty + 1) * h / Grid);
+            if (Spread(grey, w, x0, y0, x1, y1) >= MiddleContentSpread)
+                middle = Math.Max(middle ?? 0, tiles[ty * Grid + tx]);
+        }
         tiles.Sort();
         var sharpness = tiles.Count >= 2 ? tiles[^2] : tiles.Count == 1 ? tiles[0] : 0;
 
@@ -123,7 +137,7 @@ public static class ShotQuality
                 break;
         }
 
-        return new QualityMeasure(sharpness, faceSharpness, (float)sum / count, (float)dark / count, (float)bright / count, level);
+        return new QualityMeasure(sharpness, faceSharpness, (float)sum / count, (float)dark / count, (float)bright / count, level, middle);
     }
 
     /// <summary>The hints a measure gives: possibly blurry, too dark, too bright.</summary>
@@ -131,6 +145,10 @@ public static class ShotQuality
     {
         var hints = QualityHint.None;
         if (m.FaceSharpness is { } face ? face < BlurryFaceBelow : m.Sharpness < BlurryBelow)
+            hints |= QualityHint.Blurry;
+        // Someone moving in front of a sharp scene: the scene is sharp, the middle where they are isn't. Faces,
+        // when there are some, already said where the subject is.
+        else if (m.FaceSharpness is null && m.MiddleSharpness is { } middle && middle < BlurryBelow)
             hints |= QualityHint.Blurry;
         // Night shots and snow are dark or bright on purpose; only call it when most of the picture is lost.
         if (m.Brightness < 20 && m.DarkShare > 0.75)
@@ -148,6 +166,27 @@ public static class ShotQuality
     }
 
     // The variance of the 4-neighbour Laplacian inside a rectangle (borders of the picture left out).
+    // The standard deviation of the grey levels inside a rectangle: how much is going on there.
+    private static double Spread(byte[] grey, int w, int x0, int y0, int x1, int y1)
+    {
+        double sum = 0, sumSq = 0;
+        long n = 0;
+        for (var y = y0; y < y1; y++)
+        {
+            for (var x = x0; x < x1; x++)
+            {
+                double v = grey[y * w + x];
+                sum += v;
+                sumSq += v * v;
+                n++;
+            }
+        }
+        if (n == 0)
+            return 0;
+        var mean = sum / n;
+        return Math.Sqrt(Math.Max(0, sumSq / n - mean * mean));
+    }
+
     private static float LaplacianVariance(byte[] grey, int w, int h, int x0, int y0, int x1, int y1)
     {
         x0 = Math.Max(1, x0);

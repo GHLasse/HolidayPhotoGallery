@@ -46,6 +46,9 @@ public static class SimilarShots
     /// </summary>
     public static readonly TimeSpan MaxGap = TimeSpan.FromMinutes(5);
 
+    /// <summary>A stack never spans more than this from its first shot to its last.</summary>
+    public static readonly TimeSpan MaxSpan = TimeSpan.FromMinutes(10);
+
     /// <summary>Picture vectors at least this close count as the same shot.</summary>
     public const float MinVectorCloseness = 0.8f;
 
@@ -55,7 +58,7 @@ public static class SimilarShots
     /// <summary>
     /// The groups of two or more among <paramref name="photos"/> (photos without a date, videos and rejected
     /// photos left out), each in time order, the groups in time order. A photo joins the group when it was
-    /// taken within <paramref name="maxGap"/> of the one before it and looks like it.
+    /// taken within <paramref name="maxGap"/> of the one before it and looks like it and like the group's first.
     /// </summary>
     public static List<ShotGroup> Find(IEnumerable<IndexedPhoto> photos, Func<IndexedPhoto, IndexedPhoto, bool> alike, TimeSpan? maxGap = null) =>
         Find(photos, (a, b, _) => alike(a, b), maxGap);
@@ -74,9 +77,14 @@ public static class SimilarShots
             if (run.Count > 0)
             {
                 var last = run[^1];
+                var first = run[0];
                 // Same camera clock: the folder's photos are compared as they were taken.
                 var apart = photo.DateTaken!.Value.Local - last.DateTaken!.Value.Local;
-                if (apart > gap || !SameShape(last, photo) || !alike(last, photo, apart))
+                var sinceFirst = photo.DateTaken!.Value.Local - first.DateTaken!.Value.Local;
+                // Like the one before it and like the first of the stack, so a slow pan along a coast doesn't
+                // chain view after view into one stack, each only a little different from the last.
+                if (apart > gap || sinceFirst > MaxSpan || !SameShape(last, photo) || !alike(last, photo, apart) ||
+                    (run.Count > 1 && (!SameShape(first, photo) || !alike(first, photo, sinceFirst))))
                 {
                     if (run.Count > 1)
                         groups.Add(new ShotGroup(run));

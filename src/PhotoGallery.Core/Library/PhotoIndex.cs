@@ -164,7 +164,8 @@ public sealed partial class PhotoIndex : IDisposable
                 bright_share REAL NOT NULL,
                 hints INTEGER NOT NULL,
                 ignored INTEGER NOT NULL DEFAULT 0,
-                bright_end REAL -- the level the brightest 1 % reach; null when measured before it was kept
+                bright_end REAL, -- the level the brightest 1 % reach; null when measured before it was kept
+                middle_sharpness REAL -- how sharp the middle third is; -1 nothing to judge, null measured before it was kept
             );
             -- Photos that arrived in a folder already in the library, to be auto-tagged in the background (L-7).
             CREATE TABLE IF NOT EXISTS auto_tag_queue (
@@ -175,6 +176,8 @@ public sealed partial class PhotoIndex : IDisposable
         // The brightest part of a photo, kept for the "too dark" hint since 2026-11.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('shot_quality') WHERE name = 'bright_end';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE shot_quality ADD COLUMN bright_end REAL;");
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('shot_quality') WHERE name = 'middle_sharpness';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE shot_quality ADD COLUMN middle_sharpness REAL;");
         // Checks saved before the level was kept count as level 1, so those files are checked again.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'level';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE file_checks ADD COLUMN level INTEGER NOT NULL DEFAULT 1;");
