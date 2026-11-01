@@ -142,7 +142,7 @@ internal static class ShellDevices
                         askTaken = taken is null ? askTaken - 1 : 20;
                     }
                     taken ??= TryTime(file, PKEY_DateModified) ?? TryTime(file, PKEY_DateCreated) ?? DateTime.Now;
-                    files.Add(new DeviceFile(name, (long)(size ?? 0), taken.Value, Name(item, SIGDN_DESKTOPABSOLUTEPARSING), path));
+                    files.Add(new DeviceFile(name, (long)(size ?? 0), taken.Value, IdOf(item), path));
                     if (files.Count % 50 == 0)
                         found?.Invoke(files.Count);
                 }
@@ -175,7 +175,7 @@ internal static class ShellDevices
         IShellItemImageFactory factory;
         try
         {
-            factory = (IShellItemImageFactory)SHCreateItemFromParsingName(item, IntPtr.Zero, ref iid);
+            factory = (IShellItemImageFactory)Resolve(item, iid);
         }
         catch (Exception ex) when (ex is COMException or InvalidCastException)
         {
@@ -299,10 +299,43 @@ internal static class ShellDevices
         return done.Task;
     }
 
-    private static IShellItem Parse(string parsingName)
+    private static IShellItem Parse(string parsingName) => (IShellItem)Resolve(parsingName, IID_IShellItem);
+
+    // A file on a phone can't always be found again by its parsing name (Windows answers "invalid argument"),
+    // so it is kept by its item ID list, written as "pidl:" and the list in Base64, as Explorer keeps it.
+    private const string IdPrefix = "pidl:";
+
+    private static object Resolve(string item, Guid iid)
     {
-        Guid iid = IID_IShellItem;
-        return (IShellItem)SHCreateItemFromParsingName(parsingName, IntPtr.Zero, ref iid);
+        if (!item.StartsWith(IdPrefix, StringComparison.Ordinal))
+            return SHCreateItemFromParsingName(item, IntPtr.Zero, ref iid);
+        var bytes = Convert.FromBase64String(item[IdPrefix.Length..]);
+        var list = Marshal.AllocCoTaskMem(bytes.Length);
+        try
+        {
+            Marshal.Copy(bytes, 0, list, bytes.Length);
+            SHCreateItemFromIDList(list, ref iid, out var result);
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(list);
+        }
+    }
+
+    private static string IdOf(IShellItem item)
+    {
+        SHGetIDListFromObject(item, out var list);
+        try
+        {
+            var bytes = new byte[ILGetSize(list)];
+            Marshal.Copy(list, bytes, 0, bytes.Length);
+            return IdPrefix + Convert.ToBase64String(bytes);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(list);
+        }
     }
 
     /// <summary>The items in a folder as the device hands them over, many per call (each call is a round trip over the cable).</summary>
@@ -473,6 +506,12 @@ internal static class ShellDevices
     [DllImport("shell32.dll", PreserveSig = false)]
     private static extern void SHGetKnownFolderItem(ref Guid folder, int flags, IntPtr token, ref Guid iid,
                                                     [MarshalAs(UnmanagedType.Interface)] out object item);
+
+    [DllImport("shell32.dll", PreserveSig = false)]
+    private static extern void SHGetIDListFromObject([MarshalAs(UnmanagedType.IUnknown)] object item, out IntPtr list);
+
+    [DllImport("shell32.dll")]
+    private static extern uint ILGetSize(IntPtr list);
 
     [DllImport("shell32.dll", PreserveSig = false)]
     private static extern void SHCreateItemFromIDList(IntPtr idList, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out object item);
