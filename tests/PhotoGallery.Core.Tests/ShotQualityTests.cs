@@ -88,13 +88,15 @@ public sealed class ShotQualityTests : IDisposable
     }
 
     [Fact]
-    public void Dark_photos_measured_before_the_brightest_part_was_kept_are_measured_again()
+    public void Photos_measured_before_the_brightest_part_and_middle_were_kept_are_measured_again()
     {
         _index.Upsert([Photo("dark.jpg", null)]);
         _index.SaveShotQuality([("/photos/dark.jpg", new QualityMeasure(200, null, 25, 0.4f, 0))]);
         Assert.Single(_index.GetNotQualityChecked(10));
         _index.SaveShotQuality([("/photos/dark.jpg", new QualityMeasure(200, null, 25, 0.4f, 0, 60))]);
         Assert.Empty(_index.GetNotQualityChecked(10));
+        // Nothing in the middle to judge is kept as such: not measured again, read back as null.
+        Assert.Null(_index.GetShotQualities()["/photos/dark.jpg"].Measure.MiddleSharpness);
     }
 
     [Fact]
@@ -181,8 +183,8 @@ public sealed class ShotQualityTests : IDisposable
     {
         var t = new DateTime(2026, 5, 1, 12, 0, 0);
         _index.Upsert([Photo("blurry.jpg", t), Photo("fine.jpg", t), Photo("rated.jpg", t, rating: 3)]);
-        var soft = new QualityMeasure(5, null, 120, 0, 0);
-        var fine = new QualityMeasure(400, null, 120, 0, 0);
+        var soft = new QualityMeasure(5, null, 120, 0, 0, 200, 5);
+        var fine = new QualityMeasure(400, null, 120, 0, 0, 200, 400);
         _index.SaveShotQuality([("/photos/blurry.jpg", soft), ("/photos/fine.jpg", fine), ("/photos/rated.jpg", soft)]);
 
         Assert.Equal(["blurry.jpg"], _index.Search(new PhotoQuery { QualityHintsOnly = true }).Select(p => p.FileName));
@@ -244,6 +246,37 @@ public sealed class ShotQualityTests : IDisposable
         var groups = SimilarShots.Find(photos, (x, y, _) => x.FileName != "a.jpg" && y.FileName != "a.jpg", marks);
         Assert.Equal([["a.jpg", "d.jpg"], ["b.jpg", "c.jpg"]], groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
         Assert.Equal("a.jpg", SimilarShots.Cover(groups[0], marks)!.FileName);
+    }
+
+    [Fact]
+    public void A_slow_pan_doesnt_chain_into_one_stack()
+    {
+        // Each view a little different from the one before (numbers apart by 1), the far end nothing like the first.
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        var photos = Enumerable.Range(0, 8).Select(i => Photo($"{i}.jpg", t.AddSeconds(40 * i))).ToList();
+        static bool Alike(IndexedPhoto a, IndexedPhoto b, TimeSpan _) =>
+            Math.Abs(int.Parse(Path.GetFileNameWithoutExtension(a.FileName)) - int.Parse(Path.GetFileNameWithoutExtension(b.FileName))) <= 2;
+        var groups = SimilarShots.Find(photos, Alike);
+        Assert.Equal([["0.jpg", "1.jpg", "2.jpg"], ["3.jpg", "4.jpg", "5.jpg"], ["6.jpg", "7.jpg"]],
+                     groups.Select(g => g.Photos.Select(p => p.FileName).ToArray()).ToArray());
+    }
+
+    [Fact]
+    public void A_blurred_subject_in_the_middle_of_a_sharp_scene_is_possibly_blurry()
+    {
+        // Sharp detail all round, the middle third blurred (someone moving in front of the scene).
+        var image = Detailed(900, 900);
+        // (A dark figure against a light background, smeared.)
+        var middle = Detailed(400, 400, seed: 7, around: 200, spread: 10).Draw(Detailed(160, 400, seed: 6, around: 40, spread: 10), 120, 0).Blur(6);
+        var measure = Measure(image.Draw(middle, 250, 250), []);
+        Assert.True(measure.Sharpness > ShotQuality.BlurryBelow);
+        Assert.Equal(QualityHint.Blurry, ShotQuality.Hints(measure));
+        // Calm water in the middle (hardly anything going on) isn't judged.
+        var lake = Detailed(900, 900).Draw(Detailed(300, 300, seed: 9, around: 120, spread: 4), 300, 300);
+        Assert.Equal(QualityHint.None, ShotQuality.Hints(Measure(lake, [])));
+        // A sharp subject in the middle of a soft background stays without a hint.
+        var portrait = Detailed(900, 900).Blur(6).Draw(Detailed(300, 300, seed: 8), 300, 300);
+        Assert.Equal(QualityHint.None, ShotQuality.Hints(Measure(portrait, [])));
     }
 
     [Fact]
