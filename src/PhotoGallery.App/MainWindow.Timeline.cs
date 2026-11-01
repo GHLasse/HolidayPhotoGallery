@@ -119,7 +119,7 @@ public sealed partial class MainWindow
     /// Before new search results replace the grid (a filter set or cleared): the selected photos, and where the
     /// last selected one is on screen if it is.
     /// </summary>
-    private (List<string> Paths, string? Anchor, double Y) NoteSelectionPlace()
+    private (List<string> Paths, string? Anchor, double Y, List<string> Neighbours) NoteSelectionPlace()
     {
         var selected = PhotoGrid.SelectedItems.OfType<PhotoItemViewModel>().ToList();
         string? anchor = null;
@@ -135,7 +135,21 @@ public sealed partial class MainWindow
                 }
             }
         }
-        return (selected.Select(i => i.Path).ToList(), anchor, y);
+        // The photos around the last selected one, next ones first: if a change takes the selected photos out
+        // of the filter, the next photo still shown takes their place instead of the view jumping to the top.
+        var neighbours = new List<string>();
+        if (selected.Count > 0)
+        {
+            var shown = PhotoGrid.Items.OfType<PhotoItemViewModel>().ToList();
+            var at = shown.IndexOf(selected[^1]);
+            if (at >= 0)
+            {
+                var chosen = selected.Select(i => i.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                neighbours.AddRange(shown.Skip(at + 1).Take(50).Select(i => i.Path).Where(p => !chosen.Contains(p)));
+                neighbours.AddRange(shown.Take(at).Reverse().Take(50).Select(i => i.Path).Where(p => !chosen.Contains(p)));
+            }
+        }
+        return (selected.Select(i => i.Path).ToList(), anchor, y, neighbours);
     }
 
     /// <summary>
@@ -143,7 +157,7 @@ public sealed partial class MainWindow
     /// grid scrolls so the one that was on screen stays at the same height, instead of the view jumping back
     /// to the top of a much longer list.
     /// </summary>
-    private void KeepSelectionPlace((List<string> Paths, string? Anchor, double Y) place)
+    private void KeepSelectionPlace((List<string> Paths, string? Anchor, double Y, List<string> Neighbours) place)
     {
         if (place.Paths.Count == 0)
             return;
@@ -152,7 +166,16 @@ public sealed partial class MainWindow
             byPath.TryAdd(item.Path, item);
         var kept = place.Paths.Select(p => byPath.GetValueOrDefault(p)).OfType<PhotoItemViewModel>().ToList();
         if (kept.Count == 0)
-            return;
+        {
+            // The selected photos left the filter (rated, flagged, tagged…): the next one still shown (else the
+            // one before) is selected and put where they were.
+            if (place.Neighbours.Select(p => byPath.GetValueOrDefault(p)).FirstOrDefault(i => i is not null) is not { } next)
+                return;
+            kept = [next];
+            place = (place.Paths, place.Anchor is null ? null : next.Path, place.Y, place.Neighbours);
+            if (place.Anchor is null)
+                DispatcherQueue.TryEnqueue(() => PhotoGrid.ScrollIntoView(next));
+        }
         _carryingSelection = true;
         try
         {
