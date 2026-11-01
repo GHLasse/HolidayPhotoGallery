@@ -54,7 +54,8 @@ public sealed partial class MainWindow
         sourceBox.SelectedIndex = Math.Max(0, sources.FindIndex(s => drive is not null && string.Equals(s.Drive, drive, StringComparison.OrdinalIgnoreCase)));
         var found = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var eventName = new TextBox { Header = Tr("Event (optional)"), PlaceholderText = Tr("e.g. Lisbon") };
-        var tags = new TextBox { Header = Tr("Tags for all of them (optional)"), PlaceholderText = Tr("Separate tags with commas") };
+        var chosenTags = new List<string>();
+        var tags = TagPicker(Tr("Tags for all of them (optional)"), chosenTags);
         var destination = new TextBox { Header = Tr("Into"), Text = ViewModel.ImportFolder, IsReadOnly = true, MinWidth = 320 };
         var browse = new Button { Content = Tr("Change…"), VerticalAlignment = VerticalAlignment.Bottom };
         var pattern = new TextBox { Header = Tr("Folders"), Text = ViewModel.ImportPattern };
@@ -252,7 +253,7 @@ public sealed partial class MainWindow
         ViewModel.ImportFolder = destination.Text;
         ViewModel.ImportPattern = pattern.Text;
         await ViewModel.ImportAsync((ImportSourceChoice)sourceBox.SelectedItem, plan, destination.Text,
-            TagList.Parse(tags.Text), delete.IsChecked == true);
+            chosenTags, delete.IsChecked == true);
     }
 }
 

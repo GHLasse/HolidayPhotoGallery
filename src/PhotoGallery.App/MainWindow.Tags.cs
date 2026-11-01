@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -116,6 +117,73 @@ public sealed partial class MainWindow
         ViewModel.Editor.AddTags(TagList.Parse(text));
         sender.Text = "";
         ShowSuggestions(sender, []);
+    }
+
+    /// <summary>
+    /// A tag picker for a dialog, like the info pane's: a box that suggests the library's tags (most used first)
+    /// and the chosen tags as badges with a cross to take one off again. <paramref name="chosen"/> is kept current.
+    /// </summary>
+    private FrameworkElement TagPicker(string header, List<string> chosen)
+    {
+        var badges = new Controls.WrapPanel();
+        var box = new AutoSuggestBox { PlaceholderText = Tr("Add a tag"), QueryIcon = new SymbolIcon(Symbol.Add) };
+        AutomationProperties.SetName(box, header);
+        PrepareSuggestions(box);
+
+        void Show()
+        {
+            badges.Children.Clear();
+            foreach (var tag in chosen.ToList())
+                badges.Children.Add(Badge(TagTree.IsPath(tag) ? TagTree.Display(tag) : tag, isAuto: false, outlined: false, tag, click: null,
+                                          Tr("Remove {0}", tag), () => { chosen.Remove(tag); Show(); }));
+            badges.Visibility = chosen.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        void Add(IEnumerable<string> tags)
+        {
+            foreach (var tag in tags)
+                if (tag.Length > 0 && !chosen.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                    chosen.Add(tag);
+            Show();
+        }
+
+        box.TextChanged += (sender, args) =>
+        {
+            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+                return;
+            var text = sender.Text;
+            var cut = text.LastIndexOfAny(TagSeparators);
+            if (cut >= 0)
+            {
+                Add(TagList.Parse(text[..cut]));
+                sender.Text = text[(cut + 1)..].TrimStart();
+                text = sender.Text;
+            }
+            var typed = text.Trim();
+            ShowSuggestions(sender, typed.Length == 0
+                ? []
+                : ViewModel.Tags.OrderByDescending(t => t.Count).Select(t => t.Tag)
+                    .Where(t => t.Contains(typed, StringComparison.CurrentCultureIgnoreCase) && !chosen.Contains(t, StringComparer.OrdinalIgnoreCase))
+                    .Take(8)
+                    .ToList());
+        };
+        box.SuggestionChosen += (sender, args) => sender.Text = args.SelectedItem as string ?? sender.Text;
+        box.QuerySubmitted += (sender, args) =>
+        {
+            Add(TagList.Parse(args.ChosenSuggestion as string ?? args.QueryText));
+            sender.Text = "";
+            ShowSuggestions(sender, []);
+        };
+        // What is still typed when the dialog closes counts too.
+        box.LostFocus += (_, _) =>
+        {
+            if (box.Text.Trim().Length > 0 && !box.IsSuggestionListOpen)
+            {
+                Add(TagList.Parse(box.Text));
+                box.Text = "";
+            }
+        };
+        Show();
+        return new StackPanel { Spacing = 6, Children = { new TextBlock { Text = header }, badges, box } };
     }
 
     // ---- Filter bar ----
