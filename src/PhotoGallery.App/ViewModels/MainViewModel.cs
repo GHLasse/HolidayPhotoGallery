@@ -869,7 +869,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     }
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException
-                                               or System.Runtime.InteropServices.COMException or SixLabors.ImageSharp.ImageFormatException)
+                                               or System.Runtime.InteropServices.COMException)
                 {
                     failed++;
                     ErrorMessage = Tr("Could not rotate {0}: {1}", item.FileName, ex.Message) +
@@ -888,8 +888,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // One photo turned is seen on the photo itself, so only several get a banner.
         if (skipped == 0 && failed == 0 && done > 1)
             Inform(Tr("Rotated {0}.", PhotoCount(done)));
+        else if (skipped > 0 && items.Count == 1)
+            Warn(PixelTurner.AnimatedWebpHint);
         else if (skipped > 0)
-            Warn(Tr("Rotated {0}. {1} skipped: their format can't be rotated.", PhotoCount(done), skipped));
+            Warn(Tr("Rotated {0}. {1} skipped: animated WebP pictures can't be rotated.", PhotoCount(done), skipped));
     }
 
     /// <summary>"1 photo" or "12 photos".</summary>
@@ -901,15 +903,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var path = item.Path;
         var turn = clockwise ? 6 : 8;
         string newPath;
-        if (PixelRotation.Handles(path))
+        if (WebpRotation.Handles(path))
         {
-            var (width, height) = await PixelRotation.TurnedSizeAsync(path);
+            // Windows can't write WebP: SkiaSharp turns it, lossless staying lossless.
+            var (width, height) = await Task.Run(() => WebpRotation.TurnedSize(path));
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), width, height,
-                                                        target => PixelRotation.TurnAsync(path, target, clockwise), turn: turn);
+                                                        target => Task.Run(() => WebpRotation.Turn(path, target, clockwise)), turn: turn);
+        }
+        else if (PixelTurner.Handles(path))
+        {
+            // GIF: every frame of an animation is turned with Windows' GIF codec.
+            var (width, height) = await PixelTurner.TurnedSizeAsync(path);
+            newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), width, height,
+                                                        target => PixelTurner.TurnAsync(path, target, clockwise), turn: turn);
         }
         else
         {
-            // HEIC: Windows decodes it upright, and its HEIF encoder (HEVC Video Extensions) saves it again.
+            // PNG and HEIC: Windows decodes them upright, and its encoders save them again (HEIC needs the HEVC Video Extensions).
             var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
             var turned = await Task.Run(() => new DecodedImage(ImageMath.Rotate90(image.Pixels, image.Width, image.Height, clockwise), image.Height, image.Width));
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), turned.Width, turned.Height,

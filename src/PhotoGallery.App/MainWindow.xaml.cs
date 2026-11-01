@@ -1403,6 +1403,11 @@ public sealed partial class MainWindow : Window
     {
         if (_viewerIndex >= _viewerItems.Count)
             return;
+        if (!_viewerItems[_viewerIndex].CanRotate)
+        {
+            ViewModel.Warn(PixelTurner.AnimatedWebpHint);
+            return;
+        }
         await ViewModel.RotateAsync([_viewerItems[_viewerIndex]], clockwise);
         await ShowViewerImageAsync();
     }
@@ -2014,6 +2019,14 @@ public sealed partial class MainWindow : Window
         var edits = ViewerItem is { } item ? EditHistory.EditCount(item.Path) : 0;
         ViewerUndoButton.IsEnabled = edits > 0;
         ViewerRevertButton.IsEnabled = edits > 0;
+
+        // An animated WebP can't be turned. Faded rather than disabled, so the tooltip still says why (as Busy.Gate does).
+        var animated = ViewerItem is { } shown && PhotoGallery.Core.SupportedFormats.IsAnimatedWebp(shown.Path);
+        foreach (var (button, tip) in new[] { (ViewerRotateLeftButton, Tr("Rotate left (Ctrl+,)")), (ViewerRotateRightButton, Tr("Rotate right (Ctrl+.)")) })
+        {
+            button.Opacity = animated ? 0.4 : 1;
+            ToolTipService.SetToolTip(button, animated ? PixelTurner.AnimatedWebpHint : tip);
+        }
     }
 
     private void ViewerCancelEdit_Click(object sender, RoutedEventArgs e) => CancelEdit();

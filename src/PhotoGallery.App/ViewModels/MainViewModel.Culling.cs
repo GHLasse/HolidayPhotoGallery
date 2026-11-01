@@ -170,20 +170,22 @@ public sealed partial class MainViewModel
     {
         if (!File.Exists(path))
             return null;
-        var faces = await Task.Run(() => _index.GetFaces(path).Select(f => f.Box).ToList());
-        if (await Task.Run(() => ShotQuality.FromFile(path, faces)) is { } measure)
-            return measure;
-        // HEIC and others ImageSharp can't read: Windows' copy, which is upright, so the faces are turned too.
-        try
+        // The face boxes are on the stored pixels; Windows decodes upright, so they are turned too.
+        var faces = await Task.Run(() => _index.GetFaces(path).Select(f => f.Box.ToUpright(orientation)).ToList());
+        foreach (var decode in new Func<Task<DecodedImage>>[]
+                 {
+                     () => ImageLoader.DecodePixelsAsync(path, (uint)ShotQuality.DecodeSize),
+                     () => ImageLoader.ShellThumbnailPixelsAsync(path, (uint)ShotQuality.Size),
+                 })
         {
-            if (await ImageLoader.LoadShellThumbnailJpegAsync(path, ShotQuality.Size) is { } jpeg)
+            try
             {
-                var upright = faces.Select(f => f.ToUpright(orientation)).ToList();
-                return await Task.Run(() => ShotQuality.FromStream(new MemoryStream(jpeg), upright));
+                var image = await decode();
+                return await Task.Run(() => ShotQuality.FromPixels(image.Pixels, image.Width, image.Height, faces));
             }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
-        {
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
+            {
+            }
         }
         return null;
     }

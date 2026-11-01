@@ -194,7 +194,9 @@ public sealed partial class MainViewModel
                 }
                 case RepairWay.FillFromPreview when damaged is { Image: { } image, Damage: { } damage, Preview: { } preview }:
                 {
-                    var pixels = await Task.Run(() => PhotoRepair.Fill(image.Pixels, image.Width, image.Height, damage, preview, item.Photo.Orientation, ai), cancellationToken);
+                    var stored = await ImageLoader.DecodeStoredPixelsAsync(preview);
+                    var pixels = await Task.Run(() => PhotoRepair.FillFromPreview(image.Pixels, image.Width, image.Height, damage,
+                                                                                  stored.Pixels, stored.Width, stored.Height, item.Photo.Orientation, ai), cancellationToken);
                     if (pixels is not null)
                         return new RepairedPhoto(image with { Pixels = pixels }, null) { Note = note };
                     ErrorMessage = Tr("The preview stored in {0} has another shape than the photo, so it can't fill it. Try a copy, or crop.", item.FileName);

@@ -1,7 +1,5 @@
 using PhotoGallery.Core.Faces;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using PhotoGallery.Core.Editing;
 
 namespace PhotoGallery.Core.Tests;
 
@@ -79,28 +77,26 @@ public sealed class FaceAnalyzerTests
         var reference = Assert.Single(Analyze(analyzer, "obama.jpg"));
 
         // The portrait shrunk to a corner of a large empty photo, as when someone stands further away.
-        using var portrait = Image.Load<Bgra32>(Path.Combine(FaceModelFactAttribute.Folder!, "obama.jpg"));
-        portrait.Mutate(p => p.Resize(portrait.Width / 5, portrait.Height / 5));
-        using var scene = new Image<Bgra32>(FaceAnalyzer.ImageSize, FaceAnalyzer.ImageSize * 3 / 4, new Bgra32(90, 120, 140, 255));
-        scene.Mutate(s => s.DrawImage(portrait, new Point(900, 600), 1));
+        var portrait = TestImages.Decode(Path.Combine(FaceModelFactAttribute.Folder!, "obama.jpg"))!.Value;
+        var (pw, ph) = (portrait.Width / 5, portrait.Height / 5);
+        var small = ImageMath.Resize(portrait.Pixels, portrait.Width, portrait.Height, pw, ph);
+        var (sw, sh) = (FaceAnalyzer.ImageSize, FaceAnalyzer.ImageSize * 3 / 4);
+        var scene = new byte[sw * sh * 4];
+        for (var i = 0; i < scene.Length; i += 4)
+            (scene[i], scene[i + 1], scene[i + 2], scene[i + 3]) = (90, 120, 140, 255);
+        for (var y = 0; y < ph && 600 + y < sh; y++)
+            Array.Copy(small, y * pw * 4, scene, ((600 + y) * sw + 900) * 4, Math.Min(pw, sw - 900) * 4);
 
-        var face = Assert.Single(Analyze(analyzer, scene));
-        Assert.InRange(face.Box.X, 900.0 / scene.Width, 1);
+        var face = Assert.Single(analyzer.Analyze(scene, sw, sh));
+        Assert.InRange(face.Box.X, 900.0 / sw, 1);
         Assert.InRange(FaceAnalyzer.Similarity(reference.Embedding, face.Embedding), FaceAnalyzer.SamePerson, 1);
     }
 
     private static IReadOnlyList<DetectedFace> Analyze(FaceAnalyzer analyzer, string file)
     {
-        using var image = Image.Load<Bgra32>(Path.Combine(FaceModelFactAttribute.Folder!, file));
+        var image = TestImages.Decode(Path.Combine(FaceModelFactAttribute.Folder!, file))!.Value;
         var scale = Math.Min(1.0, (double)FaceAnalyzer.ImageSize / Math.Max(image.Width, image.Height));
-        image.Mutate(i => i.Resize((int)(image.Width * scale), (int)(image.Height * scale)));
-        return Analyze(analyzer, image);
-    }
-
-    private static IReadOnlyList<DetectedFace> Analyze(FaceAnalyzer analyzer, Image<Bgra32> image)
-    {
-        var pixels = new byte[image.Width * image.Height * 4];
-        image.CopyPixelDataTo(pixels);
-        return analyzer.Analyze(pixels, image.Width, image.Height);
+        var (w, h) = ((int)(image.Width * scale), (int)(image.Height * scale));
+        return analyzer.Analyze(ImageMath.Resize(image.Pixels, image.Width, image.Height, w, h), w, h);
     }
 }

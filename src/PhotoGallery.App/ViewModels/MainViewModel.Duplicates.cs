@@ -69,22 +69,25 @@ public sealed partial class MainViewModel
         }
     }
 
-    // Windows decodes HEIC and others ImageSharp can't; its thumbnail is enough for a fingerprint.
+    // Windows decodes the photo small and upright; when it can't (a damaged file), its thumbnail is enough for a fingerprint.
     private static ulong? HashOf(string path)
     {
-        var hash = PictureHash.FromFile(path);
-        if (hash is null)
+        foreach (var decode in new Func<Task<DecodedImage>>[]
+                 {
+                     () => ImageLoader.DecodePixelsAsync(path, PictureHash.DecodeSize),
+                     () => ImageLoader.ShellThumbnailPixelsAsync(path, 256),
+                 })
         {
             try
             {
-                if (ImageLoader.LoadShellThumbnailJpegAsync(path, 256).GetAwaiter().GetResult() is { } jpeg)
-                    hash = PictureHash.FromStream(new MemoryStream(jpeg));
+                var image = decode().GetAwaiter().GetResult();
+                return PictureHash.FromPixels(image.Pixels, image.Width, image.Height);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
             {
             }
         }
-        return hash;
+        return null;
     }
 
     private int _duplicateCount;

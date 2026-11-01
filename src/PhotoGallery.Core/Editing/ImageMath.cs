@@ -113,4 +113,218 @@ public static class ImageMath
             bgra[i + 2] = curve[bgra[i + 2]];
         }
     }
+
+    /// <summary>
+    /// The pixels turned upright for an EXIF orientation (1 to 8): mirrored and/or turned; 5 to 8 swap width and
+    /// height. Returns the pixels, their width and height.
+    /// </summary>
+    public static (byte[] Pixels, int Width, int Height) Upright(byte[] bgra, int width, int height, int orientation)
+    {
+        if (orientation is < 2 or > 8)
+            return (bgra, width, height);
+        var swap = orientation >= 5;
+        var (w, h) = swap ? (height, width) : (width, height);
+        var result = new byte[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var (sx, sy) = orientation switch
+                {
+                    2 => (width - 1 - x, y),
+                    3 => (width - 1 - x, height - 1 - y),
+                    4 => (x, height - 1 - y),
+                    5 => (y, x),
+                    6 => (y, height - 1 - x),
+                    7 => (width - 1 - y, height - 1 - x),
+                    _ => (width - 1 - y, x),
+                };
+                Buffer.BlockCopy(bgra, (sy * width + sx) * 4, result, (y * w + x) * 4, 4);
+            }
+        }
+        return (result, w, h);
+    }
+
+    /// <summary>The brightness of each pixel (Rec. 601 weights), one byte per pixel.</summary>
+    public static byte[] Grey(ReadOnlySpan<byte> bgra, int width, int height)
+    {
+        var grey = new byte[width * height];
+        for (var i = 0; i < grey.Length; i++)
+        {
+            var o = i * 4;
+            grey[i] = (byte)((bgra[o + 2] * 299 + bgra[o + 1] * 587 + bgra[o] * 114 + 500) / 1000);
+        }
+        return grey;
+    }
+
+    /// <summary>How a picture is resampled to a new size.</summary>
+    public enum Resampler
+    {
+        /// <summary>Catmull-Rom: sharp and quick, for measuring and for small previews.</summary>
+        Bicubic,
+
+        /// <summary>Lanczos with three lobes: the sharpest, for filling a photo from a smaller copy.</summary>
+        Lanczos3,
+    }
+
+    /// <summary>A grey picture (one byte per pixel) resampled to <paramref name="newWidth"/> × <paramref name="newHeight"/>.</summary>
+    public static byte[] ResizeGrey(byte[] grey, int width, int height, int newWidth, int newHeight, Resampler resampler = Resampler.Bicubic) =>
+        Resize(grey, 1, width, height, newWidth, newHeight, resampler);
+
+    /// <summary>An 8-bit BGRA picture resampled to <paramref name="newWidth"/> × <paramref name="newHeight"/>.</summary>
+    public static byte[] Resize(byte[] bgra, int width, int height, int newWidth, int newHeight, Resampler resampler = Resampler.Bicubic) =>
+        Resize(bgra, 4, width, height, newWidth, newHeight, resampler);
+
+    /// <summary>
+    /// Sharpens with an unsharp mask: the difference to a Gaussian-blurred copy (<paramref name="sigma"/> pixels) is
+    /// added back. Alpha is left alone.
+    /// </summary>
+    public static void Sharpen(byte[] bgra, int width, int height, float sigma)
+    {
+        if (sigma <= 0)
+            return;
+        var blurred = GaussianBlur(bgra, width, height, sigma);
+        for (var i = 0; i < bgra.Length; i++)
+        {
+            if (i % 4 == 3)
+                continue;
+            bgra[i] = (byte)Math.Clamp(bgra[i] + (bgra[i] - blurred[i]), 0, 255);
+        }
+    }
+
+    // Separable resampling: rows first, then columns, each with weights from the kernel widened by the scale when
+    // shrinking (so every source pixel counts, as an area average would).
+    private static byte[] Resize(byte[] pixels, int channels, int width, int height, int newWidth, int newHeight, Resampler resampler)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(newWidth, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(newHeight, 1);
+        if (newWidth == width && newHeight == height)
+            return (byte[])pixels.Clone();
+        var (radius, kernel) = resampler == Resampler.Lanczos3 ? (3.0, (Func<double, double>)Lanczos3) : (2.0, CatmullRom);
+        var columns = Weights(width, newWidth, radius, kernel);
+        var rows = Weights(height, newHeight, radius, kernel);
+
+        var across = new float[newWidth * height * channels];
+        Parallel.For(0, height, y =>
+        {
+            for (var x = 0; x < newWidth; x++)
+            {
+                var (start, weights) = columns[x];
+                for (var c = 0; c < channels; c++)
+                {
+                    double sum = 0;
+                    for (var k = 0; k < weights.Length; k++)
+                        sum += weights[k] * pixels[((y * width) + start + k) * channels + c];
+                    across[(y * newWidth + x) * channels + c] = (float)sum;
+                }
+            }
+        });
+
+        var result = new byte[newWidth * newHeight * channels];
+        Parallel.For(0, newHeight, y =>
+        {
+            var (start, weights) = rows[y];
+            for (var x = 0; x < newWidth; x++)
+            {
+                for (var c = 0; c < channels; c++)
+                {
+                    double sum = 0;
+                    for (var k = 0; k < weights.Length; k++)
+                        sum += weights[k] * across[((start + k) * newWidth + x) * channels + c];
+                    result[(y * newWidth + x) * channels + c] = (byte)Math.Clamp(Math.Round(sum), 0, 255);
+                }
+            }
+        });
+        return result;
+    }
+
+    // For each target pixel, the first source pixel it reads and the weights (summing to 1).
+    private static (int Start, double[] Weights)[] Weights(int source, int target, double radius, Func<double, double> kernel)
+    {
+        var scale = (double)source / target;
+        var widen = Math.Max(1, scale);
+        var support = radius * widen;
+        var result = new (int, double[])[target];
+        for (var i = 0; i < target; i++)
+        {
+            var centre = (i + 0.5) * scale - 0.5;
+            var start = Math.Max(0, (int)Math.Floor(centre - support));
+            var end = Math.Min(source - 1, (int)Math.Ceiling(centre + support));
+            var weights = new double[end - start + 1];
+            double total = 0;
+            for (var j = start; j <= end; j++)
+                total += weights[j - start] = kernel((j - centre) / widen);
+            if (Math.Abs(total) < 1e-9)
+            {
+                // Nothing in reach (a picture one pixel wide): the nearest pixel.
+                var nearest = Math.Clamp((int)Math.Round(centre), 0, source - 1);
+                result[i] = (nearest, [1.0]);
+                continue;
+            }
+            for (var k = 0; k < weights.Length; k++)
+                weights[k] /= total;
+            result[i] = (start, weights);
+        }
+        return result;
+    }
+
+    private static double CatmullRom(double x)
+    {
+        x = Math.Abs(x);
+        return x < 1 ? 1.5 * x * x * x - 2.5 * x * x + 1
+            : x < 2 ? -0.5 * x * x * x + 2.5 * x * x - 4 * x + 2
+            : 0;
+    }
+
+    private static double Lanczos3(double x)
+    {
+        x = Math.Abs(x);
+        if (x < 1e-9)
+            return 1;
+        if (x >= 3)
+            return 0;
+        var px = Math.PI * x;
+        return 3 * Math.Sin(px) * Math.Sin(px / 3) / (px * px);
+    }
+
+    internal static byte[] GaussianBlur(byte[] bgra, int width, int height, float sigma)
+    {
+        var radius = (int)Math.Ceiling(sigma * 3);
+        var kernel = new double[radius * 2 + 1];
+        double total = 0;
+        for (var i = -radius; i <= radius; i++)
+            total += kernel[i + radius] = Math.Exp(-i * i / (2.0 * sigma * sigma));
+        for (var i = 0; i < kernel.Length; i++)
+            kernel[i] /= total;
+
+        var across = new float[bgra.Length];
+        Parallel.For(0, height, y =>
+        {
+            for (var x = 0; x < width; x++)
+            {
+                for (var c = 0; c < 4; c++)
+                {
+                    double sum = 0;
+                    for (var k = -radius; k <= radius; k++)
+                        sum += kernel[k + radius] * bgra[(y * width + Math.Clamp(x + k, 0, width - 1)) * 4 + c];
+                    across[(y * width + x) * 4 + c] = (float)sum;
+                }
+            }
+        });
+        var result = new byte[bgra.Length];
+        Parallel.For(0, height, y =>
+        {
+            for (var x = 0; x < width; x++)
+            {
+                for (var c = 0; c < 4; c++)
+                {
+                    double sum = 0;
+                    for (var k = -radius; k <= radius; k++)
+                        sum += kernel[k + radius] * across[(Math.Clamp(y + k, 0, height - 1) * width + x) * 4 + c];
+                    result[(y * width + x) * 4 + c] = (byte)Math.Clamp(Math.Round(sum), 0, 255);
+                }
+            }
+        });
+        return result;
+    }
 }

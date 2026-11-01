@@ -2,9 +2,6 @@ using PhotoGallery.Core.Culling;
 using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace PhotoGallery.Core.Tests;
 
@@ -23,25 +20,27 @@ public sealed class ShotQualityTests : IDisposable
     }
 
     // Fine random detail, like leaves or gravel, around a mid grey.
-    private static Image<L8> Detailed(int width = 800, int height = 600, int seed = 1, int around = 128, int spread = 60)
+    private static GreyPicture Detailed(int width = 800, int height = 600, int seed = 1, int around = 128, int spread = 60)
     {
         var random = new Random(seed);
-        var image = new Image<L8>(width, height);
+        var image = new GreyPicture(width, height);
         for (var y = 0; y < height; y++)
             for (var x = 0; x < width; x++)
-                image[x, y] = new L8((byte)Math.Clamp(around + random.Next(-spread, spread), 0, 255));
+                image[x, y] = (byte)Math.Clamp(around + random.Next(-spread, spread), 0, 255);
         return image;
     }
+
+    private static QualityMeasure Measure(GreyPicture picture, IReadOnlyList<FaceBox> faces) =>
+        ShotQuality.Measure(picture.Pixels, picture.Width, picture.Height, faces);
 
     [Fact]
     public void A_sharp_photo_gets_no_hint_and_a_blurred_copy_is_possibly_blurry()
     {
-        using var sharp = Detailed();
-        var measure = ShotQuality.Measure(sharp, []);
+        var sharp = Detailed();
+        var measure = Measure(sharp, []);
         Assert.Equal(QualityHint.None, ShotQuality.Hints(measure));
 
-        using var blurred = sharp.Clone(x => x.GaussianBlur(4));
-        var soft = ShotQuality.Measure(blurred, []);
+        var soft = Measure(sharp.Clone().Blur(4), []);
         Assert.True(soft.Sharpness < measure.Sharpness / 10);
         Assert.Equal(QualityHint.Blurry, ShotQuality.Hints(soft));
     }
@@ -49,21 +48,17 @@ public sealed class ShotQualityTests : IDisposable
     [Fact]
     public void A_soft_background_is_fine_when_one_part_is_sharp()
     {
-        using var image = Detailed();
-        image.Mutate(x => x.GaussianBlur(6));
-        using var subject = Detailed(200, 200, seed: 2);
-        image.Mutate(x => x.DrawImage(subject, new Point(300, 200), 1f));
-        Assert.Equal(QualityHint.None, ShotQuality.Hints(ShotQuality.Measure(image, [])));
+        var image = Detailed().Blur(6).Draw(Detailed(200, 200, seed: 2), 300, 200);
+        Assert.Equal(QualityHint.None, ShotQuality.Hints(Measure(image, [])));
     }
 
     [Fact]
     public void With_faces_only_the_faces_count()
     {
-        using var image = Detailed();
         // A blurred face on a sharp scene: the photo is possibly blurry where it matters.
         var face = new FaceBox(0.4, 0.3, 0.2, 0.25);
-        image.Mutate(x => x.GaussianBlur(5, new Rectangle(280, 140, 240, 230)));
-        var measure = ShotQuality.Measure(image, [face]);
+        var image = Detailed().Blur(5, (280, 140, 240, 230));
+        var measure = Measure(image, [face]);
         Assert.NotNull(measure.FaceSharpness);
         Assert.True(measure.Sharpness > ShotQuality.BlurryBelow);
         Assert.Equal(QualityHint.Blurry, ShotQuality.Hints(measure));
@@ -72,37 +67,31 @@ public sealed class ShotQualityTests : IDisposable
     [Fact]
     public void Nearly_black_and_nearly_white_photos_are_too_dark_or_too_bright_not_blurry()
     {
-        using var dark = Detailed(around: 6, spread: 6);
-        Assert.Equal(QualityHint.TooDark, ShotQuality.Hints(ShotQuality.Measure(dark, [])));
-        using var bright = Detailed(around: 250, spread: 5);
-        Assert.Equal(QualityHint.TooBright, ShotQuality.Hints(ShotQuality.Measure(bright, [])));
+        Assert.Equal(QualityHint.TooDark, ShotQuality.Hints(Measure(Detailed(around: 6, spread: 6), [])));
+        Assert.Equal(QualityHint.TooBright, ShotQuality.Hints(Measure(Detailed(around: 250, spread: 5), [])));
         // A night scene with a lit part stays without a hint.
-        using var night = Detailed(around: 8, spread: 6);
-        using var lit = Detailed(300, 300, seed: 3);
-        night.Mutate(x => x.DrawImage(lit, new Point(250, 150), 1f));
-        Assert.Equal(QualityHint.None, ShotQuality.Hints(ShotQuality.Measure(night, [])));
+        var night = Detailed(around: 8, spread: 6).Draw(Detailed(300, 300, seed: 3), 250, 150);
+        Assert.Equal(QualityHint.None, ShotQuality.Hints(Measure(night, [])));
     }
 
     [Fact]
     public void Large_photos_are_measured_at_the_same_size()
     {
-        using var large = Detailed(2048, 1536);
-        using var medium = large.Clone(x => x.Resize(ShotQuality.Size, ShotQuality.Size * 3 / 4));
-        var a = ShotQuality.Measure(large, []);
-        var b = ShotQuality.Measure(medium, []);
+        var large = Detailed(2048, 1536);
+        var medium = large.Resize(ShotQuality.Size, ShotQuality.Size * 3 / 4);
+        var a = Measure(large, []);
+        var b = Measure(medium, []);
         Assert.InRange(a.Sharpness, b.Sharpness * 0.9, b.Sharpness * 1.1);
     }
 
     [Fact]
-    public void Reads_a_file_and_returns_null_for_what_it_cannot_read()
+    public void Colour_pixels_are_measured_by_their_brightness()
     {
-        var path = Path.Combine(_data.Path, "shot.png");
-        using (var image = Detailed(400, 300))
-            image.SaveAsPng(path);
-        Assert.NotNull(ShotQuality.FromFile(path, []));
-        var bad = Path.Combine(_data.Path, "bad.jpg");
-        File.WriteAllText(bad, "not a picture");
-        Assert.Null(ShotQuality.FromFile(bad, []));
+        var picture = Detailed(400, 300);
+        var grey = Measure(picture, []);
+        var colour = ShotQuality.FromPixels(picture.Bgra, picture.Width, picture.Height, []);
+        Assert.Equal(grey.Sharpness, colour.Sharpness, 1);
+        Assert.Equal(grey.Brightness, colour.Brightness, 1);
     }
 
     private static IndexedPhoto Photo(string name, DateTime? taken, int rating = 0, bool rejected = false) =>
