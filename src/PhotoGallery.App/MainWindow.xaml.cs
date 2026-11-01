@@ -1335,6 +1335,7 @@ public sealed partial class MainWindow : Window
             return;
         var marks = (item.Photo.Rating > 0 ? "   " + new string('★', item.Photo.Rating) : "") + (item.Photo.Flagged ? "   ⚑ " + Tr("Flagged") : "") + (item.Photo.Rejected ? "   ✕ " + Tr("Rejected") : "");
         ViewerTitle.Text = Tr("{0}   ({1} of {2}){3}", item.FileName, _viewerIndex + 1, _viewerItems.Count, marks);
+        WatchViewerHints(item);
     }
 
     // Esc first leaves an edit, asking whether to save it, then the viewer.

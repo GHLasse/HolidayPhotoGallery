@@ -9,8 +9,9 @@ namespace PhotoGallery.App.ViewModels;
 
 /// <summary>
 /// Help picking the best shots (C-4): groups of similar shots to compare, and hints for photos that are possibly
-/// blurry, too dark or too bright. Hints show only in Compare and with the "Possibly weak shots" filter, never
-/// on the tiles; they go away once a photo is rated, flagged or rejected, and "Ignore" hides them for good.
+/// blurry, too dark or too bright. Hints show as small warning icons on the tiles and in the viewer, in Compare and
+/// with the "Possibly weak shots" filter; they go away once a photo is rated, flagged or rejected, and "Ignore"
+/// hides them for good.
 /// </summary>
 public sealed partial class MainViewModel
 {
@@ -52,6 +53,47 @@ public sealed partial class MainViewModel
         return string.Join(" · ", words);
     }
 
+    // Gives the tiles their quality hint icons once the hints are loaded.
+    private async Task ShowQualityHintsAsync(IReadOnlyList<PhotoItemViewModel> items)
+    {
+        try
+        {
+            ShowQualityHints(items, await QualitiesAsync());
+        }
+        catch (Exception ex)
+        {
+            App.Trace($"quality hints: {ex.Message}");
+        }
+    }
+
+    private static void ShowQualityHints(IEnumerable<PhotoItemViewModel> items, Dictionary<string, ShotQualityRow> qualities)
+    {
+        foreach (var item in items)
+        {
+            if (qualities.TryGetValue(item.Path, out var row) && !row.Ignored)
+                item.SetQualityHints(row.Hints, row.Measure.FaceSharpness is not null);
+            else
+                item.SetQualityHints(QualityHint.None, false);
+        }
+    }
+
+    // Newly measured photos: kept with the loaded hints (an "Ignore" stays) and shown on their tiles at once.
+    private void RememberQualities(IReadOnlyList<(string Path, QualityMeasure Measure)> measured)
+    {
+        if (_qualities is not { } kept)
+        {
+            _ = ShowQualityHintsAsync(AllShown); // loads them all, the new rows with them
+            return;
+        }
+        foreach (var (path, measure) in measured)
+        {
+            var row = new ShotQualityRow(measure, ShotQuality.Hints(measure), kept.GetValueOrDefault(path)?.Ignored ?? false);
+            kept[path] = row;
+            if (_photoItems.TryGetValue(path, out var item))
+                item.SetQualityHints(row.Ignored ? QualityHint.None : row.Hints, measure.FaceSharpness is not null);
+        }
+    }
+
     /// <summary>Loads the hints, so <see cref="QualityHintText"/> can answer (Compare asks before it shows).</summary>
     public async Task LoadQualityHintsAsync() => await QualitiesAsync();
 
@@ -68,6 +110,8 @@ public sealed partial class MainViewModel
                     kept[path] = row with { Ignored = true };
             }
         }
+        foreach (var item in items)
+            item.SetQualityHints(QualityHint.None, false);
         if (QualityHintsOnly)
             await SearchAsync();
     }
@@ -146,11 +190,11 @@ public sealed partial class MainViewModel
                         var save = measured.ToList();
                         measured.Clear();
                         await Task.Run(() => _index.SaveShotQuality(save));
-                        _qualities = null;
+                        RememberQualities(save);
                     }
                 }
                 await Task.Run(() => _index.SaveShotQuality(measured));
-                _qualities = null; // read again with the new rows when next needed
+                RememberQualities(measured);
                 if (!_settings.CheckQualityAutomatically)
                     break;
             }
@@ -196,6 +240,11 @@ public sealed partial class MainViewModel
         await Task.Run(() => _index.ForgetShotQuality(newPath));
         _qualities?.Remove(oldPath);
         _qualities?.Remove(newPath);
+        foreach (var path in new[] { oldPath, newPath })
+        {
+            if (_photoItems.TryGetValue(path, out var item))
+                item.SetQualityHints(QualityHint.None, false);
+        }
         _ = CheckQualityInBackgroundAsync();
     }
 
