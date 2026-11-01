@@ -124,8 +124,8 @@ public sealed partial class PhotoIndex
 
     /// <summary>
     /// The SQL condition for photos that have a hint to show: measured with a hint, not ignored, and not
-    /// rated, flagged or rejected yet (a photo the user already judged needs no hint).
+    /// rated yet (a photo the user already rated needs no hint; a flag or reject leaves it, Lasse 2026-11-01).
     /// </summary>
     internal const string HasQualityHintSql =
-        "(p.rating = 0 AND p.flagged = 0 AND EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id AND q.hints <> 0 AND q.ignored = 0))";
+        "(p.rating = 0 AND EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id AND q.hints <> 0 AND q.ignored = 0))";
 }

@@ -10,7 +10,7 @@ namespace PhotoGallery.App.ViewModels;
 /// <summary>
 /// Help picking the best shots (C-4): groups of similar shots to compare, and hints for photos that are possibly
 /// blurry, too dark or too bright. Hints show as small warning icons on the tiles and in the viewer, in Compare and
-/// with the "Possibly weak shots" filter; they go away once a photo is rated, flagged or rejected, and "Ignore"
+/// with the "Possibly weak shots" filter; they go away once a photo is rated, and "Ignore"
 /// hides them for good.
 /// </summary>
 public sealed partial class MainViewModel
@@ -19,7 +19,7 @@ public sealed partial class MainViewModel
     private bool _checkingQuality;
     private Dictionary<string, ShotQualityRow>? _qualities;
 
-    /// <summary>Shows only photos with a quality hint (not yet rated, flagged or rejected, and not ignored).</summary>
+    /// <summary>Shows only photos with a quality hint (not yet rated, and not ignored).</summary>
     public bool QualityHintsOnly
     {
         get => _qualityHintsOnly;
@@ -35,12 +35,12 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// The hint for a photo in words ("Possibly blurry"), or null: none, not measured yet, ignored, or the
-    /// photo is already rated, flagged or rejected.
+    /// photo is already rated.
     /// </summary>
     public string? QualityHintText(PhotoItemViewModel item)
     {
         var photo = item.Photo;
-        if (_qualities is null || photo.Rating > 0 || photo.Flagged || photo.Rejected || item.IsVideo ||
+        if (_qualities is null || photo.Rating > 0 || item.IsVideo ||
             !_qualities.TryGetValue(item.Path, out var row) || row.Ignored || row.Hints == QualityHint.None)
             return null;
         var words = new List<string>();

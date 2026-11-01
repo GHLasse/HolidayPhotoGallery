@@ -130,11 +130,11 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     }
 
     /// <summary>
-    /// The hints to show now: none once the photo is rated, flagged or rejected, as the user has judged it then
-    /// (the same rule as the "Possibly weak shots" filter).
+    /// The hints to show now: none once the photo is rated, as the user has judged it then (Lasse: only a rating
+    /// hides them, not a flag or reject; the same rule as the "Possibly weak shots" filter).
     /// </summary>
     public QualityHint ShownQualityHints =>
-        Photo.Rating > 0 || Photo.Flagged || Photo.Rejected || Photo.IsVideo ? QualityHint.None : _qualityHints;
+        Photo.Rating > 0 || Photo.IsVideo ? QualityHint.None : _qualityHints;
 
     /// <summary>The faces in the photo are what looks blurry (the blur hint then says so).</summary>
     public bool FacesBlurry => _facesBlurry;
@@ -164,7 +164,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
             QualityHint.TooDark => Core.Localization.Strings.Tr("Too dark: most of this photo is nearly black."),
             _ => Core.Localization.Strings.Tr("Too bright: most of this photo is nearly white."),
         };
-        return what + Environment.NewLine + Core.Localization.Strings.Tr("The hint goes away once you rate, flag or reject the photo, or choose Ignore quality hints in its right-click menu.");
+        return what + Environment.NewLine + Core.Localization.Strings.Tr("The hint goes away once you rate the photo, or choose Ignore quality hints in its right-click menu.");
     }
 
     private Microsoft.UI.Xaml.Visibility HintVisibility(QualityHint hint) =>

@@ -1031,7 +1031,7 @@
     "The first 100 of {0:N0} are shown.": "Die ersten 100 von {0:N0} werden angezeigt.",
     "The GPS position could not be taken out of {0}: {1}": "Die GPS-Position konnte nicht aus {0} entfernt werden: {1}",
     "The ground the app is built on": "Die Grundlage, auf der die App aufbaut",
-    "The hint goes away once you rate, flag or reject the photo, or choose Ignore quality hints in its right-click menu.": "Der Hinweis verschwindet, sobald Sie das Foto bewerten, kennzeichnen oder ablehnen oder im Kontextmenü „Qualitätshinweise ignorieren“ wählen.",
+    "The hint goes away once you rate the photo, or choose Ignore quality hints in its right-click menu.": "Der Hinweis verschwindet, sobald Sie das Foto bewerten oder im Kontextmenü „Qualitätshinweise ignorieren“ wählen.",
     "The installer": "Das Installationsprogramm",
     "The library folder {0} can't be found. Is the drive connected?": "Der Bibliotheksordner {0} wurde nicht gefunden. Ist das Laufwerk angeschlossen?",
     "The map": "Die Karte",

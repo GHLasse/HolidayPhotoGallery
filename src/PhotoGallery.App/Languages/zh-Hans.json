@@ -1031,7 +1031,7 @@
     "The first 100 of {0:N0} are shown.": "显示了 {0:N0} 个中的前 100 个。",
     "The GPS position could not be taken out of {0}: {1}": "无法从 {0} 中去除 GPS 位置：{1}",
     "The ground the app is built on": "应用的构建基础",
-    "The hint goes away once you rate, flag or reject the photo, or choose Ignore quality hints in its right-click menu.": "给照片评分、标记或拒绝后，或在右键菜单中选择“忽略质量提示”后，提示就会消失。",
+    "The hint goes away once you rate the photo, or choose Ignore quality hints in its right-click menu.": "给照片评分后，或在右键菜单中选择“忽略质量提示”后，提示就会消失。",
     "The installer": "安装程序",
     "The library folder {0} can't be found. Is the drive connected?": "找不到库文件夹 {0}。驱动器是否已连接？",
     "The map": "地图",

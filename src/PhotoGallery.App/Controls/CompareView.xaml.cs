@@ -437,7 +437,7 @@ public sealed partial class CompareView : UserControl
             ShowHint(pane);
     }
 
-    // A rated, flagged or rejected photo has been judged, so its hint goes.
+    // A rated photo has been judged, so its hint goes (a flag or reject leaves it).
     private void ShowHint(Pane pane)
     {
         if (pane.Hint is null || pane.HintText is null)
