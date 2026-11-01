@@ -1,29 +1,31 @@
 using PhotoGallery.Core.Library;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace PhotoGallery.Core.Tests;
 
 public class JpegScanTests
 {
     // A smooth picture with some detail, like a photo: 4:2:0 colour, as cameras store it.
-    private static byte[] Jpeg(JpegEncodingColor color = JpegEncodingColor.YCbCrRatio420)
+    public enum Colour { Ratio420, Ratio444, Grey }
+
+    private static byte[] Jpeg(Colour colour = Colour.Ratio420)
     {
-        using var image = new Image<Rgb24>(320, 240);
         var random = new Random(3);
-        image.ProcessPixelRows(rows =>
-        {
-            for (var y = 0; y < rows.Height; y++)
+        var bgra = new byte[320 * 240 * 4];
+        var grey = new byte[320 * 240];
+        for (var y = 0; y < 240; y++)
+            for (var x = 0; x < 320; x++)
             {
-                var row = rows.GetRowSpan(y);
-                for (var x = 0; x < row.Length; x++)
-                    row[x] = new Rgb24((byte)(x * 255 / 320), (byte)(y * 255 / 240), (byte)(120 + random.Next(40)));
+                var (r, g, b) = ((byte)(x * 255 / 320), (byte)(y * 255 / 240), (byte)(120 + random.Next(40)));
+                var i = y * 320 + x;
+                (bgra[i * 4], bgra[i * 4 + 1], bgra[i * 4 + 2], bgra[i * 4 + 3]) = (b, g, r, 255);
+                grey[i] = (byte)((r * 299 + g * 587 + b * 114) / 1000);
             }
-        });
-        using var stream = new MemoryStream();
-        image.SaveAsJpeg(stream, new JpegEncoder { Quality = 90, ColorType = color });
-        return stream.ToArray();
+        return colour switch
+        {
+            Colour.Grey => TestImages.GreyJpeg(grey, 320, 240),
+            Colour.Ratio444 => TestImages.Jpeg(bgra, 320, 240, 90, SkiaSharp.SKJpegEncoderDownsample.Downsample444),
+            _ => TestImages.Jpeg(bgra, 320, 240),
+        };
     }
 
     private static (int Start, int End) Data(byte[] jpeg)
@@ -38,10 +40,10 @@ public class JpegScanTests
     private static JpegScanResult? Scan(byte[] bytes) => JpegScan.Check(new MemoryStream(bytes));
 
     [Theory]
-    [InlineData(JpegEncodingColor.YCbCrRatio420)]
-    [InlineData(JpegEncodingColor.YCbCrRatio444)]
-    [InlineData(JpegEncodingColor.Luminance)]
-    public void Whole_picture_data_adds_up(JpegEncodingColor color)
+    [InlineData(Colour.Ratio420)]
+    [InlineData(Colour.Ratio444)]
+    [InlineData(Colour.Grey)]
+    public void Whole_picture_data_adds_up(Colour color)
     {
         var result = Scan(Jpeg(color));
         Assert.NotNull(result);

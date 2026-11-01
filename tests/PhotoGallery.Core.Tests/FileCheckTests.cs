@@ -1,28 +1,19 @@
 using PhotoGallery.Core.Library;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace PhotoGallery.Core.Tests;
 
 public class FileCheckTests
 {
-    private static byte[] Encoded(Action<Image<Rgba32>, Stream> save, bool progressive = false)
+    private static byte[] Noise()
     {
-        using var image = new Image<Rgba32>(120, 80);
-        var random = new Random(5);
-        image.ProcessPixelRows(rows =>
-        {
-            for (var y = 0; y < rows.Height; y++)
-                foreach (ref var p in rows.GetRowSpan(y))
-                    p = new Rgba32((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256));
-        });
-        using var stream = new MemoryStream();
-        save(image, stream);
-        return stream.ToArray();
+        var bgra = new byte[120 * 80 * 4];
+        new Random(5).NextBytes(bgra);
+        for (var i = 3; i < bgra.Length; i += 4)
+            bgra[i] = 255;
+        return bgra;
     }
 
-    private static byte[] Jpeg() => Encoded((i, s) => i.SaveAsJpeg(s, new JpegEncoder { Quality = 90 }));
+    private static byte[] Jpeg() => TestImages.Jpeg(Noise(), 120, 80, 90);
 
     private static FileHealth Check(byte[] bytes, string extension) => FileCheck.Check(new MemoryStream(bytes), extension);
 
@@ -46,7 +37,7 @@ public class FileCheckTests
     [Fact]
     public void Pngs_are_checked()
     {
-        var png = Encoded((i, s) => i.SaveAsPng(s));
+        var png = TestImages.Png(Noise(), 120, 80);
         Assert.Equal(FileHealth.Whole, Check(png, ".png"));
         Assert.Equal(FileHealth.CutOff, Check(png[..(png.Length / 2)], ".png"));
     }
@@ -54,7 +45,7 @@ public class FileCheckTests
     [Fact]
     public void Webps_are_checked()
     {
-        var webp = Encoded((i, s) => i.SaveAsWebp(s));
+        var webp = TestImages.Webp(Noise(), 120, 80, lossless: false);
         Assert.Equal(FileHealth.Whole, Check(webp, ".webp"));
         Assert.Equal(FileHealth.CutOff, Check(webp[..(webp.Length / 2)], ".webp"));
     }

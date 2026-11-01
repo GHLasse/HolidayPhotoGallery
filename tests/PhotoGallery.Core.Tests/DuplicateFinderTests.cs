@@ -1,10 +1,7 @@
 using PhotoGallery.Core.Duplicates;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using PhotoGallery.Core.Editing;
 
 namespace PhotoGallery.Core.Tests;
 
@@ -17,22 +14,35 @@ public sealed class DuplicateFinderTests : IDisposable
     // A picture with some structure: a diagonal gradient with a bright block, or (other) bands across it.
     private string Picture(string name, int width, int quality, bool other = false)
     {
-        using var image = new Image<Rgb24>(400, 300);
+        var bgra = new byte[400 * 300 * 4];
         for (var y = 0; y < 300; y++)
             for (var x = 0; x < 400; x++)
             {
                 var v = other ? (byte)((y / 30) % 2 == 0 ? 40 : 220) : (byte)((x + y) * 255 / 700);
-                image[x, y] = x is > 120 and < 220 && y is > 80 and < 160 && !other ? new Rgb24(250, 250, 250) : new Rgb24(v, (byte)(255 - v), 128);
+                var white = x is > 120 and < 220 && y is > 80 and < 160 && !other;
+                var i = (y * 400 + x) * 4;
+                (bgra[i], bgra[i + 1], bgra[i + 2], bgra[i + 3]) = white ? ((byte)250, (byte)250, (byte)250, (byte)255) : ((byte)128, (byte)(255 - v), v, (byte)255);
             }
-        image.Mutate(x => x.Resize(width, width * 3 / 4));
+        var height = width * 3 / 4;
+        var resized = ImageMath.Resize(bgra, 400, 300, width, height);
         var path = Path.Combine(_temp.Path, name);
-        image.SaveAsJpeg(path, new JpegEncoder { Quality = quality });
+        File.WriteAllBytes(path, TestImages.Jpeg(resized, width, height, quality));
         return path;
+    }
+
+    // In the app Windows decodes the photo at PictureHash.DecodeSize; here SkiaSharp stands in.
+    private static ulong? Hash(string path)
+    {
+        if (TestImages.Decode(path) is not { } image)
+            return null;
+        var scale = (double)PictureHash.DecodeSize / Math.Max(image.Width, image.Height);
+        var (w, h) = (Math.Max(1, (int)(image.Width * scale)), Math.Max(1, (int)(image.Height * scale)));
+        return PictureHash.FromPixels(ImageMath.Resize(image.Pixels, image.Width, image.Height, w, h), w, h);
     }
 
     private static IndexedPhoto Indexed(string path, DateTime? taken = null, int tags = 0)
     {
-        var image = Image.Identify(path);
+        var image = TestImages.Size(path);
         return new IndexedPhoto
         {
             Path = path,
@@ -48,9 +58,9 @@ public sealed class DuplicateFinderTests : IDisposable
     [Fact]
     public void A_resized_recompressed_copy_has_almost_the_same_fingerprint_and_another_picture_does_not()
     {
-        var original = PictureHash.FromFile(Picture("a.jpg", 400, 95))!.Value;
-        var copy = PictureHash.FromFile(Picture("a-small.jpg", 160, 40))!.Value;
-        var other = PictureHash.FromFile(Picture("b.jpg", 400, 95, other: true))!.Value;
+        var original = Hash(Picture("a.jpg", 400, 95))!.Value;
+        var copy = Hash(Picture("a-small.jpg", 160, 40))!.Value;
+        var other = Hash(Picture("b.jpg", 400, 95, other: true))!.Value;
 
         Assert.True(PictureHash.Distance(original, copy) <= DuplicateFinder.MaxDistance);
         Assert.True(PictureHash.Distance(original, other) > 16);
@@ -67,7 +77,7 @@ public sealed class DuplicateFinderTests : IDisposable
         var other = Picture("other.jpg", 400, 95, other: true);
         IndexedPhoto[] photos = [Indexed(messenger, null, tags: 5), Indexed(big, taken), Indexed(exact, taken), Indexed(other, taken)];
 
-        var groups = DuplicateFinder.Find(photos, p => PictureHash.FromFile(p.Path));
+        var groups = DuplicateFinder.Find(photos, p => Hash(p.Path));
 
         var group = Assert.Single(groups);
         Assert.Equal(3, group.Photos.Count);
@@ -84,7 +94,7 @@ public sealed class DuplicateFinderTests : IDisposable
         var a = Indexed(Picture("burst1.jpg", 400, 95), new DateTime(2024, 5, 1, 10, 0, 0));
         var b = Indexed(Picture("burst2.jpg", 400, 90), new DateTime(2024, 5, 1, 10, 0, 5));
 
-        Assert.Empty(DuplicateFinder.Find([a, b], p => PictureHash.FromFile(p.Path)));
+        Assert.Empty(DuplicateFinder.Find([a, b], p => Hash(p.Path)));
     }
 
     [Fact]
@@ -100,6 +110,32 @@ public sealed class DuplicateFinderTests : IDisposable
 
             index.Upsert([Indexed(path) with { FileModifiedUtc = DateTime.UtcNow }]);
             Assert.Empty(index.GetPictureHashes());
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public void Fingerprints_from_an_older_index_are_taken_again()
+    {
+        using var data = new TempFolder();
+        var file = Path.Combine(data.Path, "index.db");
+        var path = Picture("a.jpg", 400, 95);
+        using (var index = new PhotoIndex(file))
+        {
+            index.Upsert([Indexed(path)]);
+            index.SavePictureHashes([(path, 1UL)]);
+        }
+        using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={file};Pooling=False"))
+        {
+            db.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "PRAGMA user_version = 7;";
+            cmd.ExecuteNonQuery();
+        }
+        using (var index = new PhotoIndex(file))
+        {
+            Assert.Empty(index.GetPictureHashes());
+            Assert.Single(index.Search(new PhotoQuery()));
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     }

@@ -1,6 +1,4 @@
 using PhotoGallery.Core.Tagging;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace PhotoGallery.Core.Tests;
 
@@ -36,10 +34,8 @@ public sealed class ImageTaggerTests
     public void Recognises_cats_in_english_and_german()
     {
         using var tagger = ImageTagger.Load(TagModelFactAttribute.Folder!);
-        using var image = Image.Load<Bgra32>(Path.Combine(TagModelFactAttribute.Folder!, "cats.jpg"));
-        var pixels = new byte[image.Width * image.Height * 4];
-        image.CopyPixelDataTo(pixels);
-        var vector = tagger.EmbedImage(pixels, image.Width, image.Height);
+        var image = TestImages.Decode(Path.Combine(TagModelFactAttribute.Folder!, "cats.jpg"))!.Value;
+        var vector = tagger.EmbedImage(image.Pixels, image.Width, image.Height);
 
         foreach (var (language, expected) in new[] { ("en", "cat"), ("de", "Katze") })
         {

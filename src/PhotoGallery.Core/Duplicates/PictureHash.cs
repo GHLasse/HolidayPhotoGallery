@@ -1,7 +1,4 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using PhotoGallery.Core.Editing;
 
 namespace PhotoGallery.Core.Duplicates;
 
@@ -12,36 +9,18 @@ namespace PhotoGallery.Core.Duplicates;
 /// </summary>
 public static class PictureHash
 {
-    /// <summary>The fingerprint of the picture, turned upright; null when it can't be read (e.g. HEIC on Linux).</summary>
-    public static ulong? FromFile(string path)
-    {
-        try
-        {
-            using var stream = File.OpenRead(path);
-            return FromStream(stream);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or UnknownImageFormatException or InvalidImageContentException or NotSupportedException)
-        {
-            return null;
-        }
-    }
+    /// <summary>The long side the app decodes a photo at for its fingerprint; more pixels change nothing.</summary>
+    public const int DecodeSize = 64;
 
-    public static ulong? FromStream(Stream stream)
-    {
-        try
-        {
-            // Decoding at a small size is much quicker for JPEG; the fingerprint only needs a few pixels.
-            using var image = Image.Load<L8>(new DecoderOptions { TargetSize = new Size(64, 64) }, stream);
-            image.Mutate(x => x.AutoOrient().Resize(9, 8));
-            return Compute(image);
-        }
-        catch (Exception ex) when (ex is UnknownImageFormatException or InvalidImageContentException or NotSupportedException or ImageFormatException)
-        {
-            return null;
-        }
-    }
+    /// <summary>
+    /// The fingerprint of an upright picture as 8-bit BGRA, decoded by Windows (any size; <see cref="DecodeSize"/> is
+    /// enough and quickest).
+    /// </summary>
+    public static ulong FromPixels(byte[] bgra, int width, int height) =>
+        Compute(ImageMath.ResizeGrey(ImageMath.Grey(bgra, width, height), width, height, 9, 8));
 
-    internal static ulong Compute(Image<L8> nineByEight)
+    /// <summary>The fingerprint of a grey picture already 9 × 8 pixels.</summary>
+    internal static ulong Compute(byte[] nineByEight)
     {
         ulong hash = 0;
         var bit = 0;
@@ -49,7 +28,7 @@ public static class PictureHash
         {
             for (var x = 0; x < 8; x++, bit++)
             {
-                if (nineByEight[x, y].PackedValue > nineByEight[x + 1, y].PackedValue)
+                if (nineByEight[y * 9 + x] > nineByEight[y * 9 + x + 1])
                     hash |= 1UL << bit;
             }
         }

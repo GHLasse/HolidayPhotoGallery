@@ -160,7 +160,7 @@ It builds on the work of others (Settings › Info lists the same):
 | [.NET](https://dotnet.microsoft.com), [Windows App SDK](https://github.com/microsoft/WindowsAppSDK) (WinUI 3) | The app itself | MIT |
 | [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) | Linking the windows to the data | MIT |
 | [Microsoft.Data.Sqlite](https://github.com/dotnet/efcore), [SQLite](https://www.sqlite.org) | The search index | MIT, public domain |
-| [ImageSharp](https://github.com/SixLabors/ImageSharp) by Six Labors | Rotating, cropping and saving | Six Labors Split License (Apache 2.0) |
+| [SkiaSharp](https://github.com/mono/SkiaSharp), Skia, libwebp | Turning WebP pictures | MIT, BSD 3-Clause |
 | [ONNX Runtime](https://onnxruntime.ai) with DirectML | Running the AI models | MIT |
 | [Microsoft.ML.Tokenizers](https://github.com/dotnet/machinelearning) | Text input for tagging | MIT |
 | [SigLIP 2](https://huggingface.co/google/siglip2-base-patch16-224) by Google ([ONNX version](https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX)) | Automatic tagging | Apache 2.0 |

@@ -17,7 +17,7 @@ public sealed record TagCount(string Tag, int Count, bool IsGroup, bool IsAuto =
 /// </summary>
 public sealed partial class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 7;
+    private const int SchemaVersion = 8;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -43,12 +43,15 @@ public sealed partial class PhotoIndex : IDisposable
     private void EnsureSchema()
     {
         var version = Convert.ToInt32(Scalar("PRAGMA user_version;"), CultureInfo.InvariantCulture);
-        if (version is 5 or 6)
+        if (version is 5 or 6 or 7)
         {
             // Flags came with version 6 and the auto tag mark with 7; adding the columns keeps the faces already found.
             if (version == 5)
                 Execute("ALTER TABLE photos ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;");
-            Execute("ALTER TABLE photo_tags ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;");
+            if (version is 5 or 6)
+                Execute("ALTER TABLE photo_tags ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;");
+            // Version 8 takes fingerprints of the upright picture, decoded by Windows: the older ones are taken again.
+            Execute("DROP TABLE IF EXISTS picture_hashes;");
         }
         else if (version != SchemaVersion)
         {

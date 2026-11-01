@@ -66,8 +66,13 @@ public static class SupportedFormats
     public static bool CanRotateLosslessly(string path) => OrientationRotatable.Contains(Path.GetExtension(path));
 
     /// <summary>
-    /// Every format can be turned: JPEG and TIFF by their orientation tag, PNG, GIF and WebP by turning
-    /// their pixels (<see cref="Editing.PixelRotation"/>), and HEIC by saving it again with Windows' encoder.
+    /// Every picture can be turned except animated WebP: JPEG and TIFF by their orientation tag, PNG, GIF and
+    /// HEIC by saving them again with Windows' codecs, still WebP with <see cref="Editing.WebpRotation"/>.
     /// </summary>
-    public static bool CanRotate(string path) => IsImage(path);
+    public static bool CanRotate(string path) =>
+        IsImage(path) && (!Editing.WebpRotation.Handles(path) || !IsAnimatedWebp(path));
+
+    /// <summary>True for a WebP file with more than one frame (it can't be turned).</summary>
+    public static bool IsAnimatedWebp(string path) =>
+        Editing.WebpRotation.Handles(path) && Editing.WebpInfo.Read(path) is { Animated: true };
 }

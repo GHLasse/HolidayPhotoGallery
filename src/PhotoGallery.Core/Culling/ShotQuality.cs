@@ -1,8 +1,5 @@
+using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.Faces;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace PhotoGallery.Core.Culling;
 
@@ -47,99 +44,69 @@ public static class ShotQuality
     private const int Grid = 6;
 
     /// <summary>
-    /// Measures the photo, or null when it can't be read (HEIC on Linux; the app then passes Windows' copy to
-    /// <see cref="Measure(Image{L8}, IReadOnlyList{FaceBox})"/>). Faces are boxes on the stored pixels.
+    /// The long side the app decodes a photo at before measuring: twice <see cref="Size"/>, so the shrink to
+    /// <see cref="Size"/> is done here, the same way for every photo, and the numbers stay comparable.
     /// </summary>
-    public static QualityMeasure? FromFile(string path, IReadOnlyList<FaceBox> faces)
+    public const int DecodeSize = Size * 2;
+
+    /// <summary>
+    /// Measures a picture as 8-bit BGRA (decoded by Windows). Faces are boxes on these pixels: the app turns them
+    /// upright along with the picture.
+    /// </summary>
+    public static QualityMeasure FromPixels(byte[] bgra, int width, int height, IReadOnlyList<FaceBox> faces) =>
+        Measure(ImageMath.Grey(bgra, width, height), width, height, faces);
+
+    /// <summary>Measures a grey picture (one byte per pixel); it is shrunk to <see cref="Size"/> first when it is larger.</summary>
+    public static QualityMeasure Measure(byte[] picture, int width, int height, IReadOnlyList<FaceBox> faces)
     {
-        try
+        var (grey, w, h) = (picture, width, height);
+        if (Math.Max(width, height) > Size * 1.1)
         {
-            using var stream = File.OpenRead(path);
-            return FromStream(stream, faces);
+            var scale = (double)Size / Math.Max(width, height);
+            (w, h) = (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
+            grey = ImageMath.ResizeGrey(picture, width, height, w, h);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
 
-    /// <summary>Measures a picture in a stream (faces as boxes on its pixels as stored), or null when it can't be read.</summary>
-    public static QualityMeasure? FromStream(Stream stream, IReadOnlyList<FaceBox> faces)
-    {
-        try
+        long sum = 0;
+        int dark = 0, bright = 0;
+        foreach (var v in grey)
         {
-            // Not turned upright: the face boxes are on the stored pixels, and sharpness doesn't care.
-            using var image = Image.Load<L8>(new DecoderOptions { TargetSize = new Size(Size, Size) }, stream);
-            return Measure(image, faces);
+            sum += v;
+            if (v < 16)
+                dark++;
+            else if (v > 245)
+                bright++;
         }
-        catch (Exception ex) when (ex is UnknownImageFormatException or InvalidImageContentException or NotSupportedException or ImageFormatException)
-        {
-            return null;
-        }
-    }
+        var count = Math.Max(1, grey.Length);
 
-    /// <summary>Measures a grey picture; it is shrunk to <see cref="Size"/> first when it is larger.</summary>
-    public static QualityMeasure Measure(Image<L8> picture, IReadOnlyList<FaceBox> faces)
-    {
-        var image = picture;
-        if (Math.Max(picture.Width, picture.Height) > Size * 1.1)
+        // The two sharpest tiles, so one tile of noise or text doesn't make a blurred photo sharp.
+        var tiles = new List<float>();
+        for (var ty = 0; ty < Grid; ty++)
         {
-            var scale = (double)Size / Math.Max(picture.Width, picture.Height);
-            image = picture.Clone(x => x.Resize(Math.Max(1, (int)Math.Round(picture.Width * scale)), Math.Max(1, (int)Math.Round(picture.Height * scale))));
-        }
-        try
-        {
-            var w = image.Width;
-            var h = image.Height;
-            var grey = new byte[w * h];
-            image.CopyPixelDataTo(grey);
-
-            long sum = 0;
-            int dark = 0, bright = 0;
-            foreach (var v in grey)
+            for (var tx = 0; tx < Grid; tx++)
             {
-                sum += v;
-                if (v < 16)
-                    dark++;
-                else if (v > 245)
-                    bright++;
+                var x0 = tx * w / Grid;
+                var y0 = ty * h / Grid;
+                tiles.Add(LaplacianVariance(grey, w, h, x0, y0, (tx + 1) * w / Grid, (ty + 1) * h / Grid));
             }
-            var count = Math.Max(1, grey.Length);
-
-            // The two sharpest tiles, so one tile of noise or text doesn't make a blurred photo sharp.
-            var tiles = new List<float>();
-            for (var ty = 0; ty < Grid; ty++)
-            {
-                for (var tx = 0; tx < Grid; tx++)
-                {
-                    var x0 = tx * w / Grid;
-                    var y0 = ty * h / Grid;
-                    tiles.Add(LaplacianVariance(grey, w, h, x0, y0, (tx + 1) * w / Grid, (ty + 1) * h / Grid));
-                }
-            }
-            tiles.Sort();
-            var sharpness = tiles.Count >= 2 ? tiles[^2] : tiles.Count == 1 ? tiles[0] : 0;
-
-            float? faceSharpness = null;
-            foreach (var face in faces)
-            {
-                var x0 = (int)Math.Floor(Math.Clamp(face.X, 0, 1) * w);
-                var y0 = (int)Math.Floor(Math.Clamp(face.Y, 0, 1) * h);
-                var x1 = (int)Math.Ceiling(Math.Clamp(face.Right, 0, 1) * w);
-                var y1 = (int)Math.Ceiling(Math.Clamp(face.Bottom, 0, 1) * h);
-                if (x1 - x0 < 16 || y1 - y0 < 16)
-                    continue; // too small to judge
-                var value = LaplacianVariance(grey, w, h, x0, y0, x1, y1);
-                faceSharpness = Math.Max(faceSharpness ?? 0, value);
-            }
-
-            return new QualityMeasure(sharpness, faceSharpness, (float)sum / count, (float)dark / count, (float)bright / count);
         }
-        finally
+        tiles.Sort();
+        var sharpness = tiles.Count >= 2 ? tiles[^2] : tiles.Count == 1 ? tiles[0] : 0;
+
+        float? faceSharpness = null;
+        foreach (var face in faces)
         {
-            if (!ReferenceEquals(image, picture))
-                image.Dispose();
+            var x0 = (int)Math.Floor(Math.Clamp(face.X, 0, 1) * w);
+            var y0 = (int)Math.Floor(Math.Clamp(face.Y, 0, 1) * h);
+            var x1 = (int)Math.Ceiling(Math.Clamp(face.Right, 0, 1) * w);
+            var y1 = (int)Math.Ceiling(Math.Clamp(face.Bottom, 0, 1) * h);
+            if (x1 - x0 < 16 || y1 - y0 < 16)
+                continue; // too small to judge
+            var value = LaplacianVariance(grey, w, h, x0, y0, x1, y1);
+            faceSharpness = Math.Max(faceSharpness ?? 0, value);
         }
+
+        return new QualityMeasure(sharpness, faceSharpness, (float)sum / count, (float)dark / count, (float)bright / count);
     }
 
     /// <summary>The hints a measure gives: possibly blurry, too dark, too bright.</summary>

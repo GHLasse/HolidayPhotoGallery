@@ -115,6 +115,23 @@ public static class ImageLoader
         return new PooledImage(pixels, bitmap.PixelWidth, bitmap.PixelHeight);
     }
 
+    /// <summary>
+    /// Decodes an encoded picture held in memory (e.g. the preview a camera stores in the photo) as 8-bit BGRA with
+    /// straight alpha, the way its pixels are stored: not turned by any orientation tag.
+    /// </summary>
+    public static Task<DecodedImage> DecodeStoredPixelsAsync(byte[] encoded) => Task.Run(async () =>
+    {
+        using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+        await stream.WriteAsync(encoded.AsBuffer());
+        stream.Seek(0);
+        var decoder = await BitmapDecoder.CreateAsync(stream);
+        using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, new BitmapTransform(),
+                                                                ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.ColorManageToSRgb);
+        var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+        bitmap.CopyToBuffer(pixels.AsBuffer());
+        return new DecodedImage(pixels, bitmap.PixelWidth, bitmap.PixelHeight);
+    });
+
     /// <summary>Shows a small encoded image such as a face thumbnail; call on the UI thread.</summary>
     public static async Task<ImageSource> FromEncodedAsync(byte[] encoded)
     {

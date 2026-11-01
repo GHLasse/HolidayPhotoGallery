@@ -24,7 +24,7 @@ public sealed partial class MainWindow
         (".NET, Windows App SDK (WinUI 3)", Tr("The ground the app is built on"), "MIT", "https://github.com/microsoft/WindowsAppSDK"),
         ("CommunityToolkit.Mvvm", Tr("Links the windows to the app’s data"), "MIT", "https://github.com/CommunityToolkit/dotnet"),
         ("Microsoft.Data.Sqlite, SQLite", Tr("The search index"), "MIT, public domain", "https://www.sqlite.org"),
-        ("ImageSharp by Six Labors", Tr("Rotating, cropping and saving pictures"), "Six Labors Split License (Apache 2.0)", "https://github.com/SixLabors/ImageSharp"),
+        ("SkiaSharp, Skia, libwebp", Tr("Turning WebP pictures"), "MIT, BSD 3-Clause", "https://github.com/mono/SkiaSharp"),
         ("ONNX Runtime, DirectML", Tr("Runs the AI models on this PC"), "MIT", "https://onnxruntime.ai"),
         ("Microsoft.ML.Tokenizers", Tr("Prepares the words for AI tagging"), "MIT", "https://github.com/dotnet/machinelearning"),
         ("SigLIP 2 by Google", Tr("AI tagging"), "Apache 2.0", "https://huggingface.co/google/siglip2-base-patch16-224"),

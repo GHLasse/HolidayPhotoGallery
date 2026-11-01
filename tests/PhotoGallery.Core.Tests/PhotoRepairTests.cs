@@ -1,6 +1,4 @@
 using PhotoGallery.Core.Editing;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace PhotoGallery.Core.Tests;
 
@@ -82,10 +80,8 @@ public class PhotoRepairTests
         Assert.Equal(32, damage.Kept);
         Assert.Equal(new GarbledBlocks(24, 8), damage.Garbled);
 
-        using var preview = new Image<Bgra32>(W, H, new Bgra32(0, 0, 255, 255));
-        using var stream = new MemoryStream();
-        preview.SaveAsPng(stream);
-        var filled = PhotoRepair.Fill(p, W, H, damage, stream.ToArray(), orientation: 1)!;
+        var preview = Enumerable.Repeat(new byte[] { 255, 0, 0, 255 }, W * H).SelectMany(p => p).ToArray();
+        var filled = PhotoRepair.FillFromPreview(p, W, H, damage, preview, W, H, orientation: 1)!;
         int Blue(int x, int y) => filled[(y * W + x) * 4];
         Assert.Equal(255, Blue(30, 35)); // the pink block is filled
         Assert.Equal(255, Blue(50, 35)); // the grey too
@@ -123,11 +119,9 @@ public class PhotoRepairTests
     [Fact]
     public void Fills_only_the_lost_part_from_the_preview()
     {
-        using var red = new Image<Rgba32>(W / 2, H / 2, new Rgba32(255, 0, 0));
-        using var stream = new MemoryStream();
-        red.SaveAsPng(stream);
+        var red = Enumerable.Repeat(new byte[] { 0, 0, 255, 255 }, W / 2 * (H / 2)).SelectMany(p => p).ToArray();
         var photo = CutOff();
-        var filled = PhotoRepair.Fill(photo, W, H, PhotoRepair.Find(photo, W, H)!, stream.ToArray(), orientation: 1);
+        var filled = PhotoRepair.FillFromPreview(photo, W, H, PhotoRepair.Find(photo, W, H)!, red, W / 2, H / 2, orientation: 1);
         Assert.NotNull(filled);
         var lost = (40 * W + 10) * 4;
         Assert.Equal((0, 0, 255), (filled[lost], filled[lost + 1], filled[lost + 2])); // BGRA: red
@@ -140,11 +134,29 @@ public class PhotoRepairTests
     [Fact]
     public void A_preview_of_another_shape_is_not_used()
     {
-        using var wide = new Image<Rgba32>(64, 24);
-        using var stream = new MemoryStream();
-        wide.SaveAsPng(stream);
+        var wide = new byte[64 * 24 * 4];
         var photo = CutOff();
-        Assert.Null(PhotoRepair.Fill(photo, W, H, PhotoRepair.Find(photo, W, H)!, stream.ToArray(), orientation: 1));
+        Assert.Null(PhotoRepair.FillFromPreview(photo, W, H, PhotoRepair.Find(photo, W, H)!, wide, 64, 24, orientation: 1));
+    }
+
+    [Fact]
+    public void A_preview_stored_sideways_is_turned_like_the_photo()
+    {
+        // The camera's preview keeps the stored pixels; orientation 6 shows them turned clockwise.
+        var photo = CutOff();
+        var upright = ImageMath.Rotate90(photo, W, H, clockwise: true);
+        var damage = PhotoRepair.Find(upright, H, W)!;
+        var preview = new byte[W * H * 4];
+        for (var y = 0; y < H; y++)
+            for (var x = 0; x < W; x++)
+            {
+                var i = (y * W + x) * 4;
+                (preview[i], preview[i + 1], preview[i + 2], preview[i + 3]) = y >= H / 2 ? ((byte)0, (byte)0, (byte)255, (byte)255) : ((byte)255, (byte)0, (byte)0, (byte)255);
+            }
+        var filled = PhotoRepair.FillFromPreview(upright, H, W, damage, preview, W, H, orientation: 6)!;
+        // The lost bottom of the stored pixels (red in the preview) is the left of the upright photo.
+        var lostLeft = (10 * H + 2) * 4;
+        Assert.Equal(255, filled[lostLeft + 2]);
     }
 }
 
