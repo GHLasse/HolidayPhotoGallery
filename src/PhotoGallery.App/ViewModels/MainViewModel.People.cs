@@ -533,6 +533,63 @@ public sealed partial class MainViewModel
         await AfterPeopleChangedAsync();
     }
 
+    /// <summary>
+    /// Renames a person on every photo in the library that names them, in the files. Renaming to someone
+    /// already named merges the two. Returns how many photos were changed.
+    /// </summary>
+    public async Task<int> RenamePersonAsync(string from, string to)
+    {
+        to = to.Trim();
+        if (_metadata is null || _indexer is null || to.Length == 0 || string.Equals(from, to, StringComparison.Ordinal))
+            return 0;
+        var paths = await Task.Run(() => _index.GetPathsWithPerson(from));
+        if (paths.Count == 0)
+            return 0;
+        await _peopleWriting.WaitAsync();
+        var failures = new List<string>();
+        var changed = 0;
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < paths.Count; i++)
+            {
+                if (_stopRequested)
+                    break; // what is done stays done
+                var path = paths[i];
+                StatusText = Tr("Renaming {0} to {1} in {2} of {3} photo(s)…", from, to, i + 1, paths.Count);
+                try
+                {
+                    var current = await _metadata.ReadAsync(path);
+                    if (!current.People.Any(p => string.Equals(p.Name, from, StringComparison.CurrentCultureIgnoreCase)))
+                        continue;
+                    var people = current.People
+                        .Select(p => string.Equals(p.Name, from, StringComparison.CurrentCultureIgnoreCase) ? p with { Name = to } : p)
+                        .DistinctBy(p => (p.Name.ToUpperInvariant(), p.Box))
+                        .ToList();
+                    await _metadata.WriteAsync(path, new MetadataChanges { People = people });
+                    var updated = await _indexer.RefreshFileAsync(path);
+                    if (updated is not null && Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
+                        item.Photo = updated;
+                    changed++;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                }
+            }
+            await Task.Run(() => _index.RenameRejectedName(from, to));
+        }
+        finally
+        {
+            IsBusy = false;
+            _peopleWriting.Release();
+        }
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures.Take(3));
+        Inform(Tr("Renamed {0} to {1} in {2}", from, to, PhotoCount(changed)));
+        await AfterPeopleChangedAsync();
+        return changed;
+    }
+
     private async Task<int> ChangePeopleAsync(IReadOnlyList<FoundFace> faces, Func<IReadOnlyList<PersonTag>, FoundFace, IReadOnlyList<PersonTag>> change, Func<int, int, string> doing)
     {
         if (_metadata is null || _indexer is null || faces.Count == 0)

@@ -150,6 +150,53 @@ public sealed partial class PhotoIndex
         }
     }
 
+    /// <summary>The photos that name the person (any case), for renaming them everywhere.</summary>
+    public IReadOnlyList<string> GetPathsWithPerson(string name)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT p.path FROM photo_people pp JOIN photos p ON p.id = pp.photo_id WHERE pp.name = $name COLLATE NOCASE ORDER BY p.path;";
+            cmd.Parameters.AddWithValue("$name", name.Trim());
+            var result = new List<string>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(reader.GetString(0));
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// After a person is renamed in the files: the names the user said a face is not follow the new name, so
+    /// the renamed person isn't suggested again where they were turned down.
+    /// </summary>
+    public void RenameRejectedName(string from, string to)
+    {
+        lock (_lock)
+        {
+            using var tx = _connection.BeginTransaction();
+            var rows = new List<(long Id, string Rejected)>();
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SELECT id, rejected FROM faces WHERE rejected IS NOT NULL;";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    rows.Add((reader.GetInt64(0), reader.GetString(1)));
+            }
+            foreach (var (id, rejected) in rows)
+            {
+                var names = Split(rejected).ToList();
+                if (!names.Any(n => string.Equals(n, from, StringComparison.CurrentCultureIgnoreCase)))
+                    continue;
+                var renamed = names.Select(n => string.Equals(n, from, StringComparison.CurrentCultureIgnoreCase) ? to : n)
+                                   .Distinct(StringComparer.CurrentCultureIgnoreCase);
+                Run(tx, "UPDATE faces SET rejected = $rejected WHERE id = $face;", ("$rejected", string.Join('\u001f', renamed)), ("$face", id));
+            }
+            tx.Commit();
+        }
+    }
+
     /// <summary>Everyone named in the library with on how many photos, most photos first.</summary>
     public IReadOnlyList<(string Name, int Count)> GetPeopleCounts()
     {
