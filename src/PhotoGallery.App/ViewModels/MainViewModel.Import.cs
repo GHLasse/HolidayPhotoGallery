@@ -10,6 +10,9 @@ namespace PhotoGallery.App.ViewModels;
 /// <summary>Where photos can be imported from: a card or camera with a drive letter, or a phone or camera Windows reaches.</summary>
 public sealed class ImportSourceChoice(string name, string? drive, PhotoImportSource? device, string? portable = null, string? phoneFolder = null)
 {
+    /// <summary>The same phone through Windows' import, kept for when reading it through the shell fails.</summary>
+    internal PhotoImportSource? Fallback { get; init; }
+
     public string Name { get; } = name;
 
     public string? Drive { get; } = drive;
@@ -100,12 +103,16 @@ public sealed partial class MainViewModel
             foreach (var device in await ShellDevices.FindAsync(PhoneFolders, line => App.Trace($"portable devices: {line}")))
             {
                 App.Trace($"portable device found: {device.Name}");
-                // Listed by Windows' import already (by the same name); an empty name matches nothing.
-                if (choices.Any(c => c.Name.Length > 0 && device.Name.Length > 0 &&
-                                     (c.Name.Contains(device.Name, StringComparison.CurrentCultureIgnoreCase) ||
-                                      device.Name.Contains(c.Name, StringComparison.CurrentCultureIgnoreCase))))
-                    continue;
-                choices.Add(new ImportSourceChoice(device.Name, null, null, device.ParsingName));
+                // Listed by Windows' import already (by the same name; an empty name matches nothing): read through
+                // the shell instead, as Explorer does, which counts up as it goes, where Windows' import says nothing
+                // until it has looked at every photo. Windows' import stays as the fallback.
+                var same = choices.FindIndex(c => c.Device is not null && c.Name.Length > 0 && device.Name.Length > 0 &&
+                                                  (c.Name.Contains(device.Name, StringComparison.CurrentCultureIgnoreCase) ||
+                                                   device.Name.Contains(c.Name, StringComparison.CurrentCultureIgnoreCase)));
+                if (same >= 0)
+                    choices[same] = new ImportSourceChoice(choices[same].Name, null, null, device.ParsingName) { Fallback = choices[same].Device };
+                else if (!choices.Any(c => c.Portable is not null && string.Equals(c.Name, device.Name, StringComparison.CurrentCultureIgnoreCase)))
+                    choices.Add(new ImportSourceChoice(device.Name, null, null, device.ParsingName));
             }
         }
         catch (Exception ex)
@@ -192,8 +199,17 @@ public sealed partial class MainViewModel
         if (source.PhoneFolder is { } folder)
             return await Task.Run(() => DriveImport.ListPhoneItems(folder, PhoneFolders, cancel, found), cancel);
         if (source.Portable is { } phone)
-            return await ListPortableItemsAsync(phone, cancel, found);
-        if (source.Device is not { } device)
+        {
+            try
+            {
+                return await ListPortableItemsAsync(phone, cancel, found);
+            }
+            catch (Exception ex) when (source.Fallback is not null && ex is not OperationCanceledException)
+            {
+                App.Trace($"portable device {source.Name}: {ex.Message}; trying Windows' import");
+            }
+        }
+        if ((source.Device ?? source.Fallback) is not { } device)
             return [];
         var session = device.CreateImportSession();
         source.Found = await session.FindItemsAsync(PhotoImportContentTypeFilter.ImagesAndVideos, PhotoImportItemSelectionMode.SelectNone).AsTask(cancel, new Progress<uint>(count => found?.Invoke((int)count)));
@@ -226,7 +242,7 @@ public sealed partial class MainViewModel
         {
             if (source.IsFiles)
                 await ImportFromDriveAsync(plan, deleteFromSource, imported, failures);
-            else if (source.Portable is not null)
+            else if (plan[0].Item.Handle is string)
                 await ImportFromPortableAsync(plan, deleteFromSource, imported, failures);
             else
                 await ImportFromDeviceAsync(source, plan, destination, deleteFromSource, imported, failures);
