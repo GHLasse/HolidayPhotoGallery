@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Runtime.InteropServices;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Core.Import;
 using PhotoGallery.Core.Metadata;
@@ -60,35 +61,95 @@ public sealed partial class MainWindow
         var example = new TextBlock { Foreground = ThemeBrush("TextFillColorSecondaryBrush"), TextWrapping = TextWrapping.Wrap };
         var delete = new CheckBox { Content = Tr("Delete them from the device after a checked copy"), IsChecked = false };
 
+        // Which photos: by kind (what the camera took, screenshots, messenger pictures, downloads) and by the days taken.
+        var kindBoxes = new Dictionary<ImportKind, CheckBox>();
+        var kindsPanel = new StackPanel { Spacing = 0, Visibility = Visibility.Collapsed };
+        var fromDate = new CalendarDatePicker { Header = Tr("Taken from"), PlaceholderText = Tr("Any day") };
+        var toDate = new CalendarDatePicker { Header = Tr("to"), PlaceholderText = Tr("Any day") };
+        var dates = new StackPanel { Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 12, Visibility = Visibility.Collapsed, Children = { fromDate, toDate } };
+
         List<ImportItem> items = [];
         List<(ImportItem Item, string Target)> plan = [];
         var listVersion = 0;
+        CancellationTokenSource? listing = null;
         ContentDialog? dialog = null;
+
+        string KindName(ImportKind kind) => kind switch
+        {
+            ImportKind.Camera => Tr("Camera photos and videos"),
+            ImportKind.Screenshot => Tr("Screenshots and screen recordings"),
+            ImportKind.Messenger => Tr("From messengers (WhatsApp, Signal, Telegram…)"),
+            ImportKind.Download => Tr("Downloads"),
+            _ => Tr("Other folders"),
+        };
+
+        void ShowKinds()
+        {
+            kindsPanel.Children.Clear();
+            kindBoxes.Clear();
+            var counts = items.GroupBy(ImportKinds.Of).ToDictionary(g => g.Key, g => g.Count());
+            foreach (var kind in Enum.GetValues<ImportKind>().Where(counts.ContainsKey))
+            {
+                var box = new CheckBox { Content = $"{KindName(kind)} ({counts[kind]:N0})", IsChecked = !ImportKinds.IsLeftOutAtFirst(kind) };
+                box.Click += async (_, _) => await PlanAsync();
+                kindBoxes[kind] = box;
+                kindsPanel.Children.Add(box);
+            }
+            // One kind only needs no choice.
+            kindsPanel.Visibility = kindBoxes.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+            dates.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
 
         async Task ListAsync()
         {
             var version = ++listVersion;
+            listing?.Cancel();
+            listing = new CancellationTokenSource();
+            var cancel = listing.Token;
             found.Text = Tr("Looking for photos…");
+            items = [];
+            ShowKinds();
+            var source = (ImportSourceChoice)sourceBox.SelectedItem;
+            // A phone linked without a cable has no checked copy to delete after.
+            delete.IsEnabled = source.PhoneFolder is null;
+            if (!delete.IsEnabled)
+                delete.IsChecked = false;
             if (dialog is not null)
                 dialog.IsPrimaryButtonEnabled = false;
+            List<ImportItem> listed;
             try
             {
-                items = await ViewModel.ListImportItemsAsync((ImportSourceChoice)sourceBox.SelectedItem);
+                listed = await ViewModel.ListImportItemsAsync(source, cancel);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
             }
             catch (Exception ex)
             {
-                items = [];
-                found.Text = Tr("The device could not be read: {0}", ex.Message);
+                if (version == listVersion)
+                    found.Text = ex is COMException
+                        ? Tr("The device stopped answering. Check that it is still connected, unlocked and set to file transfer, then choose it again.")
+                        : Tr("The device could not be read: {0}", ex.Message);
                 return;
             }
-            if (version == listVersion)
-                await PlanAsync();
+            if (version != listVersion)
+                return;
+            items = listed;
+            ShowKinds();
+            await PlanAsync();
         }
 
         async Task PlanAsync()
         {
-            (plan, var skipped) = await ViewModel.PlanImportAsync(items, destination.Text, pattern.Text, eventName.Text);
-            found.Text = plan.Count == 0
+            var kinds = kindBoxes.Count > 1
+                ? kindBoxes.Where(k => k.Value.IsChecked == true).Select(k => k.Key).ToHashSet()
+                : Enum.GetValues<ImportKind>().ToHashSet();
+            var chosen = ImportKinds.Choose(items, kinds, fromDate.Date?.DateTime, toDate.Date?.DateTime);
+            (plan, var skipped) = await ViewModel.PlanImportAsync(chosen, destination.Text, pattern.Text, eventName.Text);
+            found.Text = items.Count > 0 && chosen.Count == 0
+                ? Tr("None of the {0:N0} photos and videos fit the choice below.", items.Count)
+                : plan.Count == 0
                 ? Tr("No new photos: all {0:N0} are in the library already.", skipped)
                 : skipped > 0
                     ? Tr("{0:N0} new photos and videos ({1:N0} already in the library are left out).", plan.Count, skipped)
@@ -99,6 +160,8 @@ public sealed partial class MainWindow
         }
 
         sourceBox.SelectionChanged += async (_, _) => await ListAsync();
+        fromDate.DateChanged += async (_, _) => await PlanAsync();
+        toDate.DateChanged += async (_, _) => await PlanAsync();
         eventName.TextChanged += async (_, _) => await PlanAsync();
         pattern.TextChanged += async (_, _) => await PlanAsync();
         browse.Click += async (_, _) =>
@@ -126,7 +189,7 @@ public sealed partial class MainWindow
                 Content = new StackPanel
                 {
                     Spacing = 12,
-                    Children = { sourceBox, found, eventName, tags, into, pattern, example, delete },
+                    Children = { sourceBox, found, kindsPanel, dates, eventName, tags, into, pattern, example, delete },
                 },
             },
             PrimaryButtonText = Tr("Import"),
@@ -135,7 +198,10 @@ public sealed partial class MainWindow
             IsPrimaryButtonEnabled = false,
         };
         _ = ListAsync();
-        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || plan.Count == 0)
+        var answer = await dialog.ShowThemedAsync();
+        // A scan still running stops with the dialog, so a phone that is unplugged isn't asked again and again.
+        listing?.Cancel();
+        if (answer != ContentDialogResult.Primary || plan.Count == 0)
             return;
 
         ViewModel.ImportFolder = destination.Text;

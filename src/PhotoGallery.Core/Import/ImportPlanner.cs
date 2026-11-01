@@ -11,6 +11,9 @@ public sealed record ImportItem(string Name, long Size, DateTime Taken)
 
     /// <summary>The device's own handle for it (Windows' import API), for phones.</summary>
     public object? Handle { get; init; }
+
+    /// <summary>The folder it is in on the device, below the storage ("DCIM/Camera", "Pictures/Screenshots"); null when the device doesn't say.</summary>
+    public string? Folder { get; init; }
 }
 
 /// <summary>
