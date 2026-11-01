@@ -275,10 +275,16 @@ public sealed partial class MainViewModel
             }
             return false;
         }
+        // The folder itself or one inside it. (PhotoMover.IsIn only says whether a file is right in a folder, so the
+        // renamed album itself stayed shown under its old path, with no photos.)
+        static bool IsSameOrUnder(string path, string folder) =>
+            string.Equals(path, folder, StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith(folder.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
         Replace(Folders, from, to);
-        if (SelectedFolder is { } selected && PhotoMover.IsIn(selected.FullPath, from))
+        if (SelectedFolder is { } selected && IsSameOrUnder(selected.FullPath, from))
             SelectedFolder = new FolderNodeViewModel(to + selected.FullPath[from.Length..], isRoot: false);
-        if (_settings.LastPlace is { } last && last.StartsWith("folder:", StringComparison.Ordinal) && PhotoMover.IsIn(last[7..], from))
+        if (_settings.LastPlace is { } last && last.StartsWith("folder:", StringComparison.Ordinal) && IsSameOrUnder(last[7..], from))
         {
             _settings.LastPlace = "folder:" + to + last[(7 + from.Length)..];
             _settings.Save(SettingsPath);
@@ -318,6 +324,8 @@ public sealed partial class MainViewModel
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 App.Trace($"cloud album rename ({service}) failed, tried again later: {ex.GetType().Name}: {ex.Message}");
+                if (ex is CloudSignInRequiredException)
+                    CloudSignInExpired(service);
                 if (tell)
                     Warn(Tr("The album is renamed here, but {0} did not take the new name: {1} The app tries again later.", DisplayName(service), ex.Message));
             }

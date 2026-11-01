@@ -302,12 +302,57 @@ public sealed partial class MainViewModel
     private ICloudPhotos? CreateCloud(CloudService service) =>
         service == CloudService.GooglePhotos ? CreateGooglePhotos() : CreateOneDrive();
 
+    /// <summary>Services whose saved sign-in was turned down since the app started, so Settings can say why it is signed out.</summary>
+    private readonly HashSet<CloudService> _expiredSignIns = [];
+
+    /// <summary>
+    /// After a <see cref="CloudSignInRequiredException"/>: when the service turned the saved sign-in down, it is
+    /// forgotten, so Settings › Linked apps shows "Sign in" instead of "Connected".
+    /// </summary>
     private void CloudSignInExpired(CloudService service)
     {
         if (service == CloudService.GooglePhotos && _googleAuth is { IsSignedIn: false })
+        {
             SignOutOfGoogle();
+            _expiredSignIns.Add(service);
+        }
         else if (service == CloudService.OneDrive && _microsoftAuth is { IsSignedIn: false })
+        {
             SignOutOfOneDrive();
+            _expiredSignIns.Add(service);
+        }
+    }
+
+    /// <summary>Whether the service turned the saved sign-in down since the app started (and nobody signed in again).</summary>
+    public bool SignInExpired(CloudService service) => _expiredSignIns.Contains(service) && !IsSignedIn(service);
+
+    /// <summary>
+    /// Asks the service whether the saved sign-in still works, so Settings doesn't show "Connected" for one
+    /// that has run out. True when it was turned down and is now forgotten; being offline changes nothing.
+    /// </summary>
+    public async Task<bool> CheckSignInAsync(CloudService service)
+    {
+        if (!IsSignedIn(service))
+            return false;
+        (CreateCloud(service) as IDisposable)?.Dispose(); // Makes the sign-in session; it outlives the client.
+        OAuthSession? auth = service == CloudService.GooglePhotos ? _googleAuth : _microsoftAuth;
+        if (auth is null)
+            return false;
+        try
+        {
+            await Task.Run(() => auth.GetAccessTokenAsync());
+            return false;
+        }
+        catch (CloudSignInRequiredException ex)
+        {
+            App.Trace($"{service} sign-in check: {ex.Message}");
+            CloudSignInExpired(service);
+            return !IsSignedIn(service);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or ObjectDisposedException)
+        {
+            return false;
+        }
     }
 
     // The app's own list, and the hidden lists in the photos' folders, which survive losing the app's data.

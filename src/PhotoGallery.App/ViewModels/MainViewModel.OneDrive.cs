@@ -50,6 +50,8 @@ public sealed partial class MainViewModel
         _settings.OneDriveAccount = auth.Email;
         _settings.Save(SettingsPath);
         ResetOneDrive();
+        // Album renames that didn't reach the service while signed out go now.
+        _ = RenameOwedCloudAlbumsAsync();
         return null;
     }
 
