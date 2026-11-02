@@ -127,14 +127,20 @@ public sealed partial class PhotoIndex
     public FoundFace? GetFace(long id) => QueryFaces("f.id = $face", ("$face", id)).FirstOrDefault();
 
     /// <summary>Remembers that a face is not this person, so they are not suggested for it again.</summary>
-    public void RejectName(long faceId, string name)
+    public void RejectName(long faceId, string name) => RejectName([faceId], name);
+
+    /// <summary>Remembers that these faces are not this person (one write for a whole group).</summary>
+    public void RejectName(IEnumerable<long> faceIds, string name)
     {
         lock (_lock)
         {
             using var tx = _connection.BeginTransaction();
-            var current = Scalar(tx, "SELECT rejected FROM faces WHERE id = $face;", ("$face", faceId)) as string;
-            var names = Split(current).Append(name.Trim()).Distinct(StringComparer.CurrentCultureIgnoreCase);
-            Run(tx, "UPDATE faces SET rejected = $rejected WHERE id = $face;", ("$rejected", string.Join('\u001f', names)), ("$face", faceId));
+            foreach (var faceId in faceIds)
+            {
+                var current = Scalar(tx, "SELECT rejected FROM faces WHERE id = $face;", ("$face", faceId)) as string;
+                var names = Split(current).Append(name.Trim()).Distinct(StringComparer.CurrentCultureIgnoreCase);
+                Run(tx, "UPDATE faces SET rejected = $rejected WHERE id = $face;", ("$rejected", string.Join('\u001f', names)), ("$face", faceId));
+            }
             tx.Commit();
         }
     }

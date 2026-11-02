@@ -9,15 +9,22 @@ using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
-/// <summary>Unnamed faces that look like the same person, and who they may be.</summary>
-public sealed class FaceGroup(IReadOnlyList<FoundFace> faces, Func<NameSuggestion?> suggest)
+/// <summary>Unnamed faces that look like the same person, and who they most likely are.</summary>
+public sealed class FaceGroup(IReadOnlyList<FoundFace> faces, Func<IReadOnlyCollection<string>, NameSuggestion?> suggest)
 {
-    private readonly Lazy<NameSuggestion?> _suggestion = new(suggest);
+    private readonly Lazy<NameSuggestion?> _suggestion = new(() => suggest([]));
 
     public IReadOnlyList<FoundFace> Faces { get; } = faces;
 
     /// <summary>Worked out when the group is shown: for thousands of groups at once it took many seconds.</summary>
     public NameSuggestion? Suggestion => _suggestion.Value;
+
+    /// <summary>Who else the group most likely is, after being told it is none of these.</summary>
+    public NameSuggestion? SuggestWithout(IReadOnlyCollection<string> notThese) =>
+        notThese.Count == 0 ? Suggestion : suggest(notThese);
+
+    /// <summary>The same suggestions for some of the faces (those not named yet).</summary>
+    public FaceGroup With(IReadOnlyList<FoundFace> rest) => new(rest, suggest);
 }
 
 /// <summary>Finding, recognising and naming the people in the photos.</summary>
@@ -405,9 +412,6 @@ public sealed partial class MainViewModel
 
     private void ForgetMatcher() => _matcher = null;
 
-    private static IEnumerable<T> Sample<T>(IReadOnlyList<T> items, int count) =>
-        items.Count <= count ? items : Enumerable.Range(0, count).Select(i => items[i * items.Count / count]);
-
     /// <summary>
     /// The unnamed faces of the library in groups that look like the same person, biggest group first,
     /// each with a suggested name when it looks like someone already named.
@@ -438,17 +442,42 @@ public sealed partial class MainViewModel
             foreach (var members in FaceMatcher.Group(unnamed.Select(f => f.Embedding).ToList()))
             {
                 var faces = members.Select(i => unnamed[i]).ToList();
-                // The name most of the group's faces point to; a sample of the group is enough.
-                groups.Add(new FaceGroup(faces, () => Sample(faces, 12)
-                    .Select(f => matcher.Suggest(f.Embedding, f.Rejected))
-                    .OfType<NameSuggestion>()
-                    .GroupBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase)
-                    .OrderByDescending(g => g.Count()).ThenByDescending(g => g.Max(s => s.Similarity))
-                    .Select(g => g.OrderByDescending(s => s.Similarity).First())
-                    .FirstOrDefault()));
+                // The person the group's faces are most alike, so every group comes with a name to confirm.
+                groups.Add(new FaceGroup(faces, notThese => matcher.SuggestForGroup(
+                    faces.Select(f => (f.Embedding, f.Rejected)).ToList(), notThese)));
             }
             return (IReadOnlyList<FaceGroup>)groups;
         });
+    }
+
+    /// <summary>
+    /// The unnamed faces that most likely are this person (nobody else is more alike), most alike first,
+    /// leaving out faces already told they are not them.
+    /// </summary>
+    public async Task<IReadOnlyList<FoundFace>> FindLikelyFacesOfAsync(string name)
+    {
+        await WaitForSavesAsync();
+        IsBusy = true;
+        StatusText = Tr("Looking for faces that may be {0}…", name);
+        try
+        {
+            var matcher = await GetMatcherAsync();
+            return await Task.Run(() => (IReadOnlyList<FoundFace>)_index.GetAllFaces(withThumbnails: true)
+                .Where(f => f.Person is null && !f.Rejected.Contains(name, StringComparer.CurrentCultureIgnoreCase))
+                .Select(f => (Face: f, Similarity: matcher.SimilarityTo(name, f.Embedding) ?? double.MinValue))
+                .Where(m => m.Similarity >= FaceMatcher.LikelyPerson &&
+                            (matcher.Suggest(m.Face.Embedding, m.Face.Rejected) is not { } best ||
+                             string.Equals(best.Name, name, StringComparison.CurrentCultureIgnoreCase) ||
+                             best.Similarity <= m.Similarity))
+                .OrderByDescending(m => m.Similarity)
+                .Select(m => m.Face)
+                .ToList());
+        }
+        finally
+        {
+            IsBusy = false;
+            StatusText = _countText;
+        }
     }
 
     /// <summary>Names faces and writes the names into their photos. Returns how many photos were changed.</summary>
@@ -702,6 +731,16 @@ public sealed partial class MainViewModel
     public async Task RejectSuggestionAsync(FoundFace face, string name)
     {
         await Task.Run(() => _index.RejectName(face.Id, name));
+        FacesChanged?.Invoke();
+    }
+
+    /// <summary>Remembers that a whole group of faces is not this person, in one write.</summary>
+    public async Task RejectNameAsync(IReadOnlyList<FoundFace> faces, string name)
+    {
+        var ids = faces.Select(f => f.Id).ToList();
+        if (ids.Count == 0 || string.IsNullOrWhiteSpace(name))
+            return;
+        await Task.Run(() => _index.RejectName(ids, name));
         FacesChanged?.Invoke();
     }
 
