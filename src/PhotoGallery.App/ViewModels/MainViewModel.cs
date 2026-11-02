@@ -1511,16 +1511,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             await Task.Run(() => _index.Remove([oldPath]));
         if (await _indexer!.RefreshFileAsync(newPath) is { } updated)
             item.Photo = updated;
-        // The pixels changed, so the faces found before are looked for again.
-        await Task.Run(() => _index.ForgetFaces(newPath));
+        await ForgetPictureAsync(oldPath, newPath);
+        await item.ReloadThumbnailAsync();
+        StartBackgroundJobsSoon(); // faces, vector, measure and file check for the new pixels
+    }
+
+    /// <summary>
+    /// After the pixels changed (here or in another app): the faces, picture vector (L-7), fingerprint and
+    /// quality measure found before are forgotten, so the background jobs work them out again.
+    /// </summary>
+    private async Task ForgetPictureAsync(string oldPath, string newPath)
+    {
+        await Task.Run(() =>
+        {
+            _index.ForgetFaces(newPath);
+            _index.ForgetPictureVector(newPath);
+            _index.ForgetPictureHash(newPath);
+        });
         ForgetMatcher();
-        // And its picture vector (L-7) is worked out again in the background.
-        await Task.Run(() => _index.ForgetPictureVector(newPath));
         _vectors?.Remove(oldPath);
         _vectors?.Remove(newPath);
         await ForgetQualityAsync(oldPath, newPath);
-        await item.ReloadThumbnailAsync();
-        StartBackgroundJobsSoon(); // faces, vector, measure and file check for the new pixels
     }
 
     private async Task RefreshTagsAsync()

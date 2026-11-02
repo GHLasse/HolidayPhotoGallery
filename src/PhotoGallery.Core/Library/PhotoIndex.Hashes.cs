@@ -18,11 +18,24 @@ public sealed partial class PhotoIndex
         }
     }
 
-    public void SavePictureHashes(IEnumerable<(string Path, ulong? Hash)> hashes)
+    /// <summary>
+    /// Saves fresh fingerprints and returns the photos whose picture changed since their last fingerprint
+    /// (another app edited the pixels, perhaps while this app was closed), so what was worked out from the
+    /// picture can be worked out again. A file whose only change is its details keeps its fingerprint.
+    /// </summary>
+    public List<string> SavePictureHashes(IEnumerable<(string Path, ulong? Hash)> hashes)
     {
+        var changed = new List<string>();
         lock (_lock)
         {
             using var tx = _connection.BeginTransaction();
+            using var before = _connection.CreateCommand();
+            before.Transaction = tx;
+            before.CommandText = """
+                SELECT h.dhash FROM picture_hashes h JOIN main.photos p ON p.id = h.photo_id
+                WHERE p.path = $path AND h.file_mtime <> p.file_mtime;
+                """;
+            var beforePath = before.Parameters.Add("$path", Microsoft.Data.Sqlite.SqliteType.Text);
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = """
@@ -34,11 +47,45 @@ public sealed partial class PhotoIndex
             var hash = cmd.Parameters.Add("$hash", Microsoft.Data.Sqlite.SqliteType.Integer);
             foreach (var (p, h) in hashes)
             {
+                beforePath.Value = p;
+                using (var r = before.ExecuteReader())
+                {
+                    if (r.Read())
+                    {
+                        ulong? old = r.IsDBNull(0) ? null : unchecked((ulong)r.GetInt64(0));
+                        if (PictureChanged(old, h))
+                            changed.Add(p);
+                    }
+                }
                 path.Value = p;
                 hash.Value = h is { } value ? unchecked((long)value) : DBNull.Value;
                 cmd.ExecuteNonQuery();
             }
             tx.Commit();
+        }
+        return changed;
+    }
+
+    /// <summary>More than a few bits apart: saving the same picture again (new details, another encoder) stays within them.</summary>
+    internal static bool PictureChanged(ulong? before, ulong? now) =>
+        (before, now) switch
+        {
+            ({ } a, { } b) => Duplicates.PictureHash.Distance(a, b) > ChangedBits,
+            (null, null) => false,
+            _ => true, // could be read before and not now, or the other way round
+        };
+
+    private const int ChangedBits = 4;
+
+    /// <summary>Forgets a photo's fingerprint after the app changed its pixels itself, so the next one isn't taken as a change made elsewhere.</summary>
+    public void ForgetPictureHash(string path)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM picture_hashes WHERE photo_id = (SELECT id FROM main.photos WHERE path = $path);";
+            cmd.Parameters.AddWithValue("$path", path);
+            cmd.ExecuteNonQuery();
         }
     }
 

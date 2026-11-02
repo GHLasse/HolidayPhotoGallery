@@ -119,14 +119,7 @@ public sealed partial class MainViewModel
             item.Photo = updated;
             // Another app may have changed the pixels (that is what "Edit in" is for): what the background
             // jobs found out about the picture is worked out again.
-            await Task.Run(() =>
-            {
-                _index.ForgetFaces(path);
-                _index.ForgetPictureVector(path);
-            });
-            ForgetMatcher();
-            _vectors?.Remove(path);
-            await ForgetQualityAsync(path, path);
+            await ForgetPictureAsync(path, path);
             await item.ReloadThumbnailAsync();
             PhotoChangedOutside?.Invoke(item);
             StartBackgroundJobsSoon();
