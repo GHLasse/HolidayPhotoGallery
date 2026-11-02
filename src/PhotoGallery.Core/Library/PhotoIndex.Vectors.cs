@@ -111,13 +111,16 @@ public sealed partial class PhotoIndex
         }
     }
 
-    /// <summary>The photos waiting to be auto-tagged, oldest arrival first (private photos only in private mode).</summary>
+    /// <summary>
+    /// The photos waiting to be auto-tagged, newest first (private photos only in private mode): photos just
+    /// added are tagged right away, not after a long queue of older ones ("New photos and the ones I already have").
+    /// </summary>
     public IReadOnlyList<string> GetAutoTagQueue(int limit)
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT p.path FROM auto_tag_queue q JOIN photos p ON p.id = q.photo_id ORDER BY q.photo_id LIMIT $limit;";
+            cmd.CommandText = "SELECT p.path FROM auto_tag_queue q JOIN photos p ON p.id = q.photo_id ORDER BY q.photo_id DESC LIMIT $limit;";
             cmd.Parameters.AddWithValue("$limit", limit);
             var result = new List<string>();
             using var r = cmd.ExecuteReader();

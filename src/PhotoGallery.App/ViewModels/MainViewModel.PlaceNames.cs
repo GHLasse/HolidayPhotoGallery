@@ -9,6 +9,95 @@ namespace PhotoGallery.App.ViewModels;
 /// <summary>Library › Write place names in one language: for libraries tagged partly in German and partly in English.</summary>
 public sealed partial class MainViewModel
 {
+    private bool _placesInBackground;
+
+    /// <summary>Whether photos with a GPS position get place names by themselves (Settings › Dates and places).</summary>
+    public bool AddPlaceNamesAutomatically => _settings.AddPlaceNamesAutomatically;
+
+    /// <summary>
+    /// Quietly gives every photo with a GPS position and no place names its country, region, city and district,
+    /// newest first, one lookup a second (OpenStreetMap's rule), pausing while the app is busy with something the
+    /// user asked for. A position at sea is remembered and not asked again. Without a connection it stops until
+    /// the next check of the folders. Never marks the app busy.
+    /// </summary>
+    public async Task AddPlaceNamesInBackgroundAsync()
+    {
+        if (_placesInBackground || !_settings.AddPlaceNamesAutomatically || _metadata is null || _indexer is null)
+            return;
+        _placesInBackground = true;
+        var failed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var named = 0;
+        try
+        {
+            while (_settings.AddPlaceNamesAutomatically)
+            {
+                const int Batch = 20;
+                var todo = (await Task.Run(() => _index.GetLocatedWithoutPlace(Batch + failed.Count)))
+                    .Where(p => !failed.Contains(p.Path)).Take(Batch).ToList();
+                if (todo.Count == 0)
+                    break;
+                var waiting = await Task.Run(_index.CountLocatedWithoutPlace);
+                var n = 0;
+                foreach (var (path, position) in todo)
+                {
+                    ShowBackground("places", Tr("Adding place names: {0:N0} to go", Math.Max(1, waiting - failed.Count - n++)));
+                    while (IsBusy)
+                        await Task.Delay(2000);
+                    if (!_settings.AddPlaceNamesAutomatically)
+                        return;
+                    _geocoder ??= new ReverseGeocoder(PlaceNameLanguageCode);
+                    PlaceName? place;
+                    try
+                    {
+                        place = await _geocoder.LookUpAsync(position);
+                    }
+                    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+                    {
+                        App.Trace($"Place names in the background stopped: {ex.Message}");
+                        return; // offline: every further lookup would fail the same way
+                    }
+                    if (place is null)
+                    {
+                        await Task.Run(() => _index.NotePlaceMiss(path));
+                        continue;
+                    }
+                    try
+                    {
+                        await _metadata.WriteAsync(path, new MetadataChanges { Place = place });
+                        var updated = await _indexer.RefreshFileAsync(path);
+                        if (updated is not null && Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
+                            item.Photo = updated;
+                        if (updated?.Place is null)
+                            failed.Add(path); // written but not read back: not asked again this time
+                        named++;
+                    }
+                    catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                    {
+                        failed.Add(path); // read-only or damaged: tried again at the next start
+                        App.Trace($"Place names for {path} not written: {ex.Message}");
+                    }
+                }
+            }
+        }
+        finally
+        {
+            ShowBackground("places", null);
+            _placesInBackground = false;
+            if (named > 0)
+                UpdatePlaces(await Task.Run(_index.GetPlaceCounts)); // the Places tree
+        }
+    }
+
+    public void SaveAddPlaceNamesAutomatically(bool on)
+    {
+        if (on == _settings.AddPlaceNamesAutomatically)
+            return;
+        _settings.AddPlaceNamesAutomatically = on;
+        _settings.Save(SettingsPath);
+        if (on)
+            _ = AddPlaceNamesInBackgroundAsync();
+    }
+
     /// <summary>The place-name language as said in the menu: "German", "English" or "Local (as written there)".</summary>
     public string PlaceLanguageName => PlaceLanguages.FirstOrDefault(l => l.Key == PlaceLanguage).Name ?? PlaceLanguage;
 

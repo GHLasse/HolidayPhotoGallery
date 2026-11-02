@@ -165,6 +165,9 @@ public sealed class ShotQualityTests : IDisposable
         Assert.True(SimilarShots.Alike(null, b, 0b1111UL, 0UL));
         Assert.False(SimilarShots.Alike(null, null, ulong.MaxValue, 0UL));
         Assert.False(SimilarShots.Alike(null, null, null, 0UL));
+        // Close vectors (the same kind of scene) but a different layout: another shot, not the same one again.
+        Assert.False(SimilarShots.Alike(a, b, ulong.MaxValue, 0UL));
+        Assert.True(SimilarShots.Alike(a, b, 0b1111UL, 0UL));
     }
 
     [Fact]

@@ -24,7 +24,7 @@ downloaded models). Nothing in that folder is sent anywhere.
 | --- | --- | --- |
 | Photos you upload | Google Photos or OneDrive (your own account) | Only when you upload. With Settings › Linked apps › *Leave out the GPS position*, a copy without the position is sent. |
 | Photos you share | The app you pick in the Windows share dialog | Only when you share; the same GPS setting applies. |
-| A photo's GPS position | OpenStreetMap Nominatim | Only when you look up place names. |
+| A photo's GPS position | OpenStreetMap Nominatim | When you look up place names, and in the background for photos without place names when Settings › Dates and places › “Add place names … by themselves” is on (off by default). |
 | The part of the world the map shows | The map's tile servers (OpenStreetMap, OpenFreeMap, Esri, EOX) | While the map is open. |
 | What you type in the map's Find box | OpenStreetMap Nominatim | When you search for a place. |
 | The app's version | GitHub | When the app looks for updates (can be turned off in Settings). |

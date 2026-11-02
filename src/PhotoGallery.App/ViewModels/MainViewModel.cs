@@ -588,6 +588,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = FindDuplicatesInBackgroundAsync();
         _ = TagInBackgroundAsync();
         _ = CheckQualityInBackgroundAsync();
+        _ = AddPlaceNamesInBackgroundAsync();
         _ = RefreshLibraryCountsAsync();
     }
 

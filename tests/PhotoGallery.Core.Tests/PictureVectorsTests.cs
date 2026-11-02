@@ -92,6 +92,29 @@ public sealed class PictureVectorsTests : IDisposable
     }
 
     [Fact]
+    public void Photos_waiting_to_be_measured_again_count_as_not_done()
+    {
+        var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        _index.Upsert([Photo("a.jpg", then), Photo("b.jpg", then)]);
+        _index.SaveShotQuality([("/photos/a.jpg", new Culling.QualityMeasure(200, null, 120, 0, 0)),
+                                ("/photos/b.jpg", new Culling.QualityMeasure(200, null, 120, 0, 0, 200, 150))]);
+        Assert.Equal(new JobProgress(1, 2), _index.GetQualityProgress()); // a.jpg is measured again for the middle
+    }
+
+    [Fact]
+    public void Photos_with_a_position_and_no_place_wait_for_place_names_newest_first()
+    {
+        var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var at = new Metadata.GeoPosition(50.7, -1.9);
+        _index.Upsert([Photo("old.jpg", then) with { Location = at }, Photo("named.jpg", then) with { Location = at, Place = new Metadata.PlaceName { Country = "UK", City = "Bournemouth" } },
+                       Photo("none.jpg", then), Photo("sea.jpg", then) with { Location = new Metadata.GeoPosition(50, -3) }, Photo("new.jpg", then) with { Location = at }]);
+        Assert.Equal(["/photos/new.jpg", "/photos/sea.jpg", "/photos/old.jpg"], _index.GetLocatedWithoutPlace(10).Select(p => p.Path));
+        _index.NotePlaceMiss("/photos/sea.jpg");
+        Assert.Equal(["/photos/new.jpg", "/photos/old.jpg"], _index.GetLocatedWithoutPlace(10).Select(p => p.Path));
+        Assert.Equal(2, _index.CountLocatedWithoutPlace());
+    }
+
+    [Fact]
     public void The_index_keeps_vectors_until_the_picture_changes()
     {
         var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);

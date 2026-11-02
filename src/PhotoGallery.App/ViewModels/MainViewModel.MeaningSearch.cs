@@ -132,7 +132,9 @@ public sealed partial class MainViewModel
                 var n = 0;
                 foreach (var path in todo)
                 {
-                    ShowBackground("tagging", Tr("Auto-tagging new photos: {0:N0} to go", Math.Max(1, waiting - n++)));
+                    ShowBackground("tagging", tagging.Automatic == AutoTagSettings.AutomaticAll
+                        ? Tr("Auto-tagging photos: {0:N0} to go", Math.Max(1, waiting - n++))
+                        : Tr("Auto-tagging new photos: {0:N0} to go", Math.Max(1, waiting - n++)));
                     while (IsBusy)
                         await Task.Delay(2000);
                     if (tagging.Automatic == AutoTagSettings.AutomaticOff)
@@ -146,8 +148,11 @@ public sealed partial class MainViewModel
                     catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or
                                                System.Runtime.InteropServices.COMException or ArgumentException)
                     {
-                        failed.Add(path); // tried again the next time the app starts
+                        // Off the queue: a file that can't be written (read-only from a phone, damaged) would
+                        // otherwise be tried first again at every start. Auto-tag in the bar can still tag it.
+                        failed.Add(path);
                         App.Trace($"Tagging {path} in the background failed: {ex.Message}");
+                        await Task.Run(() => _index.DequeueAutoTag([path]));
                     }
                 }
                 if (tagged > 0)

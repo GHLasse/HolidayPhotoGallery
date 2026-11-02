@@ -167,6 +167,10 @@ public sealed partial class PhotoIndex : IDisposable
                 bright_end REAL, -- the level the brightest 1 % reach; null when measured before it was kept
                 middle_sharpness REAL -- how sharp the middle third is; -1 nothing to judge, null measured before it was kept
             );
+            -- Photos whose position was looked up in the background and has no place (the sea): not asked again.
+            CREATE TABLE IF NOT EXISTS place_misses (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
+            );
             -- Photos that arrived in a folder already in the library, to be auto-tagged in the background (L-7).
             CREATE TABLE IF NOT EXISTS auto_tag_queue (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
