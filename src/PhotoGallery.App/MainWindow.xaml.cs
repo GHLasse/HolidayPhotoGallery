@@ -1949,8 +1949,9 @@ public sealed partial class MainWindow : Window
 
         if (chosenLanguage() is { } uiLanguage)
             ViewModel.SaveUiLanguage(uiLanguage);
-        var (keepDatesInSync, placeLanguage) = chosenDatesAndPlaces();
+        var (keepDatesInSync, placeLanguage, addPlaceNames) = chosenDatesAndPlaces();
         ViewModel.SaveDatesAndPlaces(keepDatesInSync, placeLanguage);
+        ViewModel.SaveAddPlaceNamesAutomatically(addPlaceNames);
 
         var (theme, palette) = chosenAppearance();
         ViewModel.SaveAppearance(theme, palette);

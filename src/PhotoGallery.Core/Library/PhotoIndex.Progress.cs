@@ -19,9 +19,15 @@ public sealed partial class PhotoIndex
         "SELECT COUNT(*) FROM main.photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM face_scans s WHERE s.photo_id = p.id);",
         "SELECT COUNT(*) FROM main.photos WHERE video = 0;");
 
-    /// <summary>Photos measured for quality hints, of all photos.</summary>
+    /// <summary>
+    /// Photos measured for quality hints, of all photos. One waiting to be measured again (see
+    /// <see cref="GetNotQualityChecked"/>) isn't done yet, so the count goes up while it is.
+    /// </summary>
     public JobProgress GetQualityProgress() => Progress(
-        "SELECT COUNT(*) FROM main.photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id);",
+        """
+        SELECT COUNT(*) FROM main.photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM shot_quality q WHERE q.photo_id = p.id
+            AND NOT (q.middle_sharpness IS NULL AND q.ignored = 0 AND q.hints = 0));
+        """,
         "SELECT COUNT(*) FROM main.photos WHERE video = 0;");
 
     private JobProgress Progress(string doneSql, string totalSql)

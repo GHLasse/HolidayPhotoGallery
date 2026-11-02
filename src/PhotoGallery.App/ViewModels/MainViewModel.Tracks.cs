@@ -68,7 +68,10 @@ public sealed partial class MainViewModel
         // it shows how far off the guess can be and where to look between the two.
         if (photo.Photo.Location is null)
         {
-            if (LocationEstimate.Estimate(points, utc) is { } guess && guess.Before.Utc < guess.After.Utc)
+            // The same moment the red dot was worked out for (EstimateLocationsAsync), so the leg drawn is the
+            // one the dot lies on: the tracks' time zone and clock settings are for matching tracks only.
+            if (photo.Photo.DateTaken is { } taken &&
+                LocationEstimate.Estimate(points, LocationEstimate.ToUtc(taken)) is { } guess && guess.Before.Utc < guess.After.Utc)
                 return (new[] { guess.Before.Position, guess.After.Position }, true, guess);
             return (Array.Empty<GeoPosition>(), true, null);
         }

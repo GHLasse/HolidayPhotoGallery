@@ -44,6 +44,12 @@ public sealed class LibrarySettings
     /// <summary>Photos are measured in the background for hints that they may be blurry, too dark or too bright (C-4).</summary>
     public bool CheckQualityAutomatically { get; set; } = true;
 
+    /// <summary>
+    /// Photos with a GPS position and no place names get them in the background (country, region, city,
+    /// district), looked up at OpenStreetMap Nominatim. Off until the user turns it on: positions leave the PC.
+    /// </summary>
+    public bool AddPlaceNamesAutomatically { get; set; }
+
     /// <summary>Similar shots fold into their sharpest one in the grid, like a stack of prints (C-4, filter bar switch).</summary>
     public bool StackSimilarShots { get; set; } = true;
 

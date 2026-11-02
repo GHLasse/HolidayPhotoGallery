@@ -280,8 +280,13 @@ public sealed partial class MainWindow
             Height = PersonFace,
             Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
         };
-        if (_latestFaces.TryGetValue(person.Tag, out var thumbnail) && thumbnail is not null)
-            LoadFaceFill(face, thumbnail);
+        if (_latestFaces.TryGetValue(person.Tag, out var thumbnail))
+        {
+            if (thumbnail is not null)
+                LoadFaceFill(face, thumbnail);
+        }
+        else
+            _ = LoadCardFaceAsync(face, person.Tag);
 
         var card = new StackPanel { Spacing = 6, Width = PersonFace + 24, Padding = new Thickness(0, 8, 0, 8) };
         card.Children.Add(face);
@@ -330,6 +335,16 @@ public sealed partial class MainWindow
         rename.Click += (_, _) => _ = RenamePersonAsync(person.Tag);
         button.ContextFlyout = new MenuFlyout { Items = { rename } };
         return button;
+    }
+
+    // The faces were forgotten while the page was being built (a person renamed or named): loaded here, so
+    // the card doesn't stay empty until the page is opened again.
+    private async Task LoadCardFaceAsync(Ellipse face, string name)
+    {
+        var thumbnail = await ViewModel.GetLatestFaceAsync(name);
+        _latestFaces[name] = thumbnail;
+        if (thumbnail is not null)
+            LoadFaceFill(face, thumbnail);
     }
 
     /// <summary>Asks for a person's new name and renames them in every photo; a name already used merges the two.</summary>

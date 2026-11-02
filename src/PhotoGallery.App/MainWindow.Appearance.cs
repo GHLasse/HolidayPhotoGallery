@@ -67,6 +67,7 @@ public sealed partial class MainWindow
         Tint(InfoRating);
         foreach (var tree in new[] { FolderTree, DateTree, PlaceTree })
             RecolourTreeMark(tree);
+        ShowNavFade(); // the fade takes the new background
     }
 
     private static readonly string[] s_ratingKeys =

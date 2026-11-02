@@ -588,6 +588,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ = FindDuplicatesInBackgroundAsync();
         _ = TagInBackgroundAsync();
         _ = CheckQualityInBackgroundAsync();
+        _ = AddPlaceNamesInBackgroundAsync();
         _ = RefreshLibraryCountsAsync();
     }
 
@@ -1252,11 +1253,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Saves the tag list (null means the starter list), its language and how clearly a tag must stand out.</summary>
     public void SaveAutoTagSettings(IReadOnlyList<string>? labels, string language, double threshold)
     {
+        var before = (string.Join("\n", AutoTagLabels), AutoTagLanguage, AutoTagThreshold);
         _settings.AutoTagging.Tags = labels?.ToList();
         _settings.AutoTagging.Language = language;
         _settings.AutoTagging.Threshold = Math.Clamp(threshold, 0.01, 0.99);
         _settings.Save(SettingsPath);
         _labelVectors = null;
+        // Another list, language or bar: photos that got no tags before may get some now.
+        if (before != (string.Join("\n", AutoTagLabels), AutoTagLanguage, AutoTagThreshold))
+            _index.ForgetAutoTagSeen();
     }
 
     /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the filter row.</summary>

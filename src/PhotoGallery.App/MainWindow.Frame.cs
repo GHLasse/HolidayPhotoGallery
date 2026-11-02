@@ -398,8 +398,7 @@ public sealed partial class MainWindow
         if (more)
         {
             Grid.SetRow(NavFade, Grid.GetRow(open!));
-            var background = Root.Background is SolidColorBrush solid ? solid.Color
-                : (Root.ActualTheme == ElementTheme.Dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
+            var background = NavBackground();
             NavFade.Background = new LinearGradientBrush
             {
                 StartPoint = new Windows.Foundation.Point(0, 0),
@@ -412,6 +411,42 @@ public sealed partial class MainWindow
             };
         }
         NavFade.Visibility = more ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // The colour the pane is drawn on: the first solid background from the pane up (the palette tints it), else
+    // the window's in the pane's own light or dark mode. The window's root brush isn't always it: in light
+    // mode it could be a dark tint, which made the fade a dark band (Lasse 2026-11-01).
+    private Windows.UI.Color NavBackground()
+    {
+        var color = NavPane.ActualTheme == ElementTheme.Dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243);
+        // The see-through washes from the window down to the pane, laid over the plain window colour in turn.
+        var layers = new List<Windows.UI.Color>();
+        for (DependencyObject? at = NavPane; at is not null; at = VisualTreeHelper.GetParent(at))
+        {
+            var brush = at switch
+            {
+                Panel panel => panel.Background,
+                Border border => border.Background,
+                Control control => control.Background,
+                _ => null,
+            };
+            if (brush is not SolidColorBrush solid)
+                continue;
+            var alpha = solid.Color.A * Math.Clamp(brush.Opacity, 0, 1);
+            if (alpha <= 0)
+                continue;
+            layers.Add(Windows.UI.Color.FromArgb((byte)Math.Round(alpha), solid.Color.R, solid.Color.G, solid.Color.B));
+            if (layers[^1].A == 255)
+                break; // nothing below shows through
+        }
+        for (var i = layers.Count - 1; i >= 0; i--)
+        {
+            var top = layers[i];
+            var a = top.A / 255.0;
+            color = Windows.UI.Color.FromArgb(255, (byte)Math.Round(top.R * a + color.R * (1 - a)),
+                (byte)Math.Round(top.G * a + color.G * (1 - a)), (byte)Math.Round(top.B * a + color.B * (1 - a)));
+        }
+        return color;
     }
 
     // Opening a branch or scrolling changes what lies below; the fade follows.

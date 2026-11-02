@@ -50,7 +50,7 @@ public static class SimilarShots
     public static readonly TimeSpan MaxSpan = TimeSpan.FromMinutes(10);
 
     /// <summary>Picture vectors at least this close count as the same shot.</summary>
-    public const float MinVectorCloseness = 0.8f;
+    public const float MinVectorCloseness = 0.85f;
 
     /// <summary>Fingerprints (64 bits) at most this many bits apart count as the same shot.</summary>
     public const int MaxHashDistance = 16;
@@ -141,7 +141,7 @@ public static class SimilarShots
     public static readonly TimeSpan BurstGap = TimeSpan.FromSeconds(30);
 
     /// <summary>The looser tests for a burst (see <see cref="BurstGap"/>).</summary>
-    public const float BurstVectorCloseness = 0.7f;
+    public const float BurstVectorCloseness = 0.75f;
 
     public const int BurstHashDistance = 22;
 
@@ -152,10 +152,20 @@ public static class SimilarShots
     public static bool Alike(float[]? vectorA, float[]? vectorB, ulong? hashA, ulong? hashB, TimeSpan? apart = null)
     {
         var burst = apart is { } t && t.Duration() <= BurstGap;
+        var distance = hashA is { } x && hashB is { } y ? Duplicates.PictureHash.Distance(x, y) : (int?)null;
         if (Closeness(vectorA, vectorB) is { } closeness)
-            return closeness >= (burst ? BurstVectorCloseness : MinVectorCloseness);
-        return hashA is { } x && hashB is { } y && Duplicates.PictureHash.Distance(x, y) <= (burst ? BurstHashDistance : MaxHashDistance);
+        {
+            // The picture vectors say what is in a photo ("people in a yard"), not how it is framed: two
+            // different shots of the same place come out close. With fingerprints too, the layout must also
+            // be about the same, so only the same shot taken again stacks.
+            return closeness >= (burst ? BurstVectorCloseness : MinVectorCloseness) &&
+                   (distance is not { } d || d <= (burst ? BurstHashDistance : MaxHashDistance) + LayoutSlack);
+        }
+        return distance is { } only && only <= (burst ? BurstHashDistance : MaxHashDistance);
     }
+
+    /// <summary>How many more fingerprint bits may differ when the picture vectors already agree.</summary>
+    public const int LayoutSlack = 4;
 
     /// <summary>How alike two picture vectors are (cosine, 1 = the same), or null without both.</summary>
     public static float? Closeness(float[]? vectorA, float[]? vectorB)

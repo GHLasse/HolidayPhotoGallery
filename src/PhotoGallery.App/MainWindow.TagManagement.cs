@@ -247,7 +247,7 @@ public sealed partial class MainWindow
     }
 
     /// <summary>Settings › Dates and places. Returns the page, and reads back what was chosen when Save is clicked.</summary>
-    private FrameworkElement DatesAndPlacesPage(out Func<(bool KeepDatesInSync, string PlaceLanguage)> chosen)
+    private FrameworkElement DatesAndPlacesPage(out Func<(bool KeepDatesInSync, string PlaceLanguage, bool AddPlaceNames)> chosen)
     {
         var sync = new ToggleSwitch
         {
@@ -261,7 +261,14 @@ public sealed partial class MainWindow
         foreach (var (_, name) in ViewModels.MainViewModel.PlaceLanguages)
             language.Items.Add(name);
         language.SelectedIndex = Math.Max(0, Array.FindIndex(ViewModels.MainViewModel.PlaceLanguages, l => l.Key == ViewModel.PlaceLanguage));
-        chosen = () => (sync.IsOn, ViewModels.MainViewModel.PlaceLanguages[Math.Max(0, language.SelectedIndex)].Key);
+        var addPlaces = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Add place names to photos with a GPS position by themselves"),
+            IsOn = ViewModel.AddPlaceNamesAutomatically,
+        };
+        chosen = () => (sync.IsOn, ViewModels.MainViewModel.PlaceLanguages[Math.Max(0, language.SelectedIndex)].Key, addPlaces.IsOn);
 
         TextBlock Note(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
         return new StackPanel
@@ -276,6 +283,9 @@ public sealed partial class MainWindow
                 language,
                 Note(Tr("For “Add place names”: the country, region, city and district are written in this language. ") +
                      Tr("Local uses the names as people there write them. Photos that already have place names keep them until you add them again.")),
+                addPlaces,
+                Note(Tr("Photos with a GPS position and no place names get them quietly in the background, newest first, about one photo a second. ") +
+                     Tr("Their positions are sent to OpenStreetMap to look the places up.")),
             },
         };
     }

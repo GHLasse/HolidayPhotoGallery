@@ -378,7 +378,7 @@ public sealed partial class MainWindow
                 Stroke = ThemeBrush("AccentFillColorDefaultBrush"),
                 Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
             };
-            if (_latestFaces[person.Tag] is { } thumbnail)
+            if (_latestFaces.GetValueOrDefault(person.Tag) is { } thumbnail)
                 LoadFaceFill(face, thumbnail);
 
             var button = new Button
