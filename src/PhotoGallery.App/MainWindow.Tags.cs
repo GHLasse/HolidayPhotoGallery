@@ -397,6 +397,7 @@ public sealed partial class MainWindow
             ToolTipService.SetToolTip(button, tip);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, person.Tag);
             button.Click += (_, _) => person.IsSelected = !person.IsSelected;
+            button.ContextFlyout = new MenuFlyout { Items = { ReviewMatchesItem(person.Tag) } };
             TopPeople.Children.Add(button);
         }
     }
@@ -409,6 +410,9 @@ public sealed partial class MainWindow
             return;
         face.Tag = person.Tag;
         face.Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush");
+        var review = ReviewMatchesItem(person.Tag);
+        review.Click += (_, _) => PeopleFlyout.Hide();
+        args.ItemContainer.ContextFlyout = new MenuFlyout { Items = { review } };
         if (!_latestFaces.TryGetValue(person.Tag, out var thumbnail))
             _latestFaces[person.Tag] = thumbnail = await ViewModel.GetLatestFaceAsync(person.Tag);
         // The row may show someone else by now.

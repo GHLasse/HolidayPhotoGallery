@@ -333,7 +333,7 @@ public sealed partial class MainWindow
         button.Tag = (Action)Open; // for Enter in the search box
         var rename = new MenuFlyoutItem { Text = Tr("Rename…"), Icon = new FontIcon { Glyph = "\uE8AC" } };
         rename.Click += (_, _) => _ = RenamePersonAsync(person.Tag);
-        button.ContextFlyout = new MenuFlyout { Items = { rename } };
+        button.ContextFlyout = new MenuFlyout { Items = { ReviewMatchesItem(person.Tag), rename } };
         return button;
     }
 
