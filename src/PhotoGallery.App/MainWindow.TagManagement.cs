@@ -284,6 +284,7 @@ public sealed partial class MainWindow
                 Note(Tr("For “Add place names”: the country, region, city and district are written in this language. ") +
                      Tr("Local uses the names as people there write them. Photos that already have place names keep them until you add them again.")),
                 addPlaces,
+                ProgressText(() => ViewModel.PlaceNameProgressText()),
                 Note(Tr("Photos with a GPS position and no place names get them quietly in the background, newest first, about one photo a second. ") +
                      Tr("Their positions are sent to OpenStreetMap to look the places up.")),
             },

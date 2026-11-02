@@ -117,8 +117,19 @@ public sealed partial class MainViewModel
             if (await _indexer.RefreshFileAsync(path) is not { } updated)
                 return;
             item.Photo = updated;
+            // Another app may have changed the pixels (that is what "Edit in" is for): what the background
+            // jobs found out about the picture is worked out again.
+            await Task.Run(() =>
+            {
+                _index.ForgetFaces(path);
+                _index.ForgetPictureVector(path);
+            });
+            ForgetMatcher();
+            _vectors?.Remove(path);
+            await ForgetQualityAsync(path, path);
             await item.ReloadThumbnailAsync();
             PhotoChangedOutside?.Invoke(item);
+            StartBackgroundJobsSoon();
             Inform(Tr("{0} was changed in another app and has been updated here.", item.FileName));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ExifToolException)

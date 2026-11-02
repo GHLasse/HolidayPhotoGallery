@@ -112,7 +112,10 @@ public sealed partial class MainViewModel
                     });
                 }
                 if (_saveQueue.Count == 0)
+                {
                     await RefreshTagsAsync(); // the tag list and counts, once the queue is empty
+                    StartBackgroundJobsSoon(); // e.g. the fingerprints follow the files' new times
+                }
             }
         }
         finally
