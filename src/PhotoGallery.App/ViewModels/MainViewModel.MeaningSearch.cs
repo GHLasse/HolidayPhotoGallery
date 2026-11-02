@@ -143,7 +143,7 @@ public sealed partial class MainViewModel
                     {
                         if (await TagOneInBackgroundAsync(path))
                             tagged++;
-                        await Task.Run(() => _index.DequeueAutoTag([path]));
+                        await Task.Run(() => _index.DequeueAutoTag([path], seen: true));
                     }
                     catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or
                                                System.Runtime.InteropServices.COMException or ArgumentException)

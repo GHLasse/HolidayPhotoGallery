@@ -130,15 +130,19 @@ public sealed partial class PhotoIndex
         }
     }
 
-    /// <summary>Takes photos off the auto-tag queue, tagged or not.</summary>
-    public void DequeueAutoTag(IEnumerable<string> paths)
+    /// <summary>
+    /// Takes photos off the auto-tag queue, tagged or not. <paramref name="seen"/>: the model looked at them, so
+    /// queueing "the ones I already have" again leaves them out (until the tag list changes).
+    /// </summary>
+    public void DequeueAutoTag(IEnumerable<string> paths, bool seen = false)
     {
         lock (_lock)
         {
             using var tx = _connection.BeginTransaction();
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = "DELETE FROM auto_tag_queue WHERE photo_id IN (SELECT id FROM main.photos WHERE path = $path);";
+            cmd.CommandText = "DELETE FROM auto_tag_queue WHERE photo_id IN (SELECT id FROM main.photos WHERE path = $path);" +
+                (seen ? "INSERT OR IGNORE INTO auto_tag_seen (photo_id) SELECT id FROM main.photos WHERE path = $path;" : "");
             var path = cmd.Parameters.Add("$path", Microsoft.Data.Sqlite.SqliteType.Text);
             foreach (var p in paths)
             {
@@ -157,8 +161,20 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 INSERT OR IGNORE INTO auto_tag_queue (photo_id)
-                SELECT p.id FROM photos p WHERE NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1);
+                SELECT p.id FROM photos p WHERE NOT EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1)
+                    AND NOT EXISTS (SELECT 1 FROM auto_tag_seen s WHERE s.photo_id = p.id);
                 """;
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>Forgets which photos the model looked at: after the tag list changes they may get tags after all.</summary>
+    public void ForgetAutoTagSeen()
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM auto_tag_seen;";
             cmd.ExecuteNonQuery();
         }
     }

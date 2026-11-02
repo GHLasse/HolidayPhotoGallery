@@ -171,6 +171,10 @@ public sealed partial class PhotoIndex : IDisposable
             CREATE TABLE IF NOT EXISTS place_misses (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
             );
+            -- Photos the background auto-tagging has looked at, tags found or not: "the ones I already have" skips them.
+            CREATE TABLE IF NOT EXISTS auto_tag_seen (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
+            );
             -- Photos that arrived in a folder already in the library, to be auto-tagged in the background (L-7).
             CREATE TABLE IF NOT EXISTS auto_tag_queue (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE

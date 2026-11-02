@@ -92,6 +92,21 @@ public sealed class PictureVectorsTests : IDisposable
     }
 
     [Fact]
+    public void Photos_the_model_looked_at_are_not_queued_again_until_the_tag_list_changes()
+    {
+        var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        _index.Upsert([Photo("a.jpg", then), Photo("b.jpg", then)]);
+        _index.QueueAllWithoutAutoTags();
+        Assert.Equal(2, _index.CountAutoTagQueue());
+        _index.DequeueAutoTag(["/photos/a.jpg"], seen: true); // nothing above the bar: still no auto tags
+        _index.QueueAllWithoutAutoTags();
+        Assert.Equal(["/photos/b.jpg"], _index.GetAutoTagQueue(10));
+        _index.ForgetAutoTagSeen();
+        _index.QueueAllWithoutAutoTags();
+        Assert.Equal(2, _index.CountAutoTagQueue());
+    }
+
+    [Fact]
     public void Photos_waiting_to_be_measured_again_count_as_not_done()
     {
         var then = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
