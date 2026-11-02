@@ -1,5 +1,6 @@
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Import;
+using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 using Windows.Media.Import;
 using PhotoGallery.App.Native;
@@ -270,6 +271,11 @@ public sealed partial class MainViewModel
             await IndexImportedAsync(imported);
         if (tags.Count > 0)
             await TagImportedAsync(imported, tags);
+        // Imported photos are new photos, wherever they went: a new dated folder, or one added to the library
+        // just now (which the folder check takes for photos the user already had).
+        if (_settings.AutoTagging.Automatic != AutoTagSettings.AutomaticOff)
+            await Task.Run(() => _index.QueueAutoTag(imported));
+        StartBackgroundJobs();
         RefreshFolderTree();
         Inform(Tr("Imported {0} into {1}.", PhotoCount(imported.Count), destination));
         SelectedFolder = new FolderNodeViewModel(Path.GetDirectoryName(imported[0])!, isRoot: false);

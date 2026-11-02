@@ -136,8 +136,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (value)
                 _stopRequested = false;
-            if (SetProperty(ref _isBusy, value) && !value && _queuedFolders.Count > 0)
+            if (!SetProperty(ref _isBusy, value) || value)
+                return;
+            if (_queuedFolders.Count > 0)
                 _ = RunQueuedFoldersAsync();
+            // What the job just did may have given the background jobs new work (new or changed photos).
+            StartBackgroundJobsSoon();
         }
     }
 
@@ -487,6 +491,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
         await RescanAsync();
+        _ = KeepBackgroundJobsGoingAsync();
     }
 
     public async Task AddFolderAsync(string path)
@@ -585,12 +590,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await CheckReadOnlyAsync();
         if (IsAlbumView)
             await LoadAlbumsAsync();
-        _ = FindFacesInNewPhotosAsync();
-        _ = CheckFilesInBackgroundAsync();
-        _ = FindDuplicatesInBackgroundAsync();
-        _ = TagInBackgroundAsync();
-        _ = CheckQualityInBackgroundAsync();
-        _ = AddPlaceNamesInBackgroundAsync();
+        StartBackgroundJobs();
         _ = RefreshLibraryCountsAsync();
     }
 
@@ -1518,9 +1518,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await Task.Run(() => _index.ForgetPictureVector(newPath));
         _vectors?.Remove(oldPath);
         _vectors?.Remove(newPath);
-        _ = TagInBackgroundAsync();
         await ForgetQualityAsync(oldPath, newPath);
         await item.ReloadThumbnailAsync();
+        StartBackgroundJobsSoon(); // faces, vector, measure and file check for the new pixels
     }
 
     private async Task RefreshTagsAsync()

@@ -23,6 +23,8 @@ public sealed partial class MainViewModel
         FolderNodeViewModel.ShowPrivate = on;
         _vectors = null; // loaded again with or without the private photos
         await PrivacyChangedAsync();
+        if (on)
+            StartBackgroundJobsSoon(); // place names look at the private photos only now
     }
 
     /// <summary>Makes a folder (with its subfolders) private, or public again.</summary>
