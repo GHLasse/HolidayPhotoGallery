@@ -40,6 +40,7 @@ public sealed partial class MainViewModel
         var paths = await Task.Run(() => _index.PathsWithTag(tag));
         var failures = new List<string>();
         var changed = new List<TagChange.File>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -118,6 +119,7 @@ public sealed partial class MainViewModel
 
         var failures = new List<string>();
         int restored = 0, skipped = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {

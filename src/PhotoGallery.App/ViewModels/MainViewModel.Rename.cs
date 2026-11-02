@@ -35,6 +35,7 @@ public sealed partial class MainViewModel
         }
         var failed = new List<string>();
         List<(IndexedPhoto Photo, string NewPath)> done;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Renaming {0}…", PhotoCount(plan.Count));
         try

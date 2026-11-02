@@ -348,6 +348,16 @@ public sealed partial class MainWindow : Window
 
     private async void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
+        // Details still being written in the background are finished first: they take a moment, not a choice.
+        if (ViewModel.Editor.IsDirty || ViewModel.HasPendingSaves)
+        {
+            args.Cancel = true;
+            var taken = await ViewModel.SaveEditsAsync();
+            await ViewModel.WaitForSavesAsync();
+            if (taken)
+                Close(); // else the panel shows the date to fix
+            return;
+        }
         if (_closeConfirmed || !(ViewModel.IsBusy || ViewModel.IsUploading))
             return;
         args.Cancel = true;
@@ -928,6 +938,7 @@ public sealed partial class MainWindow : Window
         // Unsaved edits in the panel would otherwise be written over the new tags afterwards.
         if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
             return;
+        await ViewModel.WaitForSavesAsync();
         await ViewModel.AutoTagAsync(photos);
         // The details pane shows the new tags at once.
         if (!ViewModel.Editor.IsDirty)
@@ -1216,6 +1227,7 @@ public sealed partial class MainWindow : Window
         // Unsaved edits in the panel would otherwise be written with the old date afterwards.
         if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
             return;
+        await ViewModel.WaitForSavesAsync();
 
         var earliest = dated.Select(p => p.Photo.DateTaken!.Value).MinBy(d => d.Local);
         var dialog = new ShiftDatesDialog(earliest, dated.Count, selected.Count - dated.Count) { XamlRoot = Root.XamlRoot };

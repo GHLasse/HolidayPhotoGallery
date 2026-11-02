@@ -241,6 +241,7 @@ public sealed partial class MainViewModel
             Warn(Tr("The app is still busy. Try again when it has finished."));
             return false;
         }
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         var failures = new List<string>();
         var recycled = new List<string>();

@@ -134,6 +134,7 @@ public sealed partial class MainViewModel
     /// <summary>Downloads the face models once (about 39 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadFaceModelAsync()
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -169,6 +170,7 @@ public sealed partial class MainViewModel
         var failures = new List<string>();
         var found = 0;
         var looked = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -300,7 +302,7 @@ public sealed partial class MainViewModel
                 {
                     ShowBackground("faces", Tr("Looking for faces: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     // What the user asked for goes first.
-                    while (IsBusy)
+                    while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
                     if (!_settings.FindPeopleAutomatically)
                         return;
@@ -412,6 +414,7 @@ public sealed partial class MainViewModel
     /// </summary>
     public async Task<IReadOnlyList<FaceGroup>> GroupUnnamedFacesAsync()
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Grouping the faces that have no name…");
         try
@@ -499,6 +502,7 @@ public sealed partial class MainViewModel
         await _peopleWriting.WaitAsync();
         var failures = new List<string>();
         var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -548,6 +552,7 @@ public sealed partial class MainViewModel
         await _peopleWriting.WaitAsync();
         var failures = new List<string>();
         var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -601,6 +606,7 @@ public sealed partial class MainViewModel
         var failures = new List<string>();
         var photos = faces.GroupBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
         var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -654,6 +660,7 @@ public sealed partial class MainViewModel
         await _peopleWriting.WaitAsync();
         var failures = new List<string>();
         var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {

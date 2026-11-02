@@ -539,6 +539,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
+
         IsBusy = true;
         int read = 0, removed = 0;
         try
@@ -767,36 +769,30 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SelectedTags = Tags.Where(t => t.IsSelected).Select(t => t.Tag).ToList();
     }
 
-    /// <summary>Writes the metadata panel's edits into the selected files.</summary>
-    public async Task<bool> SaveEditsAsync()
+    /// <summary>
+    /// Takes the metadata panel's edits for the selected files: shown on the photos at once and written in the
+    /// background (MainViewModel.SaveQueue.cs), so the panel is free for the next selection right away. False
+    /// only when the typed date can't be understood (the panel keeps the edit to fix).
+    /// </summary>
+    public Task<bool> SaveEditsAsync()
     {
         if (_metadata is null || _indexer is null || !Editor.IsDirty)
-            return true;
+            return Task.FromResult(true);
 
         var items = Editor.Items.ToList();
         var edits = new List<(PhotoItemViewModel Item, MetadataChanges Changes)>();
         foreach (var item in items)
         {
             if (!Editor.TryBuildChanges(item, out var changes))
-                return false;
+                return Task.FromResult(false);
             edits.Add((item, changes));
         }
 
         // What each photo had before, to put back with Undo.
         var before = edits.Select(e => (e.Item, Undo(e.Item.Photo, e.Changes))).ToList();
-        var failures = await WriteChangesAsync(edits);
-        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be saved.") + " " + string.Join(" ", failures);
-        var saved = failures.Count == 0 ? Tr("Saved {0}.", PhotoCount(edits.Count)) : Tr("Saved {0} of {1} photos", edits.Count - failures.Count, edits.Count);
-        Inform(saved, async () =>
-        {
-            await WriteChangesAsync(before);
-            if (Editor.Items.Any(i => before.Any(b => b.Item == i)))
-                Editor.Load(Editor.Items.ToList());
-            await RefreshTagsAsync();
-        });
+        QueueSave(edits, before);
         Editor.Load(items);
-        await RefreshTagsAsync();
-        return failures.Count == 0;
+        return Task.FromResult(true);
     }
 
     // The changes that undo a save: the fields it changed, back to what the photo had.
@@ -814,6 +810,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var failures = new List<string>();
         if (_metadata is null || _indexer is null)
             return failures;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -855,6 +852,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var rotatable = items.Where(i => i.CanRotate).ToList();
         var skipped = items.Count - rotatable.Count;
         var failed = 0;
+
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
 
         IsBusy = true;
         try
@@ -1054,6 +1053,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var dated = items.Where(i => i.Photo.DateTaken is not null).ToList();
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1109,6 +1109,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var items = placed.Select(p => p.Item).ToList();
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1168,6 +1169,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _geocoder ??= new ReverseGeocoder(PlaceNameLanguageCode);
         var failures = new List<string>();
         var unknown = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1267,6 +1269,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadTagModelAsync()
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1313,6 +1316,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var failures = new List<string>();
         var tagged = 0;
         var added = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1377,6 +1381,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1423,6 +1428,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var isJpeg = extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".jpe";
         if ((asJpeg && !isJpeg) || !ImageEncoder.CanEncode(extension))
             extension = ".jpg";
+
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
 
         IsBusy = true;
         StatusText = Tr("Saving the edit of {0}…", item.FileName);
@@ -1479,6 +1486,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (restore is null)
             return;
         var path = item.Path;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
