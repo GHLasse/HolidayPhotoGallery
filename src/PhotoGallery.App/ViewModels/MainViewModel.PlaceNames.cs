@@ -41,7 +41,7 @@ public sealed partial class MainViewModel
                 foreach (var (path, position) in todo)
                 {
                     ShowBackground("places", Tr("Adding place names: {0:N0} to go", Math.Max(1, waiting - failed.Count - n++)));
-                    while (IsBusy)
+                    while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
                     if (!_settings.AddPlaceNamesAutomatically)
                         return;
@@ -121,6 +121,7 @@ public sealed partial class MainViewModel
         var failures = new List<string>();
         var changed = new List<(string Path, PlaceName Before, PlaceName After)>();
         var lookupFailed = false;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -212,6 +213,7 @@ public sealed partial class MainViewModel
             return;
         }
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {

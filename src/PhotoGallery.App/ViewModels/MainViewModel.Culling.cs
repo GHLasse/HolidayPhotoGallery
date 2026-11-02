@@ -165,7 +165,7 @@ public sealed partial class MainViewModel
                 foreach (var (path, orientation) in todo)
                 {
                     ShowBackground("quality", Tr("Checking photo quality: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
-                    while (IsBusy)
+                    while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
                     if (!_settings.CheckQualityAutomatically)
                         break;

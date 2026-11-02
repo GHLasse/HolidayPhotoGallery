@@ -102,6 +102,7 @@ public sealed partial class MainViewModel
     /// <summary>Looks at the photo for the repair wizard.</summary>
     public async Task<DamagedPhoto> FindDamageAsync(PhotoItemViewModel item)
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Looking for the damaged part of {0}…", item.FileName);
         try
@@ -164,6 +165,7 @@ public sealed partial class MainViewModel
                                                        UpscaleQuality? upscale = null, bool evenIfSlow = false,
                                                        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Repairing {0}…", item.FileName);
         Upscaler? upscaler = null;
@@ -245,6 +247,7 @@ public sealed partial class MainViewModel
         if (_photoEditor is null)
             return false;
         var path = item.Path;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Repairing {0}…", item.FileName);
         try

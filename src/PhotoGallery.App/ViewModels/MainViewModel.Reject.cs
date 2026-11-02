@@ -78,6 +78,7 @@ public sealed partial class MainViewModel
 
         var failures = new List<string>();
         var moved = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {

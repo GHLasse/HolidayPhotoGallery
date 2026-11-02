@@ -139,7 +139,7 @@ public sealed partial class MainViewModel
                 foreach (var (path, modified) in todo)
                 {
                     ShowBackground("files", Tr("Checking files for damage…"));
-                    while (IsBusy)
+                    while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
                     try
                     {

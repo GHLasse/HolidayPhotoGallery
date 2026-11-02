@@ -241,6 +241,7 @@ public sealed partial class MainViewModel
         }
         var imported = new List<string>();
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -385,6 +386,7 @@ public sealed partial class MainViewModel
     {
         if (_indexer is null)
             return;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -403,6 +405,7 @@ public sealed partial class MainViewModel
     {
         if (_metadata is null || _indexer is null)
             return;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {

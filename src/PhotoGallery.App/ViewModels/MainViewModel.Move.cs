@@ -21,6 +21,7 @@ public sealed partial class MainViewModel
 
         var done = new List<(IndexedPhoto Photo, string NewPath)>();
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -79,6 +80,7 @@ public sealed partial class MainViewModel
         }
         var done = 0;
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -127,6 +129,7 @@ public sealed partial class MainViewModel
         }
         var done = 0;
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
