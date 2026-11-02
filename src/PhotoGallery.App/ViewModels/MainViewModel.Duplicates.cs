@@ -52,7 +52,7 @@ public sealed partial class MainViewModel
                 }
             });
             var groups = await Task.Run(() => DuplicateFinder.Find(photos, Hash, progress: progress));
-            await Task.Run(() => _index.SavePictureHashes(fresh));
+            await ForgetChangedPicturesAsync(await Task.Run(() => _index.SavePictureHashes(fresh)));
             var kept = await Task.Run(_index.GetKeptDuplicates);
             groups.RemoveAll(g => kept.Contains(g.Key));
             if (folder is null)
@@ -70,6 +70,29 @@ public sealed partial class MainViewModel
     }
 
     // Windows decodes the photo small and upright; when it can't (a damaged file), its thumbnail is enough for a fingerprint.
+    /// <summary>
+    /// Photos whose new fingerprint shows another picture than before: their pixels were changed elsewhere,
+    /// perhaps while the app was closed, so faces, vector and quality are worked out again.
+    /// </summary>
+    private async Task ForgetChangedPicturesAsync(List<string> changed)
+    {
+        if (changed.Count == 0)
+            return;
+        foreach (var path in changed)
+        {
+            await Task.Run(() =>
+            {
+                _index.ForgetFaces(path);
+                _index.ForgetPictureVector(path);
+            });
+            _vectors?.Remove(path);
+            await ForgetQualityAsync(path, path);
+        }
+        ForgetMatcher();
+        App.Trace($"Pictures changed outside the app: {changed.Count}");
+        StartBackgroundJobsSoon();
+    }
+
     private static ulong? HashOf(string path)
     {
         foreach (var decode in new Func<Task<DecodedImage>>[]
@@ -184,7 +207,7 @@ public sealed partial class MainViewModel
                     }
                     fresh.Add((path, await Task.Run(() => HashOf(path))));
                 }
-                await Task.Run(() => _index.SavePictureHashes(fresh));
+                await ForgetChangedPicturesAsync(await Task.Run(() => _index.SavePictureHashes(fresh)));
                 taken += fresh.Count;
             }
             // The new fingerprints stack the shots shown now (after all fingerprints were taken again, the stacks
