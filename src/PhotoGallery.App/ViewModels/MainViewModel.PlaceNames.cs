@@ -29,6 +29,7 @@ public sealed partial class MainViewModel
         var named = 0;
         try
         {
+            App.Trace($"Place names in the background: {await Task.Run(_index.CountLocatedWithoutPlace)} photo(s) with a position and no place");
             while (_settings.AddPlaceNamesAutomatically)
             {
                 const int Batch = 20;
@@ -55,6 +56,12 @@ public sealed partial class MainViewModel
                     {
                         App.Trace($"Place names in the background stopped: {ex.Message}");
                         return; // offline: every further lookup would fail the same way
+                    }
+                    catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
+                    {
+                        App.Trace($"Place lookup for {path} gave no answer: {ex.Message}");
+                        failed.Add(path);
+                        continue;
                     }
                     if (place is null)
                     {
@@ -86,6 +93,15 @@ public sealed partial class MainViewModel
             if (named > 0)
                 UpdatePlaces(await Task.Run(_index.GetPlaceCounts)); // the Places tree
         }
+    }
+
+    /// <summary>For Settings › Dates and places: how many photos with a GPS position still wait for place names.</summary>
+    public async Task<string> PlaceNameProgressText()
+    {
+        var waiting = await Task.Run(_index.CountLocatedWithoutPlace);
+        return waiting == 0
+            ? Tr("Every photo with a GPS position has place names.")
+            : Tr("{0:N0} photos with a GPS position have no place names yet.", waiting);
     }
 
     public void SaveAddPlaceNamesAutomatically(bool on)
