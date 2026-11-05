@@ -83,6 +83,14 @@ public sealed partial class MainWindow
         var add = new Button { Content = Tr("Add tracks…"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         ContentDialog? dialog = null;
         string? showOnMap = null;
+        // Problems are shown in the dialog itself: a banner would sit behind it, unreadable.
+        var problem = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = true, IsOpen = false };
+        void Problem(string text)
+        {
+            problem.Title = text;
+            problem.Message = "";
+            problem.IsOpen = true;
+        }
 
         void Fill()
         {
@@ -110,7 +118,7 @@ public sealed partial class MainWindow
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
                 {
-                    ViewModel.ErrorMessage = Tr("Could not rename the track: {0}", ex.Message);
+                    Problem(Tr("Could not rename the track: {0}", ex.Message));
                 }
                 Fill();
             }
@@ -139,7 +147,7 @@ public sealed partial class MainWindow
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    ViewModel.ErrorMessage = Tr("Could not delete the track: {0}", ex.Message);
+                    Problem(Tr("Could not delete the track: {0}", ex.Message));
                 }
                 Fill();
                 return Task.CompletedTask;
@@ -176,8 +184,12 @@ public sealed partial class MainWindow
                     failed.Add($"{file.Name}: {ex.Message}");
                 }
             }
+            problem.IsOpen = false;
             if (failed.Count > 0)
-                ViewModel.ErrorMessage = Tr("Some tracks could not be added.") + " " + string.Join(" ", failed);
+            {
+                Problem(Tr("Some tracks could not be added."));
+                problem.Message = string.Join("\n", failed);
+            }
             Fill();
         };
 
@@ -194,7 +206,7 @@ public sealed partial class MainWindow
                 {
                     Spacing = 12,
                     MinWidth = 480,
-                    Children = { hint, add, list, new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, zone, clock, gap, how },
+                    Children = { hint, add, problem, list, new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, zone, clock, gap, how },
                 },
             },
             CloseButtonText = Tr("Close"),
