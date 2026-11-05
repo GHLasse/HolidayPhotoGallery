@@ -273,6 +273,9 @@ public sealed partial class MainWindow
             IsOn = ViewModel.CheckForUpdates,
         };
         var result = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        // The answer is the last line of the page and appears under the buttons: Settings scrolls it into view,
+        // or it stays below the visible part when the window is short.
+        result.SizeChanged += (_, _) => result.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true });
         var install = new Button { Content = Tr("Update now"), Visibility = Visibility.Collapsed, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         var check = new Button { Content = Tr("Look for a new version now") };
         AppRelease? found = null;
@@ -289,6 +292,9 @@ public sealed partial class MainWindow
                     ? Tr("You have the newest version.")
                     : Tr("Version {0} is available.", AppUpdates.Format(found.Version));
                 install.Visibility = found is null ? Visibility.Collapsed : Visibility.Visible;
+                if (found is not null)
+                    install.Content = Tr("Update to {0}", AppUpdates.Format(found.Version));
+                result.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true });
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
             {
