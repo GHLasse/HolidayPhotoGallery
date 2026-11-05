@@ -118,10 +118,10 @@ public sealed partial class MainWindow
         FrameworkElement TrackRow(TrackInfo track)
         {
             var name = new TextBox { Text = track.Name, MinWidth = 200 };
+            var renamed = false;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(name, Tr("Track name"));
             name.LostFocus += (_, _) => Rename();
             name.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) Rename(); };
-            var renamed = false;
             void Rename()
             {
                 // Enter renames and rebuilds the list, and the text box then loses its focus: only once.
