@@ -17,11 +17,24 @@ namespace PhotoGallery.App;
 public sealed partial class MainWindow
 {
     private int _trackLineRun;
+    // A track picked with "Show on the map": it stays on the map (instead of the line around the selected
+    // photo) until another photo is selected or the Map is left, and the map zooms to it once.
+    private IReadOnlyList<PhotoGallery.Core.Metadata.GeoPosition>? _pinnedTrack;
+    private bool _fitPinnedTrack;
 
     /// <summary>The track (or the route between photos) for 4 hours around the selected photo, under the map's dots.</summary>
     private async Task ShowTrackLineAsync()
     {
         var run = ++_trackLineRun;
+        if (_pinnedTrack is { } pinned)
+        {
+            if (IsMapOpen)
+            {
+                MapView.ShowTrack(pinned, isRoute: false, fit: _fitPinnedTrack);
+                _fitPinnedTrack = false;
+            }
+            return;
+        }
         var current = SelectedPhotos is [var first, ..] ? first : null;
         try
         {
@@ -108,10 +121,13 @@ public sealed partial class MainWindow
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(name, Tr("Track name"));
             name.LostFocus += (_, _) => Rename();
             name.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) Rename(); };
+            var renamed = false;
             void Rename()
             {
-                if (name.Text.Trim() == track.Name || name.Text.Trim().Length == 0)
+                // Enter renames and rebuilds the list, and the text box then loses its focus: only once.
+                if (renamed || name.Text.Trim() == track.Name || name.Text.Trim().Length == 0)
                     return;
+                renamed = true;
                 try
                 {
                     ViewModel.TrackFiles.Rename(track.Path, name.Text);
@@ -219,9 +235,11 @@ public sealed partial class MainWindow
                                     double.IsNaN(gap.Value) ? 30 : (int)Math.Round(gap.Value));
         if (showOnMap is { } path)
         {
-            ShowWorkspace(Workspace.Map);
+            _pinnedTrack = await ViewModel.TrackPointsAsync(path);
+            _fitPinnedTrack = true;
+            ShowWorkspace(Workspace.Map); // its refresh shows the pinned track instead of zooming out to all photos
             await MapView.StartAsync();
-            MapView.ShowTrack(await ViewModel.TrackPointsAsync(path), isRoute: false, fit: true);
+            await ShowTrackLineAsync();
         }
         else if (IsMapOpen)
         {

@@ -901,6 +901,8 @@ public sealed partial class MainWindow : Window
             _ = RefreshPeoplePanelAsync();
             if (IsMapOpen)
             {
+                if (SelectedPhotos.Count > 0)
+                    _pinnedTrack = null; // the line around the selected photo again
                 MapView.ShowSelection(SelectedPhotos, fit: !_selectingFromMap); // don't jump away from a clicked marker
                 _ = ShowTrackLineAsync();
             }
@@ -1021,6 +1023,8 @@ public sealed partial class MainWindow : Window
     private async void RefreshMap(bool fit)
     {
         var version = ++_mapVersion;
+        if (_pinnedTrack is not null)
+            fit = false; // the map zooms to the track shown with "Show on the map" instead
         if (_workspace == Workspace.Map)
         {
             // Picking a folder, month or place in the left pane narrows the map, and it zooms to them.
