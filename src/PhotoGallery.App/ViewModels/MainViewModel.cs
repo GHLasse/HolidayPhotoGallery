@@ -1422,7 +1422,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve,
                                           Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten,
-                                          Look? look, int lookStrength, bool asJpeg)
+                                          Look? look, int lookStrength, IReadOnlyList<RetouchStroke> strokes, bool asJpeg)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1442,8 +1442,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
             var (fullWidth, fullHeight) = (image.Width, image.Height);
             FaceBox? kept = null;
+            var eraser = strokes.Any(k => k.Tool == RetouchTool.Erase) ? await Task.Run(() => LoadEraser()) : null;
             image = await Task.Run(() =>
             {
+                // Retouching first, on the photo as it was, where the strokes were placed (E-11).
+                Retouch.Apply(image.Pixels, image.Width, image.Height, strokes, eraser);
                 if (Math.Abs(straighten) >= 0.01)
                 {
                     var (turned, tw, th) = Straighten.Apply(image.Pixels, image.Width, image.Height, straighten);
@@ -1486,7 +1489,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 : Tr("Saved the edit as {0}. The original is in the hidden .originals folder.", Path.GetFileName(newPath)));
             return true;
         }
-        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.COMException)
+        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.COMException
+                                       or Microsoft.ML.OnnxRuntime.OnnxRuntimeException)
         {
             ErrorMessage = Tr("Could not save the edit of {0}: {1}", item.FileName, ex.Message) +
                 (extension is ".heic" or ".heif" ? " " + Tr("Saving HEIC needs the HEVC Video Extensions from the Microsoft Store; you can save as JPEG instead.") : "");
@@ -1581,6 +1585,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _index.Dispose();
         _geocoder?.Dispose();
         _tagger?.Dispose();
+        _eraser?.Dispose();
         _faceAnalyzer?.Dispose();
     }
 }
