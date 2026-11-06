@@ -149,21 +149,33 @@ public sealed partial class MapPanel : UserControl
     }
 
     /// <summary>
-    /// Draws a thin line under the photo dots (G-4): a recorded GPS track, or with <paramref name="isRoute"/> the
-    /// geotagged photos joined in time order. An empty list takes the line away; <paramref name="fit"/> zooms to it.
+    /// Draws thin lines under the photo dots (G-4): recorded GPS tracks, one line each, or with <paramref name="isRoute"/>
+    /// the geotagged photos joined in time order. No lines take them away; <paramref name="fit"/> zooms to them.
     /// A <paramref name="label"/> marks the line as the leg an estimate lies on: drawn stronger, with that legend.
     /// </summary>
-    public void ShowTrack(IReadOnlyList<GeoPosition> line, bool isRoute, bool fit = false, string? label = null)
+    public void ShowTrack(IReadOnlyList<IReadOnlyList<GeoPosition>> lines, bool isRoute, bool fit = false, string? label = null)
     {
-        var points = new JsonArray();
+        var all = new JsonArray();
         // A long Timeline export can have tens of thousands of points in a day; every few is plenty for a line.
-        var step = Math.Max(1, line.Count / 5000);
-        for (var i = 0; i < line.Count; i += step)
-            points.Add(new JsonArray(Math.Round(line[i].Latitude, 6), Math.Round(line[i].Longitude, 6)));
-        if (line.Count > 0 && (line.Count - 1) % step != 0)
-            points.Add(new JsonArray(Math.Round(line[^1].Latitude, 6), Math.Round(line[^1].Longitude, 6)));
-        Post(new JsonObject { ["type"] = "track", ["points"] = points, ["route"] = isRoute, ["fit"] = fit, ["label"] = label });
+        var step = Math.Max(1, lines.Sum(l => l.Count) / 5000);
+        foreach (var line in lines)
+        {
+            var points = new JsonArray();
+            for (var i = 0; i < line.Count; i += step)
+                points.Add(new JsonArray(Math.Round(line[i].Latitude, 6), Math.Round(line[i].Longitude, 6)));
+            if (line.Count > 0 && (line.Count - 1) % step != 0)
+                points.Add(new JsonArray(Math.Round(line[^1].Latitude, 6), Math.Round(line[^1].Longitude, 6)));
+            if (points.Count >= 2)
+                all.Add(points);
+        }
+        Post(new JsonObject { ["type"] = "track", ["lines"] = all, ["route"] = isRoute, ["fit"] = fit, ["label"] = label });
     }
+
+    /// <summary>The map's Tracks switch (bottom right, beside Map | Satellite and Labels): whether tracks are drawn.</summary>
+    public bool TracksOn { get; private set; } = true;
+
+    /// <summary>Raised when the Tracks switch on the map is turned on or off.</summary>
+    public event Action? TracksToggled;
 
     /// <summary>Raised when the picture or Open in a photo's bubble on the whole-library map is clicked.</summary>
     public event Action<string>? PhotoOpened;
@@ -309,6 +321,8 @@ public sealed partial class MapPanel : UserControl
                     ["map"] = Tr("Map"),
                     ["satellite"] = Tr("Satellite"),
                     ["labels"] = Tr("Labels"),
+                    ["tracks"] = Tr("Tracks"),
+                    ["tracksTip"] = Tr("Show the GPS tracks of the photos’ time, or the route between them. Add tracks in Settings › GPS tracks."),
                     ["find"] = Tr("Find"),
                     ["placeholder"] = Tr("Find a place, e.g. Tortuguero"),
                     ["searching"] = Tr("Searching…"),
@@ -331,6 +345,14 @@ public sealed partial class MapPanel : UserControl
                 // A pin of the user's own replaces the estimate.
                 ClearEstimates();
                 SetPin(position.IsValid ? position : Wrapped(position), tellMap: false);
+                break;
+            case "tracks":
+                var on = message["on"]?.GetValue<bool>() != false;
+                if (on != TracksOn)
+                {
+                    TracksOn = on;
+                    TracksToggled?.Invoke();
+                }
                 break;
             case "estimate":
                 _ = EstimateAsync(auto: false);

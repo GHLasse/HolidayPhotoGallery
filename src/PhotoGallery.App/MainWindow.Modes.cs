@@ -34,8 +34,6 @@ public sealed partial class MainWindow
     private async void ShowWorkspace(Workspace workspace)
     {
         App.Trace($"workspace: {workspace}");
-        if (workspace != Workspace.Map)
-            _pinnedTrack = null;
         _workspace = workspace;
         _syncingWorkspace = true;
         try

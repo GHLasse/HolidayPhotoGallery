@@ -87,6 +87,7 @@ public sealed partial class MainWindow : Window
         MapView.PhotoOpened += MapPhotoOpened;
         MapView.PhotoShown += MapPhotoShown;
         MapView.PlacesFound += MapView_PlacesFound;
+        MapView.TracksToggled += () => _ = ShowTrackLineAsync();
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
@@ -922,8 +923,6 @@ public sealed partial class MainWindow : Window
             _ = RefreshPeoplePanelAsync();
             if (IsMapOpen)
             {
-                if (SelectedPhotos.Count > 0)
-                    _pinnedTrack = null; // the line around the selected photo again
                 MapView.ShowSelection(SelectedPhotos, fit: !_selectingFromMap); // don't jump away from a clicked marker
                 _ = ShowTrackLineAsync();
             }
@@ -1050,8 +1049,6 @@ public sealed partial class MainWindow : Window
             var scope = ViewModel.MapScope;
             fit |= scope != _mapScope;
             _mapScope = scope;
-            if (_pinnedTrack is not null)
-                fit = false; // the map zooms to the track shown with "Show on the map" instead
             var all = await ViewModel.PhotosWithLocationAsync();
             if (version != _mapVersion)
                 return;
@@ -1060,8 +1057,6 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            if (_pinnedTrack is not null)
-                fit = false;
             MapView.ShowPhotos(ViewModel.Photos);
         }
         MapView.ShowSelection(SelectedPhotos, fit);
@@ -1851,12 +1846,7 @@ public sealed partial class MainWindow : Window
         });
         tags.Visibility = Visibility.Collapsed;
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
-        string? showTrack = null;
-        var tracksPage = TracksPage(path =>
-        {
-            showTrack = path;
-            dialog?.Hide();
-        }, out var chosenTracks);
+        var tracksPage = TracksPage(out var chosenTracks);
 
         // Info tab: version and credits
         var info = InfoPage();
@@ -2003,15 +1993,6 @@ public sealed partial class MainWindow : Window
             // "Show these photos" in Settings › Tags: closes Settings without saving, and filters the grid.
             revertAppearance();
             ViewModel.FilterByTag(showTag);
-            return;
-        }
-        if (showTrack is not null)
-        {
-            // "Show on the map" in Settings › GPS tracks: keeps that tab's settings, closes Settings without saving
-            // the rest, and shows the track on the Map.
-            revertAppearance();
-            SaveTrackSettings(chosenTracks());
-            await ShowTrackOnMapAsync(showTrack);
             return;
         }
         // "Update now" in Settings › App keeps what was changed, like Save.
