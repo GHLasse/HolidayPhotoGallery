@@ -80,6 +80,7 @@ public sealed partial class MainWindow
             list.Add(new(Tr("Back to the grid"), "\uE80A", Tr("View"), CloseViewer, "G"));
             list.Add(new(Tr("Show or hide the details"), "\uE946", Tr("View"), ToggleViewerDetails, "I"));
             list.Add(new(Tr("Show or hide the map"), "\uE800", Tr("View"), ToggleViewerMap, "M"));
+            list.Add(new(Tr("Show or hide the Edit pane"), "\uE70F", Tr("View"), ToggleViewerEdit, "E"));
             list.Add(new(Tr("Dim the room around the photo"), "\uE708", Tr("View"), CycleViewerLights, "L"));
         }
         else

@@ -257,7 +257,7 @@ public sealed partial class MainWindow
 
     private void ToggleViewerDetails()
     {
-        if (!_viewerFolded && !ViewerMapBeside)
+        if (RightSide() == RightPane.Info)
         {
             _viewerFolded = true;
             ApplyChrome();
@@ -274,6 +274,7 @@ public sealed partial class MainWindow
         _viewerPane = pane;
         _viewerFolded = false;
         ApplyChrome();
+        UpdateEditPane();
         await StartViewerMapAsync();
     }
 
@@ -293,7 +294,7 @@ public sealed partial class MainWindow
     private void PlaceInfoBesideViewer(bool beside)
     {
         Grid.SetColumnSpan(ViewerLayer, beside ? 3 : 5);
-        foreach (var pane in new FrameworkElement[] { InfoSplitter, InfoPane, MapSplitter, MapView, SidePaneHeader, SideRail })
+        foreach (var pane in new FrameworkElement[] { InfoSplitter, InfoPane, EditPane, MapSplitter, MapView, SidePaneHeader, SideRail })
         {
             Grid.SetRow(pane, beside ? 1 : 3);
             Grid.SetRowSpan(pane, beside ? 3 : 1);
@@ -301,6 +302,7 @@ public sealed partial class MainWindow
         // No background of its own: it shows the window's, like the normal pane. A looked-up brush came out
         // light in dark mode (white text on a light pane).
         InfoPane.Background = null;
+        EditPane.Background = null;
     }
 
     // ---- Lights out ----

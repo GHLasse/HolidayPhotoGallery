@@ -1415,10 +1415,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Writes a crop (fractions of the photo's width and height) and/or a brightness curve into the photo
-    /// at full resolution. The version before is kept in the hidden .originals folder.
+    /// Writes a crop (fractions of the photo's width and height), a brightness curve, the Edit pane's sliders and
+    /// flips into the photo at full resolution. The crop was drawn on the flipped preview. The version before is
+    /// kept in the hidden .originals folder.
     /// </summary>
-    public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve, bool asJpeg)
+    public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve,
+                                          Adjustments adjustments, bool flipHorizontal, bool flipVertical, bool asJpeg)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1442,6 +1444,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 var result = image;
                 if (crop is { } c)
                 {
+                    // The frame was drawn on the flipped photo; on the photo as it is, it lies mirrored.
+                    if (flipHorizontal)
+                        c.X = Math.Max(0, 1 - c.X - c.Width);
+                    if (flipVertical)
+                        c.Y = Math.Max(0, 1 - c.Y - c.Height);
                     var x = (int)Math.Floor(c.X * image.Width);
                     var y = (int)Math.Floor(c.Y * image.Height);
                     var w = Math.Clamp((int)Math.Round(c.Width * image.Width), 1, image.Width - x);
@@ -1452,11 +1459,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 if (curve is not null)
                     ImageMath.ApplyCurve(result.Pixels, curve);
+                ImageAdjust.Apply(result.Pixels, result.Width, result.Height, adjustments);
+                ImageAdjust.Flip(result.Pixels, result.Width, result.Height, flipHorizontal, flipVertical);
                 return result;
             });
 
+            // A flip moves the people named in the photo too.
             var newPath = await _photoEditor.SaveEditAsync(path, extension, image.Width, image.Height,
-                                                           target => ImageEncoder.EncodeAsync(image, target), kept);
+                                                           target => ImageEncoder.EncodeAsync(image, target), kept,
+                                                           ImageAdjust.FlipOrientation(flipHorizontal, flipVertical));
             await AfterFileReplacedAsync(item, path, newPath);
             Inform(newPath == path
                 ? Tr("Saved the edit of {0}. The original is in the hidden .originals folder.", item.FileName)
