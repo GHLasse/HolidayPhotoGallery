@@ -58,8 +58,11 @@ needed.
 - Auto tags are plain keywords other apps understand, and can be removed together
 
 **Editing**
-- Crop freely or to common ratios (1:1, 4:3, 3:2, 16:9, print sizes and more)
-- Automatic brightness and contrast; rotate JPEG, HEIC, PNG, WebP, TIFF and GIF
+- An Edit pane beside the photo: enhance light and colours, rotate, flip, and fine-tune light and colour with sliders
+- Crop freely or to common ratios (1:1, 4:3, 3:2, 16:9, print sizes and more), and straighten by up to 45°
+- One-click looks (vivid, warm, matte, vintage, black and white and more) with a strength slider, including Beauty for portraits (smoother skin, brighter eyes, whiter teeth)
+- Remove spots and blemishes with a click, and erase people or things with the AI magic eraser, on your PC
+- Rotate JPEG, HEIC, PNG, WebP, TIFF and GIF
 - Undo the last edit or go back to the original; save in the original format or as JPEG
 
 **Import, videos and tidying up**

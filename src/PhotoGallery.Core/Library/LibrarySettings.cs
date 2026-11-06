@@ -29,6 +29,9 @@ public sealed class LibrarySettings
     /// <summary>AI upscaling runs on the processor even when a graphics card could do it (see Editing.Upscaler).</summary>
     public bool UpscaleOnProcessorOnly { get; set; }
 
+    /// <summary>What the Beauty look does (E-10): smooth skin, brighten eyes, whiten teeth, soften shadows under the eyes.</summary>
+    public Editing.BeautyParts BeautyParts { get; set; } = Editing.BeautyParts.All;
+
     /// <summary>The order the photo grid starts in for every folder (a <see cref="PhotoSort"/> key).</summary>
     public string PhotoSort { get; set; } = Library.PhotoSort.Oldest;
 

@@ -1422,7 +1422,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve,
                                           Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten,
-                                          Look? look, int lookStrength, IReadOnlyList<RetouchStroke> strokes, bool asJpeg)
+                                          Look? look, int lookStrength, IReadOnlyList<RetouchStroke> strokes,
+                                          IReadOnlyList<BeautyFace> faces, BeautyParts beautyParts, bool asJpeg)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1447,6 +1448,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             {
                 // Retouching first, on the photo as it was, where the strokes were placed (E-11).
                 Retouch.Apply(image.Pixels, image.Width, image.Height, strokes, eraser);
+                // Beauty too, on the faces where they were found (E-10).
+                if (look is { Beauty: true })
+                    Beauty.Apply(image.Pixels, image.Width, image.Height, faces, lookStrength, beautyParts);
                 if (Math.Abs(straighten) >= 0.01)
                 {
                     var (turned, tw, th) = Straighten.Apply(image.Pixels, image.Width, image.Height, straighten);
@@ -1586,6 +1590,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _geocoder?.Dispose();
         _tagger?.Dispose();
         _eraser?.Dispose();
+        _beautyAnalyzer?.Dispose();
         _faceAnalyzer?.Dispose();
     }
 }

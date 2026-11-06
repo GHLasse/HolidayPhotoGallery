@@ -24,6 +24,8 @@ public sealed partial class MainWindow
     private DecodedImage? _lookThumbsFor;    // the photo the look previews were made from
     private const int LookThumbWidth = 72, LookThumbHeight = 54;
     private DecodedImage? _previewBase;      // the viewer's photo, made smaller for the preview
+    private IReadOnlyList<BeautyFace>? _beautyFaces;  // the faces the Beauty look works on (E-10)
+    private DecodedImage? _beautyFacesFor;            // the photo they were found on
     private bool _rendering, _renderAgain, _syncingEditPane;
 
     /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
@@ -197,8 +199,71 @@ public sealed partial class MainWindow
             };
             ToolTipService.SetToolTip(button, tip);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
-            button.Click += (_, _) => ChangeEdit(() => _lookKey = key);
+            button.Click += (_, _) =>
+            {
+                ChangeEdit(() => _lookKey = key);
+                if (Looks.Find(key) is { Beauty: true })
+                    _ = FindBeautyFacesAsync();
+            };
+            if (Looks.Find(key) is { Beauty: true })
+                button.ContextFlyout = BeautyPartsMenu();
             LookPanel.Children.Add(button);
+        }
+    }
+
+    // Right-click on Beauty: what it does, the same choice as in Settings › Editing.
+    private MenuFlyout BeautyPartsMenu()
+    {
+        var menu = new MenuFlyout();
+        foreach (var (part, label) in BeautyPartLabels())
+        {
+            var item = new ToggleMenuFlyoutItem { Text = label };
+            item.Click += (_, _) =>
+            {
+                var parts = item.IsChecked ? ViewModel.BeautyParts | part : ViewModel.BeautyParts & ~part;
+                ViewModel.SaveBeautyParts(parts);
+                if (_lookKey is not null && ChosenLook is { Beauty: true })
+                    RenderPreview();
+            };
+            menu.Items.Add(item);
+        }
+        menu.Opening += (_, _) =>
+        {
+            foreach (var (item, (part, _)) in menu.Items.OfType<ToggleMenuFlyoutItem>().Zip(BeautyPartLabels()))
+                item.IsChecked = ViewModel.BeautyParts.HasFlag(part);
+        };
+        return menu;
+    }
+
+    private static (BeautyParts Part, string Label)[] BeautyPartLabels() =>
+    [
+        (BeautyParts.SmoothSkin, Tr("Smooth skin")),
+        (BeautyParts.BrightenEyes, Tr("Brighten eyes")),
+        (BeautyParts.WhitenTeeth, Tr("Whiten teeth")),
+        (BeautyParts.SoftenEyeShadows, Tr("Soften shadows under the eyes")),
+    ];
+
+    // The faces for Beauty, found once per photo; until then the look shows only its light and colour.
+    private async Task FindBeautyFacesAsync()
+    {
+        if (_viewerPixels is not { } pixels || ViewerItem is not { } item || ReferenceEquals(_beautyFacesFor, pixels))
+            return;
+        _beautyFacesFor = pixels;
+        _beautyFaces = null;
+        ViewerProgress.IsActive = true;
+        try
+        {
+            var faces = await ViewModel.FindBeautyFacesAsync(item, pixels);
+            if (!ReferenceEquals(pixels, _viewerPixels))
+                return;
+            _beautyFaces = faces;
+            if (faces.Count == 0 && ChosenLook is { Beauty: true })
+                ViewModel.Inform(Tr("No faces were found on this photo, so Beauty only gives it a soft warm glow."));
+            RenderPreview();
+        }
+        finally
+        {
+            ViewerProgress.IsActive = false;
         }
     }
 
@@ -288,6 +353,7 @@ public sealed partial class MainWindow
                 var (flipH, flipV) = (_flipHorizontal, _flipVertical);
                 var angle = StraightenBeforeFlip;
                 var (look, strength) = (ChosenLook, _lookStrength);
+                var (faces, beautyParts) = (_beautyFaces, ViewModel.BeautyParts);
                 DecodedImage shown;
                 if (before || (curve is null && !HasPixelChanges))
                     shown = pixels;
@@ -295,7 +361,7 @@ public sealed partial class MainWindow
                 {
                     // With the retouch strokes so far (MainWindow.Retouch.cs).
                     var source = _retouched ?? (_previewBase ??= await Task.Run(() => Smaller(pixels)));
-                    shown = await Task.Run(() => Edited(source, curve, look, strength, adjustments, flipH, flipV, angle));
+                    shown = await Task.Run(() => Edited(source, curve, look, strength, adjustments, flipH, flipV, angle, faces, beautyParts));
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels))
                     return;
@@ -321,12 +387,20 @@ public sealed partial class MainWindow
 
     /// <summary>A copy of the picture with the edits applied, in the order Save applies them.</summary>
     internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Look? look, int lookStrength, Adjustments adjustments,
-                                        bool flipHorizontal, bool flipVertical, double straighten)
+                                        bool flipHorizontal, bool flipVertical, double straighten,
+                                        IReadOnlyList<BeautyFace>? faces = null, BeautyParts beautyParts = BeautyParts.None)
     {
+        // Beauty works on the faces where they are on the photo, so before it is straightened.
+        var source = image;
+        if (look is { Beauty: true } && faces is { Count: > 0 } && beautyParts != BeautyParts.None)
+        {
+            source = image with { Pixels = (byte[])image.Pixels.Clone() };
+            Beauty.Apply(source.Pixels, source.Width, source.Height, faces, lookStrength, beautyParts);
+        }
         // Straightening makes a new picture; otherwise the viewer's own is copied, never changed.
         var picture = Math.Abs(straighten) >= 0.01
-            ? Turned(image, straighten)
-            : image with { Pixels = (byte[])image.Pixels.Clone() };
+            ? Turned(source, straighten)
+            : ReferenceEquals(source, image) ? image with { Pixels = (byte[])image.Pixels.Clone() } : source;
         if (curve is not null)
             ImageMath.ApplyCurve(picture.Pixels, curve);
         if (look is not null)

@@ -35,6 +35,9 @@ public sealed record Look
 
     /// <summary>More (above 1) or less of each colour.</summary>
     public (double R, double G, double B) Gain { get; init; } = (1, 1, 1);
+
+    /// <summary>The Beauty look (E-10): it also works on the faces in the photo (see <see cref="Editing.Beauty"/>).</summary>
+    public bool Beauty { get; init; }
 }
 
 /// <summary>The app's looks, and how they are applied with a strength.</summary>
@@ -76,6 +79,13 @@ public static class Looks
             Tip = () => Tr("A warm yellow glow, a little brighter, like old film. Best for lifestyle photos and golden-hour moods (in the style of Valencia)."),
             Sliders = new Adjustments { Brightness = 10, Warmth = 40, Contrast = -5 },
             Sepia = 0.15, Fade = 0.1,
+        },
+        new()
+        {
+            Key = "beauty", Name = () => Tr("Beauty"),
+            Tip = () => Tr("Smoother skin, brighter eyes and whiter teeth on the faces in the photo, with a soft warm glow. For portraits whose camera didn’t already do this. Right-click to choose what it does."),
+            Sliders = new Adjustments { Brightness = 6, Warmth = 8, Contrast = -5 },
+            Beauty = true,
         },
         new()
         {

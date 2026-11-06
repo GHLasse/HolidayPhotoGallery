@@ -1,4 +1,6 @@
+using PhotoGallery.App.Imaging;
 using PhotoGallery.Core.Editing;
+using PhotoGallery.Core.Faces;
 using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
@@ -42,5 +44,53 @@ public sealed partial class MainViewModel
     {
         lock (_eraserGate)
             return _eraser ??= Eraser.Load(EraseModel.ModelPath(EraseModelFolder), UpscaleOnProcessorOnly);
+    }
+
+    // ---- Beauty look (E-10) ----
+
+    private readonly Lock _beautyGate = new();
+    private FaceAnalyzer? _beautyAnalyzer;
+
+    public BeautyParts BeautyParts => _settings.BeautyParts;
+
+    public void SaveBeautyParts(BeautyParts parts)
+    {
+        _settings.BeautyParts = parts;
+        _settings.Save(SettingsPath);
+    }
+
+    /// <summary>
+    /// The faces on the shown photo for the Beauty look, as fractions of the upright photo: found afresh with the face
+    /// detector when its model is there (which also finds the eyes and mouth), otherwise the faces the index knows.
+    /// </summary>
+    public async Task<IReadOnlyList<BeautyFace>> FindBeautyFacesAsync(PhotoItemViewModel item, DecodedImage pixels)
+    {
+        if (IsFaceModelInstalled)
+        {
+            try
+            {
+                var found = await Task.Run(() =>
+                {
+                    var scale = Math.Min(1.0, (double)FaceAnalyzer.ImageSize / Math.Max(pixels.Width, pixels.Height));
+                    var (w, h) = (Math.Max(1, (int)Math.Round(pixels.Width * scale)), Math.Max(1, (int)Math.Round(pixels.Height * scale)));
+                    var small = scale < 1 ? ImageMath.Resize(pixels.Pixels, pixels.Width, pixels.Height, w, h) : pixels.Pixels;
+                    lock (_beautyGate)
+                    {
+                        _beautyAnalyzer ??= FaceAnalyzer.Load(FaceModelFolder);
+                        return (IReadOnlyList<BeautyFace>)_beautyAnalyzer.Analyze(small, w, h)
+                            .Select(f => f.Points.Count == 5 ? new BeautyFace(f.Box, f.Points) : BeautyFace.FromBox(f.Box)).ToList();
+                    }
+                });
+                if (found.Count > 0)
+                    return found;
+            }
+            catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException)
+            {
+                // The faces the index knows are used instead.
+            }
+        }
+        var orientation = item.Photo.Orientation;
+        var known = await GetFacesAsync(item.Path);
+        return known.Where(f => !f.Ignored).Select(f => BeautyFace.FromBox(f.Box.ToUpright(orientation))).ToList();
     }
 }
