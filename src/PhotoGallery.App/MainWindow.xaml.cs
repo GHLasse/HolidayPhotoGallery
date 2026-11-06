@@ -2099,6 +2099,7 @@ public sealed partial class MainWindow : Window
 
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
+                                                  ChosenLook, _lookStrength,
                                                   asJpeg: SaveFormatCombo.SelectedIndex == 1);
         ViewerProgress.IsActive = false;
         if (saved)
