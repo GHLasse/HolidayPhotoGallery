@@ -9,8 +9,8 @@ using static PhotoGallery.Core.Localization.Strings;
 namespace PhotoGallery.App;
 
 /// <summary>
-/// GPS tracks (G-4): the track list (Library › GPS tracks…), where tracks are added, renamed, deleted and shown
-/// on the map, and the thin line the map draws under the photos around the selected one. Placing photos from a
+/// GPS tracks (G-4): Settings › GPS tracks (also Library › GPS tracks…), where tracks are added, renamed, deleted
+/// and shown on the map, and the thin line the map draws under the photos around the selected one. Placing photos from a
 /// track goes through the map's estimate: photos without GPS get red dots where the track was at their time,
 /// and nothing is written until they are assigned.
 /// </summary>
@@ -59,7 +59,12 @@ public sealed partial class MainWindow
         return Tr("From the photo before to the photo after: {0} km, {1} apart", km < 10 ? km.ToString("N1") : km.ToString("N0"), time);
     }
 
-    private async Task ShowTracksAsync()
+    /// <summary>
+    /// Settings › GPS tracks: the tracks (added, renamed and deleted at once, as files) and how photos are matched
+    /// to them, read back with <paramref name="chosen"/> when Save is clicked. "Show on the map" calls
+    /// <paramref name="showOnMap"/> with the track's file, which closes Settings.
+    /// </summary>
+    private FrameworkElement TracksPage(Action<string> showOnMap, out Func<(TimeZoneInfo? Zone, int ClockErrorMinutes, int MaxGapMinutes)> chosen)
     {
         var list = new StackPanel { Spacing = 6 };
         var hint = new TextBlock
@@ -94,8 +99,6 @@ public sealed partial class MainWindow
         };
 
         var add = new Button { Content = Tr("Add tracks…"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
-        ContentDialog? dialog = null;
-        string? showOnMap = null;
         // Problems are shown in the dialog itself: a banner would sit behind it, unreadable.
         var problem = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = true, IsOpen = false };
         void Problem(string text)
@@ -150,8 +153,7 @@ public sealed partial class MainWindow
             };
             var show = IconButton("\uE707", Tr("Show on the map"), () =>
             {
-                showOnMap = track.Path;
-                dialog?.Hide();
+                showOnMap(track.Path);
                 return Task.CompletedTask;
             });
             show.IsEnabled = track.Error is null;
@@ -210,41 +212,48 @@ public sealed partial class MainWindow
         };
 
         Fill();
-        dialog = new ContentDialog
+        chosen = () => (zone.SelectedItem is TimeZoneChoice { Zone: { } picked } ? picked : null,
+                        double.IsNaN(clock.Value) ? 0 : (int)Math.Round(clock.Value),
+                        double.IsNaN(gap.Value) ? 30 : (int)Math.Round(gap.Value));
+        return new ScrollViewer
         {
-            XamlRoot = Root.XamlRoot,
-            Title = Tr("GPS tracks"),
-            Content = new ScrollViewer
+            MaxHeight = 480,
+            Padding = new Thickness(0, 0, 12, 0),
+            Visibility = Visibility.Collapsed,
+            Content = new StackPanel
             {
-                MaxHeight = 560,
-                Padding = new Thickness(0, 0, 12, 0),
-                Content = new StackPanel
-                {
-                    Spacing = 12,
-                    MinWidth = 480,
-                    Children = { hint, add, problem, list, new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, zone, clock, gap, how },
-                },
+                Spacing = 12,
+                Children = { hint, how, add, problem, list, new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, zone, clock, gap },
             },
-            CloseButtonText = Tr("Close"),
-            DefaultButton = ContentDialogButton.Close,
         };
-        await dialog.ShowThemedAsync();
+    }
 
-        ViewModel.SaveTrackSettings(zone.SelectedItem is TimeZoneChoice { Zone: { } picked } ? picked : null,
-                                    double.IsNaN(clock.Value) ? 0 : (int)Math.Round(clock.Value),
-                                    double.IsNaN(gap.Value) ? 30 : (int)Math.Round(gap.Value));
-        if (showOnMap is { } path)
-        {
-            _pinnedTrack = await ViewModel.TrackPointsAsync(path);
-            _fitPinnedTrack = true;
-            ShowWorkspace(Workspace.Map); // its refresh shows the pinned track instead of zooming out to all photos
-            await MapView.StartAsync();
-            await ShowTrackLineAsync();
-        }
-        else if (IsMapOpen)
-        {
+    /// <summary>Saves Settings › GPS tracks; a map that is open places the selected photos again with them.</summary>
+    private void SaveTrackSettings((TimeZoneInfo? Zone, int ClockErrorMinutes, int MaxGapMinutes) chosen)
+    {
+        ViewModel.SaveTrackSettings(chosen.Zone, chosen.ClockErrorMinutes, chosen.MaxGapMinutes);
+        if (IsMapOpen)
             MapView.ShowSelection(SelectedPhotos, fit: false); // estimates again with the new settings
-            _ = ShowTrackLineAsync();
+    }
+
+    /// <summary>
+    /// "Show on the map" in Settings › GPS tracks: the Map shows the whole track, zoomed to it, until a photo is
+    /// selected or the Map is left. The Map's own refresh draws it, after the photos, so nothing zooms away again.
+    /// </summary>
+    private async Task ShowTrackOnMapAsync(string path)
+    {
+        var points = await ViewModel.TrackPointsAsync(path);
+        if (points.Count < 2)
+        {
+            ViewModel.Warn(Tr("The track has no points to show."));
+            return;
         }
+        LeaveViewer();
+        _pinnedTrack = points;
+        _fitPinnedTrack = true;
+        if (_workspace == Workspace.Map && IsMapOpen)
+            RefreshMap(fit: false);
+        else
+            ShowWorkspace(Workspace.Map);
     }
 }

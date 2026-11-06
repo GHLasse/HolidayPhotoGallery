@@ -86,7 +86,6 @@ public sealed partial class MainWindow : Window
         MapView.PhotoClicked += MapPhotoClicked;
         MapView.PhotoOpened += MapPhotoOpened;
         MapView.PhotoShown += MapPhotoShown;
-        MapView.TracksRequested += () => _ = ShowTracksAsync();
         MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
@@ -1030,14 +1029,14 @@ public sealed partial class MainWindow : Window
     private async void RefreshMap(bool fit)
     {
         var version = ++_mapVersion;
-        if (_pinnedTrack is not null)
-            fit = false; // the map zooms to the track shown with "Show on the map" instead
         if (_workspace == Workspace.Map)
         {
             // Picking a folder, month or place in the left pane narrows the map, and it zooms to them.
             var scope = ViewModel.MapScope;
             fit |= scope != _mapScope;
             _mapScope = scope;
+            if (_pinnedTrack is not null)
+                fit = false; // the map zooms to the track shown with "Show on the map" instead
             var all = await ViewModel.PhotosWithLocationAsync();
             if (version != _mapVersion)
                 return;
@@ -1046,6 +1045,8 @@ public sealed partial class MainWindow : Window
         }
         else
         {
+            if (_pinnedTrack is not null)
+                fit = false;
             MapView.ShowPhotos(ViewModel.Photos);
         }
         MapView.ShowSelection(SelectedPhotos, fit);
@@ -1818,6 +1819,12 @@ public sealed partial class MainWindow : Window
         });
         tags.Visibility = Visibility.Collapsed;
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
+        string? showTrack = null;
+        var tracksPage = TracksPage(path =>
+        {
+            showTrack = path;
+            dialog?.Hide();
+        }, out var chosenTracks);
 
         // Info tab: version and credits
         var info = InfoPage();
@@ -1903,6 +1910,7 @@ public sealed partial class MainWindow : Window
             (Tr("Appearance"), "\uE790", appearance),
             (Tr("Tags"), "\uE8EC", tagsPage),
             (Tr("Dates and places"), "\uE787", datesAndPlaces),
+            (Tr("GPS tracks"), "\uE81D", tracksPage),
             (Tr("Editing"), "\uE7A8", cropping),
             (Tr("Linked apps"), "\uE71B", linked),
             (Tr("Keyboard"), "\uE765", keyboard),
@@ -1965,6 +1973,15 @@ public sealed partial class MainWindow : Window
             ViewModel.FilterByTag(showTag);
             return;
         }
+        if (showTrack is not null)
+        {
+            // "Show on the map" in Settings › GPS tracks: keeps that tab's settings, closes Settings without saving
+            // the rest, and shows the track on the Map.
+            revertAppearance();
+            SaveTrackSettings(chosenTracks());
+            await ShowTrackOnMapAsync(showTrack);
+            return;
+        }
         // "Update now" in Settings › App keeps what was changed, like Save.
         if (answer != ContentDialogResult.Primary && updateTo is null)
         {
@@ -1977,6 +1994,7 @@ public sealed partial class MainWindow : Window
         var (keepDatesInSync, placeLanguage, addPlaceNames) = chosenDatesAndPlaces();
         ViewModel.SaveDatesAndPlaces(keepDatesInSync, placeLanguage);
         ViewModel.SaveAddPlaceNamesAutomatically(addPlaceNames);
+        SaveTrackSettings(chosenTracks());
 
         var (theme, palette) = chosenAppearance();
         ViewModel.SaveAppearance(theme, palette);
