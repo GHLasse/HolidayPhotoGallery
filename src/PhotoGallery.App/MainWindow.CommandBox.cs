@@ -106,7 +106,7 @@ public sealed partial class MainWindow
     // The Settings tabs by their English names, as the Settings dialog lists them.
     private static readonly (string Tab, string Glyph)[] SettingsTabs =
     [
-        ("App", "\uECAA"), ("Appearance", "\uE790"), ("Tags", "\uE8EC"), ("Dates and places", "\uE787"),
+        ("App", "\uECAA"), ("Appearance", "\uE790"), ("Tags", "\uE8EC"), ("Dates and places", "\uE787"), ("GPS tracks", "\uE81D"),
         ("Editing", "\uE7A8"), ("Linked apps", "\uE71B"), ("Keyboard", "\uE765"), ("Info", "\uE946"),
     ];
 
