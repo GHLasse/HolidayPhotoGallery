@@ -50,6 +50,7 @@ public sealed partial class MapPanel : UserControl
             ["type"] = "style",
             ["accent"] = Hex(accent.Color),
             ["onAccent"] = Hex(onAccent),
+            ["dark"] = ActualTheme == ElementTheme.Dark,
         }.ToJsonString());
     }
 
@@ -171,11 +172,35 @@ public sealed partial class MapPanel : UserControl
         Post(new JsonObject { ["type"] = "track", ["lines"] = all, ["route"] = isRoute, ["fit"] = fit, ["label"] = label });
     }
 
-    /// <summary>The map's Tracks switch (bottom right, beside Map | Satellite and Labels): whether tracks are drawn.</summary>
+    /// <summary>Tracks in the Map options menu below the map: whether tracks are drawn.</summary>
     public bool TracksOn { get; private set; } = true;
 
-    /// <summary>Raised when the Tracks switch on the map is turned on or off.</summary>
+    /// <summary>Raised when Tracks in the Map options menu is turned on or off.</summary>
     public event Action? TracksToggled;
+
+    // The Map options menu: the page keeps the choices (and remembers them) and tells back what it shows.
+    private void MapMode_Click(object sender, RoutedEventArgs e) =>
+        Post(new JsonObject { ["type"] = "layers", ["mode"] = SatelliteItem.IsChecked ? "satellite" : "map" });
+
+    private void MapLayer_Click(object sender, RoutedEventArgs e) =>
+        Post(new JsonObject { ["type"] = "layers", ["labels"] = LabelsItem.IsChecked, ["tracks"] = TracksItem.IsChecked });
+
+    private void ShowLayers(JsonNode message)
+    {
+        var satellite = message["mode"]?.GetValue<string>() == "satellite";
+        SatelliteItem.IsChecked = satellite;
+        StreetMapItem.IsChecked = !satellite;
+        LabelsItem.IsChecked = message["labels"]?.GetValue<bool>() != false;
+        // Without the vector map (no WebGL, or offline) the plain map has its names baked in.
+        LabelsItem.IsEnabled = message["canLabel"]?.GetValue<bool>() == true;
+        var on = message["tracks"]?.GetValue<bool>() != false;
+        TracksItem.IsChecked = on;
+        if (on != TracksOn)
+        {
+            TracksOn = on;
+            TracksToggled?.Invoke();
+        }
+    }
 
     /// <summary>Raised when the picture or Open in a photo's bubble on the whole-library map is clicked.</summary>
     public event Action<string>? PhotoOpened;
@@ -229,6 +254,7 @@ public sealed partial class MapPanel : UserControl
         set
         {
             AssignRow.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            PinText.Visibility = AssignRow.Visibility;
             Post(new JsonObject { ["type"] = "placing", ["on"] = value });
             if (!value)
                 SetPin(null, tellMap: false);
@@ -254,8 +280,8 @@ public sealed partial class MapPanel : UserControl
             label.Visibility = Visibility.Visible;
         foreach (var label in new[] { EstimateLabel, RemoveLabel })
         {
-            AssignButtons.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-            if (AssignButtons.DesiredSize.Width <= width)
+            AssignRow.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (AssignRow.DesiredSize.Width <= width)
                 break;
             label.Visibility = Visibility.Collapsed;
         }
@@ -318,11 +344,6 @@ public sealed partial class MapPanel : UserControl
                     ["show"] = Tr("Show in library"),
                     ["of"] = Tr("{0} of {1}"),
                     ["estimate"] = Tr("Estimate from photos before and after"),
-                    ["map"] = Tr("Map"),
-                    ["satellite"] = Tr("Satellite"),
-                    ["labels"] = Tr("Labels"),
-                    ["tracks"] = Tr("Tracks"),
-                    ["tracksTip"] = Tr("Show the GPS tracks of the photos’ time, or the route between them. Add tracks in Settings › GPS tracks."),
                     ["find"] = Tr("Find"),
                     ["placeholder"] = Tr("Find a place, e.g. Tortuguero"),
                     ["searching"] = Tr("Searching…"),
@@ -346,13 +367,8 @@ public sealed partial class MapPanel : UserControl
                 ClearEstimates();
                 SetPin(position.IsValid ? position : Wrapped(position), tellMap: false);
                 break;
-            case "tracks":
-                var on = message["on"]?.GetValue<bool>() != false;
-                if (on != TracksOn)
-                {
-                    TracksOn = on;
-                    TracksToggled?.Invoke();
-                }
+            case "layers":
+                ShowLayers(message);
                 break;
             case "estimate":
                 _ = EstimateAsync(auto: false);
