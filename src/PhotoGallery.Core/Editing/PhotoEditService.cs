@@ -22,10 +22,13 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// EXIF orientation of a quarter turn applied to the upright photo (6 clockwise, 8 the other way), so
     /// the people turn with it. <paramref name="metadataFrom"/> is the file to take the metadata from when the
     /// photo's own file can't be read (a copy that replaces it); by default the photo itself.
+    /// <paramref name="beforeCrop"/> moves a person's box on the upright photo before the crop, for a photo that
+    /// was straightened (<see cref="Straighten.Box"/>); null drops the person.
     /// </summary>
     public async Task<string> SaveEditAsync(string path, string extension, int width, int height,
                                             Func<string, Task> writeImage, FaceBox? crop = null, int turn = 1,
-                                            string? metadataFrom = null, CancellationToken cancellationToken = default)
+                                            string? metadataFrom = null, CancellationToken cancellationToken = default,
+                                            Func<FaceBox, FaceBox?>? beforeCrop = null)
     {
         if (File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
@@ -42,7 +45,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         {
             await writeImage(temp).ConfigureAwait(false);
             await metadata.CopyMetadataAsync(metadataFrom ?? path, temp, width, height, cancellationToken).ConfigureAwait(false);
-            await MovePeopleAsync(metadataFrom ?? path, temp, crop, turn, cancellationToken).ConfigureAwait(false);
+            await MovePeopleAsync(metadataFrom ?? path, temp, crop, turn, beforeCrop, cancellationToken).ConfigureAwait(false);
             // A full disk or a failing drive can leave the new file short; then the photo stays as it was.
             if (Library.FileCheck.Check(temp) != Library.FileHealth.Whole)
                 throw new IOException(Tr("The edited file of {0} came out damaged, so the photo was left as it was. Is the disk full or failing?", Path.GetFileName(path)));
@@ -67,7 +70,8 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// The edited photo is upright (orientation 1) and maybe cropped, so the people's boxes are turned and
     /// cropped to match. Other programs' regions are not copied (see CopyMetadataAsync): they describe the old pixels.
     /// </summary>
-    private async Task MovePeopleAsync(string source, string target, FaceBox? crop, int turn, CancellationToken cancellationToken)
+    private async Task MovePeopleAsync(string source, string target, FaceBox? crop, int turn, Func<FaceBox, FaceBox?>? beforeCrop,
+                                       CancellationToken cancellationToken)
     {
         var before = await metadata.ReadAsync(source, cancellationToken).ConfigureAwait(false);
         if (before.People.Count == 0)
@@ -76,6 +80,12 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         foreach (var person in before.People)
         {
             var box = person.Box.ToUpright(before.Orientation);
+            if (beforeCrop is not null)
+            {
+                if (beforeCrop(box) is not { } straightened)
+                    continue;
+                box = straightened;
+            }
             if (crop is { } c)
             {
                 if (box.AfterCrop(c) is not { } moved)

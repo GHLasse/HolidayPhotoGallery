@@ -36,6 +36,34 @@ public sealed partial class EditCanvas : UserControl
     public EditCanvas()
     {
         InitializeComponent();
+        const int lines = 8;
+        for (var i = 0; i < lines; i++)
+        {
+            FineGrid.RowDefinitions.Add(new RowDefinition());
+            FineGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        }
+        var ink = new SolidColorBrush(Windows.UI.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
+        for (var row = 0; row < lines; row++)
+        {
+            for (var column = 0; column < lines; column++)
+            {
+                var cell = new Border
+                {
+                    BorderBrush = ink,
+                    BorderThickness = new Thickness(0, 0, column < lines - 1 ? 1 : 0, row < lines - 1 ? 1 : 0),
+                };
+                Grid.SetRow(cell, row);
+                Grid.SetColumn(cell, column);
+                FineGrid.Children.Add(cell);
+            }
+        }
+    }
+
+    /// <summary>Shows a fine grid over the photo, to line up a horizon while straightening.</summary>
+    public bool ShowGrid
+    {
+        get => FineGrid.Visibility == Visibility.Visible;
+        set => FineGrid.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Raised the first time a photo is zoomed in past its fitted size, to load it sharper.</summary>

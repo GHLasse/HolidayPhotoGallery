@@ -1416,11 +1416,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Writes a crop (fractions of the photo's width and height), a brightness curve, the Edit pane's sliders and
-    /// flips into the photo at full resolution. The crop was drawn on the flipped preview. The version before is
+    /// flips into the photo at full resolution. <paramref name="straighten"/> turns the photo first (degrees,
+    /// clockwise, before the flips); the crop was drawn on the straightened, flipped preview. The version before is
     /// kept in the hidden .originals folder.
     /// </summary>
     public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve,
-                                          Adjustments adjustments, bool flipHorizontal, bool flipVertical, bool asJpeg)
+                                          Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten, bool asJpeg)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1438,9 +1439,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            var (fullWidth, fullHeight) = (image.Width, image.Height);
             FaceBox? kept = null;
             image = await Task.Run(() =>
             {
+                if (Math.Abs(straighten) >= 0.01)
+                {
+                    var (turned, tw, th) = Straighten.Apply(image.Pixels, image.Width, image.Height, straighten);
+                    image = new DecodedImage(turned, tw, th);
+                }
                 var result = image;
                 if (crop is { } c)
                 {
@@ -1467,7 +1474,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             // A flip moves the people named in the photo too.
             var newPath = await _photoEditor.SaveEditAsync(path, extension, image.Width, image.Height,
                                                            target => ImageEncoder.EncodeAsync(image, target), kept,
-                                                           ImageAdjust.FlipOrientation(flipHorizontal, flipVertical));
+                                                           ImageAdjust.FlipOrientation(flipHorizontal, flipVertical),
+                                                           beforeCrop: Math.Abs(straighten) < 0.01 ? null
+                                                               : box => Straighten.Box(box, fullWidth, fullHeight, straighten));
             await AfterFileReplacedAsync(item, path, newPath);
             Inform(newPath == path
                 ? Tr("Saved the edit of {0}. The original is in the hidden .originals folder.", item.FileName)

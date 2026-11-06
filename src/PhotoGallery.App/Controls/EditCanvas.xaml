@@ -14,6 +14,8 @@
                 <CompositeTransform x:Name="Zoom" />
             </Grid.RenderTransform>
             <Image x:Name="Picture" Stretch="Fill" />
+            <!-- A fine grid to line the horizon up with while straightening (E-14), built in code. -->
+            <Grid x:Name="FineGrid" IsHitTestVisible="False" Visibility="Collapsed" />
             <Canvas x:Name="Overlay" Visibility="Collapsed" Background="Transparent"
                     PointerPressed="Overlay_PointerPressed" PointerMoved="Overlay_PointerMoved"
                     PointerReleased="Overlay_PointerReleased" PointerCaptureLost="Overlay_PointerCaptureLost">

@@ -123,3 +123,58 @@ public sealed class ImageAdjustTests
         Assert.Equal(0.2, mirrored.Y, 6);
     }
 }
+
+public sealed class StraightenTests
+{
+    [Fact]
+    public void No_angle_keeps_the_photo()
+    {
+        var pixels = new byte[4 * 4 * 4];
+        var (same, w, h) = Straighten.Apply(pixels, 4, 4, 0);
+        Assert.Same(pixels, same);
+        Assert.Equal((4, 4), (w, h));
+    }
+
+    [Fact]
+    public void A_turn_shrinks_the_photo_to_its_own_shape_without_empty_corners()
+    {
+        var (w, h) = Straighten.Size(4000, 3000, 5);
+        Assert.InRange(w, 3300, 3700);
+        Assert.Equal(4000.0 / 3000, (double)w / h, 2);
+        // The four corners of the result turned back must lie inside the photo.
+        var a = 5 * Math.PI / 180;
+        foreach (var (x, y) in new[] { (-w / 2.0, -h / 2.0), (w / 2.0, -h / 2.0), (-w / 2.0, h / 2.0), (w / 2.0, h / 2.0) })
+        {
+            var sx = x * Math.Cos(a) + y * Math.Sin(a);
+            var sy = -x * Math.Sin(a) + y * Math.Cos(a);
+            Assert.InRange(sx, -2000.5, 2000.5);
+            Assert.InRange(sy, -1500.5, 1500.5);
+        }
+        Assert.Equal(Straighten.Size(4000, 3000, -5), (w, h));
+    }
+
+    [Fact]
+    public void A_clockwise_turn_moves_the_top_left_towards_the_top()
+    {
+        // A white dot left of the centre of a black 200 × 200 picture; turned clockwise it goes up.
+        var pixels = new byte[200 * 200 * 4];
+        for (var y = 95; y < 105; y++)
+            for (var x = 40; x < 50; x++)
+                pixels[(y * 200 + x) * 4 + 1] = 255;
+        var (turned, w, h) = Straighten.Apply(pixels, 200, 200, 20);
+        var brightest = Enumerable.Range(0, w * h).MaxBy(i => turned[i * 4 + 1]);
+        Assert.True(brightest / w < h / 2 - 10, "the dot should be above the middle");
+    }
+
+    [Fact]
+    public void People_move_with_the_turn_and_drop_out_when_cut_off()
+    {
+        var centre = new PhotoGallery.Core.Faces.FaceBox(0.45, 0.45, 0.1, 0.1);
+        var moved = Straighten.Box(centre, 4000, 3000, 10)!.Value;
+        Assert.Equal(0.5, moved.CenterX, 2);
+        Assert.Equal(0.5, moved.CenterY, 2);
+        Assert.True(moved.Width > 0.1); // larger on the smaller photo
+
+        Assert.Null(Straighten.Box(new PhotoGallery.Core.Faces.FaceBox(0, 0, 0.04, 0.04), 4000, 3000, 10));
+    }
+}
