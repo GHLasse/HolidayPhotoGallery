@@ -1387,7 +1387,9 @@ public sealed partial class MainWindow : Window
                 ViewerSaveEdit_Click(sender, e);
                 break;
             case ContentDialogResult.Secondary:
+                // Discard leaves the viewer too, as the close button asked for (Lasse, 2026-11-06).
                 CancelEdit();
+                CloseViewer();
                 break;
         }
     }

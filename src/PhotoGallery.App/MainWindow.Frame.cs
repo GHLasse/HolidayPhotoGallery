@@ -55,8 +55,9 @@ public sealed partial class MainWindow
         _syncingWorkspace = false;
 
         NavSplitter.Attach(NavColumn, paneBefore: true, min: 180, max: 520, MainViewModel.DefaultNavPaneWidth, _ => SavePaneWidths());
-        InfoSplitter.Attach(InfoColumn, paneBefore: false, min: 260, max: 600, MainViewModel.DefaultInfoPaneWidth, _ => SavePaneWidths());
-        MapSplitter.Attach(InfoColumn, paneBefore: false, min: 280, max: 1600, MainViewModel.DefaultMapPaneWidth, ViewModel.SaveMapPaneWidth);
+        // Details, map and Edit share one width, so switching between them doesn't jump (Lasse, 2026-11-06).
+        InfoSplitter.Attach(InfoColumn, paneBefore: false, min: 260, max: 900, MainViewModel.DefaultInfoPaneWidth, _ => SavePaneWidths());
+        MapSplitter.Attach(InfoColumn, paneBefore: false, min: 260, max: 900, MainViewModel.DefaultInfoPaneWidth, _ => SavePaneWidths());
         _navFolded = ViewModel.NavPaneFolded;
         ApplyChrome(animate: false);
 
@@ -108,7 +109,7 @@ public sealed partial class MainWindow
     // A folded pane's width is the strip's, not the one to keep.
     private void SavePaneWidths() => ViewModel.SavePaneWidths(
         _navFolded || NavPane.Visibility != Visibility.Visible ? ViewModel.NavPaneWidth : NavColumn.Width.Value,
-        InfoPane.Visibility != Visibility.Visible ? ViewModel.InfoPaneWidth : InfoColumn.Width.Value);
+        RightSide() is RightPane.Info or RightPane.Map or RightPane.Edit ? InfoColumn.Width.Value : ViewModel.InfoPaneWidth);
 
     /// <summary>What the right-hand column shows: nothing, the strip of icons, the details, the map or the Edit pane.</summary>
     private enum RightPane { None, Rail, Info, Map, Edit }
@@ -195,8 +196,8 @@ public sealed partial class MainWindow
         // Under the viewer the whole-library map would lie over the pane beside it, so it waits till the viewer closes.
         MapView.Visibility = map || (full && !viewer) ? Visibility.Visible : Visibility.Collapsed;
         SyncSideSwitch();
-        var width = map ? Math.Min(ViewModel.MapPaneWidth, Math.Max(280, (PhotoArea.ActualWidth + InfoColumn.ActualWidth) * 0.7))
-                  : info || edit ? ViewModel.InfoPaneWidth : sideRail ? RailWidth : 0;
+        var width = map || info || edit ? Math.Min(ViewModel.InfoPaneWidth, Math.Max(260, (PhotoArea.ActualWidth + InfoColumn.ActualWidth) * 0.7))
+                  : sideRail ? RailWidth : 0;
         AnimateColumn(InfoColumn, width, animate, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
