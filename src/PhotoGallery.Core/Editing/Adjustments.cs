@@ -180,3 +180,91 @@ public static class ImageAdjust
             (pixels[a + i], pixels[b + i]) = (pixels[b + i], pixels[a + i]);
     }
 }
+
+/// <summary>
+/// Straightening (E-14): the photo turned by a small angle and cut to the largest rectangle of its own shape that
+/// has no empty corners, at the original pixel scale (so it gets a little smaller rather than blurrier).
+/// A positive angle turns clockwise.
+/// </summary>
+public static class Straighten
+{
+    public const double MaxAngle = 45;
+
+    /// <summary>The size of the straightened photo, the same shape as the photo.</summary>
+    public static (int Width, int Height) Size(int width, int height, double degrees)
+    {
+        var shrink = Shrink(width, height, degrees);
+        return (Math.Max(1, (int)Math.Floor(width * shrink)), Math.Max(1, (int)Math.Floor(height * shrink)));
+    }
+
+    // How much of each side is kept: the turned rectangle of the photo's shape must fit inside the photo.
+    private static double Shrink(int width, int height, double degrees)
+    {
+        var a = Math.Abs(degrees) * Math.PI / 180;
+        var (c, s) = (Math.Cos(a), Math.Sin(a));
+        return Math.Min(width / (width * c + height * s), height / (width * s + height * c));
+    }
+
+    /// <summary>The straightened pixels (8-bit BGRA), sampled bilinearly; see <see cref="Size"/>.</summary>
+    public static (byte[] Pixels, int Width, int Height) Apply(byte[] bgra, int width, int height, double degrees)
+    {
+        if (Math.Abs(degrees) < 0.01)
+            return (bgra, width, height);
+        var (w, h) = Size(width, height, degrees);
+        var a = degrees * Math.PI / 180;
+        var (cos, sin) = (Math.Cos(a), Math.Sin(a));
+        var result = new byte[w * h * 4];
+        double cx = width / 2.0, cy = height / 2.0, ox = w / 2.0, oy = h / 2.0;
+        Parallel.For(0, h, y =>
+        {
+            for (var x = 0; x < w; x++)
+            {
+                // Turn back from the output into the photo (pixel centres), y pointing down.
+                double qx = x + 0.5 - ox, qy = y + 0.5 - oy;
+                var sx = qx * cos + qy * sin + cx - 0.5;
+                var sy = -qx * sin + qy * cos + cy - 0.5;
+                var x0 = Math.Clamp((int)Math.Floor(sx), 0, width - 1);
+                var y0 = Math.Clamp((int)Math.Floor(sy), 0, height - 1);
+                var x1 = Math.Min(x0 + 1, width - 1);
+                var y1 = Math.Min(y0 + 1, height - 1);
+                var fx = Math.Clamp(sx - x0, 0, 1);
+                var fy = Math.Clamp(sy - y0, 0, 1);
+                var o = (y * w + x) * 4;
+                for (var ch = 0; ch < 4; ch++)
+                {
+                    var top = bgra[(y0 * width + x0) * 4 + ch] * (1 - fx) + bgra[(y0 * width + x1) * 4 + ch] * fx;
+                    var bottom = bgra[(y1 * width + x0) * 4 + ch] * (1 - fx) + bgra[(y1 * width + x1) * 4 + ch] * fx;
+                    result[o + ch] = (byte)Math.Clamp(Math.Round(top * (1 - fy) + bottom * fy), 0, 255);
+                }
+            }
+        });
+        return (result, w, h);
+    }
+
+    /// <summary>
+    /// Where a box on the upright photo (fractions of its width and height) lies on the straightened photo, so the
+    /// people named in it move along; null when it was cut off.
+    /// </summary>
+    public static Faces.FaceBox? Box(Faces.FaceBox box, int width, int height, double degrees)
+    {
+        if (Math.Abs(degrees) < 0.01)
+            return box;
+        var (w, h) = Size(width, height, degrees);
+        var a = degrees * Math.PI / 180;
+        var (cos, sin) = (Math.Cos(a), Math.Sin(a));
+        double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+        foreach (var (u, v) in new[] { (box.X, box.Y), (box.Right, box.Y), (box.X, box.Bottom), (box.Right, box.Bottom) })
+        {
+            double px = (u - 0.5) * width, py = (v - 0.5) * height;
+            var qx = px * cos - py * sin;
+            var qy = px * sin + py * cos;
+            var nu = qx / w + 0.5;
+            var nv = qy / h + 0.5;
+            (minX, minY, maxX, maxY) = (Math.Min(minX, nu), Math.Min(minY, nv), Math.Max(maxX, nu), Math.Max(maxY, nv));
+        }
+        var moved = new Faces.FaceBox(minX, minY, maxX - minX, maxY - minY);
+        var kept = moved.Clamp();
+        // Mostly cut away: the person is no longer in the photo.
+        return moved.Area <= 0 || kept.Area / moved.Area < 0.5 ? null : kept;
+    }
+}

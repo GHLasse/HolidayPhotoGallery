@@ -1279,10 +1279,10 @@
                                 </FontIcon.RenderTransform>
                             </FontIcon>
                         </ToggleButton>
-                        <ToggleButton x:Name="EditCropButton" Click="EditCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop (R)'}">
+                        <ToggleButton x:Name="EditCropButton" Click="EditCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop and straighten (R)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE7A8;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Crop'}" />
+                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" />
                             </StackPanel>
                         </ToggleButton>
                     </controls:WrapPanel>
@@ -1565,6 +1565,13 @@
                                   ToolTipService.ToolTip="{local:Loc Text='Turn the crop between landscape and portrait'}">
                         <FontIcon Glyph="&#xE8AB;" FontSize="14" />
                     </ToggleButton>
+                    <!-- Straighten (E-14): turns the photo by up to 45° each way; the photo shrinks so no corner is empty.
+                         The fine grid shows while it is turned. Double-click sets it back. -->
+                    <TextBlock Text="{local:Loc Text='Straighten'}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    <Slider x:Name="StraightenSlider" Width="180" VerticalAlignment="Center" Minimum="-45" Maximum="45" StepFrequency="0.1"
+                            ValueChanged="Straighten_ValueChanged"
+                            ToolTipService.ToolTip="{local:Loc Text='Turn the photo to level a tilted horizon. Double-click to set it back.'}" />
+                    <TextBlock x:Name="StraightenValue" VerticalAlignment="Center" MinWidth="44" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
                 <TextBlock x:Name="ViewerEditHint" Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

@@ -18,15 +18,20 @@ public sealed partial class MainWindow
 
     private Adjustments _adjustments = Adjustments.None;
     private bool _flipHorizontal, _flipVertical;
+    private double _straighten;              // degrees clockwise, as seen (E-14)
     private DecodedImage? _previewBase;      // the viewer's photo, made smaller for the preview
     private bool _rendering, _renderAgain, _syncingEditPane;
 
     /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
-    private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical;
+    private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01;
+
+    // The photo is straightened before it is flipped; a single flip mirrors the turn, so the angle is mirrored too
+    // and the photo turns the way the slider shows.
+    private double StraightenBeforeFlip => _flipHorizontal ^ _flipVertical ? -_straighten : _straighten;
 
     private void SetUpEditPane()
     {
-        foreach (var slider in EditSliders())
+        foreach (var slider in EditSliders().Append(StraightenSlider))
         {
             // handledEventsToo: the slider's thumb takes the pointer for itself.
             slider.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler((s, _) => ((Slider)s).Value = 0), true);
@@ -95,6 +100,9 @@ public sealed partial class MainWindow
         ShadowsSlider.Value = _adjustments.Shadows;
         SaturationSlider.Value = _adjustments.Saturation;
         WarmthSlider.Value = _adjustments.Warmth;
+        StraightenSlider.Value = _straighten;
+        StraightenValue.Text = $"{_straighten:0.0}°";
+        ViewerCanvas.ShowGrid = ViewerCropButton.IsChecked == true && Math.Abs(_straighten) >= 0.01;
         if (!IsEditing)
             EditBeforeButton.IsChecked = false;
         EditBeforeButton.IsEnabled = EditResetButton.IsEnabled = IsEditing;
@@ -121,6 +129,8 @@ public sealed partial class MainWindow
         {
             _flipHorizontal = EditFlipHorizontalButton.IsChecked == true;
             _flipVertical = EditFlipVerticalButton.IsChecked == true;
+            if (ViewerCropButton.IsChecked == true)
+                ViewerCanvas.Ratio = SelectedCropRatio(); // a fresh frame on the flipped photo
         });
 
     private void EditSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -136,6 +146,13 @@ public sealed partial class MainWindow
             Saturation = (int)SaturationSlider.Value,
             Warmth = (int)WarmthSlider.Value,
         });
+    }
+
+    private void Straighten_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_syncingEditPane || StraightenValue is null)
+            return;
+        ChangeEdit(() => _straighten = Math.Round(StraightenSlider.Value, 1));
     }
 
     private void EditBefore_Click(object sender, RoutedEventArgs e) => RenderPreview();
@@ -154,8 +171,6 @@ public sealed partial class MainWindow
             return;
         change();
         EditBeforeButton.IsChecked = false; // a change is to be seen
-        if (ViewerCropButton.IsChecked == true && (_flipHorizontal || _flipVertical))
-            ViewerCanvas.Ratio = SelectedCropRatio(); // a fresh frame on the flipped photo
         UpdateEditBar();
         RenderPreview();
     }
@@ -165,6 +180,7 @@ public sealed partial class MainWindow
     {
         _adjustments = Adjustments.None;
         _flipHorizontal = _flipVertical = false;
+        _straighten = 0;
         _previewBase = null;
     }
 
@@ -191,13 +207,14 @@ public sealed partial class MainWindow
                 var curve = ViewerAutoButton.IsChecked == true ? _autoCurve : null;
                 var adjustments = _adjustments;
                 var (flipH, flipV) = (_flipHorizontal, _flipVertical);
+                var angle = StraightenBeforeFlip;
                 DecodedImage shown;
-                if (before || (curve is null && adjustments.IsNeutral && !flipH && !flipV))
+                if (before || (curve is null && !HasPixelChanges))
                     shown = pixels;
                 else
                 {
                     var source = _previewBase ??= await Task.Run(() => Smaller(pixels));
-                    shown = await Task.Run(() => Edited(source, curve, adjustments, flipH, flipV));
+                    shown = await Task.Run(() => Edited(source, curve, adjustments, flipH, flipV, angle));
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels))
                     return;
@@ -222,13 +239,23 @@ public sealed partial class MainWindow
     }
 
     /// <summary>A copy of the picture with the edits applied, in the order Save applies them.</summary>
-    internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Adjustments adjustments, bool flipHorizontal, bool flipVertical)
+    internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Adjustments adjustments, bool flipHorizontal, bool flipVertical,
+                                        double straighten)
     {
-        var copy = (byte[])image.Pixels.Clone();
+        // Straightening makes a new picture; otherwise the viewer's own is copied, never changed.
+        var picture = Math.Abs(straighten) >= 0.01
+            ? Turned(image, straighten)
+            : image with { Pixels = (byte[])image.Pixels.Clone() };
         if (curve is not null)
-            ImageMath.ApplyCurve(copy, curve);
-        ImageAdjust.Apply(copy, image.Width, image.Height, adjustments);
-        ImageAdjust.Flip(copy, image.Width, image.Height, flipHorizontal, flipVertical);
-        return image with { Pixels = copy };
+            ImageMath.ApplyCurve(picture.Pixels, curve);
+        ImageAdjust.Apply(picture.Pixels, picture.Width, picture.Height, adjustments);
+        ImageAdjust.Flip(picture.Pixels, picture.Width, picture.Height, flipHorizontal, flipVertical);
+        return picture;
+    }
+
+    private static DecodedImage Turned(DecodedImage image, double degrees)
+    {
+        var (pixels, width, height) = Straighten.Apply(image.Pixels, image.Width, image.Height, degrees);
+        return new DecodedImage(pixels, width, height);
     }
 }
