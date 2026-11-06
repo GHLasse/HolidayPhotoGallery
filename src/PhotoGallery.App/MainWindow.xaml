@@ -1287,6 +1287,12 @@
                         </ToggleButton>
                     </controls:WrapPanel>
 
+                    <!-- One-click looks (E-9), each a small preview of the photo; filled from code (MainWindow.EditPane.cs). -->
+                    <TextBlock Text="{local:Loc Text='Looks'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <controls:WrapPanel x:Name="LookPanel" Spacing="6" />
+                    <Slider x:Name="LookStrengthSlider" Header="{local:Loc Text='Strength of the look'}" Minimum="0" Maximum="100" StepFrequency="1"
+                            Value="100" Visibility="Collapsed" ValueChanged="LookStrength_ValueChanged" />
+
                     <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06). -->
                     <Expander x:Name="EditSlidersExpander" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False"
                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,8,0,0">

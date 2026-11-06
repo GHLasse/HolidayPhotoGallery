@@ -1421,7 +1421,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// kept in the hidden .originals folder.
     /// </summary>
     public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve,
-                                          Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten, bool asJpeg)
+                                          Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten,
+                                          Look? look, int lookStrength, bool asJpeg)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1466,6 +1467,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 if (curve is not null)
                     ImageMath.ApplyCurve(result.Pixels, curve);
+                if (look is not null)
+                    Looks.Apply(result.Pixels, result.Width, result.Height, look, lookStrength);
                 ImageAdjust.Apply(result.Pixels, result.Width, result.Height, adjustments);
                 ImageAdjust.Flip(result.Pixels, result.Width, result.Height, flipHorizontal, flipVertical);
                 return result;

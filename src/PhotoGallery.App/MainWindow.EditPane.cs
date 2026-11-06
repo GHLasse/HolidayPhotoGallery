@@ -19,11 +19,17 @@ public sealed partial class MainWindow
     private Adjustments _adjustments = Adjustments.None;
     private bool _flipHorizontal, _flipVertical;
     private double _straighten;              // degrees clockwise, as seen (E-14)
+    private string? _lookKey;                // the one-click look (E-9), or none
+    private int _lookStrength = 100;
+    private DecodedImage? _lookThumbsFor;    // the photo the look previews were made from
+    private const int LookThumbWidth = 72, LookThumbHeight = 54;
     private DecodedImage? _previewBase;      // the viewer's photo, made smaller for the preview
     private bool _rendering, _renderAgain, _syncingEditPane;
 
     /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
-    private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01;
+    private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01 || _lookKey is not null;
+
+    private Look? ChosenLook => Looks.Find(_lookKey);
 
     // The photo is straightened before it is flipped; a single flip mirrors the turn, so the angle is mirrored too
     // and the photo turns the way the slider shows.
@@ -31,6 +37,7 @@ public sealed partial class MainWindow
 
     private void SetUpEditPane()
     {
+        BuildLookButtons();
         foreach (var slider in EditSliders().Append(StraightenSlider))
         {
             // handledEventsToo: the slider's thumb takes the pointer for itself.
@@ -80,6 +87,9 @@ public sealed partial class MainWindow
         EditPaneHint.Visibility = why is null ? Visibility.Collapsed : Visibility.Visible;
         EditTools.Visibility = why is null ? Visibility.Visible : Visibility.Collapsed;
 
+        if (why is null && RightSide() == RightPane.Edit && _viewerPixels is { } pixels && !ReferenceEquals(pixels, _lookThumbsFor))
+            _ = MakeLookThumbnailsAsync(pixels);
+
         var turnable = ViewerItem?.CanRotate ?? false;
         EditRotateLeftButton.Opacity = EditRotateRightButton.Opacity = turnable ? 1 : 0.4;
         SyncEditPane();
@@ -101,6 +111,10 @@ public sealed partial class MainWindow
         SaturationSlider.Value = _adjustments.Saturation;
         WarmthSlider.Value = _adjustments.Warmth;
         StraightenSlider.Value = _straighten;
+        foreach (var button in LookPanel.Children.OfType<ToggleButton>())
+            button.IsChecked = (string?)button.Tag == _lookKey;
+        LookStrengthSlider.Value = _lookStrength;
+        LookStrengthSlider.Visibility = _lookKey is null ? Visibility.Collapsed : Visibility.Visible;
         StraightenValue.Text = $"{_straighten:0.0}°";
         ViewerCanvas.ShowGrid = ViewerCropButton.IsChecked == true && Math.Abs(_straighten) >= 0.01;
         if (!IsEditing)
@@ -155,6 +169,66 @@ public sealed partial class MainWindow
         ChangeEdit(() => _straighten = Math.Round(StraightenSlider.Value, 1));
     }
 
+    // ---- Looks (E-9) ----
+
+    // "None" and one button per look, each with a small preview of the photo, its name and a tooltip saying
+    // what it does and what it is best for.
+    private void BuildLookButtons()
+    {
+        LookPanel.Children.Clear();
+        foreach (var (key, name, tip) in new[] { ((string?)null, Tr("None"), Tr("The photo without a look")) }
+                     .Concat(Looks.All.Select(l => ((string?)l.Key, l.Name(), l.Tip()))))
+        {
+            var button = new ToggleButton
+            {
+                Tag = key,
+                Padding = new Thickness(3),
+                Content = new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new Image { Width = LookThumbWidth, Height = LookThumbHeight, Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill },
+                        new TextBlock { Text = name, FontSize = 11, Width = LookThumbWidth, TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center },
+                    },
+                },
+            };
+            ToolTipService.SetToolTip(button, tip);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
+            button.Click += (_, _) => ChangeEdit(() => _lookKey = key);
+            LookPanel.Children.Add(button);
+        }
+    }
+
+    // The previews are made once per photo, from a small copy, off the UI thread.
+    private async Task MakeLookThumbnailsAsync(DecodedImage pixels)
+    {
+        _lookThumbsFor = pixels;
+        var scale = Math.Max((double)LookThumbWidth * 2 / pixels.Width, (double)LookThumbHeight * 2 / pixels.Height);
+        var small = await Task.Run(() =>
+        {
+            var w = Math.Max(1, (int)Math.Round(pixels.Width * Math.Min(1, scale)));
+            var h = Math.Max(1, (int)Math.Round(pixels.Height * Math.Min(1, scale)));
+            return new DecodedImage(ImageMath.Resize(pixels.Pixels, pixels.Width, pixels.Height, w, h), w, h);
+        });
+        foreach (var button in LookPanel.Children.OfType<ToggleButton>())
+        {
+            if (!ReferenceEquals(pixels, _lookThumbsFor))
+                return;
+            var look = Looks.Find((string?)button.Tag);
+            var thumb = await Task.Run(() => Edited(small, null, look, 100, Adjustments.None, false, false, 0));
+            if (((StackPanel)button.Content).Children[0] is Image image)
+                image.Source = await ImageLoader.ToImageSourceAsync(thumb);
+        }
+    }
+
+    private void LookStrength_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_syncingEditPane || LookStrengthSlider is null)
+            return;
+        ChangeEdit(() => _lookStrength = (int)LookStrengthSlider.Value);
+    }
+
     private void EditBefore_Click(object sender, RoutedEventArgs e) => RenderPreview();
 
     private void EditReset_Click(object sender, RoutedEventArgs e)
@@ -181,6 +255,8 @@ public sealed partial class MainWindow
         _adjustments = Adjustments.None;
         _flipHorizontal = _flipVertical = false;
         _straighten = 0;
+        _lookKey = null;
+        _lookStrength = 100;
         _previewBase = null;
     }
 
@@ -208,13 +284,14 @@ public sealed partial class MainWindow
                 var adjustments = _adjustments;
                 var (flipH, flipV) = (_flipHorizontal, _flipVertical);
                 var angle = StraightenBeforeFlip;
+                var (look, strength) = (ChosenLook, _lookStrength);
                 DecodedImage shown;
                 if (before || (curve is null && !HasPixelChanges))
                     shown = pixels;
                 else
                 {
                     var source = _previewBase ??= await Task.Run(() => Smaller(pixels));
-                    shown = await Task.Run(() => Edited(source, curve, adjustments, flipH, flipV, angle));
+                    shown = await Task.Run(() => Edited(source, curve, look, strength, adjustments, flipH, flipV, angle));
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels))
                     return;
@@ -239,8 +316,8 @@ public sealed partial class MainWindow
     }
 
     /// <summary>A copy of the picture with the edits applied, in the order Save applies them.</summary>
-    internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Adjustments adjustments, bool flipHorizontal, bool flipVertical,
-                                        double straighten)
+    internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Look? look, int lookStrength, Adjustments adjustments,
+                                        bool flipHorizontal, bool flipVertical, double straighten)
     {
         // Straightening makes a new picture; otherwise the viewer's own is copied, never changed.
         var picture = Math.Abs(straighten) >= 0.01
@@ -248,6 +325,8 @@ public sealed partial class MainWindow
             : image with { Pixels = (byte[])image.Pixels.Clone() };
         if (curve is not null)
             ImageMath.ApplyCurve(picture.Pixels, curve);
+        if (look is not null)
+            Looks.Apply(picture.Pixels, picture.Width, picture.Height, look, lookStrength);
         ImageAdjust.Apply(picture.Pixels, picture.Width, picture.Height, adjustments);
         ImageAdjust.Flip(picture.Pixels, picture.Width, picture.Height, flipHorizontal, flipVertical);
         return picture;
