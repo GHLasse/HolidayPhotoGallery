@@ -53,6 +53,14 @@ public sealed partial class MainViewModel
 
     public BeautyParts BeautyParts => _settings.BeautyParts;
 
+    public IReadOnlyList<string> PinnedLooks => _settings.PinnedLooks;
+
+    public void SavePinnedLooks(IEnumerable<string> keys)
+    {
+        _settings.PinnedLooks = keys.Distinct().ToList();
+        _settings.Save(SettingsPath);
+    }
+
     public void SaveBeautyParts(BeautyParts parts)
     {
         _settings.BeautyParts = parts;

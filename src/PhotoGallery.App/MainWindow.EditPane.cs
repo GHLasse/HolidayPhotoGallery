@@ -115,7 +115,7 @@ public sealed partial class MainWindow
         SaturationSlider.Value = _adjustments.Saturation;
         WarmthSlider.Value = _adjustments.Warmth;
         StraightenSlider.Value = _straighten;
-        foreach (var button in LookPanel.Children.OfType<ToggleButton>())
+        foreach (var button in LookButtons())
             button.IsChecked = (string?)button.Tag == _lookKey;
         LookStrengthSlider.Value = _lookStrength;
         LookStrengthSlider.Visibility = _lookKey is null ? Visibility.Collapsed : Visibility.Visible;
@@ -176,13 +176,13 @@ public sealed partial class MainWindow
     // ---- Looks (E-9) ----
 
     // "None" and one button per look, each with a small preview of the photo, its name and a tooltip saying
-    // what it does and what it is best for.
+    // what it does and what it is best for. Pinned looks come first; the rest then fold away under More looks.
     private void BuildLookButtons()
     {
-        LookPanel.Children.Clear();
         foreach (var (key, name, tip) in new[] { ((string?)null, Tr("None"), Tr("The photo without a look")) }
                      .Concat(Looks.All.Select(l => ((string?)l.Key, l.Name(), l.Tip()))))
         {
+            var pinMark = new FontIcon { Glyph = "\uE718", FontSize = 10, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
             var button = new ToggleButton
             {
                 Tag = key,
@@ -193,7 +193,18 @@ public sealed partial class MainWindow
                     Children =
                     {
                         new Image { Width = LookThumbWidth, Height = LookThumbHeight, Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill },
-                        new TextBlock { Text = name, FontSize = 11, Width = LookThumbWidth, TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center },
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Spacing = 3,
+                            Width = LookThumbWidth,
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            Children =
+                            {
+                                pinMark,
+                                new TextBlock { Text = name, FontSize = 11, MaxWidth = LookThumbWidth, TextTrimming = TextTrimming.CharacterEllipsis },
+                            },
+                        },
                     },
                 },
             };
@@ -205,10 +216,56 @@ public sealed partial class MainWindow
                 if (Looks.Find(key) is { Beauty: true })
                     _ = FindBeautyFacesAsync();
             };
-            if (Looks.Find(key) is { Beauty: true })
-                button.ContextFlyout = BeautyPartsMenu();
-            LookPanel.Children.Add(button);
+            if (key is not null)
+                button.ContextFlyout = LookMenu(key, Looks.Find(key) is { Beauty: true });
+            _lookButtons.Add((key, button, pinMark));
         }
+        ArrangeLookButtons();
+    }
+
+    private readonly List<(string? Key, ToggleButton Button, FontIcon PinMark)> _lookButtons = [];
+
+    private IEnumerable<ToggleButton> LookButtons() => _lookButtons.Select(b => b.Button);
+
+    // None, then the pinned looks in the order they were pinned, then the rest (under More looks once something is pinned).
+    private void ArrangeLookButtons()
+    {
+        LookPanel.Children.Clear();
+        MoreLookPanel.Children.Clear();
+        var pinned = ViewModel.PinnedLooks.Where(k => Looks.Find(k) is not null).ToList();
+        foreach (var (key, button, pinMark) in _lookButtons.OrderBy(b => b.Key is null ? -1 : pinned.IndexOf(b.Key) is var i and >= 0 ? i : int.MaxValue))
+        {
+            var isPinned = key is not null && pinned.Contains(key);
+            pinMark.Visibility = isPinned ? Visibility.Visible : Visibility.Collapsed;
+            (key is null || isPinned || pinned.Count == 0 ? LookPanel : MoreLookPanel).Children.Add(button);
+        }
+        MoreLooksExpander.Visibility = pinned.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        LookPinHint.Visibility = pinned.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // Right-click on a look: pin it to the top or unpin it, and on Beauty also what it does.
+    private MenuFlyout LookMenu(string key, bool beauty)
+    {
+        var menu = beauty ? BeautyPartsMenu() : new MenuFlyout();
+        var pin = new MenuFlyoutItem { Icon = new FontIcon { Glyph = "\uE718" } };
+        pin.Click += (_, _) =>
+        {
+            var pinned = ViewModel.PinnedLooks.ToList();
+            if (!pinned.Remove(key))
+                pinned.Add(key);
+            ViewModel.SavePinnedLooks(pinned);
+            ArrangeLookButtons();
+        };
+        menu.Items.Insert(0, pin);
+        if (beauty)
+            menu.Items.Insert(1, new MenuFlyoutSeparator());
+        menu.Opening += (_, _) =>
+        {
+            var isPinned = ViewModel.PinnedLooks.Contains(key);
+            pin.Text = isPinned ? Tr("Unpin") : Tr("Pin to the top");
+            pin.Icon = new FontIcon { Glyph = isPinned ? "\uE77A" : "\uE718" };
+        };
+        return menu;
     }
 
     // Right-click on Beauty: what it does, the same choice as in Settings › Editing.
@@ -278,7 +335,7 @@ public sealed partial class MainWindow
             var h = Math.Max(1, (int)Math.Round(pixels.Height * Math.Min(1, scale)));
             return new DecodedImage(ImageMath.Resize(pixels.Pixels, pixels.Width, pixels.Height, w, h), w, h);
         });
-        foreach (var button in LookPanel.Children.OfType<ToggleButton>())
+        foreach (var button in LookButtons())
         {
             if (!ReferenceEquals(pixels, _lookThumbsFor))
                 return;
