@@ -1,3 +1,4 @@
+using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 using PhotoGallery.Core.Tracks;
 
@@ -49,19 +50,18 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
-    /// The line the map draws under the photos around <paramref name="photo"/>: the recorded track for 4 hours
+    /// The lines the map draws under the photos around <paramref name="photo"/>: each recorded track for 4 hours
     /// before and after it, or without a track the geotagged photos of that time joined in time order (the
-    /// route). Empty when there is nothing to draw.
+    /// route). Empty when there is nothing to draw. <paramref name="Leg"/> is set when the line is the leg a photo
+    /// without a location got its red dot on.
     /// </summary>
-    public async Task<(IReadOnlyList<GeoPosition> Line, bool IsRoute, LocationGuess? Leg)> TrackLineAsync(PhotoItemViewModel? photo)
+    public async Task<(IReadOnlyList<IReadOnlyList<GeoPosition>> Lines, bool IsRoute, LocationGuess? Leg)> TrackLineAsync(PhotoItemViewModel? photo)
     {
         if (photo is null || TrackMatcher.PhotoUtc(photo.Photo, TrackOptions) is not { } utc)
-            return (Array.Empty<GeoPosition>(), false, null);
-        var tracks = await TracksAsync();
-        var line = tracks.SelectMany(t => t.Between(utc - TrackLineSpan, utc + TrackLineSpan))
-                         .OrderBy(p => p.Utc).Select(p => p.Position).ToList();
-        if (line.Count >= 2)
-            return (line, false, null);
+            return (NoLines, false, null);
+        var lines = await TrackLinesAsync(utc - TrackLineSpan, utc + TrackLineSpan);
+        if (lines.Count > 0)
+            return (lines, false, null);
         var points = (await GeoPointsAsync()).OrderBy(p => p.Utc).ToList();
         // A photo without a location gets its red dot on the straight leg from the geotagged photo just before it
         // to the one just after, however far apart they are: only that leg is drawn, with its length and time, so
@@ -72,18 +72,43 @@ public sealed partial class MainViewModel
             // one the dot lies on: the tracks' time zone and clock settings are for matching tracks only.
             if (photo.Photo.DateTaken is { } taken &&
                 LocationEstimate.Estimate(points, LocationEstimate.ToUtc(taken)) is { } guess && guess.Before.Utc < guess.After.Utc)
-                return (new[] { guess.Before.Position, guess.After.Position }, true, guess);
-            return (Array.Empty<GeoPosition>(), true, null);
+                return (new IReadOnlyList<GeoPosition>[] { new[] { guess.Before.Position, guess.After.Position } }, true, guess);
+            return (NoLines, true, null);
         }
         var from = points.FindIndex(p => p.Utc >= utc - TrackLineSpan);
         var to = points.FindLastIndex(p => p.Utc <= utc + TrackLineSpan);
         if (from < 0)
             from = points.Count;
         var route = from <= to ? points.GetRange(from, to - from + 1).Select(p => p.Position).ToList() : new List<GeoPosition>();
-        return (route.Count >= 2 ? (IReadOnlyList<GeoPosition>)route : Array.Empty<GeoPosition>(), true, null);
+        return (route.Count >= 2 ? new IReadOnlyList<GeoPosition>[] { route } : NoLines, true, null);
     }
 
-    /// <summary>A whole track, for showing it on the map from the track list.</summary>
-    public async Task<IReadOnlyList<GeoPosition>> TrackPointsAsync(string path) =>
-        await Task.Run(() => TrackFiles.Load(path).Track?.Points.Select(p => p.Position).ToList() ?? []);
+    /// <summary>
+    /// With no photo selected: the recorded tracks between the first and the last photo shown (a folder, an album,
+    /// a month), an hour more on either side, so the map shows where the trip went. Empty without tracks then.
+    /// </summary>
+    public async Task<IReadOnlyList<IReadOnlyList<GeoPosition>>> TrackLinesForPhotosAsync(IEnumerable<IndexedPhoto> photos)
+    {
+        var options = TrackOptions;
+        DateTime? first = null, last = null;
+        foreach (var photo in photos)
+        {
+            if (TrackMatcher.PhotoUtc(photo, options) is not { } utc)
+                continue;
+            if (first is null || utc < first)
+                first = utc;
+            if (last is null || utc > last)
+                last = utc;
+        }
+        if (first is not { } from || last is not { } to)
+            return NoLines;
+        return await TrackLinesAsync(from - TimeSpan.FromHours(1), to + TimeSpan.FromHours(1));
+    }
+
+    private static readonly IReadOnlyList<IReadOnlyList<GeoPosition>> NoLines = [];
+
+    // One line per track, so two tracks of the same time (phone and watch) aren't joined into a zigzag.
+    private async Task<IReadOnlyList<IReadOnlyList<GeoPosition>>> TrackLinesAsync(DateTime fromUtc, DateTime toUtc) =>
+        (await TracksAsync()).Select(t => (IReadOnlyList<GeoPosition>)t.Between(fromUtc, toUtc).Select(p => p.Position).ToList())
+                             .Where(line => line.Count >= 2).ToList();
 }

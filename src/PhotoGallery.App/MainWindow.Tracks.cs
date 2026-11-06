@@ -9,38 +9,39 @@ using static PhotoGallery.Core.Localization.Strings;
 namespace PhotoGallery.App;
 
 /// <summary>
-/// GPS tracks (G-4): Settings › GPS tracks (also Library › GPS tracks…), where tracks are added, renamed, deleted
-/// and shown on the map, and the thin line the map draws under the photos around the selected one. Placing photos from a
+/// GPS tracks (G-4): Settings › GPS tracks (also Library › GPS tracks…), where tracks are added, renamed and
+/// deleted, the map's Tracks switch, and the thin line the map draws under the photos around the selected one. Placing photos from a
 /// track goes through the map's estimate: photos without GPS get red dots where the track was at their time,
 /// and nothing is written until they are assigned.
 /// </summary>
 public sealed partial class MainWindow
 {
     private int _trackLineRun;
-    // A track picked with "Show on the map": it stays on the map (instead of the line around the selected
-    // photo) until another photo is selected or the Map is left, and the map zooms to it once.
-    private IReadOnlyList<PhotoGallery.Core.Metadata.GeoPosition>? _pinnedTrack;
-    private bool _fitPinnedTrack;
 
-    /// <summary>The track (or the route between photos) for 4 hours around the selected photo, under the map's dots.</summary>
+    /// <summary>
+    /// The lines under the map's dots. With a photo selected: the tracks (or the route between photos) for 4 hours
+    /// around it. With none: the tracks between the first and last photo shown, the folder's or album's trip.
+    /// The map's Tracks switch turns them off; the leg a red dot was estimated on stays, it explains the dot.
+    /// </summary>
     private async Task ShowTrackLineAsync()
     {
         var run = ++_trackLineRun;
-        if (_pinnedTrack is { } pinned)
-        {
-            if (IsMapOpen)
-            {
-                MapView.ShowTrack(pinned, isRoute: false, fit: _fitPinnedTrack);
-                _fitPinnedTrack = false;
-            }
-            return;
-        }
         var current = SelectedPhotos is [var first, ..] ? first : null;
         try
         {
-            var (line, isRoute, leg) = await ViewModel.TrackLineAsync(current);
+            IReadOnlyList<IReadOnlyList<PhotoGallery.Core.Metadata.GeoPosition>> lines;
+            var isRoute = false;
+            PhotoGallery.Core.Metadata.LocationGuess? leg = null;
+            if (current is not null)
+                (lines, isRoute, leg) = await ViewModel.TrackLineAsync(current);
+            else if (MapView.TracksOn)
+                lines = await ViewModel.TrackLinesForPhotosAsync(_workspace == Workspace.Map ? _mapPhotos : ViewModel.Photos.Select(p => p.Photo).ToList());
+            else
+                lines = [];
+            if (!MapView.TracksOn && leg is null)
+                lines = [];
             if (run == _trackLineRun && IsMapOpen)
-                MapView.ShowTrack(line, isRoute, label: leg is null ? null : LegText(leg));
+                MapView.ShowTrack(lines, isRoute, label: leg is null ? null : LegText(leg));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -61,10 +62,10 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// Settings › GPS tracks: the tracks (added, renamed and deleted at once, as files) and how photos are matched
-    /// to them, read back with <paramref name="chosen"/> when Save is clicked. "Show on the map" calls
-    /// <paramref name="showOnMap"/> with the track's file, which closes Settings.
+    /// to them, read back with <paramref name="chosen"/> when Save is clicked. The map shows them with its Tracks
+    /// switch (a "Show on the map" button here jumped to the Map behind an open photo, Lasse 2026-11-06).
     /// </summary>
-    private FrameworkElement TracksPage(Action<string> showOnMap, out Func<(TimeZoneInfo? Zone, int ClockErrorMinutes, int MaxGapMinutes)> chosen)
+    private FrameworkElement TracksPage(out Func<(TimeZoneInfo? Zone, int ClockErrorMinutes, int MaxGapMinutes)> chosen)
     {
         var list = new StackPanel { Spacing = 6 };
         var hint = new TextBlock
@@ -75,6 +76,13 @@ public sealed partial class MainWindow
         var how = new TextBlock
         {
             Text = Tr("To place photos: select photos without a location and open the map. Where a track covers their time they get red dots on the track; Assign writes them into the files. Photos that already have a location keep it."),
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+        };
+
+        var onMap = new TextBlock
+        {
+            Text = Tr("To see them: tick Tracks at the bottom right of the map. It shows the tracks around the selected photo, or with none selected those between the first and last photo shown."),
             TextWrapping = TextWrapping.Wrap,
             Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
         };
@@ -151,12 +159,6 @@ public sealed partial class MainWindow
                 Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                 TextWrapping = TextWrapping.Wrap,
             };
-            var show = IconButton("\uE707", Tr("Show on the map"), () =>
-            {
-                showOnMap(track.Path);
-                return Task.CompletedTask;
-            });
-            show.IsEnabled = track.Error is null;
             var delete = IconButton("\uE74D", Tr("Delete the track"), () =>
             {
                 try
@@ -173,12 +175,9 @@ public sealed partial class MainWindow
             var row = new Grid { ColumnSpacing = 8 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var text = new StackPanel { Spacing = 2, Children = { name, what } };
-            Grid.SetColumn(show, 1);
-            Grid.SetColumn(delete, 2);
+            Grid.SetColumn(delete, 1);
             row.Children.Add(text);
-            row.Children.Add(show);
             row.Children.Add(delete);
             return row;
         }
@@ -223,7 +222,7 @@ public sealed partial class MainWindow
             Content = new StackPanel
             {
                 Spacing = 12,
-                Children = { hint, how, add, problem, list, new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, zone, clock, gap },
+                Children = { hint, how, onMap, add, problem, list, new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, zone, clock, gap },
             },
         };
     }
@@ -234,26 +233,5 @@ public sealed partial class MainWindow
         ViewModel.SaveTrackSettings(chosen.Zone, chosen.ClockErrorMinutes, chosen.MaxGapMinutes);
         if (IsMapOpen)
             MapView.ShowSelection(SelectedPhotos, fit: false); // estimates again with the new settings
-    }
-
-    /// <summary>
-    /// "Show on the map" in Settings › GPS tracks: the Map shows the whole track, zoomed to it, until a photo is
-    /// selected or the Map is left. The Map's own refresh draws it, after the photos, so nothing zooms away again.
-    /// </summary>
-    private async Task ShowTrackOnMapAsync(string path)
-    {
-        var points = await ViewModel.TrackPointsAsync(path);
-        if (points.Count < 2)
-        {
-            ViewModel.Warn(Tr("The track has no points to show."));
-            return;
-        }
-        LeaveViewer();
-        _pinnedTrack = points;
-        _fitPinnedTrack = true;
-        if (_workspace == Workspace.Map && IsMapOpen)
-            RefreshMap(fit: false);
-        else
-            ShowWorkspace(Workspace.Map);
     }
 }

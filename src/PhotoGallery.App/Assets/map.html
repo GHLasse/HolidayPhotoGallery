@@ -94,6 +94,8 @@
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
 //                 {type:"estimate"} (the pin's right-click menu: estimate from the photos before and after)
+//                 {type:"tracks", on} (the Tracks switch beside Map | Satellite, also sent once at the start)
+//   (a track message from the app: {type:"track", lines:[[[lat,lon],...],...], route, fit, label})
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
 // File names go into tooltips as text, never as HTML (Leaflet reads a string as HTML).
@@ -199,8 +201,8 @@ function start() {
   const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
   const base = addBaseMap(map, osm);
   const imagery = imageryLayer(map);
-  let mode = "map", labels = true;
-  try { const v = JSON.parse(localStorage.getItem("layers")); if (v) { mode = v.mode === "satellite" ? "satellite" : "map"; labels = v.labels !== false; } } catch (e) { }
+  let mode = "map", labels = true, tracks = true;
+  try { const v = JSON.parse(localStorage.getItem("layers")); if (v) { mode = v.mode === "satellite" ? "satellite" : "map"; labels = v.labels !== false; tracks = v.tracks !== false; } } catch (e) { }
   // Over the satellite pictures the street map keeps only names, roads and borders (or nothing, without labels).
   const keepOnImagery = l => (l.type === "symbol" && !l.id.startsWith("poi")) || (l.type === "line" && /^(road|highway|bridge|tunnel|boundary)/.test(l.id));
   function showLayers() {
@@ -210,7 +212,8 @@ function start() {
     if (shown && !map.hasLayer(shown)) shown.addTo(map);
     if (base.gl) {
       for (const l of base.gl.getStyle().layers) {
-        const on = !satellite || (labels && keepOnImagery(l));
+        // Labels off hides the names on the street map too; over the pictures it leaves them bare.
+        const on = satellite ? labels && keepOnImagery(l) : labels || l.type !== "symbol";
         base.gl.setLayoutProperty(l.id, "visibility", on ? "visible" : "none");
       }
     } else if (base.plain) {
@@ -218,12 +221,14 @@ function start() {
       else if (!satellite && !map.hasLayer(base.plain)) base.plain.addTo(map);
     }
     for (const b of modeButtons) b.classList.toggle("on", b.dataset.mode === mode);
-    labelsBox.parentElement.style.display = satellite && base.gl ? "flex" : "none";
-    try { localStorage.setItem("layers", JSON.stringify({ mode, labels })); } catch (e) { }
+    labelsBox.parentElement.style.display = base.gl ? "flex" : "none";
+    try { localStorage.setItem("layers", JSON.stringify({ mode, labels, tracks })); } catch (e) { }
   }
   const switcher = L.control({ position: "bottomright" });
   const modeButtons = [], labelsBox = document.createElement("input");
   const modeTexts = {}, labelsText = document.createElement("span");
+  // Tracks: the app draws the GPS tracks (or the route between photos) only while this is ticked.
+  const tracksBox = document.createElement("input"), tracksText = document.createElement("span");
   switcher.onAdd = () => {
     const box = L.DomUtil.create("div", "card");
     box.id = "layers";
@@ -245,7 +250,14 @@ function start() {
     labelsBox.addEventListener("change", () => { labels = labelsBox.checked; showLayers(); });
     labelsText.textContent = "Labels";
     label.append(labelsBox, labelsText);
-    box.append(modes, label);
+    const trackLabel = document.createElement("label");
+    trackLabel.id = "tracksToggle";
+    tracksBox.type = "checkbox";
+    tracksBox.checked = tracks;
+    tracksBox.addEventListener("change", () => { tracks = tracksBox.checked; showLayers(); send({ type: "tracks", on: tracks }); });
+    tracksText.textContent = "Tracks";
+    trackLabel.append(tracksBox, tracksText);
+    box.append(modes, label, trackLabel);
     L.DomEvent.disableClickPropagation(box);
     L.DomEvent.disableScrollPropagation(box);
     return box;
@@ -482,6 +494,8 @@ function start() {
         if (m.map) modeTexts.map.textContent = m.map;
         if (m.satellite) modeTexts.satellite.textContent = m.satellite;
         if (m.labels) labelsText.textContent = m.labels;
+        if (m.tracks) tracksText.textContent = m.tracks;
+        if (m.tracksTip) document.getElementById("tracksToggle").title = m.tracksTip;
       } else if (m.type === "style") {
         document.documentElement.style.setProperty("--accent", m.accent);
         document.documentElement.style.setProperty("--on-accent", m.onAccent);
@@ -495,16 +509,18 @@ function start() {
           map.panTo([m.points[0].lat, m.points[0].lon]);
       } else if (m.type === "track") {
         trackLayer.clearLayers();
+        const lines = (m.lines || []).filter(l => l.length > 1);
         // A small legend says what the line is: a recorded track (solid) or the photos joined in order (dashed).
         const legend = document.getElementById("legend");
-        legend.style.display = m.points.length > 1 ? "block" : "none";
+        legend.style.display = lines.length ? "block" : "none";
         legend.querySelector("line").setAttribute("stroke-dasharray", m.route ? "6 6" : "");
         // The leg an estimate lies on comes with its own text: how far and how long apart its two ends are.
         document.getElementById("legendText").textContent = m.label ? m.label : m.route
           ? (texts.routeLine || "Your geotagged photos in the order taken")
           : (texts.trackLine || "GPS track");
-        if (m.points.length > 1) {
-          const line = L.polyline(m.points, {
+        if (lines.length) {
+          // One line per track, so a phone's and a watch's track of the same time aren't joined.
+          const line = L.polyline(lines, {
             renderer: trackRenderer, interactive: false, color: "#7a3fd1", weight: m.label ? 4 : 3, opacity: m.label ? 0.85 : 0.55,
             dashArray: m.route ? "6 6" : null, lineCap: "round", lineJoin: "round",
           }).addTo(trackLayer);
@@ -518,6 +534,7 @@ function start() {
     });
   }
   send({ type: "ready" });
+  send({ type: "tracks", on: tracks });
 }
 </script>
 </body>
