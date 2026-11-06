@@ -325,6 +325,21 @@ public sealed partial class MainWindow
             },
         };
     }
+
+    // Minimise, maximise and close follow the app's light or dark mode, not Windows' own: with Windows in dark
+    // mode and the app light, they were white on the light title bar until hovered (Lasse, 2026-11-06).
+    private void ColourCaptionButtons(bool dark)
+    {
+        var bar = AppWindow.TitleBar;
+        Windows.UI.Color Argb(byte a, byte rgb) => Windows.UI.Color.FromArgb(a, rgb, rgb, rgb);
+        var ink = dark ? (byte)255 : (byte)0;
+        bar.ButtonForegroundColor = Argb(0xE4, ink);
+        bar.ButtonInactiveForegroundColor = Argb(0x5C, ink);
+        bar.ButtonHoverForegroundColor = Argb(0xE4, ink);
+        bar.ButtonHoverBackgroundColor = Argb(0x19, ink);
+        bar.ButtonPressedForegroundColor = Argb(0xB0, ink);
+        bar.ButtonPressedBackgroundColor = Argb(0x0F, ink);
+    }
 }
 
 /// <summary>Opens dialogs in the app's mode and palette (see <see cref="MainWindow.ApplyAppearance(ContentDialog)"/>).</summary>
@@ -362,20 +377,5 @@ internal static class ThemedDialogs
             dialog.Resources["ContentDialogMinWidth"] = needed;
         if (needed > Resource("ContentDialogMaxWidth", 548))
             dialog.Resources["ContentDialogMaxWidth"] = needed;
-    }
-
-    // Minimise, maximise and close follow the app's light or dark mode, not Windows' own: with Windows in dark
-    // mode and the app light, they were white on the light title bar until hovered (Lasse, 2026-11-06).
-    private void ColourCaptionButtons(bool dark)
-    {
-        var bar = AppWindow.TitleBar;
-        Windows.UI.Color Argb(byte a, byte rgb) => Windows.UI.Color.FromArgb(a, rgb, rgb, rgb);
-        var ink = dark ? (byte)255 : (byte)0;
-        bar.ButtonForegroundColor = Argb(0xE4, ink);
-        bar.ButtonInactiveForegroundColor = Argb(0x5C, ink);
-        bar.ButtonHoverForegroundColor = Argb(0xE4, ink);
-        bar.ButtonHoverBackgroundColor = Argb(0x19, ink);
-        bar.ButtonPressedForegroundColor = Argb(0xB0, ink);
-        bar.ButtonPressedBackgroundColor = Argb(0x0F, ink);
     }
 }
