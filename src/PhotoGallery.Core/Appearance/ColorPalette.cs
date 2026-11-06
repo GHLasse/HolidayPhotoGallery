@@ -85,10 +85,17 @@ public readonly record struct Rgb(byte R, byte G, byte B)
 }
 
 /// <summary>
-/// A colour scheme for the app: the Windows accent colour, or a palette built from one colour (the Pantone
-/// Colors of the Year that Lasse picked). Each palette gives matching shades for light and dark mode.
+/// A palette of several bold colours instead of one: its own window and bar colours for light and dark mode,
+/// and an accent for each. <see cref="Second"/> is the other colour of its swatch.
 /// </summary>
-public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBackground = false)
+public sealed record PaletteMix(Rgb LightAccent, Rgb DarkAccent, Rgb LightWindow, Rgb LightBars, Rgb DarkWindow, Rgb DarkBars, Rgb Second);
+
+/// <summary>
+/// A colour scheme for the app: the Windows accent colour, a palette built from one colour (the Pantone
+/// Colors of the Year that Lasse picked), or a mix of bolder colours (<see cref="Mix"/>). Each palette gives
+/// matching shades for light and dark mode.
+/// </summary>
+public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBackground = false, PaletteMix? Mix = null)
 {
     public const string WindowsKey = "windows";
 
@@ -106,6 +113,13 @@ public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBa
         new("very-peri", "Very Peri", Rgb.Parse("#6667AB")),
         new("illuminating", "Illuminating", Rgb.Parse("#F5DF4D")),
         new("greenery", "Greenery", Rgb.Parse("#88B04B")),
+        // The installer's colours: teal sea and a sunset of coral and peach by day, a navy night with a deep
+        // teal sea and coral highlights in dark mode.
+        new("holiday", Tr("Holiday"), Rgb.Parse("#16788F"), Mix: new PaletteMix(
+            LightAccent: Rgb.Parse("#16788F"), DarkAccent: Rgb.Parse("#FF6B6B"),
+            LightWindow: Rgb.Parse("#FFF1E4"), LightBars: Rgb.Parse("#FFD9C4"),
+            DarkWindow: Rgb.Parse("#14213D"), DarkBars: Rgb.Parse("#0F4A5C"),
+            Second: Rgb.Parse("#FF6B6B"))),
     ];
 
     public static ColorPalette Find(string? key) =>
@@ -120,9 +134,12 @@ public sealed record ColorPalette(string Key, string Name, Rgb? Color, bool IsBa
 
         // Cloud Dancer is almost white: it is the window colour, and a warm grey from the same hue is the accent.
         // The other palettes wash the window with their colour, and the bars above and below a little more.
-        var accentBase = IsBackground ? color.Lighten(-0.45) : color;
-        var window = IsBackground ? (dark ? color.Lighten(-0.78) : color) : Tint(neutral, color, dark ? 0.12 : 0.10, dark);
-        var chrome = IsBackground ? Tint(window, accentBase, 0.12, dark) : Tint(neutral, color, dark ? 0.24 : 0.20, dark);
+        // A mix brings its own colours.
+        var accentBase = Mix is { } mix ? (dark ? mix.DarkAccent : mix.LightAccent) : IsBackground ? color.Lighten(-0.45) : color;
+        var window = Mix is { } m1 ? (dark ? m1.DarkWindow : m1.LightWindow)
+            : IsBackground ? (dark ? color.Lighten(-0.78) : color) : Tint(neutral, color, dark ? 0.12 : 0.10, dark);
+        var chrome = Mix is { } m2 ? (dark ? m2.DarkBars : m2.LightBars)
+            : IsBackground ? Tint(window, accentBase, 0.12, dark) : Tint(neutral, color, dark ? 0.24 : 0.20, dark);
 
         // Highlights and accent text sit on the window and the bars; the bars are the harder of the two.
         var background = chrome;

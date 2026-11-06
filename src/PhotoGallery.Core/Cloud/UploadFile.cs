@@ -36,32 +36,12 @@ public static class UploadFile
     public static Dictionary<string, string> Find(CloudService service, IEnumerable<string> roots)
     {
         var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var options = new EnumerationOptions
+        // Every library folder, as the scan sees them; .originals and other dot folders are left out.
+        foreach (var folder in roots.SelectMany(root => Library.LibraryWalk.Folders(root)).Select(d => d.FullName))
         {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.System,
-        };
-        foreach (var root in roots.Where(Directory.Exists))
-        {
-            List<string> files;
-            try
-            {
-                files = Directory.EnumerateFiles(root, FileName, options).ToList();
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                continue;
-            }
-            foreach (var file in files)
-            {
-                var folder = Path.GetDirectoryName(file)!;
-                if (Path.GetRelativePath(root, folder).Split(Path.DirectorySeparatorChar).Any(part => part.StartsWith('.') && part != "."))
-                    continue; // e.g. the .originals backups
-                if (ReadAll(folder).TryGetValue(Key(service), out var items))
-                    foreach (var (name, id) in items)
-                        found[Path.Combine(folder, name)] = id;
-            }
+            if (File.Exists(Path.Combine(folder, FileName)) && ReadAll(folder).TryGetValue(Key(service), out var items))
+                foreach (var (name, id) in items)
+                    found[Path.Combine(folder, name)] = id;
         }
         return found;
     }

@@ -95,8 +95,8 @@ public sealed partial class PhotoIndex
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                SELECT p.path, p.orientation FROM photos p
-                WHERE NOT EXISTS (SELECT 1 FROM face_scans s WHERE s.photo_id = p.id)
+                SELECT p.path, p.orientation FROM main.photos p
+                WHERE p.video = 0 AND NOT EXISTS (SELECT 1 FROM face_scans s WHERE s.photo_id = p.id)
                 ORDER BY p.id DESC LIMIT $limit;
                 """;
             cmd.Parameters.AddWithValue("$limit", limit);
@@ -114,17 +114,33 @@ public sealed partial class PhotoIndex
     /// <summary>Every face in the library that is not ignored, to suggest names and group unnamed faces.</summary>
     public IReadOnlyList<FoundFace> GetAllFaces(bool withThumbnails = false) => QueryFaces("f.ignored = 0", withThumbnails);
 
+    /// <summary>How many faces found in the library have no name yet (ignored faces don't count).</summary>
+    public int CountUnnamedFaces()
+    {
+        lock (_lock)
+            return Convert.ToInt32(Scalar("""
+                SELECT COUNT(*) FROM faces f JOIN photos p ON p.id = f.photo_id
+                WHERE f.ignored = 0 AND f.person IS NULL;
+                """));
+    }
+
     public FoundFace? GetFace(long id) => QueryFaces("f.id = $face", ("$face", id)).FirstOrDefault();
 
     /// <summary>Remembers that a face is not this person, so they are not suggested for it again.</summary>
-    public void RejectName(long faceId, string name)
+    public void RejectName(long faceId, string name) => RejectName([faceId], name);
+
+    /// <summary>Remembers that these faces are not this person (one write for a whole group).</summary>
+    public void RejectName(IEnumerable<long> faceIds, string name)
     {
         lock (_lock)
         {
             using var tx = _connection.BeginTransaction();
-            var current = Scalar(tx, "SELECT rejected FROM faces WHERE id = $face;", ("$face", faceId)) as string;
-            var names = Split(current).Append(name.Trim()).Distinct(StringComparer.CurrentCultureIgnoreCase);
-            Run(tx, "UPDATE faces SET rejected = $rejected WHERE id = $face;", ("$rejected", string.Join('\u001f', names)), ("$face", faceId));
+            foreach (var faceId in faceIds)
+            {
+                var current = Scalar(tx, "SELECT rejected FROM faces WHERE id = $face;", ("$face", faceId)) as string;
+                var names = Split(current).Append(name.Trim()).Distinct(StringComparer.CurrentCultureIgnoreCase);
+                Run(tx, "UPDATE faces SET rejected = $rejected WHERE id = $face;", ("$rejected", string.Join('\u001f', names)), ("$face", faceId));
+            }
             tx.Commit();
         }
     }
@@ -140,13 +156,60 @@ public sealed partial class PhotoIndex
         }
     }
 
+    /// <summary>The photos that name the person (any case), for renaming them everywhere.</summary>
+    public IReadOnlyList<string> GetPathsWithPerson(string name)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT p.path FROM photo_people pp JOIN photos p ON p.id = pp.photo_id WHERE pp.name = $name COLLATE NOCASE ORDER BY p.path;";
+            cmd.Parameters.AddWithValue("$name", name.Trim());
+            var result = new List<string>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(reader.GetString(0));
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// After a person is renamed in the files: the names the user said a face is not follow the new name, so
+    /// the renamed person isn't suggested again where they were turned down.
+    /// </summary>
+    public void RenameRejectedName(string from, string to)
+    {
+        lock (_lock)
+        {
+            using var tx = _connection.BeginTransaction();
+            var rows = new List<(long Id, string Rejected)>();
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SELECT id, rejected FROM faces WHERE rejected IS NOT NULL;";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    rows.Add((reader.GetInt64(0), reader.GetString(1)));
+            }
+            foreach (var (id, rejected) in rows)
+            {
+                var names = Split(rejected).ToList();
+                if (!names.Any(n => string.Equals(n, from, StringComparison.CurrentCultureIgnoreCase)))
+                    continue;
+                var renamed = names.Select(n => string.Equals(n, from, StringComparison.CurrentCultureIgnoreCase) ? to : n)
+                                   .Distinct(StringComparer.CurrentCultureIgnoreCase);
+                Run(tx, "UPDATE faces SET rejected = $rejected WHERE id = $face;", ("$rejected", string.Join('\u001f', renamed)), ("$face", id));
+            }
+            tx.Commit();
+        }
+    }
+
     /// <summary>Everyone named in the library with on how many photos, most photos first.</summary>
     public IReadOnlyList<(string Name, int Count)> GetPeopleCounts()
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT name, COUNT(DISTINCT photo_id) FROM photo_people GROUP BY name COLLATE NOCASE ORDER BY COUNT(DISTINCT photo_id) DESC, name;";
+            cmd.CommandText = "SELECT name, COUNT(DISTINCT photo_id) FROM photo_people WHERE photo_id IN (SELECT id FROM photos) GROUP BY name COLLATE NOCASE ORDER BY COUNT(DISTINCT photo_id) DESC, name;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -253,7 +316,7 @@ public sealed partial class PhotoIndex
     }
 
     private long? PhotoId(string path, SqliteTransaction tx) =>
-        Scalar(tx, "SELECT id FROM photos WHERE path = $path;", ("$path", path)) is { } id ? Convert.ToInt64(id, CultureInfo.InvariantCulture) : null;
+        Scalar(tx, "SELECT id FROM main.photos WHERE path = $path;", ("$path", path)) is { } id ? Convert.ToInt64(id, CultureInfo.InvariantCulture) : null;
 
     private static string[] Split(string? names) =>
         string.IsNullOrEmpty(names) ? [] : names.Split('\u001f');

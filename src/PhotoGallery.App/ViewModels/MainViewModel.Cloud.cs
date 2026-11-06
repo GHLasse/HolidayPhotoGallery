@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using PhotoGallery.App.Native;
+using PhotoGallery.Core;
 using PhotoGallery.Core.Albums;
 using PhotoGallery.Core.Cloud;
 using PhotoGallery.Core.Library;
@@ -41,8 +42,22 @@ public sealed partial class MainViewModel
         typeof(MainViewModel).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(m => m.Key == key)?.Value is { Length: > 0 } value ? value : null;
 
-    public static void OpenInBrowser(Uri uri) =>
+    /// <summary>The app's Esri key for sharp satellite pictures on the map (from the build server), or null.</summary>
+    public static string? SatelliteKey => BuiltInValue("EsriApiKey");
+
+    /// <summary>
+    /// Opens a web page in the default browser. Only https addresses: a link can come from an album file in a
+    /// folder someone else made, and Windows would run a program for a file:// or network address.
+    /// </summary>
+    public static void OpenInBrowser(Uri uri)
+    {
+        if (!WebLinks.IsSafe(uri))
+        {
+            App.Trace($"link not opened, not an https address: {uri.Scheme}");
+            return;
+        }
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+    }
 
     /// <summary>What the running upload is doing, for the progress ring in the title bar; empty when nothing uploads.</summary>
     public string UploadText
@@ -142,11 +157,22 @@ public sealed partial class MainViewModel
         var roots = _settings.Folders.ToList();
         foreach (var (service, state) in _clouds)
         {
-            (state.LooseUploads, state.Uploaded) = await Task.Run(() =>
+            // Started without waiting for it, so a failure here used to leave the marks empty without a word.
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            try
             {
-                var loose = state.LooseUploads ?? LoadLooseUploads(service, state, roots);
-                return (loose, CloudUpload.UploadedPaths(service, roots, loose.Keys));
-            });
+                (state.LooseUploads, state.Uploaded) = await Task.Run(() =>
+                {
+                    var loose = state.LooseUploads ?? LoadLooseUploads(service, state, roots);
+                    return (loose, CloudUpload.UploadedPaths(service, roots, loose.Keys));
+                });
+                App.Trace($"cloud marks: {DisplayName(service)} {state.Uploaded.Count} photos, {watch.ElapsedMilliseconds} ms");
+            }
+            catch (Exception ex)
+            {
+                App.Trace($"cloud marks: {DisplayName(service)} failed: {ex}");
+                Warn(Tr("Could not check which photos are in {0}: {1}", DisplayName(service), ex.Message));
+            }
         }
         foreach (var item in Photos)
         {
@@ -202,6 +228,19 @@ public sealed partial class MainViewModel
             return;
         }
 
+        // Without the GPS position (Settings): a copy goes up instead, made just before it is sent.
+        Func<UploadPhoto, CancellationToken, Task<UploadPhoto>>? prepare = null;
+        if (_settings.SendWithoutGps)
+        {
+            if (_exifTool is not { } exifTool)
+            {
+                Warn(Tr("Nothing was uploaded: ExifTool, which takes the GPS position out, was not found."));
+                return;
+            }
+            var folder = Path.Combine(OutgoingFolder, "Upload");
+            prepare = (photo, ct) => OutgoingCopies.WithoutGpsAsync(exifTool, photo, folder, ct);
+        }
+
         var state = _clouds[service];
         using var cancel = new CancellationTokenSource();
         _upload = cancel;
@@ -221,7 +260,7 @@ public sealed partial class MainViewModel
                         UploadText = Tr("Uploading to {0}: {1} of {2}…", name, before + list.Count - p.Total + p.Done, total));
                     state.LooseUploads ??= LoadLooseUploads(service, state, _settings.Folders.ToList());
                     var loose = state.LooseUploads;
-                    var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose, into));
+                    var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose, into, prepare));
                     if (album is null && result.Uploaded > 0)
                         SaveLooseUploads(service, state);
                     done += list.Count;
@@ -244,7 +283,8 @@ public sealed partial class MainViewModel
             CloudSignInExpired(service);
             ErrorMessage = ex.Message;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException
+                                       or Core.ExifTool.ExifToolException
                                        or Core.GooglePhotos.GooglePhotosException or Core.OneDrive.OneDriveException)
         {
             ErrorMessage = Tr("The upload to {0} stopped: {1} {2}", name, ex.Message, Summary(name, uploaded, already, failed));
@@ -262,12 +302,57 @@ public sealed partial class MainViewModel
     private ICloudPhotos? CreateCloud(CloudService service) =>
         service == CloudService.GooglePhotos ? CreateGooglePhotos() : CreateOneDrive();
 
+    /// <summary>Services whose saved sign-in was turned down since the app started, so Settings can say why it is signed out.</summary>
+    private readonly HashSet<CloudService> _expiredSignIns = [];
+
+    /// <summary>
+    /// After a <see cref="CloudSignInRequiredException"/>: when the service turned the saved sign-in down, it is
+    /// forgotten, so Settings › Linked apps shows "Sign in" instead of "Connected".
+    /// </summary>
     private void CloudSignInExpired(CloudService service)
     {
         if (service == CloudService.GooglePhotos && _googleAuth is { IsSignedIn: false })
+        {
             SignOutOfGoogle();
+            _expiredSignIns.Add(service);
+        }
         else if (service == CloudService.OneDrive && _microsoftAuth is { IsSignedIn: false })
+        {
             SignOutOfOneDrive();
+            _expiredSignIns.Add(service);
+        }
+    }
+
+    /// <summary>Whether the service turned the saved sign-in down since the app started (and nobody signed in again).</summary>
+    public bool SignInExpired(CloudService service) => _expiredSignIns.Contains(service) && !IsSignedIn(service);
+
+    /// <summary>
+    /// Asks the service whether the saved sign-in still works, so Settings doesn't show "Connected" for one
+    /// that has run out. True when it was turned down and is now forgotten; being offline changes nothing.
+    /// </summary>
+    public async Task<bool> CheckSignInAsync(CloudService service)
+    {
+        if (!IsSignedIn(service))
+            return false;
+        (CreateCloud(service) as IDisposable)?.Dispose(); // Makes the sign-in session; it outlives the client.
+        OAuthSession? auth = service == CloudService.GooglePhotos ? _googleAuth : _microsoftAuth;
+        if (auth is null)
+            return false;
+        try
+        {
+            await Task.Run(() => auth.GetAccessTokenAsync());
+            return false;
+        }
+        catch (CloudSignInRequiredException ex)
+        {
+            App.Trace($"{service} sign-in check: {ex.Message}");
+            CloudSignInExpired(service);
+            return !IsSignedIn(service);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or ObjectDisposedException)
+        {
+            return false;
+        }
     }
 
     // The app's own list, and the hidden lists in the photos' folders, which survive losing the app's data.

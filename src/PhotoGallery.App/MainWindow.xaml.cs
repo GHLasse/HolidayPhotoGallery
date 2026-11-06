@@ -11,6 +11,7 @@ using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Localization;
 using PhotoGallery.Core.Tagging;
+using PhotoGallery.Core.Updates;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
@@ -34,6 +35,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AutoTagIcon.Data = AppIcons.Geometry(AppIcons.TagSparkle);
+        LookUpPlaceIcon.Data = AppIcons.Geometry(AppIcons.PlaceText);
+        FindPeopleInAllIcon.Data = AppIcons.Geometry(AppIcons.FindPeople);
         // Arabic and other right-to-left languages mirror the whole window.
         if (Strings.RightToLeft)
             Root.FlowDirection = FlowDirection.RightToLeft;
@@ -41,6 +45,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new SizeInt32(1500, 950));
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         SetUpFrame();
+        BuildSelectionBar();
 
         SetUpZoom();
         SetUpTimeline();
@@ -48,29 +53,58 @@ public sealed partial class MainWindow : Window
         SetUpRatingRow();
         SetUpPeopleTyping();
         SetUpMoreDetails();
+        SetUpAutoSave();
+        PrepareSuggestions(TagBox);
         ShowPhotoGroups();
         CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.RejectRequested += item => ViewModel.ToggleRejectAsync([item]);
         CompareLayer.CloseRequested += CloseCompare;
         CompareLayer.NavigateRequested += CompareNavigate;
+        CompareLayer.OpenRequested += OpenFromCompare;
+        CompareLayer.HintFor = ViewModel.QualityHintText;
+        CompareLayer.IgnoreHintRequested += item => ViewModel.IgnoreQualityHintsAsync([item]);
+        CompareLayer.GroupStepRequested += step => _ = StepShotGroupAsync(step);
+        CompareLayer.MenuItemsFor = StackMenuItems;
 
         MapView.AssignRequested += async (items, position) =>
         {
             await ViewModel.SetLocationAsync(items, position);
             RefreshMap(fit: false);
         };
+        MapView.AssignEachRequested += async placed =>
+        {
+            await ViewModel.SetLocationsAsync(placed);
+            RefreshMap(fit: false);
+        };
+        MapView.Estimator = ViewModel.EstimateLocationsAsync;
         MapView.RemoveRequested += async items =>
         {
             await ViewModel.SetLocationAsync(items, null);
             RefreshMap(fit: false);
         };
         MapView.PhotoClicked += MapPhotoClicked;
+        MapView.PhotoOpened += MapPhotoOpened;
+        MapView.PhotoShown += MapPhotoShown;
+        MapView.TracksRequested += () => _ = ShowTracksAsync();
         MapView.PlacesFound += MapView_PlacesFound;
 
         // Must finish before the handler returns: an awaited shutdown never completed, because the app
         // exits at the first await, leaving ExifTool running and the app folder locked.
-        Closed += (_, _) => ViewModel.Dispose();
+        Closed += (_, _) =>
+        {
+            // The app must really end once its window is gone: a process left behind without a window kept the
+            // app's files open, so the next update's Setup could not replace them (code 5). If shutting down
+            // hangs (a background job holding the index, a stuck helper), it is ended after 10 seconds.
+            new Thread(() =>
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(10));
+                App.Trace("The app had not ended 10 s after its window closed; ending it.");
+                System.Diagnostics.Process.GetCurrentProcess().Kill();
+            }) { IsBackground = true, Name = "exit watchdog" }.Start();
+            ViewModel.SaveLastPlace(CurrentPlace());
+            ViewModel.Dispose();
+        };
         AppWindow.Closing += AppWindow_Closing;
         ViewModel.Editor.PropertyChanged += (_, e) =>
         {
@@ -78,8 +112,12 @@ public sealed partial class MainWindow : Window
                 SyncTimeZoneCombo();
             else if (e.PropertyName is nameof(MetadataEditorViewModel.Tags))
                 ShowTagBadges();
+            else if (e.PropertyName is nameof(MetadataEditorViewModel.Items))
+                _ = ShowQualityBadgesAsync();
         };
         SyncTimeZoneCombo();
+        TimeZoneTyping.Attach(TimeZoneCombo);
+        PeopleSortCombo.SelectedIndex = ViewModel.PeopleSortIndex;
         FillAlbumSortCombo();
         foreach (var (_, label) in PhotoSort.All)
             SortCombo.Items.Add(label);
@@ -109,9 +147,14 @@ public sealed partial class MainWindow : Window
             }
             else if (e.PropertyName is nameof(MainViewModel.IsBusy) or nameof(MainViewModel.StatusText))
                 ApplyBusyGates();
+            else if (e.PropertyName is nameof(MainViewModel.HasLoaded) && _workspace == Workspace.People)
+                _ = ShowPeoplePageAsync();
             else if (e.PropertyName is nameof(MainViewModel.Photos))
             {
+                var place = NoteSelectionPlace();
                 ShowPhotoGroups();
+                KeepSelectionPlace(place);
+                DispatcherQueue.TryEnqueue(RevealPendingPhoto);
                 ShowFilterBadges();
                 _ = ShowTopPeopleAsync();
                 if (IsMapOpen)
@@ -122,14 +165,67 @@ public sealed partial class MainWindow : Window
         ViewModel.FacesChanged += () => _ = RefreshPeoplePanelAsync();
         ViewModel.FacesChanged += ForgetLatestFaces;
         ViewModel.Notices.CollectionChanged += (_, _) => ShowNotices();
+        ViewModel.ReviewDuplicatesRequested += ViewModel_ReviewDuplicatesRequested;
         ViewModel.FlagsChanged += SyncFlagButton;
+        ViewModel.HealthChanged += () => _ = ShowRepairAsync();
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
         Root.CharacterReceived += Root_CharacterReceived;
         Root.ActualThemeChanged += Root_ActualThemeChanged;
         ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
         _ = ViewModel.InitializeAsync();
+        Root.Loaded += (_, _) =>
+        {
+            OpenStartPage();
+            ReportLastUpdate();
+            _ = CheckForUpdatesLaterAsync();
+        };
     }
+
+    // The start page chosen in Settings › App: the albums (the way into the trips), all photos with the
+    // folders open, or where the app was when it closed.
+    private void OpenStartPage()
+    {
+        var place = ViewModel.StartPage switch
+        {
+            "folders" => "folders",
+            "last" => ViewModel.LastPlace ?? "albums",
+            _ => "albums",
+        };
+        if (place.StartsWith("folder:", StringComparison.Ordinal) && place[7..] is var folder)
+        {
+            if (Directory.Exists(folder))
+                ViewModel.ShowFolder(folder);
+            return;
+        }
+        switch (place)
+        {
+            case "albums":
+                // With no albums yet the album view says how to make one, with a button to the folders.
+                ClearBrowseTrees();
+                ShowWorkspace(Workspace.Albums);
+                break;
+            case "folders":
+                SetNavFolded(false);
+                OpenNavSection(FoldersHeading, true);
+                break;
+            case "map":
+                ShowWorkspace(Workspace.Map);
+                break;
+            case "people":
+                ShowWorkspace(Workspace.People);
+                break;
+        }
+    }
+
+    // Where the app is, for the start page "Where I left off".
+    private string CurrentPlace() => _workspace switch
+    {
+        Workspace.Albums => "albums",
+        Workspace.Map => "map",
+        Workspace.People => "people",
+        _ => ViewModel.SelectedFolder is { } folder ? "folder:" + folder.FullPath : "all",
+    };
 
     // The list always goes in before the index; a combo box throws when given an index it doesn't have.
     private void SyncTimeZoneCombo()
@@ -204,7 +300,7 @@ public sealed partial class MainWindow : Window
     private async void Rescan_Click(object sender, RoutedEventArgs e)
     {
         if (!WaitsForBusyWork())
-            await ViewModel.RescanAsync();
+            await ViewModel.RescanAndReportAsync();
     }
 
     private void AllPhotos_Click(object sender, RoutedEventArgs e)
@@ -252,6 +348,16 @@ public sealed partial class MainWindow : Window
 
     private async void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
+        // Details still being written in the background are finished first: they take a moment, not a choice.
+        if (ViewModel.Editor.IsDirty || ViewModel.HasPendingSaves)
+        {
+            args.Cancel = true;
+            var taken = await ViewModel.SaveEditsAsync();
+            await ViewModel.WaitForSavesAsync();
+            if (taken)
+                Close(); // else the panel shows the date to fix
+            return;
+        }
         if (_closeConfirmed || !(ViewModel.IsBusy || ViewModel.IsUploading))
             return;
         args.Cancel = true;
@@ -302,11 +408,13 @@ public sealed partial class MainWindow : Window
         ViewModel.MinRating = 0;
         ViewModel.FlaggedOnly = false;
         ViewModel.RejectedOnly = false;
+        ViewModel.MediaIndex = 0;
         ViewModel.WithoutTags = false;
         ViewModel.WithoutPeople = false;
         ViewModel.WithoutLocation = false;
         ViewModel.WithoutDate = false;
         ViewModel.DamagedOnly = false;
+        ViewModel.QualityHintsOnly = false;
         ViewModel.SelectedPlace = null;
         ViewModel.OnGoogleOnly = false;
         ViewModel.NotOnGoogleOnly = false;
@@ -318,6 +426,7 @@ public sealed partial class MainWindow : Window
         foreach (var tag in ViewModel.Tags)
             tag.IsSelected = false;
         ViewModel.ClearPeopleFilter();
+        _ = ViewModel.StopSimilarAsync();
     }
 
     // ---- Keyboard shortcuts, like Lightroom ----
@@ -325,9 +434,11 @@ public sealed partial class MainWindow : Window
     private static bool IsDown(VirtualKey key) =>
         Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
-    // Typing in a text box, a search box or a date picker must not set ratings or open views.
+    // Typing in a text box, a search box, a date picker or a list such as the time zones must not set ratings
+    // or open views. With a list open the focus is on one of its entries, which typing searches too (D-3:
+    // "EST" opened the photo on E, and digits rated it instead of finding "+8").
     private bool IsTyping() =>
-        FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or CalendarDatePicker or ComboBox;
+        FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or CalendarDatePicker or ComboBox or ComboBoxItem;
 
     private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -436,6 +547,11 @@ public sealed partial class MainWindow : Window
                 e.Handled = true;
                 ToggleInfoPane();
                 break;
+            // Wherever the focus is (not only on the grid), like File Explorer.
+            case VirtualKey.F2 when selected.Count > 0:
+                e.Handled = true;
+                await RenamePhotosAsync();
+                break;
             case VirtualKey.M when _workspace == Workspace.Library:
                 e.Handled = true;
                 _ = SetSidePaneAsync(MapBeside ? SidePane.Info : SidePane.Map);
@@ -463,70 +579,141 @@ public sealed partial class MainWindow : Window
 
     private bool _showingShortcuts;
 
-    /// <summary>The keyboard shortcuts as a two-column list, for the ? dialog and the Settings tab.</summary>
-    private static Grid ShortcutList()
-    {
-        (string Keys, string What)[] shortcuts =
+    /// <summary>The keyboard shortcuts in groups, for the ? dialog, the Settings tab and the command box.</summary>
+    private static (string Group, (string Keys, string What)[] Keys)[] Shortcuts() =>
+    [
+        (Tr("Move around"),
         [
-            ("G", Tr("Back to the grid")),
+            ("← →", Tr("Previous or next photo in the viewer and compare")),
+            ("W A S D", Tr("Like the arrow keys: move in the grid, previous or next photo in the viewer and compare")),
             (Tr("E or Enter"), Tr("Show the photo large (Enter with several photos: compare them)")),
+            ("G", Tr("Back to the grid")),
+            ("Esc", Tr("Close the viewer or compare")),
+            ("Tab", Tr("Next photo in compare")),
+            (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
+        ]),
+        (Tr("Views and panes"),
+        [
+            ("Ctrl+1  2  3", Tr("Library, Map or People")),
             ("C", Tr("Compare the selected photos")),
             ("M", Tr("Show or hide the map")),
+            ("I", Tr("Show or hide the info pane")),
             ("Tab", Tr("Hide or show the side panes")),
             ("Shift+Tab", Tr("Hide or show the side panes and the filter bar")),
-            ("I", Tr("Show or hide the info pane")),
             ("L", Tr("Dim the room around the photo in the viewer (press again for black)")),
-            ("Ctrl+E", Tr("Search")),
+            ("F11", Tr("Full screen")),
+            ("Ctrl+E  Ctrl+F", Tr("Search")),
+        ]),
+        (Tr("Mark"),
+        [
             ("0 – 5", Tr("Rate the selected photos (0 removes the rating)")),
             ("P", Tr("Flag or unflag the selected photos")),
             ("X", Tr("Reject the selected photos, or take the mark off")),
-            ("← →", Tr("Previous or next photo in the viewer and compare")),
-            (Tr("Mouse wheel"), Tr("Zoom the photo in the viewer; drag to move it, double-click to fit it again")),
-            ("Tab", Tr("Next photo in compare")),
+        ]),
+        (Tr("Edit and describe"),
+        [
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
-            ("Ctrl+S", Tr("Save the changes in the info pane")),
-            ("F11", Tr("Full screen")),
-            ("Esc", Tr("Close the viewer or compare")),
+            ("R", Tr("Crop the photo in the viewer")),
+            ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
+            ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),
+            ("Ctrl+Shift+D", Tr("Adjust the date and time of the selected photos")),
+            ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
+            ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
+        ]),
+        (Tr("Files"),
+        [
+            ("F2", Tr("Rename the selected photos")),
+            ("Ctrl+C", Tr("Copy the photo files, to paste them in File Explorer or another folder")),
+            ("Ctrl+V", Tr("Paste copied photo files into the folder shown")),
+            ("Ctrl+D", Tr("Duplicate the selected photos")),
+            ("Del", Tr("Move the selected photos to the Recycle Bin (asks first)")),
+            ("Ctrl+I", Tr("Import from a phone, camera or SD card")),
+            ("F5", Tr("Look for new, changed and deleted photos")),
+        ]),
+        (Tr("Help"),
+        [
+            ("Ctrl+K", Tr("Find any command by typing a few letters of its name")),
             (Tr("? or F1"), Tr("This list")),
-        ];
-        var grid = new Grid { ColumnSpacing = 24, RowSpacing = 8 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < shortcuts.Length; i++)
+        ]),
+    ];
+
+    /// <summary>The shortcuts as lists under group headings, side by side in <paramref name="columns"/> columns.</summary>
+    private static Grid ShortcutList(int columns = 1)
+    {
+        var groups = Shortcuts();
+        var stacks = new StackPanel[columns];
+        var outer = new Grid { ColumnSpacing = 40 };
+        for (var c = 0; c < columns; c++)
         {
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var keys = new TextBlock { Text = shortcuts[i].Keys, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
-            var what = new TextBlock { Text = shortcuts[i].What, TextWrapping = TextWrapping.Wrap };
-            Grid.SetRow(keys, i);
-            Grid.SetRow(what, i);
-            Grid.SetColumn(what, 1);
-            grid.Children.Add(keys);
-            grid.Children.Add(what);
+            outer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            stacks[c] = new StackPanel { Spacing = 20 };
+            Grid.SetColumn(stacks[c], c);
+            outer.Children.Add(stacks[c]);
         }
-        return grid;
+
+        // Each group goes to the column that is shortest so far, so the columns end about level.
+        var lengths = new int[columns];
+        foreach (var (title, keys) in groups)
+        {
+            var column = Array.IndexOf(lengths, lengths.Min());
+            lengths[column] += keys.Length + 2;
+            var grid = new Grid { ColumnSpacing = 24, RowSpacing = 8 };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (var i = 0; i < keys.Length; i++)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var key = new TextBlock { Text = keys[i].Keys, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+                var what = new TextBlock { Text = keys[i].What, TextWrapping = TextWrapping.Wrap };
+                Grid.SetRow(key, i);
+                Grid.SetRow(what, i);
+                Grid.SetColumn(what, 1);
+                grid.Children.Add(key);
+                grid.Children.Add(what);
+            }
+            stacks[column].Children.Add(new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = title, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
+                    grid,
+                },
+            });
+        }
+        return outer;
     }
 
     private async Task ShowShortcutsAsync()
     {
-        if (_showingShortcuts)
+        if (_showingShortcuts || IsDialogOpen())
             return;
-        var grid = ShortcutList();
+        var grid = ShortcutList(columns: 2);
         _showingShortcuts = true;
         try
         {
-            await new ContentDialog
+            var dialog = new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
                 Title = Tr("Keyboard shortcuts"),
-                Content = new ScrollViewer { Content = grid, MaxHeight = 520 },
+                Content = new ScrollViewer { Content = grid, MaxHeight = 560 },
+                PrimaryButtonText = Tr("Find a command… (Ctrl+K)"),
                 CloseButtonText = Tr("Close"),
-            }.ShowThemedAsync();
+                DefaultButton = ContentDialogButton.Close,
+            };
+            dialog.Resources["ContentDialogMaxWidth"] = 960.0;
+            if (await dialog.ShowThemedAsync() == ContentDialogResult.Primary)
+                await ShowCommandBoxAsync();
         }
         finally
         {
             _showingShortcuts = false;
         }
     }
+
+    // Only one dialog can be open at a time; ShowAsync throws for a second one.
+    private bool IsDialogOpen() =>
+        Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(Root.XamlRoot).Any(p => p.Child is ContentDialog);
 
     // ---- Flags ----
 
@@ -589,11 +776,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static Windows.UI.Color Blend(Windows.UI.Color top, Windows.UI.Color under)
+    // Black or white, whichever reads better on the colour.
+    private static Windows.UI.Color Readable(Windows.UI.Color back)
     {
-        var a = top.A / 255.0;
-        byte Mix(byte t, byte u) => (byte)Math.Round(t * a + u * (1 - a));
-        return Windows.UI.Color.FromArgb(255, Mix(top.R, under.R), Mix(top.G, under.G), Mix(top.B, under.B));
+        static double Linear(byte c)
+        {
+            var v = c / 255.0;
+            return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+        }
+        var luminance = 0.2126 * Linear(back.R) + 0.7152 * Linear(back.G) + 0.0722 * Linear(back.B);
+        return luminance > 0.179 ? Windows.UI.Color.FromArgb(255, 0x1B, 0x1B, 0x1B) : Windows.UI.Color.FromArgb(255, 0xFF, 0xFF, 0xFF);
     }
 
     private InfoBar NoticeBar(Notice notice)
@@ -610,16 +802,25 @@ public sealed partial class MainWindow : Window
                 _ => InfoBarSeverity.Informational,
             },
         };
-        // Informational bars are grey by default; Lasse asked for blue ones. The tints are see-through, and
-        // the bars float over the photos, so each is laid on the window's solid background colour.
-        var tint = ThemeBrush(notice.Severity switch
+        // Informational bars are grey by default; Lasse asked for blue ones. The bars float over the photos, so
+        // they get solid colours of their own for the mode the window shows, and text that stays readable on
+        // them whatever palette is chosen (WinUI's see-through tints left white text on light yellow).
+        var dark = Root.ActualTheme == ElementTheme.Dark;
+        var back = (notice.Severity, dark) switch
         {
-            NoticeSeverity.Error => "SystemFillColorCriticalBackgroundBrush",
-            NoticeSeverity.Warning => "SystemFillColorCautionBackgroundBrush",
-            _ => "SystemFillColorAttentionBackgroundBrush",
-        });
-        if (tint is SolidColorBrush { Color: var top } && ThemeBrush("SolidBackgroundFillColorBaseBrush") is SolidColorBrush { Color: var under })
-            bar.Background = new SolidColorBrush(Blend(top, under));
+            (NoticeSeverity.Error, false) => Windows.UI.Color.FromArgb(255, 0xFD, 0xE7, 0xE9),
+            (NoticeSeverity.Error, true) => Windows.UI.Color.FromArgb(255, 0x44, 0x27, 0x26),
+            (NoticeSeverity.Warning, false) => Windows.UI.Color.FromArgb(255, 0xFF, 0xF4, 0xCE),
+            (NoticeSeverity.Warning, true) => Windows.UI.Color.FromArgb(255, 0x43, 0x35, 0x19),
+            (_, false) => Windows.UI.Color.FromArgb(255, 0xE3, 0xEE, 0xFA),
+            (_, true) => Windows.UI.Color.FromArgb(255, 0x1D, 0x30, 0x45),
+        };
+        bar.Background = new SolidColorBrush(back);
+        bar.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
+        var text = new SolidColorBrush(Readable(back));
+        bar.Foreground = text;
+        foreach (var key in new[] { "InfoBarTitleForeground", "InfoBarMessageForeground", "InfoBarHyperlinkButtonForeground" })
+            bar.Resources[key] = text;
         bar.Shadow = new ThemeShadow();
         bar.Translation = new System.Numerics.Vector3(0, 0, 16);
         bar.CloseButtonClick += (_, _) => ViewModel.CloseNotice(notice);
@@ -630,8 +831,29 @@ public sealed partial class MainWindow : Window
             {
                 ViewModel.CloseNotice(notice);
                 await undo();
+                ViewModel.TipOnce("key:undo", Tr("Tip: Ctrl+Z undoes the last change too, even after its banner has gone."));
             };
             bar.ActionButton = button;
+        }
+        if (notice.Actions.Count > 0)
+        {
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 12) };
+            for (var i = 0; i < notice.Actions.Count; i++)
+            {
+                var action = notice.Actions[i];
+                var button = new Button { Content = action.Label };
+                // The last button is the one the banner is about, e.g. "Update now".
+                if (i == notice.Actions.Count - 1)
+                    button.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+                button.Click += async (_, _) =>
+                {
+                    if (action.Closes)
+                        ViewModel.CloseNotice(notice);
+                    await action.Run();
+                };
+                buttons.Children.Add(button);
+            }
+            bar.Content = buttons;
         }
         return bar;
     }
@@ -662,7 +884,9 @@ public sealed partial class MainWindow : Window
     private async void PhotoGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Before the info pane slides in or out and the grid reflows: the clicked photo stays where it is.
-        RememberAnchor(e.AddedItems.OfType<PhotoItemViewModel>().LastOrDefault());
+        // (Not while the selection is carried over to new search results: that sets its own place.)
+        if (!_carryingSelection)
+            RememberAnchor(e.AddedItems.OfType<PhotoItemViewModel>().LastOrDefault());
         OnSelectionChromeChanged();
         if (_handlingSelection)
             return;
@@ -676,7 +900,12 @@ public sealed partial class MainWindow : Window
             SyncFlagButton();
             _ = RefreshPeoplePanelAsync();
             if (IsMapOpen)
+            {
+                if (SelectedPhotos.Count > 0)
+                    _pinnedTrack = null; // the line around the selected photo again
                 MapView.ShowSelection(SelectedPhotos, fit: !_selectingFromMap); // don't jump away from a clicked marker
+                _ = ShowTrackLineAsync();
+            }
         }
         finally
         {
@@ -706,28 +935,47 @@ public sealed partial class MainWindow : Window
             ViewModel.Warn(Tr("Select the photos to tag."));
             return;
         }
-        if (!MainViewModel.IsTagModelInstalled)
-        {
-            var dialog = new ContentDialog
-            {
-                XamlRoot = Root.XamlRoot,
-                Title = Tr("Download the tagging model?"),
-                Content = Tr("Auto-tagging recognises what is in your photos on this PC, so no photo is sent anywhere.") + " " +
-                          Tr("It needs an image-recognition model (Google's SigLIP 2) of about {0:N0} MB, which is downloaded once from Hugging Face and kept in the app's data folder.", TagModel.DownloadSize / 1_000_000),
-                PrimaryButtonText = Tr("Download"),
-                CloseButtonText = Tr("Cancel"),
-                DefaultButton = ContentDialogButton.Primary,
-            };
-            if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || !await ViewModel.DownloadTagModelAsync())
-                return;
-        }
+        if (!await EnsureTagModelAsync())
+            return;
         // Unsaved edits in the panel would otherwise be written over the new tags afterwards.
         if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
             return;
+        await ViewModel.WaitForSavesAsync();
         await ViewModel.AutoTagAsync(photos);
         // The details pane shows the new tags at once.
         if (!ViewModel.Editor.IsDirty)
             ViewModel.Editor.Load(SelectedPhotos);
+    }
+
+    /// <summary>
+    /// The tagging model, downloaded after asking if it isn't yet. Auto-tagging, searching in your own words
+    /// and Find similar photos all need it. False when the user said no or the download failed.
+    /// </summary>
+    private async Task<bool> EnsureTagModelAsync()
+    {
+        if (MainViewModel.IsTagModelInstalled)
+            return true;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Download the tagging model?"),
+            Content = Tr("Auto-tagging recognises what is in your photos on this PC, so no photo is sent anywhere.") + " " +
+                      Tr("It needs an image-recognition model (Google's SigLIP 2) of about {0:N0} MB, which is downloaded once from Hugging Face and kept in the app's data folder.", TagModel.DownloadSize / 1_000_000),
+            PrimaryButtonText = Tr("Download"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary && await ViewModel.DownloadTagModelAsync();
+    }
+
+    // Find similar photos (L-7): leaves the viewer, so the look-alikes show in the grid.
+    private async Task FindSimilarAsync()
+    {
+        if (WaitsForBusyWork() || CommandTargets() is not [var photo] || !await EnsureTagModelAsync())
+            return;
+        if (IsViewerOpen)
+            CloseViewer();
+        await ViewModel.FindSimilarAsync(photo);
     }
 
     private async void RemoveAutoTags_Click(object sender, RoutedEventArgs e)
@@ -775,6 +1023,8 @@ public sealed partial class MainWindow : Window
     private async void RefreshMap(bool fit)
     {
         var version = ++_mapVersion;
+        if (_pinnedTrack is not null)
+            fit = false; // the map zooms to the track shown with "Show on the map" instead
         if (_workspace == Workspace.Map)
         {
             // Picking a folder, month or place in the left pane narrows the map, and it zooms to them.
@@ -784,6 +1034,7 @@ public sealed partial class MainWindow : Window
             var all = await ViewModel.PhotosWithLocationAsync();
             if (version != _mapVersion)
                 return;
+            _mapPhotos = all;
             MapView.ShowPhotos(all, fitAll: fit && SelectedPhotos.Count == 0);
         }
         else
@@ -791,6 +1042,50 @@ public sealed partial class MainWindow : Window
             MapView.ShowPhotos(ViewModel.Photos);
         }
         MapView.ShowSelection(SelectedPhotos, fit);
+        _ = ShowTrackLineAsync();
+    }
+
+    // The photos on the whole-library map, for opening one from its bubble.
+    private List<IndexedPhoto> _mapPhotos = [];
+
+    // Clicking the picture in a dot's bubble opens the photo, and the viewer walks the photos on the map.
+    private void MapPhotoOpened(string path)
+    {
+        if (IsViewerOpen)
+            return;
+        if (ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } shown)
+        {
+            OpenViewer(shown);
+            return;
+        }
+        var items = _mapPhotos.OrderBy(p => p.DateTaken?.Local ?? DateTime.MaxValue).Select(p => new PhotoItemViewModel(p)).ToList();
+        if (items.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
+            OpenViewer(item, items);
+    }
+
+    private string? _revealPath;
+
+    // "Show in library" in a photo's bubble on the map: the Library with the photo's folder open, the photo
+    // selected and scrolled to once the folder's photos are in.
+    private void MapPhotoShown(string path)
+    {
+        if (Path.GetDirectoryName(path) is not { } folder)
+            return;
+        _revealPath = path;
+        ShowWorkspace(Workspace.Library);
+        ClearBrowseTrees();
+        ViewModel.ShowFolder(folder);
+    }
+
+    private void RevealPendingPhoto()
+    {
+        if (_revealPath is not { } path ||
+            ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is not { } item)
+            return;
+        _revealPath = null;
+        PhotoGrid.SelectedItems.Clear();
+        PhotoGrid.SelectedItem = item;
+        PhotoGrid.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
     }
 
     private void MapPhotoClicked(string path, bool addToSelection)
@@ -824,9 +1119,6 @@ public sealed partial class MainWindow : Window
         PhotoGrid.ScrollIntoView(item);
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e) => await ViewModel.SaveEditsAsync();
-
-    private void Discard_Click(object sender, RoutedEventArgs e) => ViewModel.Editor.Revert();
 
     private void ShowInFolder_Click(object sender, RoutedEventArgs e)
     {
@@ -840,7 +1132,8 @@ public sealed partial class MainWindow : Window
 
     private void PhotoGrid_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is PhotoItemViewModel item)
+        var item = FirstClickedPhoto() ?? (e.OriginalSource as FrameworkElement)?.DataContext as PhotoItemViewModel;
+        if (item is not null)
             OpenViewer(item);
     }
 
@@ -878,17 +1171,32 @@ public sealed partial class MainWindow : Window
             ViewModel.Warn(Tr("Select at most {0} photos to compare; {1} are selected.", CompareView.MaxPhotos, photos.Count));
             return;
         }
+        EndShotGroups();
         CompareLayer.Visibility = Visibility.Visible;
         CompareLayer.Show(photos);
+        _ = ShowQualityHintsAsync();
+        TipForCompare();
     }
 
     private void CloseCompare()
     {
         var shown = CompareLayer.Photos;
+        EndShotGroups();
         CompareLayer.Visibility = Visibility.Collapsed;
         if (shown.Count > 0)
             PhotoGrid.ScrollIntoView(shown[0]);
         PhotoGrid.Focus(FocusState.Programmatic);
+    }
+
+    // A double-clicked photo opens on its own in the viewer; closing the viewer comes back to compare as it was
+    // (the compare view is only hidden, so it keeps its photos, highlight and zoom).
+    private bool _viewerFromCompare;
+
+    private void OpenFromCompare(PhotoItemViewModel item)
+    {
+        CompareLayer.Visibility = Visibility.Collapsed;
+        _viewerFromCompare = true;
+        OpenViewer(item, [item]);
     }
 
     // With one photo shown, Left and Right step through the grid, so photos can be rated one after another.
@@ -923,6 +1231,7 @@ public sealed partial class MainWindow : Window
         // Unsaved edits in the panel would otherwise be written with the old date afterwards.
         if (ViewModel.Editor.IsDirty && !await ViewModel.SaveEditsAsync())
             return;
+        await ViewModel.WaitForSavesAsync();
 
         var earliest = dated.Select(p => p.Photo.DateTaken!.Value).MinBy(d => d.Local);
         var dialog = new ShiftDatesDialog(earliest, dated.Count, selected.Count - dated.Count) { XamlRoot = Root.XamlRoot };
@@ -934,11 +1243,11 @@ public sealed partial class MainWindow : Window
 
     private bool IsViewerOpen => ViewerLayer.Visibility == Visibility.Visible && !_viewerClosing;
 
-    private void OpenViewer(PhotoItemViewModel item)
+    private void OpenViewer(PhotoItemViewModel item, List<PhotoItemViewModel>? items = null)
     {
         App.Trace("viewer: open");
         var tile = TileImageBounds(item); // before the viewer covers it
-        _viewerItems = ViewModel.Photos.ToList();
+        _viewerItems = items ?? ViewModel.Photos.ToList();
         _viewerIndex = Math.Max(0, _viewerItems.IndexOf(item));
         ViewerLayer.Visibility = Visibility.Visible;
         ApplyChrome(animate: false); // the details or the map stay beside the photo
@@ -948,6 +1257,7 @@ public sealed partial class MainWindow : Window
         // Move focus off the grid, which would otherwise take the arrow keys for itself.
         ViewerCloseButton.Focus(FocusState.Programmatic);
         _ = ShowViewerImageAsync();
+        TipForViewer();
     }
 
     private void CloseViewer()
@@ -955,6 +1265,7 @@ public sealed partial class MainWindow : Window
         App.Trace("viewer: close");
         EndEdit();
         StartCloseMotion();
+        StopVideo();
         ApplyChrome(animate: false);
         _viewerPixels = null;
         if (_viewerIndex < _viewerItems.Count)
@@ -964,6 +1275,12 @@ public sealed partial class MainWindow : Window
             PhotoGrid.ScrollIntoView(current);
         }
         PhotoGrid.Focus(FocusState.Programmatic);
+        if (_viewerFromCompare)
+        {
+            _viewerFromCompare = false;
+            CompareLayer.Visibility = Visibility.Visible;
+            CompareLayer.FocusHighlighted();
+        }
     }
 
     private async Task ShowViewerImageAsync()
@@ -982,6 +1299,14 @@ public sealed partial class MainWindow : Window
         ViewerError.Text = "";
         ViewerProgress.IsActive = true;
         UpdateUndoButtons();
+
+        ShowVideoTools(item.IsVideo);
+        if (item.IsVideo)
+        {
+            await PlayVideoAsync(item, version);
+            return;
+        }
+        StopVideo();
 
         try
         {
@@ -1026,15 +1351,36 @@ public sealed partial class MainWindow : Window
             return;
         var marks = (item.Photo.Rating > 0 ? "   " + new string('★', item.Photo.Rating) : "") + (item.Photo.Flagged ? "   ⚑ " + Tr("Flagged") : "") + (item.Photo.Rejected ? "   ✕ " + Tr("Rejected") : "");
         ViewerTitle.Text = Tr("{0}   ({1} of {2}){3}", item.FileName, _viewerIndex + 1, _viewerItems.Count, marks);
+        WatchViewerHints(item);
     }
 
-    // Esc first leaves an edit, then the viewer.
-    private void ViewerClose_Click(object sender, RoutedEventArgs e)
+    // Esc first leaves an edit, asking whether to save it, then the viewer.
+    private async void ViewerClose_Click(object sender, RoutedEventArgs e)
     {
-        if (IsEditing)
-            CancelEdit();
-        else
+        if (!IsEditing)
+        {
             CloseViewer();
+            return;
+        }
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Save the edit?"),
+            Content = Tr("The photo is changed only when you save."),
+            PrimaryButtonText = Tr("Save"),
+            SecondaryButtonText = Tr("Discard"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        switch (await dialog.ShowThemedAsync())
+        {
+            case ContentDialogResult.Primary:
+                ViewerSaveEdit_Click(sender, e);
+                break;
+            case ContentDialogResult.Secondary:
+                CancelEdit();
+                break;
+        }
     }
 
     private void ViewerPrevious_Click(object sender, RoutedEventArgs e)
@@ -1074,6 +1420,11 @@ public sealed partial class MainWindow : Window
     {
         if (_viewerIndex >= _viewerItems.Count)
             return;
+        if (!_viewerItems[_viewerIndex].CanRotate)
+        {
+            ViewModel.Warn(PixelTurner.AnimatedWebpHint);
+            return;
+        }
         await ViewModel.RotateAsync([_viewerItems[_viewerIndex]], clockwise);
         await ShowViewerImageAsync();
     }
@@ -1156,7 +1507,37 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
 
-    private async Task ShowSettingsAsync(CloudService? cloudTab = null)
+    /// <summary>
+    /// A line of secondary text that shows how far a background job has got, read again every few seconds while
+    /// it is on screen.
+    /// </summary>
+    private TextBlock ProgressText(Func<Task<string>> read)
+    {
+        var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromSeconds(5);
+        async Task Fill()
+        {
+            try
+            {
+                text.Text = await read();
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                App.Trace($"progress: {ex.Message}");
+            }
+        }
+        timer.Tick += async (_, _) => await Fill();
+        text.Loaded += async (_, _) =>
+        {
+            await Fill();
+            timer.Start();
+        };
+        text.Unloaded += (_, _) => timer.Stop();
+        return text;
+    }
+
+    private async Task ShowSettingsAsync(CloudService? cloudTab = null, string? tab = null)
     {
         // Tagging tab
         var language = new ComboBox { Header = Tr("Language of the tags"), MinWidth = 160 };
@@ -1184,6 +1565,24 @@ public sealed partial class MainWindow : Window
         var reset = new HyperlinkButton { Content = Tr("Use the starter list"), Padding = new Thickness(0) };
         reset.Click += (_, _) => list.Tags = AutoTags.StarterList(language.SelectedIndex == 1 ? "de" : "en");
 
+        // In the background (L-7): which photos get tags by themselves, and searching in your own words.
+        var automaticTagging = new ComboBox { Header = Tr("Tag photos by themselves, in the background"), MinWidth = 320 };
+        foreach (var (_, label) in MainViewModel.AutomaticTaggingChoices)
+            automaticTagging.Items.Add(label);
+        automaticTagging.SelectedIndex = Math.Max(0, MainViewModel.AutomaticTaggingChoices.ToList().FindIndex(c => c.Key == ViewModel.AutomaticTagging));
+        var searchByMeaning = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Search in my own words, e.g. “children on the beach”, and find similar photos"),
+            IsOn = ViewModel.SearchByMeaning,
+        };
+
+        // Background jobs show how far they have got (Lasse: there is no other way to see it).
+        var taggingProgress = ProgressText(() => ViewModel.VectorProgressText());
+        var peopleProgress = ProgressText(() => ViewModel.FaceScanProgressText());
+        var qualityProgress = ProgressText(() => ViewModel.QualityProgressText());
+
         var tagging = new StackPanel
         {
             Spacing = 12,
@@ -1198,10 +1597,24 @@ public sealed partial class MainWindow : Window
                 list.View,
                 reset,
                 threshold,
+                new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                automaticTagging,
+                searchByMeaning,
+                taggingProgress,
+                new TextBlock
+                {
+                    Text = Tr("Both run quietly in the background, one photo at a time, and pause while you do something else in the app. New photos are those that arrive in a folder the library already has, for example after an import."),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+                },
             },
         };
 
         // Gallery tab
+        var startPage = new ComboBox { Header = Tr("Open the app on"), MinWidth = 320 };
+        foreach (var (_, label) in MainViewModel.StartPages)
+            startPage.Items.Add(label);
+        startPage.SelectedIndex = ViewModel.StartPageIndex;
         var defaultSort = new ComboBox { Header = Tr("Order of the photos in every folder"), MinWidth = 320 };
         foreach (var (_, label) in PhotoSort.All)
             defaultSort.Items.Add(label);
@@ -1214,6 +1627,13 @@ public sealed partial class MainWindow : Window
             Header = Tr("Move to the next photo after rating it in the viewer (also after P and X)"),
             IsOn = ViewModel.AutoAdvance,
         };
+        var withoutGps = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Leave out the GPS position when uploading or sharing photos"),
+            IsOn = ViewModel.SendWithoutGps,
+        };
         var findPeople = new ToggleSwitch
         {
             OnContent = Tr("On"),
@@ -1221,12 +1641,42 @@ public sealed partial class MainWindow : Window
             Header = Tr("Look for people in new photos by itself"),
             IsOn = ViewModel.FindPeopleAutomatically,
         };
+        var findDuplicates = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Look for duplicates in new photos by itself"),
+            IsOn = ViewModel.FindDuplicatesAutomatically,
+        };
+        var checkQuality = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Look for possibly blurry, too dark or too bright photos by itself"),
+            IsOn = ViewModel.CheckQualityAutomatically,
+        };
+        var tips = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Show tips while I get to know the app"),
+            IsOn = ViewModel.ShowTips,
+        };
+        var tipsAgain = new HyperlinkButton { Content = Tr("Show all tips again"), Padding = new Thickness(0) };
+        tipsAgain.Click += (_, _) =>
+        {
+            ViewModel.ShowTipsAgain();
+            tips.IsOn = true;
+            tipsAgain.Content = Tr("The tips will show again.");
+            tipsAgain.IsEnabled = false;
+        };
         var gallery = new StackPanel
         {
             Spacing = 12,
             Visibility = Visibility.Collapsed,
             Children =
             {
+                startPage,
                 defaultSort,
                 new TextBlock
                 {
@@ -1235,12 +1685,18 @@ public sealed partial class MainWindow : Window
                 },
                 autoAdvance,
                 findPeople,
+                peopleProgress,
+                findDuplicates,
+                checkQuality,
+                qualityProgress,
                 new TextBlock
                 {
                     Text = Tr("Photos not looked at yet are searched quietly whenever nothing else is running. Turning this on downloads the face models first if they aren't there yet."),
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
                 },
+                tips,
+                tipsAgain,
             },
         };
 
@@ -1286,7 +1742,7 @@ public sealed partial class MainWindow : Window
                 backUp,
                 new TextBlock
                 {
-                    Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Revert still work after editing it elsewhere."),
+                    Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Back to original still work after editing it elsewhere."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 processorOnly,
@@ -1319,7 +1775,24 @@ public sealed partial class MainWindow : Window
             Content = new StackPanel
             {
                 Spacing = 24,
-                Children = { GoogleSection(dialogClosed.Token), new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, OneDriveSection(dialogClosed.Token) },
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Spacing = 4,
+                        Children =
+                        {
+                            withoutGps,
+                            new TextBlock
+                            {
+                                Text = Tr("A copy without the position is sent; your photo keeps it. Place names, people and tags stay. Photos already in your OneDrive folder are linked as they are."),
+                                TextWrapping = TextWrapping.Wrap,
+                                Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+                            },
+                        },
+                    },
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    GoogleSection(dialogClosed.Token), new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") }, OneDriveSection(dialogClosed.Token) },
             },
         };
 
@@ -1336,6 +1809,9 @@ public sealed partial class MainWindow : Window
         });
         tags.Visibility = Visibility.Collapsed;
         var datesAndPlaces = DatesAndPlacesPage(out var chosenDatesAndPlaces);
+
+        // Info tab: version and credits
+        var info = InfoPage();
         var languagePage = LanguagePage(out var chosenLanguage);
 
         // Which facts "More details" in the info pane shows, two columns of ticks.
@@ -1356,7 +1832,14 @@ public sealed partial class MainWindow : Window
             detailBoxes.Add((detail.Key, box));
         }
 
-        // App tab: how the gallery behaves, the details pane, and the language.
+        AppRelease? updateTo = null;
+        var updates = UpdatesSettings(release =>
+        {
+            updateTo = release;
+            dialog?.Hide();
+        }, out var chosenUpdates);
+
+        // App tab: how the gallery behaves, the details pane, the language and updates.
         gallery.Visibility = languagePage.Visibility = Visibility.Visible;
         var appPage = new ScrollViewer
         {
@@ -1375,6 +1858,10 @@ public sealed partial class MainWindow : Window
                     new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
                     new TextBlock { Text = Tr("Language"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
                     languagePage,
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    PrivateModeSettings(),
+                    new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
+                    updates,
                 },
             },
         };
@@ -1403,13 +1890,14 @@ public sealed partial class MainWindow : Window
         // The tabs are listed down the left side; the pages share one cell so the dialog keeps its size.
         (string Text, string Glyph, FrameworkElement Page)[] pages =
         [
-            (Tr("App"), "\uE8B9", appPage),
+            (Tr("App"), "\uECAA", appPage),
             (Tr("Appearance"), "\uE790", appearance),
             (Tr("Tags"), "\uE8EC", tagsPage),
             (Tr("Dates and places"), "\uE787", datesAndPlaces),
             (Tr("Editing"), "\uE7A8", cropping),
-            (Tr("Linked apps"), "\uE753", linked),
+            (Tr("Linked apps"), "\uE71B", linked),
             (Tr("Keyboard"), "\uE765", keyboard),
+            (Tr("Info"), "\uE946", info),
         ];
         var tabs = new ListView { SelectionMode = ListViewSelectionMode.Single, Width = 200 };
         foreach (var (text, glyph, _) in pages)
@@ -1431,7 +1919,8 @@ public sealed partial class MainWindow : Window
             for (var i = 0; i < pages.Length; i++)
                 pages[i].Page.Visibility = i == tabs.SelectedIndex ? Visibility.Visible : Visibility.Collapsed;
         };
-        tabs.SelectedIndex = cloudTab is not null ? Array.FindIndex(pages, p => p.Page == linked) : 0;
+        tabs.SelectedIndex = cloudTab is not null ? Array.FindIndex(pages, p => p.Page == linked)
+            : Math.Max(0, Array.FindIndex(pages, p => p.Text == tab));
 
         var pageArea = new Grid { MinHeight = 480, Width = 580 };
         foreach (var page in pages)
@@ -1467,7 +1956,8 @@ public sealed partial class MainWindow : Window
             ViewModel.FilterByTag(showTag);
             return;
         }
-        if (answer != ContentDialogResult.Primary)
+        // "Update now" in Settings › App keeps what was changed, like Save.
+        if (answer != ContentDialogResult.Primary && updateTo is null)
         {
             revertAppearance();
             return;
@@ -1475,8 +1965,9 @@ public sealed partial class MainWindow : Window
 
         if (chosenLanguage() is { } uiLanguage)
             ViewModel.SaveUiLanguage(uiLanguage);
-        var (keepDatesInSync, placeLanguage) = chosenDatesAndPlaces();
+        var (keepDatesInSync, placeLanguage, addPlaceNames) = chosenDatesAndPlaces();
         ViewModel.SaveDatesAndPlaces(keepDatesInSync, placeLanguage);
+        ViewModel.SaveAddPlaceNamesAutomatically(addPlaceNames);
 
         var (theme, palette) = chosenAppearance();
         ViewModel.SaveAppearance(theme, palette);
@@ -1486,15 +1977,31 @@ public sealed partial class MainWindow : Window
         // Kept as "the starter list" while unchanged, so it follows the language.
         var isStarter = labels.SequenceEqual(AutoTags.StarterList(code));
         ViewModel.SaveAutoTagSettings(isStarter ? null : labels, code, threshold.Value / 100);
+        // Background tagging and searching in your own words need the tagging model: ask for it now (Settings
+        // has closed), and leave both off if it isn't wanted, so the settings never say on while nothing happens.
+        var automaticKey = MainViewModel.AutomaticTaggingChoices[Math.Max(0, automaticTagging.SelectedIndex)].Key;
+        var wantsModel = searchByMeaning.IsOn || automaticKey != AutoTagSettings.AutomaticOff;
+        var changed = searchByMeaning.IsOn != ViewModel.SearchByMeaning || automaticKey != ViewModel.AutomaticTagging;
+        if (changed && wantsModel && !MainViewModel.IsTagModelInstalled && !await EnsureTagModelAsync())
+            (automaticKey, searchByMeaning.IsOn) = (AutoTagSettings.AutomaticOff, false);
+        await ViewModel.SaveMeaningSettingsAsync(automaticKey, searchByMeaning.IsOn);
         if (crop.SelectedIndex >= 0)
             ViewModel.SaveCropRatio(CropRatios.All[crop.SelectedIndex].Key);
+        if (startPage.SelectedIndex >= 0)
+            ViewModel.SaveStartPage(startPage.SelectedIndex);
         if (defaultSort.SelectedIndex >= 0)
             ViewModel.SaveDefaultSort(defaultSort.SelectedIndex);
         ViewModel.SaveAutoAdvance(autoAdvance.IsOn);
+        ViewModel.SaveSendWithoutGps(withoutGps.IsOn);
+        ViewModel.SaveShowTips(tips.IsOn);
         // The search in the background needs the face models: ask for them now (Settings has closed), and
         // leave it off if they aren't wanted, so the setting never says on while nothing happens.
         var findPeopleOn = findPeople.IsOn && !MainViewModel.IsFaceModelInstalled ? await EnsureFaceModelAsync() : findPeople.IsOn;
         ViewModel.SaveFindPeopleAutomatically(findPeopleOn);
+        if (findDuplicates.IsOn != ViewModel.FindDuplicatesAutomatically)
+            ViewModel.SaveFindDuplicatesAutomatically(findDuplicates.IsOn);
+        if (checkQuality.IsOn != ViewModel.CheckQualityAutomatically)
+            ViewModel.SaveCheckQualityAutomatically(checkQuality.IsOn);
         ViewModel.SaveDetailKeys(detailBoxes.Where(d => d.Box.IsChecked == true).Select(d => d.Key).ToList());
         _ = ShowMoreDetailsAsync();
         ViewModel.SaveFavouriteApps(chosenApps());
@@ -1502,6 +2009,10 @@ public sealed partial class MainWindow : Window
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
         if (processorOnly.IsOn != ViewModel.UpscaleOnProcessorOnly)
             ViewModel.SaveUpscaleOnProcessorOnly(processorOnly.IsOn);
+        var (updateChannel, checkForUpdates) = chosenUpdates();
+        ViewModel.SaveUpdateSettings(updateChannel, checkForUpdates);
+        if (updateTo is not null)
+            await UpdateAsync(updateTo);
     }
 
     private void UpdateEditBar()
@@ -1526,6 +2037,14 @@ public sealed partial class MainWindow : Window
         var edits = ViewerItem is { } item ? EditHistory.EditCount(item.Path) : 0;
         ViewerUndoButton.IsEnabled = edits > 0;
         ViewerRevertButton.IsEnabled = edits > 0;
+
+        // An animated WebP can't be turned. Faded rather than disabled, so the tooltip still says why (as Busy.Gate does).
+        var animated = ViewerItem is { } shown && PhotoGallery.Core.SupportedFormats.IsAnimatedWebp(shown.Path);
+        foreach (var (button, tip) in new[] { (ViewerRotateLeftButton, Tr("Rotate left (Ctrl+,)")), (ViewerRotateRightButton, Tr("Rotate right (Ctrl+.)")) })
+        {
+            button.Opacity = animated ? 0.4 : 1;
+            ToolTipService.SetToolTip(button, animated ? PixelTurner.AnimatedWebpHint : tip);
+        }
     }
 
     private void ViewerCancelEdit_Click(object sender, RoutedEventArgs e) => CancelEdit();
@@ -1588,11 +2107,11 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = Tr("Revert to the original?"),
+            Title = Tr("Back to the original?"),
             Content = edits == 1
                 ? Tr("The photo goes back to how it was before it was edited. Tags, rating and other details you changed are kept.")
                 : Tr("The photo goes back to how it was before all {0} edits, and the edits cannot be undone afterwards. Tags, rating and other details you changed are kept.", edits),
-            PrimaryButtonText = Tr("Revert"),
+            PrimaryButtonText = Tr("Back to original"),
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };

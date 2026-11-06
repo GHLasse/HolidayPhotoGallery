@@ -19,7 +19,7 @@ public sealed partial class MainWindow
     private async void FindPeople_Click(object sender, RoutedEventArgs e)
     {
         if (!WaitsForBusyWork())
-            await FindPeopleAsync(SelectedPhotos);
+            await FindPeopleAsync(SelectedPhotos, again: true);
     }
 
     private async void FindPeopleInAll_Click(object sender, RoutedEventArgs e)
@@ -28,7 +28,19 @@ public sealed partial class MainWindow
             await FindPeopleAsync(ViewModel.Photos.ToList());
     }
 
-    private async Task FindPeopleAsync(IReadOnlyList<PhotoItemViewModel> photos)
+    private void PeopleSortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PeopleSortCombo.SelectedIndex < 0 || PeopleSortCombo.SelectedIndex == ViewModel.PeopleSortIndex)
+            return;
+        ViewModel.PeopleSortIndex = PeopleSortCombo.SelectedIndex;
+        _ = ShowPeoplePageAsync();
+    }
+
+    /// <param name="again">
+    /// Looks at photos already looked at once more (the selected photos): faces hidden by mistake come back,
+    /// and named faces keep their names, which are in the files.
+    /// </param>
+    private async Task FindPeopleAsync(IReadOnlyList<PhotoItemViewModel> photos, bool again = false)
     {
         if (photos.Count == 0)
         {
@@ -37,7 +49,7 @@ public sealed partial class MainWindow
         }
         if (!await EnsureFaceModelAsync())
             return;
-        await ViewModel.FindFacesAsync(photos);
+        await ViewModel.FindFacesAsync(photos, again);
     }
 
     /// <summary>Asks to download the face models when they aren't there yet; false when they still aren't.</summary>
@@ -72,7 +84,22 @@ public sealed partial class MainWindow
         }
         if (photos.Count > 1)
         {
+            // Everyone in any of the photos, with in how many, like the tags (X-1).
+            var counts = photos.SelectMany(p => p.Photo.People.Select(person => person.Name).Distinct(StringComparer.CurrentCultureIgnoreCase))
+                .GroupBy(n => n, StringComparer.CurrentCultureIgnoreCase)
+                .Select(g => (Name: g.Key, Count: g.Count()))
+                .OrderByDescending(p => p.Count).ThenBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            foreach (var (name, _) in counts.Where(p => !_latestFaces.ContainsKey(p.Name)))
+                _latestFaces[name] = await ViewModel.GetLatestFaceAsync(name);
+            if (version != _peopleVersion)
+                return;
             PeopleList.Children.Clear();
+            foreach (var (name, count) in counts)
+            {
+                PeopleList.Children.Add(Row(FacePicture(_latestFaces.GetValueOrDefault(name), FaceSize), Label($"{name} ({count})"),
+                    IconButton("\uE711", Tr("Remove {0} from the selected photos", name), async () => await ViewModel.RemovePersonFromAsync(photos, name))));
+            }
             PeopleList.Children.Add(AddPersonBox(photos));
             PeopleHint.Text = Tr("Adds the person to all {0} selected photos, without marking a face.", photos.Count);
             PeopleHint.Visibility = Visibility.Visible;
@@ -82,7 +109,9 @@ public sealed partial class MainWindow
 
         var item = photos[0];
         var orientation = item.Photo.Orientation;
-        var faces = (await ViewModel.GetFacesAsync(item.Path))
+        var allFaces = await ViewModel.GetFacesAsync(item.Path);
+        var hidden = allFaces.Any(f => f.Ignored);
+        var faces = allFaces
             .Where(f => !f.Ignored)
             .OrderBy(f => f.Box.ToUpright(orientation).X)
             .ToList();
@@ -106,11 +135,27 @@ public sealed partial class MainWindow
 
         for (var i = 0; i < withoutFace.Count; i++)
             PeopleList.Children.Add(PersonRow(item, withoutFace[i], pictures[i]));
+        // The search is offered right here when it can do something: the photo was not looked at yet, or
+        // faces were hidden and looking again brings them back. Faces are not looked for in videos (Lasse, 2026-10-27).
+        if (!item.IsVideo && (!looked || hidden))
+        {
+            var find = new Button
+            {
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children = { AppIcons.Element(AppIcons.FindPeople, 14), new TextBlock { Text = looked ? Tr("Look again") : Tr("Find people") } },
+                },
+            };
+            ToolTipService.SetToolTip(find, looked ? Tr("Look for people in this photo again; hidden faces come back") : Tr("Find people in the selected photos"));
+            find.Click += FindPeople_Click;
+            PeopleList.Children.Add(find);
+        }
         PeopleList.Children.Add(AddPersonBox([item]));
 
-        PeopleHint.Text = !looked
-            ? Tr("Use People → Find people in the selected photos to look for faces in this photo.")
-            : faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
+        PeopleHint.Text = item.IsVideo && faces.Count == 0 && withoutFace.Count == 0 ? Tr("Faces are only looked for in photos, not in videos.")
+            : looked && faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
         PeopleHint.Visibility = PeopleHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         PeopleSection.Visibility = Visibility.Visible;
     }
@@ -193,6 +238,7 @@ public sealed partial class MainWindow
     private AutoSuggestBox NameBox(Func<string, Task> submit)
     {
         var box = new AutoSuggestBox { PlaceholderText = Tr("Who is this?"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        PrepareSuggestions(box);
         box.TextChanged += (sender, args) =>
         {
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
@@ -301,6 +347,15 @@ public sealed partial class MainWindow
         return tip;
     }
 
+    /// <summary>The right-click menu item that goes through the faces that may be this person.</summary>
+    private MenuFlyoutItem ReviewMatchesItem(string person)
+    {
+        var item = new MenuFlyoutItem { Text = Tr("Go through possible matches"), Icon = new FontIcon { Glyph = "\uE77B" } };
+        ToolTipService.SetToolTip(item, Tr("Only the unnamed faces that may be {0}", person));
+        item.Click += (_, _) => _ = ReviewMatchesOfAsync(person);
+        return item;
+    }
+
     /// <summary>A round picture of a face; a person symbol when there is none.</summary>
     private static Border FacePicture(byte[]? thumbnail, double size)
     {
@@ -332,11 +387,20 @@ public sealed partial class MainWindow
 
     // ---- Naming groups of faces ----
 
+    // Faces whose group was skipped, so their group comes last the next time the dialog opens (until the app closes).
+    private readonly HashSet<long> _skippedFaces = [];
+
     private async void NamePeople_Click(object sender, RoutedEventArgs e)
     {
-        if (WaitsForBusyWork())
-            return;
-        var groups = await ViewModel.GroupUnnamedFacesAsync();
+        if (!WaitsForBusyWork())
+            await NamePeopleAsync();
+    }
+
+    private async Task NamePeopleAsync()
+    {
+        var found = await ViewModel.GroupUnnamedFacesAsync();
+        // Groups skipped earlier wait behind the others.
+        var groups = found.OrderBy(g => g.Faces.Count(f => _skippedFaces.Contains(f.Id)) * 2 >= g.Faces.Count).ToList();
         if (groups.Count == 0)
         {
             ViewModel.ErrorMessage = null;
@@ -349,26 +413,71 @@ public sealed partial class MainWindow
             }.ShowThemedAsync();
             return;
         }
+        await NameGroupsAsync(groups, person: null);
+    }
 
+    /// <summary>Right-click on a person: goes through only the unnamed faces that may be them.</summary>
+    private async Task ReviewMatchesOfAsync(string person)
+    {
+        if (WaitsForBusyWork())
+            return;
+        var faces = await ViewModel.FindLikelyFacesOfAsync(person);
+        if (faces.Count > 0)
+        {
+            // One group with the person as the fixed suggestion; it is shown a page at a time, most alike first.
+            var group = new FaceGroup(faces, notThese => notThese.Contains(person, StringComparer.CurrentCultureIgnoreCase)
+                ? null
+                : new NameSuggestion(person, 1));
+            if (!await NameGroupsAsync([group], person))
+                return; // Done was pressed: the user stops here.
+        }
+        var next = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = faces.Count > 0 ? Tr("All possible matches for {0} done", person) : Tr("No more faces that may be {0}", person),
+            Content = faces.Count > 0
+                ? Tr("You went through every unnamed face that may be {0}. Continue with the other people found?", person)
+                : Tr("No unnamed face looks like {0}. Continue with the other people found?", person),
+            PrimaryButtonText = Tr("Continue"),
+            CloseButtonText = Tr("Not now"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await next.ShowThemedAsync() == ContentDialogResult.Primary)
+            await NamePeopleAsync();
+    }
+
+    /// <summary>
+    /// The dialog for naming groups of faces. Each group comes with the person it most likely is, so most of
+    /// the time it is only confirmed; "Not this person" offers the next most likely one. With
+    /// <paramref name="person"/> it goes through the faces that may be that person.
+    /// </summary>
+    /// <returns>True when every group was gone through, false when Done closed the dialog first.</returns>
+    private async Task<bool> NameGroupsAsync(List<FaceGroup> groups, string? person)
+    {
         // Big groups are shown a page at a time, so every face that gets a name has been seen.
         const int Shown = 40;
         var index = 0;
         var start = 0;
+        var finished = false;
         string? lastName = null;
+        NameSuggestion? suggestion = null;
+        var notNames = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
         var heading = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        var guess = new TextBlock { TextWrapping = TextWrapping.Wrap, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
         var faces = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 68, ItemHeight = 68, MaximumRowsOrColumns = 8 };
         var nameBox = NameBox(_ => Task.CompletedTask);
         nameBox.Header = Tr("Who is this?");
         nameBox.PlaceholderText = Tr("Name");
         var problem = new TextBlock { Foreground = ThemeBrush("SystemFillColorCriticalBrush") ?? new SolidColorBrush(Microsoft.UI.Colors.Firebrick), TextWrapping = TextWrapping.Wrap };
-        var hide = new Button { Content = Tr("Hide these faces"), Margin = new Thickness(0, 8, 0, 0) };
+        var notThis = new Button { Content = Tr("Not this person") };
+        var hide = new Button { Content = Tr("Hide these faces") };
         ToolTipService.SetToolTip(hide, Tr("Not people to name: hide these faces"));
         var toggles = new List<(FaceChoice Choice, FoundFace Face)>();
 
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = Tr("Name the people found"),
+            Title = person is null ? Tr("Name the people found") : Tr("Faces that may be {0}", person),
             Content = new ScrollViewer
             {
                 MaxHeight = 560,
@@ -379,18 +488,29 @@ public sealed partial class MainWindow
                     {
                         heading,
                         faces,
+                        guess,
                         nameBox,
                         problem,
-                        hide,
+                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { notThis, hide } },
                     },
                 },
             },
             PrimaryButtonText = Tr("Name them"),
-            SecondaryButtonText = Tr("Skip"),
+            SecondaryButtonText = person is null ? Tr("Skip for now") : Tr("Skip these"),
             CloseButtonText = Tr("Done"),
             DefaultButton = ContentDialogButton.Primary,
         };
         dialog.Resources["ContentDialogMaxWidth"] = 720.0;
+
+        // A new group starts with its own most likely person.
+        void Begin()
+        {
+            start = 0;
+            lastName = null;
+            notNames.Clear();
+            suggestion = groups[index].Suggestion;
+            Show();
+        }
 
         void Show()
         {
@@ -398,8 +518,11 @@ public sealed partial class MainWindow
             var page = group.Faces.Count > Shown
                 ? Tr(" (showing {0} to {1})", start + 1, Math.Min(start + Shown, group.Faces.Count))
                 : "";
-            heading.Text = Tr("Group {0} of {1}: {2} face(s) that look like the same person{3}. ", index + 1, groups.Count, group.Faces.Count, page) +
-                           Tr("Click a face that doesn't belong to leave it out.");
+            heading.Text = person is null
+                ? Tr("Group {0} of {1}: {2} face(s) that look like the same person{3}. ", index + 1, groups.Count, group.Faces.Count, page) +
+                  Tr("Click a face that doesn't belong to leave it out.")
+                : Tr("{0} unnamed face(s) that may be {1}, most alike first{2}. ", group.Faces.Count, person, page) +
+                  Tr("Click a face that isn't {0} to leave it out.", person);
             faces.Children.Clear();
             toggles.Clear();
             foreach (var face in group.Faces.Skip(start).Take(Shown))
@@ -409,11 +532,23 @@ public sealed partial class MainWindow
                 faces.Children.Add(choice.Element);
                 toggles.Add((choice, face));
             }
-            nameBox.Text = lastName ?? group.Suggestion?.Name ?? "";
+            var name = lastName ?? suggestion?.Name;
+            nameBox.Text = name ?? "";
+            guess.Text = person is not null ? ""
+                : name is null ? (notNames.Count > 0 ? Tr("Nobody else you named looks like them. If you know who it is, type the name.")
+                                                     : Tr("Nobody you named looks like them. If you know who it is, type the name."))
+                : lastName is not null || suggestion!.Similarity >= FaceAnalyzer.SamePerson ? Tr("They look like {0}.", name)
+                : Tr("They might be {0}.", name);
+            guess.Visibility = guess.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            notThis.IsEnabled = name is not null;
+            ToolTipService.SetToolTip(notThis, name is null ? null : person is null
+                ? Tr("These faces are not {0}: offer the next most likely person", name)
+                : Tr("These faces are not {0}", name));
             problem.Text = "";
         }
 
         IReadOnlyList<FoundFace> Chosen() => [.. toggles.Where(t => t.Choice.IsChosen).Select(t => t.Face)];
+        IReadOnlyList<FoundFace> LeftOut() => [.. toggles.Where(t => !t.Choice.IsChosen).Select(t => t.Face)];
 
         // The next page of this group, keeping the name just used, or else the next group.
         void Next(string? name = null)
@@ -425,13 +560,14 @@ public sealed partial class MainWindow
                 Show();
                 return;
             }
-            start = 0;
-            lastName = null;
             index++;
             if (index >= groups.Count)
+            {
+                finished = true;
                 dialog.Hide();
+            }
             else
-                Show();
+                Begin();
         }
 
         dialog.PrimaryButtonClick += (sender, args) =>
@@ -447,12 +583,62 @@ public sealed partial class MainWindow
             // The names are written in the background (the filter row shows how far it is), so the next
             // faces come up at once and Done closes the dialog straight away.
             _ = ViewModel.NameFacesAsync(chosen, name);
+            // Faces left out of someone's possible matches are not them, so they aren't offered again.
+            if (person is not null && string.Equals(name, person, StringComparison.CurrentCultureIgnoreCase))
+                _ = ViewModel.RejectNameAsync(LeftOut(), person);
             Next(name);
         };
+        // The group's faces not yet named go to the end of the list, and come last next time too.
         dialog.SecondaryButtonClick += (_, args) =>
         {
             args.Cancel = true;
-            Next();
+            if (person is not null)
+            {
+                Next();
+                return;
+            }
+            var group = groups[index];
+            var rest = group.Faces.Skip(start).ToList();
+            foreach (var face in rest)
+                _skippedFaces.Add(face.Id);
+            if (index == groups.Count - 1)
+            {
+                finished = true;
+                dialog.Hide();
+                return;
+            }
+            groups.RemoveAt(index);
+            groups.Add(group.With(rest));
+            Begin();
+        };
+        // Not this person: remembered for the chosen faces and the rest of the group, then the next most
+        // likely person is offered (or the box is left empty for a name).
+        notThis.Click += (_, _) =>
+        {
+            var name = nameBox.Text.Trim();
+            if (name.Length == 0)
+                name = suggestion?.Name ?? "";
+            if (name.Length == 0)
+                return;
+            var chosen = Chosen();
+            if (chosen.Count == 0)
+            {
+                problem.Text = Tr("Every face is left out.");
+                return;
+            }
+            if (person is not null)
+            {
+                // Only these faces: the next pages are other faces that may still be them.
+                _ = ViewModel.RejectNameAsync(chosen, name);
+                Next();
+                return;
+            }
+            _ = ViewModel.RejectNameAsync([.. chosen, .. groups[index].Faces.Skip(start + Shown)], name);
+            notNames.Add(name);
+            lastName = null;
+            suggestion = groups[index].SuggestWithout(notNames);
+            Show();
+            nameBox.Focus(FocusState.Programmatic);
         };
         hide.Click += (_, _) =>
         {
@@ -462,8 +648,9 @@ public sealed partial class MainWindow
             Next();
         };
 
-        Show();
+        Begin();
         await dialog.ShowThemedAsync();
+        return finished;
     }
 }
 

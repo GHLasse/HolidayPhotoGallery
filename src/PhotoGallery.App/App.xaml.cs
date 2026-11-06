@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using PhotoGallery.App.Native;
+using PhotoGallery.Core;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Localization;
 
@@ -66,7 +67,7 @@ public partial class App : Application
         try
         {
             lock (_logLock)
-                File.AppendAllText(ActivityLog, $"{DateTime.Now:HH:mm:ss.fff} {text}{Environment.NewLine}");
+                File.AppendAllText(ActivityLog, $"{DateTime.Now:HH:mm:ss.fff} {LogText.Redact(text)}{Environment.NewLine}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -80,7 +81,7 @@ public partial class App : Application
         {
             var log = Path.Combine(LibrarySettings.DefaultDataFolder, "crash.log");
             Directory.CreateDirectory(LibrarySettings.DefaultDataFolder);
-            File.AppendAllText(log, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {exception}{Environment.NewLine}{Environment.NewLine}");
+            File.AppendAllText(log, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {LogText.Redact(exception?.ToString() ?? "")}{Environment.NewLine}{Environment.NewLine}");
         }
         catch (IOException)
         {
@@ -100,7 +101,11 @@ public partial class App : Application
         {
             // The language is chosen before the window is built, since its texts are read as it is built.
             var settings = LibrarySettings.Load(Path.Combine(LibrarySettings.DefaultDataFolder, "settings.json"));
-            Strings.Use(settings.UiLanguage, LanguageFolders);
+            var language = Strings.Use(settings.UiLanguage, LanguageFolders);
+            // Month and day names follow the app's language; the date order and numbers stay Windows' own.
+            var culture = Strings.WithNamesOf(System.Globalization.CultureInfo.CurrentCulture, language);
+            System.Globalization.CultureInfo.CurrentCulture = culture;
+            System.Globalization.CultureInfo.DefaultThreadCurrentCulture = culture;
             _window = new MainWindow();
             _window.Activate();
         }

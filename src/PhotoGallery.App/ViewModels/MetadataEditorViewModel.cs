@@ -18,11 +18,14 @@ public sealed class MetadataEditorViewModel : ObservableObject
     private string _caption = "";
     private double _rating = -1;
     private string _dateText = "";
-    private List<TimeZoneChoice> _timeZones = TimeZoneChoice.List(TimeZoneChoice.Unknown());
+    private List<TimeZoneChoice> _timeZones = TimeZoneChoice.List(null, TimeZoneChoice.Unknown());
     private int _timeZoneIndex;
     private bool _captionChanged, _tagsChanged, _ratingChanged, _dateChanged;
     private string _summary = Tr("No photo selected");
     private string _details = "";
+    private string _position = "";
+    private string _folder = "";
+    private bool _canLookUpPlace;
     private string _captionPlaceholder = Tr("Add a caption");
     private string? _validationError;
 
@@ -37,6 +40,14 @@ public sealed class MetadataEditorViewModel : ObservableObject
     public string Summary { get => _summary; private set => SetProperty(ref _summary, value); }
 
     public string Details { get => _details; private set => SetProperty(ref _details, value); }
+
+    /// <summary>"GPS 53.34345, -6.28718" of a single photo, on its own line so "Look up place" can sit beside it.</summary>
+    public string Position { get => _position; private set => SetProperty(ref _position, value); }
+
+    public string Folder { get => _folder; private set => SetProperty(ref _folder, value); }
+
+    /// <summary>A single photo with a GPS position but no place names yet.</summary>
+    public bool CanLookUpPlace { get => _canLookUpPlace; private set => SetProperty(ref _canLookUpPlace, value); }
 
     public string CaptionPlaceholder { get => _captionPlaceholder; private set => SetProperty(ref _captionPlaceholder, value); }
 
@@ -170,8 +181,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
             DateText = date?.ToDisplayDate() ?? "";
             // Photos only store an offset, not a place, so the saved offset is offered as its own entry.
             TimeZones = date?.Offset is { } saved
-                ? TimeZoneChoice.List(TimeZoneChoice.Unknown(), TimeZoneChoice.Fixed(saved, Tr("as saved in the photo")))
-                : TimeZoneChoice.List(TimeZoneChoice.Unknown());
+                ? TimeZoneChoice.List(date?.Local, TimeZoneChoice.Unknown(), TimeZoneChoice.Fixed(saved, Tr("as saved in the photo")))
+                : TimeZoneChoice.List(date?.Local, TimeZoneChoice.Unknown());
             // Reset first: replacing the list clears the combo box, so the index must be raised again even if unchanged.
             _timeZoneIndex = -1;
             TimeZoneIndex = date?.Offset is null ? 0 : 1;
@@ -182,13 +193,14 @@ public sealed class MetadataEditorViewModel : ObservableObject
                 1 => photos[0].FileName,
                 _ => Tr("{0} photos selected", items.Count),
             };
-            Details = items.Count == 1 ? DescribeSingle(photos[0]) : "";
+            DescribeSingle(items.Count == 1 ? photos[0] : null);
         }
         finally
         {
             _loading = false;
         }
 
+        OnPropertyChanged(nameof(Items));
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(IsSingle));
         OnPropertyChanged(nameof(IsDirty));
@@ -256,7 +268,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
         if (!IsDirty)
             Load(_items);
         else if (_items is [var single])
-            Details = DescribeSingle(single.Photo);
+            DescribeSingle(single.Photo);
     }
 
     /// <summary>Whether auto-tagging added the tag on every one of the photos that have it.</summary>
@@ -270,27 +282,25 @@ public sealed class MetadataEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsDirty));
     }
 
-    private static string DescribeSingle(Core.Library.IndexedPhoto photo)
+    private void DescribeSingle(Core.Library.IndexedPhoto? photo)
     {
-        var lines = new List<string>();
-        if (photo.Width is { } w && photo.Height is { } h)
-        {
-            var (dw, dh) = Orientation.SwapsDimensions(photo.Orientation) ? (h, w) : (w, h);
-            lines.Add(Tr("{0} × {1} pixels", dw, dh));
-        }
-        lines.Add(FormatSize(photo.FileSize));
-        if (photo.Place is { } place)
-            lines.Add(place.ToString());
-        if (photo.Location is { } at)
-            lines.Add(string.Format(System.Globalization.CultureInfo.CurrentCulture, "GPS {0:0.00000}, {1:0.00000}", at.Latitude, at.Longitude));
-        lines.Add(photo.Folder);
-        return string.Join(Environment.NewLine, lines);
+        Position = photo?.Location is { } at
+            ? string.Format(System.Globalization.CultureInfo.CurrentCulture, "GPS {0:0.00000}, {1:0.00000}", at.Latitude, at.Longitude)
+            : "";
+        CanLookUpPlace = photo is { Location: not null, Place: null };
+        Folder = photo?.Folder ?? "";
+        Details = photo is null ? "" : Describe(photo);
     }
 
-    private static string FormatSize(long bytes) => bytes switch
+    private static string Describe(Core.Library.IndexedPhoto photo)
     {
-        >= 1024 * 1024 => Tr("{0:0.0} MB", bytes / (1024.0 * 1024)),
-        >= 1024 => Tr("{0:0} KB", bytes / 1024.0),
-        _ => Tr("{0} bytes", bytes),
-    };
+        // The pixel size is in the resolution badge's tooltip and in More details (U-7).
+        var lines = new List<string>();
+        lines.Add(Core.Library.ViewSummary.FormatSize(photo.FileSize));
+        if (PhotoItemViewModel.FormatDuration(photo.Duration) is { Length: > 0 } duration)
+            lines.Add(Tr("Length: {0}", duration));
+        if (photo.Place is { } place)
+            lines.Add(place.ToString());
+        return string.Join(Environment.NewLine, lines);
+    }
 }

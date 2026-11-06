@@ -115,12 +115,27 @@ public sealed class AlbumTests : IDisposable
     [Fact]
     public void Albums_sort_by_date_either_way_or_by_name_with_undated_ones_last()
     {
-        Album A(string name, int? year) => new() { Folder = name, Name = name, From = year is { } y ? new DateTime(y, 1, 1) : null };
+        Album A(string name, int? year) => new()
+        {
+            Folder = name,
+            Name = name,
+            From = year is { } y ? new DateTime(y, 1, 1) : null,
+            To = year is { } z ? new DateTime(z, 1, 20) : null,
+        };
         var albums = new[] { A("Norway", 2023), A("Empty", null), A("Italy", 2024), A("Alps", 2019) };
 
         Assert.Equal(["Italy", "Norway", "Alps", "Empty"], Album.Sort(albums, Album.SortNewest).Select(a => a.Name));
         Assert.Equal(["Alps", "Norway", "Italy", "Empty"], Album.Sort(albums, Album.SortOldest).Select(a => a.Name));
         Assert.Equal(["Alps", "Empty", "Italy", "Norway"], Album.Sort(albums, Album.SortName).Select(a => a.Name));
+    }
+
+    [Fact]
+    public void Albums_sort_by_when_the_trip_ended()
+    {
+        var long_ = new Album { Folder = "Long", Name = "Long", From = new DateTime(2024, 5, 1), To = new DateTime(2024, 8, 30) };
+        var short_ = new Album { Folder = "Short", Name = "Short", From = new DateTime(2024, 6, 1), To = new DateTime(2024, 6, 10) };
+
+        Assert.Equal(["Long", "Short"], Album.Sort([short_, long_], Album.SortNewest).Select(a => a.Name));
     }
 
     [Fact]

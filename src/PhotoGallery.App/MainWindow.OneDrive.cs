@@ -90,6 +90,7 @@ public sealed partial class MainWindow
     private FrameworkElement OneDriveSection(CancellationToken closed)
     {
         var panel = new StackPanel { Spacing = 12 };
+        var signInChecked = false;
         CancellationTokenSource? signingIn = null;
         closed.Register(() => signingIn?.Cancel());
         var clientId = new TextBox { Header = Tr("Application (client) ID"), PlaceholderText = "0a1b2c3d-…", Text = ViewModel.OwnOneDriveClientId ?? "" };
@@ -131,6 +132,12 @@ public sealed partial class MainWindow
             }
         }
 
+        async Task CheckAsync()
+        {
+            if (await ViewModel.CheckSignInAsync(CloudService.OneDrive) && !closed.IsCancellationRequested)
+                ShowStatus();
+        }
+
         void ShowStatus()
         {
             panel.Children.Clear();
@@ -146,8 +153,25 @@ public sealed partial class MainWindow
             });
             panel.Children.Add(Text(Tr("Upload albums and photos to your OneDrive. They go into Pictures › {0} › album name, and each album goes into a OneDrive album: one you already have, or a new one. Uploading again later only sends the new photos. Photos already in your OneDrive folder on this PC aren't uploaded twice: the app puts the copy OneDrive has into the album.", Core.OneDrive.OneDriveClient.AppFolder)));
 
+            if (ViewModel.SignInExpired(CloudService.OneDrive))
+            {
+                panel.Children.Add(new InfoBar
+                {
+                    IsOpen = true,
+                    IsClosable = false,
+                    Severity = InfoBarSeverity.Warning,
+                    Title = Tr("Sign-in expired"),
+                    Message = Tr("{0} no longer accepts the saved sign-in: it ran out or was withdrawn. Sign in again, and album renames that didn't go through are sent then.", "Microsoft"),
+                });
+            }
             if (ViewModel.IsOneDriveSignedIn)
             {
+                // The saved sign-in can have run out without the app noticing yet: ask once, and show the truth.
+                if (!signInChecked)
+                {
+                    signInChecked = true;
+                    _ = CheckAsync();
+                }
                 panel.Children.Add(new InfoBar
                 {
                     IsOpen = true,

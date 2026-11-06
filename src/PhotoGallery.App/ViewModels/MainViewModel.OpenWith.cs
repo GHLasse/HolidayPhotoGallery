@@ -34,7 +34,7 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Gets a photo ready to open in another app: keeps a copy in .originals (unless turned off in
-    /// Settings), so Undo and Revert still work, and watches it for that app's changes.
+    /// Settings), so Undo and Back to original still work, and watches it for that app's changes.
     /// Returns false when the backup failed, so the photo is not opened unprotected.
     /// </summary>
     public bool PrepareForOtherApp(PhotoItemViewModel item)
@@ -117,8 +117,12 @@ public sealed partial class MainViewModel
             if (await _indexer.RefreshFileAsync(path) is not { } updated)
                 return;
             item.Photo = updated;
+            // Another app may have changed the pixels (that is what "Edit in" is for): what the background
+            // jobs found out about the picture is worked out again.
+            await ForgetPictureAsync(path, path);
             await item.ReloadThumbnailAsync();
             PhotoChangedOutside?.Invoke(item);
+            StartBackgroundJobsSoon();
             Inform(Tr("{0} was changed in another app and has been updated here.", item.FileName));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ExifToolException)

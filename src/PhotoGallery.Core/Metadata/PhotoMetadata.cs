@@ -43,9 +43,21 @@ public sealed record PhotoMetadata
     /// <summary>Camera make and model, e.g. "Apple iPhone 15 Pro" or "Canon EOS R6".</summary>
     public string? Camera { get; init; }
 
+    /// <summary>The copyright notice, e.g. "© 2024 Lasse".</summary>
+    public string? Copyright { get; init; }
+
+    /// <summary>Who took the photo (EXIF Artist, XMP Creator).</summary>
+    public string? Creator { get; init; }
+
     /// <summary>The people named in the photo, with their faces on the stored pixels.</summary>
     public IReadOnlyList<PersonTag> People { get; init; } = [];
 
     /// <summary>Regions other programs wrote that are not named people; kept when the people change.</summary>
     public IReadOnlyList<OtherRegion> OtherRegions { get; init; } = [];
+
+    /// <summary>A video's length in seconds; null for photos.</summary>
+    public double? Duration { get; init; }
+
+    /// <summary>A video's frames per second; null for photos or when the file doesn't say.</summary>
+    public double? FrameRate { get; init; }
 }

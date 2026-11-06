@@ -78,4 +78,26 @@ public sealed class AutoTagsTests
         var middle = ImageTagger.ImageSize / 2;
         Assert.InRange(values[middle * ImageTagger.ImageSize + middle], -0.02f, 0.02f);
     }
+    [Fact]
+    public void TaggingAPhotoKeepsAllocationsSmall()
+    {
+        // Tagging a folder runs this per photo thousands of times over, and these buffers are large
+        // enough to land on the large object heap, which a plain collection never tidies up. Reusing
+        // them is what keeps the app's memory flat through a big batch, so guard it here.
+        const int width = 512, height = 384;
+        var image = new byte[width * height * 4];
+        Random.Shared.NextBytes(image);
+        var temp = new float[height * ImageTagger.ImageSize * 3];
+        var result = new float[3 * ImageTagger.ImageSize * ImageTagger.ImageSize];
+
+        ImageTagger.WritePixelValues(image, width, height, temp, result);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 10; i++)
+            ImageTagger.WritePixelValues(image, width, height, temp, result);
+        var perPhoto = (GC.GetAllocatedBytesForCurrentThread() - before) / 10;
+
+        // Near nothing: neither the 1.7 MB of buffers nor the resize weights are worked out again.
+        Assert.True(perPhoto < 4 * 1024, $"{perPhoto / 1024.0:0.#} KB allocated per photo");
+    }
+
 }

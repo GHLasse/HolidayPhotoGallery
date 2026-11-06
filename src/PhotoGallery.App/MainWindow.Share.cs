@@ -19,11 +19,14 @@ public sealed partial class MainWindow
             ViewModel.Warn(Tr("Select the photos to share."));
             return;
         }
+        // Copies without the GPS position, when Settings says so.
+        if (await ViewModel.FilesToShareAsync(paths) is not { } send)
+            return;
         // Storage files are made off the UI thread: Windows storage calls there can re-enter WinUI and crash it.
         _sharedFiles = await Task.Run(async () =>
         {
             var files = new List<IStorageItem>();
-            foreach (var path in paths)
+            foreach (var path in send)
             {
                 try
                 {

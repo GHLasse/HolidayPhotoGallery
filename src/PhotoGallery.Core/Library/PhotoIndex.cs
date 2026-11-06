@@ -17,7 +17,7 @@ public sealed record TagCount(string Tag, int Count, bool IsGroup, bool IsAuto =
 /// </summary>
 public sealed partial class PhotoIndex : IDisposable
 {
-    private const int SchemaVersion = 7;
+    private const int SchemaVersion = 8;
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly SqliteConnection _connection;
@@ -37,17 +37,21 @@ public sealed partial class PhotoIndex : IDisposable
         _connection.Open();
         EnsureSchema();
         RelinkFaces();
+        ShowPrivate = false;
     }
 
     private void EnsureSchema()
     {
         var version = Convert.ToInt32(Scalar("PRAGMA user_version;"), CultureInfo.InvariantCulture);
-        if (version is 5 or 6)
+        if (version is 5 or 6 or 7)
         {
             // Flags came with version 6 and the auto tag mark with 7; adding the columns keeps the faces already found.
             if (version == 5)
                 Execute("ALTER TABLE photos ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;");
-            Execute("ALTER TABLE photo_tags ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;");
+            if (version is 5 or 6)
+                Execute("ALTER TABLE photo_tags ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;");
+            // Version 8 takes fingerprints of the upright picture, decoded by Windows: the older ones are taken again.
+            Execute("DROP TABLE IF EXISTS picture_hashes;");
         }
         else if (version != SchemaVersion)
         {
@@ -127,13 +131,76 @@ public sealed partial class PhotoIndex : IDisposable
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
                 health INTEGER NOT NULL,
                 file_mtime INTEGER NOT NULL,
-                level INTEGER NOT NULL DEFAULT 1
+                level INTEGER NOT NULL DEFAULT 1,
+                misnamed INTEGER NOT NULL DEFAULT 0
+            );
+            -- Picture fingerprints for finding duplicates (F-3), for the file as it was then.
+            CREATE TABLE IF NOT EXISTS picture_hashes (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                file_mtime INTEGER NOT NULL,
+                dhash INTEGER
+            );
+            -- Groups of look-alikes the user kept all of; a new copy joining the group changes its key.
+            CREATE TABLE IF NOT EXISTS kept_duplicates (group_key TEXT PRIMARY KEY);
+            -- The tagging model's picture vector (L-7), half precision, for the file as it was then.
+            CREATE TABLE IF NOT EXISTS picture_vectors (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                file_mtime INTEGER NOT NULL,
+                vector BLOB NOT NULL
+            );
+            -- The user's changes to the stacks of similar shots (C-4): the cover, taken out, a new stack starts here.
+            CREATE TABLE IF NOT EXISTS shot_marks (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                mark INTEGER NOT NULL,
+                stack TEXT -- a stack the user made: its members share this key
+            );
+            -- Sharpness and exposure measured for quality hints (C-4); ignored = the user dismissed the hints.
+            CREATE TABLE IF NOT EXISTS shot_quality (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                sharpness REAL NOT NULL,
+                face_sharpness REAL,
+                brightness REAL NOT NULL,
+                dark_share REAL NOT NULL,
+                bright_share REAL NOT NULL,
+                hints INTEGER NOT NULL,
+                ignored INTEGER NOT NULL DEFAULT 0,
+                bright_end REAL, -- the level the brightest 1 % reach; null when measured before it was kept
+                middle_sharpness REAL -- how sharp the middle third is; -1 nothing to judge, null measured before it was kept
+            );
+            -- Photos whose position was looked up in the background and has no place (the sea): not asked again.
+            CREATE TABLE IF NOT EXISTS place_misses (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
+            );
+            -- Photos the background auto-tagging has looked at, tags found or not: "the ones I already have" skips them.
+            CREATE TABLE IF NOT EXISTS auto_tag_seen (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
+            );
+            -- Photos that arrived in a folder already in the library, to be auto-tagged in the background (L-7).
+            CREATE TABLE IF NOT EXISTS auto_tag_queue (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
             );
             PRAGMA user_version = {SchemaVersion};
             """);
+        // The brightest part of a photo, kept for the "too dark" hint since 2026-11.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('shot_quality') WHERE name = 'bright_end';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE shot_quality ADD COLUMN bright_end REAL;");
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('shot_quality') WHERE name = 'middle_sharpness';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE shot_quality ADD COLUMN middle_sharpness REAL;");
         // Checks saved before the level was kept count as level 1, so those files are checked again.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'level';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE file_checks ADD COLUMN level INTEGER NOT NULL DEFAULT 1;");
+        // A damaged file's wrong name used to be hidden by its damage; those files are checked again.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('file_checks') WHERE name = 'misnamed';"), CultureInfo.InvariantCulture) == 0)
+            Execute($"ALTER TABLE file_checks ADD COLUMN misnamed INTEGER NOT NULL DEFAULT 0; UPDATE file_checks SET level = 0 WHERE health NOT IN (0, {(int)FileHealth.Misnamed});");
+        // Private photos (P-1) came later; their mark is read from the folders again on the next scan.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'private';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE photos ADD COLUMN private INTEGER NOT NULL DEFAULT 0;");
+        // Videos (F-4) came later too; until now the library held only photos.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'video';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE photos ADD COLUMN video INTEGER NOT NULL DEFAULT 0; ALTER TABLE photos ADD COLUMN duration REAL;");
+        // Frame rates came after videos; forgetting the videos' file times makes the next scan read them again.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'frame_rate';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE photos ADD COLUMN frame_rate REAL; UPDATE photos SET file_mtime = 0 WHERE video = 1;");
     }
 
     /// <summary>Path → (size, modified time) for every indexed file under a folder, to spot changes.</summary>
@@ -142,7 +209,7 @@ public sealed partial class PhotoIndex : IDisposable
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = $"SELECT path, file_size, file_mtime FROM photos WHERE {FolderCondition(cmd, rootFolder, true)};";
+            cmd.CommandText = $"SELECT path, file_size, file_mtime FROM main.photos WHERE {FolderCondition(cmd, rootFolder, true)};";
             var result = new Dictionary<string, (long, DateTime)>(StringComparer.OrdinalIgnoreCase);
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -155,6 +222,7 @@ public sealed partial class PhotoIndex : IDisposable
     {
         lock (_lock)
         {
+            _privateMarks.Clear();
             using var tx = _connection.BeginTransaction();
             foreach (var photo in photos)
                 UpsertOne(photo, tx);
@@ -167,10 +235,10 @@ public sealed partial class PhotoIndex : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
-                                country, country_code, state, city, sublocation)
+            INSERT INTO main.photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
+                                country, country_code, state, city, sublocation, private, video, duration, frame_rate)
             VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $flagged, $caption, $orientation, $width, $height, $camera, $lat, $lon,
-                    $country, $countryCode, $state, $city, $sublocation)
+                    $country, $countryCode, $state, $city, $sublocation, $private, $video, $duration, $frameRate)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
@@ -179,7 +247,8 @@ public sealed partial class PhotoIndex : IDisposable
                 width = excluded.width, height = excluded.height, camera = excluded.camera,
                 latitude = excluded.latitude, longitude = excluded.longitude,
                 country = excluded.country, country_code = excluded.country_code, state = excluded.state,
-                city = excluded.city, sublocation = excluded.sublocation
+                city = excluded.city, sublocation = excluded.sublocation, private = excluded.private,
+                video = excluded.video, duration = excluded.duration, frame_rate = excluded.frame_rate
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", photo.Path);
@@ -204,6 +273,10 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$state", (object?)photo.Place?.State ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$city", (object?)photo.Place?.City ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$sublocation", (object?)photo.Place?.Sublocation ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$private", PrivateMarks.IsPrivate(photo.Path, _privateMarks) ? 1 : 0);
+        cmd.Parameters.AddWithValue("$video", photo.IsVideo ? 1 : 0);
+        cmd.Parameters.AddWithValue("$duration", (object?)photo.Duration ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$frameRate", (object?)photo.FrameRate ?? DBNull.Value);
         var id = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         using var delete = _connection.CreateCommand();
@@ -282,7 +355,7 @@ public sealed partial class PhotoIndex : IDisposable
             {
                 using var cmd = _connection.CreateCommand();
                 cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM photos WHERE path = $path;";
+                cmd.CommandText = "DELETE FROM main.photos WHERE path = $path;";
                 cmd.Parameters.AddWithValue("$path", path);
                 cmd.ExecuteNonQuery();
             }
@@ -295,16 +368,46 @@ public sealed partial class PhotoIndex : IDisposable
     {
         lock (_lock)
         {
+            _privateMarks.Clear();
             using var tx = _connection.BeginTransaction();
             using (var cmd = _connection.CreateCommand())
             {
                 cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM photos WHERE path = $new; UPDATE photos SET path = $new WHERE path = $old;";
+                cmd.CommandText = "DELETE FROM main.photos WHERE path = $new; UPDATE main.photos SET path = $new WHERE path = $old;";
+                // A new extension can make a misnamed photo right (or a right one misnamed): check it again.
+                if (!string.Equals(Path.GetExtension(photo.Path), Path.GetExtension(newPath), StringComparison.OrdinalIgnoreCase))
+                    cmd.CommandText += " DELETE FROM file_checks WHERE photo_id = (SELECT id FROM main.photos WHERE path = $new);";
                 cmd.Parameters.AddWithValue("$old", photo.Path);
                 cmd.Parameters.AddWithValue("$new", newPath);
                 cmd.ExecuteNonQuery();
             }
             UpsertOne(photo.MovedTo(newPath), tx);
+            tx.Commit();
+        }
+    }
+
+    /// <summary>
+    /// Follows a folder renamed or moved on disk: every photo in and under it keeps its entry (faces, checks)
+    /// under its new path.
+    /// </summary>
+    public void RenameFolder(string oldFolder, string newFolder)
+    {
+        var oldRoot = Path.TrimEndingDirectorySeparator(oldFolder);
+        var newRoot = Path.TrimEndingDirectorySeparator(newFolder);
+        lock (_lock)
+        {
+            using var tx = _connection.BeginTransaction();
+            using var cmd = _connection.CreateCommand();
+            cmd.Transaction = tx;
+            var where = FolderCondition(cmd, oldRoot, true);
+            cmd.Parameters.AddWithValue("$oldLen", oldRoot.Length);
+            cmd.Parameters.AddWithValue("$new", newRoot);
+            // Only the start of each path changes: the old folder's part is cut off and the new one put in front.
+            cmd.CommandText = $"""
+                UPDATE main.photos SET path = $new || substr(path, $oldLen + 1), folder = $new || substr(folder, $oldLen + 1)
+                WHERE {where};
+                """;
+            cmd.ExecuteNonQuery();
             tx.Commit();
         }
     }
@@ -315,10 +418,13 @@ public sealed partial class PhotoIndex : IDisposable
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = $"DELETE FROM photos WHERE {FolderCondition(cmd, rootFolder, true)};";
+            cmd.CommandText = $"DELETE FROM main.photos WHERE {FolderCondition(cmd, rootFolder, true)};";
             cmd.ExecuteNonQuery();
         }
     }
+
+    /// <summary>The photo as the index has it, or null.</summary>
+    public IndexedPhoto? GetPhoto(string path) => Search(new PhotoQuery { ExactPath = path }).FirstOrDefault();
 
     public IReadOnlyList<IndexedPhoto> Search(PhotoQuery query)
     {
@@ -329,6 +435,12 @@ public sealed partial class PhotoIndex : IDisposable
 
             if (!string.IsNullOrWhiteSpace(query.Folder))
                 where.Add(FolderCondition(cmd, query.Folder, query.IncludeSubfolders));
+
+            if (query.ExactPath is { } exact)
+            {
+                where.Add("p.path = $exactPath");
+                cmd.Parameters.AddWithValue("$exactPath", exact);
+            }
 
             if (query.MinRating > 0)
             {
@@ -361,8 +473,22 @@ public sealed partial class PhotoIndex : IDisposable
             if (query.WithoutDate)
                 where.Add("p.date_taken IS NULL");
 
+            if (query.WithoutCamera)
+                where.Add("(p.camera IS NULL OR p.camera = '')");
+
+            if (query.Media == MediaKind.Photos)
+                where.Add("p.video = 0");
+            else if (query.Media == MediaKind.Videos)
+                where.Add("p.video = 1");
+
             if (query.DamagedOnly)
-                where.Add("EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
+                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND c.health <> 0 AND c.file_mtime = p.file_mtime)");
+
+            if (query.QualityHintsOnly)
+                where.Add(HasQualityHintSql);
+
+            if (query.MisnamedOnly)
+                where.Add($"EXISTS (SELECT 1 FROM file_checks c WHERE c.photo_id = p.id AND (c.health = {(int)FileHealth.Misnamed} OR c.misnamed = 1) AND c.file_mtime = p.file_mtime)");
 
             if (query.WithoutPlace)
                 where.Add("(p.country IS NULL OR p.country = '')");
@@ -371,6 +497,13 @@ public sealed partial class PhotoIndex : IDisposable
             {
                 where.Add("p.country = $country COLLATE NOCASE");
                 cmd.Parameters.AddWithValue("$country", query.Country);
+            }
+
+            if (query.Countries is { Count: > 0 } countries)
+            {
+                where.Add($"p.country COLLATE NOCASE IN ({string.Join(", ", countries.Select((_, n) => $"$country{n}"))})");
+                for (var n = 0; n < countries.Count; n++)
+                    cmd.Parameters.AddWithValue($"$country{n}", countries[n]);
             }
 
             if (!string.IsNullOrEmpty(query.City))
@@ -403,8 +536,10 @@ public sealed partial class PhotoIndex : IDisposable
             foreach (var tag in TagList.Normalize(query.Tags))
             {
                 var name = $"$tag{i++}";
-                where.Add($"EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND t.tag = {name})");
+                // A tag in a tree also finds the tags under it (M-5): "Animals" finds "Animals/Birds/Seagull".
+                where.Add($"EXISTS (SELECT 1 FROM photo_tags t WHERE t.photo_id = p.id AND (t.tag = {name} OR t.tag LIKE {name}_under ESCAPE '\\'))");
                 cmd.Parameters.AddWithValue(name, tag);
+                cmd.Parameters.AddWithValue(name + "_under", EscapeLike(tag + "/") + "%");
             }
 
             foreach (var person in query.People.Distinct(StringComparer.CurrentCultureIgnoreCase))
@@ -438,7 +573,8 @@ public sealed partial class PhotoIndex : IDisposable
                        (SELECT group_concat(name || char(30) || x || char(30) || y || char(30) || w || char(30) || h, char(31))
                         FROM photo_people pp WHERE pp.photo_id = p.id) AS people,
                        p.flagged,
-                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1) AS auto_tags
+                       (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1) AS auto_tags,
+                       p.duration, p.frame_rate
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -475,7 +611,7 @@ public sealed partial class PhotoIndex : IDisposable
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags GROUP BY tag COLLATE NOCASE ORDER BY tag COLLATE NOCASE;";
+            cmd.CommandText = "SELECT tag, COUNT(*) FROM photo_tags WHERE photo_id IN (SELECT id FROM photos) GROUP BY tag COLLATE NOCASE ORDER BY tag COLLATE NOCASE;";
             var result = new List<(string, int)>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -484,13 +620,43 @@ public sealed partial class PhotoIndex : IDisposable
         }
     }
 
+    /// <summary>
+    /// The tags for the filter (M-5): every tag, and every tree level above a tag ("Animals" and
+    /// "Animals/Birds" above "Animals/Birds/Seagull") with how many photos have a tag at or under it,
+    /// in tree order: each level followed by what is under it.
+    /// </summary>
+    private static readonly Comparer<string> TreeOrder = Comparer<string>.Create((a, b) =>
+    {
+        var pa = a.Split('/');
+        var pb = b.Split('/');
+        for (var i = 0; i < Math.Min(pa.Length, pb.Length); i++)
+        {
+            var c = StringComparer.CurrentCultureIgnoreCase.Compare(pa[i], pb[i]);
+            if (c != 0)
+                return c;
+        }
+        return pa.Length.CompareTo(pb.Length);
+    });
+
+    public IReadOnlyList<(string Tag, int Count)> GetTagTreeCounts()
+    {
+        var tags = GetTagCounts();
+        var levels = new HashSet<string>(tags.SelectMany(t => TagTree.Ancestors(t.Tag)), StringComparer.OrdinalIgnoreCase);
+        var result = tags.Where(t => !levels.Contains(t.Tag)).ToList();
+        // A level counts every photo with a tag at or under it.
+        foreach (var level in levels)
+            result.Add((level, PathsWithTag(level).Count));
+        // Part by part, so each level is followed by what is under it.
+        return result.OrderBy(t => t.Tag, TreeOrder).ToList();
+    }
+
     /// <summary>The tags that auto-tagging added on every photo that has them (the hidden list in the file).</summary>
     public IReadOnlySet<string> GetAutoTagNames()
     {
         lock (_lock)
         {
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT tag FROM photo_tags GROUP BY tag COLLATE NOCASE HAVING MIN(auto) = 1;";
+            cmd.CommandText = "SELECT tag FROM photo_tags WHERE photo_id IN (SELECT id FROM photos) GROUP BY tag COLLATE NOCASE HAVING MIN(auto) = 1;";
             var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -569,14 +735,15 @@ public sealed partial class PhotoIndex : IDisposable
         {
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                SELECT NULLIF(country, '') AS c, NULLIF(city, '') AS t, COUNT(*)
-                FROM photos GROUP BY c COLLATE NOCASE, t COLLATE NOCASE
-                ORDER BY c IS NULL, c COLLATE NOCASE, t IS NULL, t COLLATE NOCASE;
+                SELECT NULLIF(country, '') AS c, NULLIF(city, '') AS t, COUNT(*), UPPER(NULLIF(country_code, '')) AS k
+                FROM photos GROUP BY c COLLATE NOCASE, t COLLATE NOCASE, k
+                ORDER BY c IS NULL, c COLLATE NOCASE, t IS NULL, t COLLATE NOCASE, k;
                 """;
             var result = new List<PlaceCount>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-                result.Add(new PlaceCount(reader.IsDBNull(0) ? null : reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2)));
+                result.Add(new PlaceCount(reader.IsDBNull(0) ? null : reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2),
+                                          reader.IsDBNull(3) ? null : reader.GetString(3)));
             return result;
         }
     }
@@ -589,23 +756,57 @@ public sealed partial class PhotoIndex : IDisposable
             using var cmd = _connection.CreateCommand();
             var where = FolderCondition(cmd, folder, true);
             cmd.CommandText = $"""
-                SELECT COUNT(*), MIN(date_taken), MAX(date_taken) FROM photos WHERE {where};
+                SELECT COUNT(*) FROM photos WHERE {where};
                 SELECT path FROM photos WHERE {where} ORDER BY date_taken IS NULL, date_taken, path COLLATE NOCASE LIMIT 1;
+                SELECT date_taken FROM photos WHERE {where} AND date_taken IS NOT NULL ORDER BY date_taken;
                 """;
             using var reader = cmd.ExecuteReader();
             reader.Read();
             var count = reader.GetInt32(0);
-            var from = ParseDate(reader, 1);
-            var to = ParseDate(reader, 2);
             string? first = null;
             if (reader.NextResult() && reader.Read())
                 first = reader.GetString(0);
+            var dates = new List<DateTime>();
+            if (reader.NextResult())
+            {
+                while (reader.Read())
+                    if (ParseDate(reader, 0) is { } date)
+                        dates.Add(date);
+            }
+            // The trip's dates without stray photos weeks before or after it (AL-1).
+            var (from, to) = Albums.TripDates.MainGroup(dates);
             return new FolderSummary(count, from, to, first);
         }
 
         static DateTime? ParseDate(SqliteDataReader r, int i) =>
             !r.IsDBNull(i) && DateTime.TryParseExact(r.GetString(i), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
                 ? d : null;
+    }
+
+    /// <summary>
+    /// Every photo with both a GPS position and a date taken, with the moment in UTC, sorted by it: what a
+    /// location estimate (G-3) works from. Dates without a time zone count as UTC.
+    /// </summary>
+    public List<Metadata.GeoTimePoint> GetGeotaggedTimes()
+    {
+        var points = new List<Metadata.GeoTimePoint>();
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT path, date_taken, date_offset_minutes, latitude, longitude FROM photos " +
+                              "WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND date_taken IS NOT NULL;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                if (!DateTime.TryParseExact(reader.GetString(1), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
+                    continue;
+                TimeSpan? offset = reader.IsDBNull(2) ? null : TimeSpan.FromMinutes(reader.GetInt32(2));
+                points.Add(new Metadata.GeoTimePoint(reader.GetString(0), Metadata.LocationEstimate.ToUtc(new Metadata.DateTaken(local, offset)),
+                    new Metadata.GeoPosition(reader.GetDouble(3), reader.GetDouble(4))));
+            }
+        }
+        points.Sort((a, b) => a.Utc.CompareTo(b.Utc));
+        return points;
     }
 
     /// <summary>Every camera in the library (or one folder of it) with how many photos it took, by name.</summary>
@@ -653,6 +854,8 @@ public sealed partial class PhotoIndex : IDisposable
             Flagged = r.GetInt32(22) == 1,
             Rejected = r.GetInt32(22) == -1,
             AutoTags = r.IsDBNull(23) ? [] : r.GetString(23).Split('\u001f'),
+            Duration = r.IsDBNull(24) ? null : r.GetDouble(24),
+            FrameRate = r.IsDBNull(25) ? null : r.GetDouble(25),
         };
     }
 
@@ -723,6 +926,6 @@ public sealed partial class PhotoIndex : IDisposable
 public sealed record DateCount(int? Year, int? Month, int Count);
 
 /// <summary>How many photos were taken in a city; no country for photos without place names, no city when only the country is known.</summary>
-public sealed record PlaceCount(string? Country, string? City, int Count);
+public sealed record PlaceCount(string? Country, string? City, int Count, string? CountryCode = null);
 
 public sealed record FolderSummary(int Count, DateTime? From, DateTime? To, string? FirstPhoto);

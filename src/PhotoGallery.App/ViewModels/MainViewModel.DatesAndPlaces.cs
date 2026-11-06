@@ -24,6 +24,9 @@ public sealed partial class MainViewModel
     /// <summary>What Nominatim is asked for: a language code, or nothing for the local names.</summary>
     private string PlaceNameLanguageCode => PlaceLanguage == "local" ? "" : PlaceLanguage;
 
+    /// <summary>The app's language as saved: the one chosen in Settings, which may wait for a restart (null: Windows' own).</summary>
+    public string? SavedUiLanguage => _settings.UiLanguage;
+
     /// <summary>Keeps the app's language for the next start, when the window is built in it.</summary>
     public void SaveUiLanguage(string code)
     {
@@ -74,14 +77,14 @@ public sealed partial class MainViewModel
         get
         {
             var q = MapQuery();
-            return $"{q.Folder}|{q.Country}|{q.City}|{q.WithoutPlace}|{q.WithoutDate}|{q.TakenFrom:O}|{q.TakenTo:O}";
+            return $"{q.Folder}|{string.Join(",", q.Countries ?? [])}|{q.City}|{q.WithoutPlace}|{q.WithoutDate}|{q.TakenFrom:O}|{q.TakenTo:O}";
         }
     }
 
     private PhotoQuery MapQuery() => new()
     {
         Folder = IsAlbumView ? null : SelectedFolder?.FullPath,
-        Country = SelectedPlace?.Country,
+        Countries = SelectedPlace?.CountryNames,
         City = SelectedPlace?.City,
         WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
         WithoutDate = _dateFromTree && WithoutDate,

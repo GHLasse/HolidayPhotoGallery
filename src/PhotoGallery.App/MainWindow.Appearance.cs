@@ -64,8 +64,31 @@ public sealed partial class MainWindow
         ShowFilterBadges();
         _ = ShowTopPeopleAsync();
         RecolourTabMarks();
+        Tint(InfoRating);
         foreach (var tree in new[] { FolderTree, DateTree, PlaceTree })
             RecolourTreeMark(tree);
+        ShowNavFade(); // the fade takes the new background
+    }
+
+    private static readonly string[] s_ratingKeys =
+        ["RatingControlSelectedForeground", "RatingControlPointerOverSelectedForeground", "RatingControlPointerOverPlaceholderForeground"];
+
+    /// <summary>
+    /// Gives a rating's stars the palette's colour. RatingControl looks its brushes up only on itself and in the
+    /// app's resources, never in the window's, so they are put on each one; then its stars are built again.
+    /// </summary>
+    internal static void Tint(RatingControl rating)
+    {
+        foreach (var key in s_ratingKeys)
+        {
+            if (s_paletteBrushes.TryGetValue(key, out var brush))
+                rating.Resources[key] = brush;
+            else
+                rating.Resources.Remove(key);
+        }
+        var max = rating.MaxRating;
+        rating.MaxRating = max + 1;
+        rating.MaxRating = max;
     }
 
     // Dialogs and their popups are not inside Root, so each dialog gets the palette and mode as it opens.
@@ -176,6 +199,10 @@ public sealed partial class MainWindow
             ["CheckBoxCheckGlyphForegroundChecked"] = Solid(s.TextOnFill),
             ["CheckBoxCheckGlyphForegroundCheckedPointerOver"] = Solid(s.TextOnFill),
             ["CheckBoxCheckGlyphForegroundCheckedPressed"] = Solid(s.TextOnFill),
+            // The stars of the rating in the details pane and in Compare.
+            ["RatingControlSelectedForeground"] = Solid(s.Fill),
+            ["RatingControlPointerOverSelectedForeground"] = Solid(s.Fill, 0.9),
+            ["RatingControlPointerOverPlaceholderForeground"] = Solid(s.Fill, 0.7),
         };
     }
 
@@ -246,7 +273,19 @@ public sealed partial class MainWindow
                 Height = 18,
                 Stroke = ThemeBrush("ControlStrokeColorDefaultBrush"),
                 StrokeThickness = 1,
-                Fill = new SolidColorBrush(p.Color is { } color ? ToColor(color) : (UiColor)Application.Current.Resources["SystemAccentColor"]),
+                Fill = p.Mix is { } mix
+                    // Half and half, like the installer's sea and sunset.
+                    ? new LinearGradientBrush
+                    {
+                        StartPoint = new Windows.Foundation.Point(0, 0),
+                        EndPoint = new Windows.Foundation.Point(1, 1),
+                        GradientStops =
+                        {
+                            new GradientStop { Color = ToColor(mix.Second), Offset = 0.5 },
+                            new GradientStop { Color = ToColor(mix.LightAccent), Offset = 0.5 },
+                        },
+                    }
+                    : new SolidColorBrush(p.Color is { } color ? ToColor(color) : (UiColor)Application.Current.Resources["SystemAccentColor"]),
             };
             palette.Items.Add(new StackPanel
             {
@@ -293,6 +332,34 @@ internal static class ThemedDialogs
     public static Windows.Foundation.IAsyncOperation<ContentDialogResult> ShowThemedAsync(this ContentDialog dialog)
     {
         MainWindow.ApplyAppearance(dialog);
+        FitButtons(dialog);
         return dialog.ShowAsync();
+    }
+
+    // The dialog's buttons share its width equally, so a long label in some languages is cut off. Widen
+    // the dialog until the longest label fits in each button (the dialog never gets wider than the window).
+    private static void FitButtons(ContentDialog dialog)
+    {
+        var labels = new[] { dialog.PrimaryButtonText, dialog.SecondaryButtonText, dialog.CloseButtonText }
+            .Where(t => !string.IsNullOrEmpty(t)).ToList();
+        if (labels.Count == 0)
+            return;
+        var widest = labels.Max(label =>
+        {
+            var text = new TextBlock { Text = label, FontSize = 14 };
+            text.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            return text.DesiredSize.Width;
+        });
+        // Each button pads its text by 11 on each side, buttons are 8 apart, the dialog pads by 24.
+        var needed = Math.Ceiling(labels.Count * (widest + 30) + (labels.Count - 1) * 8 + 48);
+        if (dialog.XamlRoot is { } root && root.Size.Width > 0)
+            needed = Math.Min(needed, root.Size.Width - 32);
+        double Resource(string key, double fallback) =>
+            dialog.Resources.TryGetValue(key, out var value) && value is double d ? d
+            : Application.Current.Resources.TryGetValue(key, out var app) && app is double a ? a : fallback;
+        if (needed > Resource("ContentDialogMinWidth", 320))
+            dialog.Resources["ContentDialogMinWidth"] = needed;
+        if (needed > Resource("ContentDialogMaxWidth", 548))
+            dialog.Resources["ContentDialogMaxWidth"] = needed;
     }
 }

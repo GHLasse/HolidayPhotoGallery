@@ -58,11 +58,17 @@ public sealed partial class MainWindow
             undo.Visibility = Visibility.Collapsed;
             list.IsEnabled = false;
             search.IsEnabled = false;
+            working.IsIndeterminate = true;
             working.Visibility = Visibility.Visible;
             void Progress(object? s, System.ComponentModel.PropertyChangedEventArgs e)
             {
                 if (e.PropertyName == nameof(ViewModel.StatusText))
                     workingText.Text = ViewModel.StatusText;
+                else if (e.PropertyName == nameof(ViewModel.TagJobPercent) && ViewModel.TagJobPercent is { } percent)
+                {
+                    working.IsIndeterminate = false;
+                    working.Value = percent;
+                }
             }
             ViewModel.PropertyChanged += Progress;
             try
@@ -78,7 +84,15 @@ public sealed partial class MainWindow
                 search.IsEnabled = true;
                 undo.Visibility = lastChange is { Undone: false } ? Visibility.Visible : Visibility.Collapsed;
             }
+            // The list stays where it was, so going through the tags one by one goes on from there.
+            var scroller = ScrollerOf(list);
+            var offset = scroller?.VerticalOffset ?? 0;
             await ReloadAsync();
+            if (scroller is not null)
+            {
+                list.UpdateLayout();
+                scroller.ChangeView(null, offset, null, disableAnimation: true);
+            }
         }
 
         undo.Click += async (_, _) =>
@@ -233,7 +247,7 @@ public sealed partial class MainWindow
     }
 
     /// <summary>Settings › Dates and places. Returns the page, and reads back what was chosen when Save is clicked.</summary>
-    private FrameworkElement DatesAndPlacesPage(out Func<(bool KeepDatesInSync, string PlaceLanguage)> chosen)
+    private FrameworkElement DatesAndPlacesPage(out Func<(bool KeepDatesInSync, string PlaceLanguage, bool AddPlaceNames)> chosen)
     {
         var sync = new ToggleSwitch
         {
@@ -247,7 +261,14 @@ public sealed partial class MainWindow
         foreach (var (_, name) in ViewModels.MainViewModel.PlaceLanguages)
             language.Items.Add(name);
         language.SelectedIndex = Math.Max(0, Array.FindIndex(ViewModels.MainViewModel.PlaceLanguages, l => l.Key == ViewModel.PlaceLanguage));
-        chosen = () => (sync.IsOn, ViewModels.MainViewModel.PlaceLanguages[Math.Max(0, language.SelectedIndex)].Key);
+        var addPlaces = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Add place names to photos with a GPS position by themselves"),
+            IsOn = ViewModel.AddPlaceNamesAutomatically,
+        };
+        chosen = () => (sync.IsOn, ViewModels.MainViewModel.PlaceLanguages[Math.Max(0, language.SelectedIndex)].Key, addPlaces.IsOn);
 
         TextBlock Note(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
         return new StackPanel
@@ -262,7 +283,22 @@ public sealed partial class MainWindow
                 language,
                 Note(Tr("For “Add place names”: the country, region, city and district are written in this language. ") +
                      Tr("Local uses the names as people there write them. Photos that already have place names keep them until you add them again.")),
+                addPlaces,
+                ProgressText(() => ViewModel.PlaceNameProgressText()),
+                Note(Tr("Photos with a GPS position and no place names get them quietly in the background, newest first, about one photo a second. ") +
+                     Tr("Their positions are sent to OpenStreetMap to look the places up.")),
             },
         };
+    }
+
+    private static ScrollViewer? ScrollerOf(DependencyObject element)
+    {
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, i);
+            if ((child as ScrollViewer ?? ScrollerOf(child)) is { } found)
+                return found;
+        }
+        return null;
     }
 }

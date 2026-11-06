@@ -59,6 +59,21 @@ public sealed class FaceIndexTests : IAsyncLifetime
         Assert.False(Assert.Single(_index.Search(new PhotoQuery())).Flagged);
     }
 
+    [Fact]
+    public void Unnamed_faces_are_counted_until_they_are_ignored()
+    {
+        var path = Path.Combine(_photos.Path, "a.jpg");
+        _index!.Upsert([new IndexedPhoto { Path = path, Folder = _photos.Path }]);
+        Assert.Equal(0, _index.CountUnnamedFaces());
+
+        _index.SaveFaces(path, [new NewFace(new FaceBox(0.1, 0.1, 0.2, 0.2), 0.9f, Vector(1, 0), null),
+                                new NewFace(new FaceBox(0.6, 0.1, 0.2, 0.2), 0.9f, Vector(0, 1), null)]);
+        Assert.Equal(2, _index.CountUnnamedFaces());
+
+        _index.IgnoreFace(_index.GetFaces(path)[0].Id);
+        Assert.Equal(1, _index.CountUnnamedFaces());
+    }
+
     [ExifToolFact]
     public async Task Found_faces_take_the_names_in_the_file_and_people_can_be_searched()
     {
@@ -151,6 +166,52 @@ public sealed class FaceIndexTests : IAsyncLifetime
         Assert.Equal("Ben", matcher.Suggest(Vector(0.1f, 1, 0))?.Name);
         Assert.Null(matcher.Suggest(Vector(0, 0, 1)));
         Assert.Null(matcher.Suggest(Vector(1, 0.05f, 0.1f), ["anna"]));
+    }
+
+    [Fact]
+    public void A_group_gets_the_most_likely_person_even_when_not_clearly_alike()
+    {
+        var matcher = new FaceMatcher([("Anna", Vector(1, 0, 0)), ("Ben", Vector(0, 1, 0))]);
+        IReadOnlyList<string> none = [];
+
+        // About 0.3 alike to Anna: below "same person", still offered as "might be".
+        var group = new[] { (Vector(0.3f, 0.1f, 0.95f), none), (Vector(0.32f, 0, 0.95f), none) };
+        var suggestion = matcher.SuggestForGroup(group);
+        Assert.Equal("Anna", suggestion?.Name);
+        Assert.True(suggestion!.Similarity < FaceAnalyzer.SamePerson);
+
+        // "Not this person" leaves Anna out; Ben is too unlike, so nobody is offered.
+        Assert.Null(matcher.SuggestForGroup(group, ["Anna"]));
+        Assert.Null(matcher.SuggestForGroup([(Vector(0, 0, 1), none)]));
+    }
+
+    [Fact]
+    public void Faces_told_they_are_not_someone_count_against_them_for_the_group()
+    {
+        var matcher = new FaceMatcher([("Anna", Vector(1, 0.2f, 0)), ("Ben", Vector(1, -0.2f, 0))]);
+        IReadOnlyList<string> notAnna = ["anna"];
+        IReadOnlyList<string> none = [];
+
+        Assert.Equal("Anna", matcher.SuggestForGroup([(Vector(1, 0.15f, 0), none), (Vector(1, 0.15f, 0), none)])?.Name);
+        Assert.Equal("Ben", matcher.SuggestForGroup([(Vector(1, 0.15f, 0), notAnna), (Vector(1, 0.15f, 0), notAnna)])?.Name);
+        Assert.Equal(1, matcher.SimilarityTo("ANNA", Vector(1, 0.2f, 0))!.Value, 3);
+        Assert.Null(matcher.SimilarityTo("Carl", Vector(1, 0, 0)));
+    }
+
+    [Fact]
+    public void Rejecting_a_name_for_many_faces_keeps_the_names_rejected_before()
+    {
+        var path = Path.Combine(_photos.Path, "group.jpg");
+        _index!.Upsert([new IndexedPhoto { Path = path, Folder = _photos.Path }]);
+        _index.SaveFaces(path, [new NewFace(new FaceBox(0, 0, 0.2, 0.2), 0.9f, Vector(1, 0, 0), null),
+                                new NewFace(new FaceBox(0.5, 0, 0.2, 0.2), 0.9f, Vector(0, 1, 0), null)]);
+        var faces = _index.GetFaces(path);
+        _index.RejectName(faces[0].Id, "Carl");
+
+        _index.RejectName(faces.Select(f => f.Id), "Anna");
+
+        Assert.Equal(["Carl", "Anna"], _index.GetFace(faces[0].Id)!.Rejected);
+        Assert.Equal(["Anna"], _index.GetFace(faces[1].Id)!.Rejected);
     }
 
     [Fact]

@@ -115,6 +115,9 @@ es.No=No
 en.FlyTitle=Taking you to your destination…
 de.FlyTitle=Wir bringen dich an dein Ziel …
 es.FlyTitle=Te llevamos a tu destino…
+en.UpdateTitle=Updating Holiday Photo Gallery…
+de.UpdateTitle=Holiday Photo Gallery wird aktualisiert …
+es.UpdateTitle=Actualizando Holiday Photo Gallery…
 en.DoneTitle=You’re all set!
 de.DoneTitle=Alles bereit!
 es.DoneTitle=¡Todo listo!
@@ -143,6 +146,9 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#AppExe
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:OpenNow}"; Flags: nowait postinstall skipifsilent
+; Versions up to 0.0.137 ran Setup quietly with /RESTARTAPP=1 to have the app opened again afterwards. Newer
+; ones open it themselves once Setup has finished (AppUpdates.HandOverScript), also when it failed.
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RestartAfterUpdate
 
 [Code]
 // ---------------------------------------------------------------------------------------------
@@ -150,6 +156,30 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:OpenNow}"; Flags: nowait postinst
 // at twice their size), redrawn about 30 times a second by a timer, and scaled down smoothly to
 // the size of the picture on the page.
 // ---------------------------------------------------------------------------------------------
+
+// The app's own updater (Settings > App) runs Setup with /SILENT /RESTARTAPP=1.
+function RestartAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RESTARTAPP|0}') = '1');
+end;
+
+// /VERYSILENT shows no window at all, so there is nothing to animate; /SILENT (the updater) shows the
+// installing page, which gets its flight like any other install.
+function VerySilent: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/VERYSILENT') = 0 then
+      Result := True;
+end;
+
+// Installing over an earlier version, e.g. from the app's own updater.
+function IsUpdate: Boolean;
+begin
+  Result := WizardForm.PrevAppDir <> '';
+end;
 
 const
   SRCCOPY = $00CC0020;
@@ -616,7 +646,10 @@ begin
     FlyH := PageH - ScaleY(130);
   FlyImage := MakeImage(WizardForm.InstallingPage, 0, 0, PageW, FlyH);
   Y := FlyH + ScaleY(18);
-  Lbl := MakeText(WizardForm.InstallingPage, CustomMessage('FlyTitle'), ScaleX(32), Y, PageW - ScaleX(64), 14, True, INK);
+  if IsUpdate then
+    Lbl := MakeText(WizardForm.InstallingPage, CustomMessage('UpdateTitle'), ScaleX(32), Y, PageW - ScaleX(64), 14, True, INK)
+  else
+    Lbl := MakeText(WizardForm.InstallingPage, CustomMessage('FlyTitle'), ScaleX(32), Y, PageW - ScaleX(64), 14, True, INK);
   Y := Y + Lbl.Height + ScaleY(6);
   WizardForm.StatusLabel.SetBounds(ScaleX(32), Y, PageW - ScaleX(64), WizardForm.StatusLabel.Height);
   WizardForm.StatusLabel.Font.Color := MUTED_INK;
@@ -636,7 +669,7 @@ begin
   RunListY := Y;
   RunListW := W;
 
-  if not WizardSilent then
+  if not VerySilent then
     Timer := SetTimer(0, 0, 33, CreateCallback(@OnTimer));
 end;
 
@@ -670,7 +703,7 @@ begin
   if CurPageID = wpFinished then
     // Setup places the run list under its own (hidden) text when the page opens.
     WizardForm.RunList.SetBounds(RunListX, RunListY, RunListW, ScaleY(28));
-  if not WizardSilent then
+  if not VerySilent then
     OnTimer(0, 0, 0, 0);
 end;
 

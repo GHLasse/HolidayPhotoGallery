@@ -11,5 +11,7 @@ public sealed record TagBadge(string Tag, int Count, int Of, bool AutoTag = fals
     /// <summary>Added by auto-tagging; shown with a mark (and tags from earlier versions without their "ai/" group).</summary>
     public bool IsAuto => AutoTag || AutoTags.IsAuto(Tag);
 
-    public string Label => AutoTags.Label(Tag) + (IsOnAll ? "" : $" {Count}/{Of}");
+    /// <summary>A tag in a tree (M-5) shows its path: "Animals › Birds › Seagull".</summary>
+    public string Label => (PhotoGallery.Core.Metadata.TagTree.IsPath(Tag) ? PhotoGallery.Core.Metadata.TagTree.Display(Tag) : AutoTags.Label(Tag)) +
+                           (IsOnAll ? "" : $" {Count}/{Of}");
 }

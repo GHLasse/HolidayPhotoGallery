@@ -111,6 +111,38 @@ public static class Strings
         RightToLeft = pack.RightToLeft;
     }
 
+    /// <summary>
+    /// The region's way of writing dates and numbers (Windows' format setting), with the month and day names
+    /// of the app's language: an English app on a German PC writes "December 2025" with German date order,
+    /// not "Dezember 2025". The region itself when it already speaks the language, or a name can't be found.
+    /// </summary>
+    public static CultureInfo WithNamesOf(CultureInfo region, string language)
+    {
+        CultureInfo names;
+        try
+        {
+            names = CultureInfo.GetCultureInfo(language, predefinedOnly: true);
+        }
+        catch (CultureNotFoundException)
+        {
+            return region;
+        }
+        if (names.TwoLetterISOLanguageName == region.TwoLetterISOLanguageName ||
+            region.DateTimeFormat.Calendar is not GregorianCalendar || names.DateTimeFormat.Calendar is not GregorianCalendar)
+            return region;
+        var culture = (CultureInfo)region.Clone();
+        var format = culture.DateTimeFormat;
+        var from = names.DateTimeFormat;
+        format.MonthNames = from.MonthNames;
+        format.MonthGenitiveNames = from.MonthGenitiveNames;
+        format.AbbreviatedMonthNames = from.AbbreviatedMonthNames;
+        format.AbbreviatedMonthGenitiveNames = from.AbbreviatedMonthGenitiveNames;
+        format.DayNames = from.DayNames;
+        format.AbbreviatedDayNames = from.AbbreviatedDayNames;
+        format.ShortestDayNames = from.ShortestDayNames;
+        return culture;
+    }
+
     private static bool SameLanguage(string a, string b)
     {
         try

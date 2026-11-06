@@ -34,6 +34,8 @@ public sealed partial class MainWindow
     private async void ShowWorkspace(Workspace workspace)
     {
         App.Trace($"workspace: {workspace}");
+        if (workspace != Workspace.Map)
+            _pinnedTrack = null;
         _workspace = workspace;
         _syncingWorkspace = true;
         try
@@ -63,6 +65,7 @@ public sealed partial class MainWindow
         PeoplePage.Visibility = people ? Visibility.Visible : Visibility.Collapsed;
         PhotoArea.Visibility = people ? Visibility.Collapsed : Visibility.Visible;
         SyncSearchBox();
+        TipForWorkspace(workspace);
         ApplyChrome(); // the People page has no use for the filter bar
         await ApplyMapLayoutAsync();
         if (people)
@@ -125,14 +128,15 @@ public sealed partial class MainWindow
     private async Task ShowPeoplePageAsync()
     {
         var version = ++_peoplePageVersion;
-        var people = ViewModel.People.ToList(); // sorted by photo count
+        var people = ViewModel.PeopleInViewOrder;
         foreach (var person in people.Where(p => !_latestFaces.ContainsKey(p.Tag)))
             _latestFaces[person.Tag] = await ViewModel.GetLatestFaceAsync(person.Tag);
         if (version != _peoplePageVersion)
             return; // A newer refresh started while the faces were loading.
 
         PeopleCards.Children.Clear();
-        PeopleEmptyHint.Visibility = people.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Not while the people are still loading (U-9); the page is shown again once they are.
+        PeopleEmptyHint.Visibility = people.Count == 0 && ViewModel.HasLoaded ? Visibility.Visible : Visibility.Collapsed;
         foreach (var person in people)
             PeopleCards.Children.Add(PersonCard(person));
         FilterPeopleCards();
@@ -250,7 +254,7 @@ public sealed partial class MainWindow
             Workspace.People => Tr("Search people (Ctrl+E)"),
             Workspace.Map => Tr("Find a place (Ctrl+E)"),
             Workspace.Albums => Tr("Search albums (Ctrl+E)"),
-            _ => Tr("Search names, captions and tags (Ctrl+E)"),
+            _ => Tr("Search names, tags or what is in the photo (Ctrl+E)"),
         };
     }
 
@@ -278,8 +282,13 @@ public sealed partial class MainWindow
             Height = PersonFace,
             Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
         };
-        if (_latestFaces.TryGetValue(person.Tag, out var thumbnail) && thumbnail is not null)
-            LoadFaceFill(face, thumbnail);
+        if (_latestFaces.TryGetValue(person.Tag, out var thumbnail))
+        {
+            if (thumbnail is not null)
+                LoadFaceFill(face, thumbnail);
+        }
+        else
+            _ = LoadCardFaceAsync(face, person.Tag);
 
         var card = new StackPanel { Spacing = 6, Width = PersonFace + 24, Padding = new Thickness(0, 8, 0, 8) };
         card.Children.Add(face);
@@ -324,6 +333,53 @@ public sealed partial class MainWindow
         }
         button.Click += (_, _) => Open();
         button.Tag = (Action)Open; // for Enter in the search box
+        var rename = new MenuFlyoutItem { Text = Tr("Rename…"), Icon = new FontIcon { Glyph = "\uE8AC" } };
+        rename.Click += (_, _) => _ = RenamePersonAsync(person.Tag);
+        button.ContextFlyout = new MenuFlyout { Items = { ReviewMatchesItem(person.Tag), rename } };
         return button;
+    }
+
+    // The faces were forgotten while the page was being built (a person renamed or named): loaded here, so
+    // the card doesn't stay empty until the page is opened again.
+    private async Task LoadCardFaceAsync(Ellipse face, string name)
+    {
+        var thumbnail = await ViewModel.GetLatestFaceAsync(name);
+        _latestFaces[name] = thumbnail;
+        if (thumbnail is not null)
+            LoadFaceFill(face, thumbnail);
+    }
+
+    /// <summary>Asks for a person's new name and renames them in every photo; a name already used merges the two.</summary>
+    private async Task RenamePersonAsync(string name)
+    {
+        var box = NameBox(_ => Task.CompletedTask);
+        box.Header = Tr("New name");
+        box.Text = name;
+        var note = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+        ContentDialog? dialog = null;
+        void Check()
+        {
+            var to = box.Text.Trim();
+            var other = ViewModel.KnownNames.FirstOrDefault(n => string.Equals(n, to, StringComparison.CurrentCultureIgnoreCase) &&
+                                                                 !string.Equals(n, name, StringComparison.CurrentCultureIgnoreCase));
+            note.Text = other is null ? Tr("The name is changed in every photo of {0}.", name)
+                                      : Tr("{0} is already in your library: the photos of both are joined under that name.", other);
+            if (dialog is not null)
+                dialog.IsPrimaryButtonEnabled = to.Length > 0 && !string.Equals(to, name, StringComparison.Ordinal);
+        }
+        box.TextChanged += (_, _) => Check();
+        dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Rename {0}", name),
+            Content = new StackPanel { Spacing = 8, MinWidth = 320, Children = { box, note } },
+            PrimaryButtonText = Tr("Rename"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        Check();
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return;
+        await ViewModel.RenamePersonAsync(name, box.Text);
     }
 }

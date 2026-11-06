@@ -43,6 +43,8 @@ public sealed partial class MainViewModel
         _settings.GoogleAccount = auth.Email;
         _settings.Save(SettingsPath);
         ResetGoogle();
+        // Album renames that didn't reach the service while signed out go now.
+        _ = RenameOwedCloudAlbumsAsync();
         return null;
     }
 

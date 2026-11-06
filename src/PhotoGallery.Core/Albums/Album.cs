@@ -26,7 +26,10 @@ public sealed record Album
     /// <summary>Photos in the album, its subfolders included.</summary>
     public int PhotoCount { get; init; }
 
-    /// <summary>When the first and last photo were taken (local time), if any photo has a date.</summary>
+    /// <summary>
+    /// When the trip began and ended (local time), if any photo has a date; stray photos long before or after the
+    /// rest are left out (<see cref="TripDates"/>).
+    /// </summary>
     public DateTime? From { get; init; }
 
     public DateTime? To { get; init; }
@@ -52,8 +55,9 @@ public sealed record Album
     {
         var info = AlbumFile.Read(folder) ?? new AlbumInfo();
         var summary = index.GetFolderSummary(folder);
-        var cover = info.Cover is { } relative ? Path.GetFullPath(Path.Combine(folder, relative)) : null;
-        if (cover is null || !File.Exists(cover))
+        var cover = CoverIn(folder, info.Cover);
+        // A private photo is no cover while private mode is off (the summary already leaves them out).
+        if (cover is null || !File.Exists(cover) || (!index.ShowPrivate && PrivateMarks.IsPrivate(cover)))
             cover = summary.FirstPhoto;
         return new Album
         {
@@ -70,14 +74,35 @@ public sealed record Album
         };
     }
 
+    /// <summary>
+    /// The cover's full path from the album file, or null. It must be inside the album folder: the file can be
+    /// written by anyone who made the folder, and must not show some other picture on the PC.
+    /// </summary>
+    internal static string? CoverIn(string folder, string? relative)
+    {
+        if (string.IsNullOrWhiteSpace(relative))
+            return null;
+        try
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+            var cover = Path.GetFullPath(Path.Combine(root, relative));
+            return cover.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ? cover : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
     public static string DefaultName(string folder) =>
         Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) is { Length: > 0 } name ? name : folder;
 
-    /// <summary>Albums by date (newest or oldest first; undated ones last) or by name.</summary>
+    /// <summary>Albums by the trip's end date (newest or oldest first; undated ones last) or by name.</summary>
     public static List<Album> Sort(IEnumerable<Album> albums, string order) => order switch
     {
         SortName => albums.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
-        SortOldest => albums.OrderBy(a => a.From is null).ThenBy(a => a.From).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
-        _ => albums.OrderBy(a => a.From is null).ThenByDescending(a => a.From).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
+        // By when the trip ended (AL-1): a trip still being added to sorts by its newest photos.
+        SortOldest => albums.OrderBy(a => a.To is null).ThenBy(a => a.To).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
+        _ => albums.OrderBy(a => a.To is null).ThenByDescending(a => a.To).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
     };
 }

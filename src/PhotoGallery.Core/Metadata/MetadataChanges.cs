@@ -52,9 +52,22 @@ public sealed record MetadataChanges
     /// <summary>The place names to write; fields left empty are removed from the file.</summary>
     public PlaceName? Place { get; init; }
 
+    /// <summary>
+    /// Camera and exposure tags (<see cref="CameraTags.Names"/>) by their ExifTool name, as numbers;
+    /// an empty value removes the tag.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Camera { get; init; }
+
+    /// <summary>The copyright notice; empty removes it.</summary>
+    public string? Copyright { get; init; }
+
+    /// <summary>Who took the photo; empty removes it.</summary>
+    public string? Creator { get; init; }
+
     /// <summary>The complete new list of people in the photo (faces on the stored pixels); other regions stay.</summary>
     public IReadOnlyList<PersonTag>? People { get; init; }
 
     public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null &&
-                           Orientation is null && Location is null && !RemoveLocation && Place is null && People is null;
+                           Orientation is null && Location is null && !RemoveLocation && Place is null && People is null &&
+                           Camera is null && Copyright is null && Creator is null;
 }

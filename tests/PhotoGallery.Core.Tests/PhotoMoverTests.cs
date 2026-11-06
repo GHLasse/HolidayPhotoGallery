@@ -71,4 +71,25 @@ public class PhotoIndexMoveTests
         Assert.Equal(4, found.Rating);
         Assert.Equal(["Beach"], found.Tags);
     }
+
+    [Fact]
+    public void A_renamed_folder_keeps_its_photos_and_subfolders()
+    {
+        using var temp = new TempFolder();
+        using var index = new PhotoIndex(Path.Combine(temp.Path, "index.db"));
+        var trip = Path.Combine(temp.Path, "Trip");
+        var tripless = Path.Combine(temp.Path, "Trip 2");
+        index.Upsert([
+            new IndexedPhoto { Path = Path.Combine(trip, "a.jpg"), Folder = trip, Rating = 3 },
+            new IndexedPhoto { Path = Path.Combine(trip, "Day 1", "b.jpg"), Folder = Path.Combine(trip, "Day 1") },
+            new IndexedPhoto { Path = Path.Combine(tripless, "c.jpg"), Folder = tripless },
+        ]);
+
+        var italy = Path.Combine(temp.Path, "Italy 2025");
+        index.RenameFolder(trip, italy);
+
+        var paths = index.Search(new PhotoQuery()).Select(p => p.Path).Order().ToList();
+        Assert.Equal(new[] { Path.Combine(italy, "Day 1", "b.jpg"), Path.Combine(italy, "a.jpg"), Path.Combine(tripless, "c.jpg") }.Order(), paths);
+        Assert.Equal(Path.Combine(italy, "Day 1"), index.Search(new PhotoQuery()).Single(p => p.Path.EndsWith("b.jpg")).Folder);
+    }
 }

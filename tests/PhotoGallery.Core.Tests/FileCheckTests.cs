@@ -1,28 +1,19 @@
 using PhotoGallery.Core.Library;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace PhotoGallery.Core.Tests;
 
 public class FileCheckTests
 {
-    private static byte[] Encoded(Action<Image<Rgba32>, Stream> save, bool progressive = false)
+    private static byte[] Noise()
     {
-        using var image = new Image<Rgba32>(120, 80);
-        var random = new Random(5);
-        image.ProcessPixelRows(rows =>
-        {
-            for (var y = 0; y < rows.Height; y++)
-                foreach (ref var p in rows.GetRowSpan(y))
-                    p = new Rgba32((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256));
-        });
-        using var stream = new MemoryStream();
-        save(image, stream);
-        return stream.ToArray();
+        var bgra = new byte[120 * 80 * 4];
+        new Random(5).NextBytes(bgra);
+        for (var i = 3; i < bgra.Length; i += 4)
+            bgra[i] = 255;
+        return bgra;
     }
 
-    private static byte[] Jpeg() => Encoded((i, s) => i.SaveAsJpeg(s, new JpegEncoder { Quality = 90 }));
+    private static byte[] Jpeg() => TestImages.Jpeg(Noise(), 120, 80, 90);
 
     private static FileHealth Check(byte[] bytes, string extension) => FileCheck.Check(new MemoryStream(bytes), extension);
 
@@ -46,7 +37,7 @@ public class FileCheckTests
     [Fact]
     public void Pngs_are_checked()
     {
-        var png = Encoded((i, s) => i.SaveAsPng(s));
+        var png = TestImages.Png(Noise(), 120, 80);
         Assert.Equal(FileHealth.Whole, Check(png, ".png"));
         Assert.Equal(FileHealth.CutOff, Check(png[..(png.Length / 2)], ".png"));
     }
@@ -54,8 +45,58 @@ public class FileCheckTests
     [Fact]
     public void Webps_are_checked()
     {
-        var webp = Encoded((i, s) => i.SaveAsWebp(s));
+        var webp = TestImages.Webp(Noise(), 120, 80, lossless: false);
         Assert.Equal(FileHealth.Whole, Check(webp, ".webp"));
         Assert.Equal(FileHealth.CutOff, Check(webp[..(webp.Length / 2)], ".webp"));
     }
+    [Fact]
+    public void A_jpeg_called_png_is_misnamed() => Assert.Equal(FileHealth.Misnamed, Check(Jpeg(), ".png"));
+
+    [Fact]
+    public void A_cut_off_jpeg_called_png_is_cut_off()
+    {
+        // The damage matters more than the name, and it is found by checking the file as a JPEG.
+        var jpeg = Jpeg();
+        Assert.Equal(FileHealth.CutOff, Check(jpeg[..(jpeg.Length * 2 / 3)], ".png"));
+    }
+
+    [Theory]
+    [InlineData("sample.jpg", ".jpeg")]
+    [InlineData("sample.tiff", ".tif")]
+    [InlineData("sample.heic", ".heif")]
+    public void Other_names_for_the_same_format_are_fine(string sample, string extension) =>
+        Assert.Equal(FileHealth.Whole, Check(File.ReadAllBytes(Path.Combine("TestData", sample)), extension));
+
+    [Theory]
+    [InlineData("sample.jpg", ".jpg")]
+    [InlineData("sample.png", ".png")]
+    [InlineData("sample.gif", ".gif")]
+    [InlineData("sample.webp", ".webp")]
+    [InlineData("sample.tiff", ".tif")]
+    [InlineData("sample.heic", ".heic")]
+    public void Recognises_the_real_format(string sample, string extension)
+    {
+        using var stream = File.OpenRead(Path.Combine("TestData", sample));
+        Assert.Equal(extension, FileCheck.RealExtension(stream));
+    }
+
+    [Fact]
+    public void The_correct_name_keeps_the_case()
+    {
+        var folder = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            File.WriteAllBytes(Path.Combine(folder, "IMG_4973.PNG"), Jpeg());
+            File.WriteAllBytes(Path.Combine(folder, "beach.png"), Jpeg());
+            File.WriteAllBytes(Path.Combine(folder, "fine.jpeg"), Jpeg());
+            Assert.Equal("IMG_4973.JPG", FileCheck.CorrectName(Path.Combine(folder, "IMG_4973.PNG")));
+            Assert.Equal("beach.jpg", FileCheck.CorrectName(Path.Combine(folder, "beach.png")));
+            Assert.Null(FileCheck.CorrectName(Path.Combine(folder, "fine.jpeg")));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
 }

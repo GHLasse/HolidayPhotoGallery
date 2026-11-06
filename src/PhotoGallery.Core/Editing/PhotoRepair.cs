@@ -1,6 +1,3 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace PhotoGallery.Core.Editing;
 
@@ -26,7 +23,18 @@ public sealed record PhotoDamage(DamagedEdge Edge, int Kept, int Length, byte Fi
     /// on the colours are wrong, not grey.
     /// </summary>
     public ColourBreak? Break { get; init; }
+
+    /// <summary>
+    /// Blocks just before the grey that came out garbled (wrong colours, not grey): the data broke off in them.
+    /// </summary>
+    public GarbledBlocks? Garbled { get; init; }
 }
+
+/// <summary>
+/// In the <see cref="Rows"/> rows from Kept on (the row of blocks a cut-off file ended in), everything from
+/// <see cref="X"/> on is lost, grey or not.
+/// </summary>
+public sealed record GarbledBlocks(int X, int Rows);
 
 /// <summary>
 /// Where a JPEG's picture data broke: a flipped bit makes the decoder lose step, and every block after it comes
@@ -49,25 +57,13 @@ public static class PhotoRepair
 
     /// <summary>
     /// The lost part of an upright photo (8-bit BGRA), or null when nothing looks lost. <paramref name="orientation"/>
-    /// is the photo's EXIF orientation, which says which way the rows of its file run.
+    /// is the photo's EXIF orientation, which says which way the rows of its file run. When the file check
+    /// already knows the file is <paramref name="cutOff"/>, a lost strip of any size along the edge its rows end
+    /// at counts, down to part of one row of blocks.
     /// </summary>
-    public static PhotoDamage? Find(byte[] bgra, int width, int height, int orientation = 1)
+    public static PhotoDamage? Find(byte[] bgra, int width, int height, int orientation = 1, bool cutOff = false)
     {
-        PhotoDamage? worst = null;
-        foreach (var edge in Enum.GetValues<DamagedEdge>())
-        {
-            var view = new EdgeView(edge, width, height);
-            if (FindAtBottom(bgra, view) is not { } found)
-                continue;
-            var damage = new PhotoDamage(edge, found.Kept, view.Height, found.Fill);
-            if (worst is null || damage.LostShare > worst.LostShare)
-                worst = damage;
-        }
-        if (worst is not null)
-            return worst;
-
-        // No grey: maybe the colours go wrong partway. The break runs along the file's rows, which lie along
-        // the edge that the camera's turn put at the bottom of the stored picture.
+        // The edge that the camera's turn put at the bottom of the stored picture: where the file's rows end.
         DamagedEdge? stored = orientation switch
         {
             1 => DamagedEdge.Bottom,
@@ -76,6 +72,20 @@ public static class PhotoRepair
             8 => DamagedEdge.Right,
             _ => null, // mirrored: the blocks run the other way; rare enough to leave out
         };
+        PhotoDamage? worst = null;
+        foreach (var edge in Enum.GetValues<DamagedEdge>())
+        {
+            var view = new EdgeView(edge, width, height);
+            if (FindAtBottom(bgra, view, small: cutOff && edge == stored) is not { } found)
+                continue;
+            var damage = new PhotoDamage(edge, found.Kept, view.Height, found.Fill) { Garbled = found.Garbled };
+            if (worst is null || damage.LostShare > worst.LostShare)
+                worst = damage;
+        }
+        if (worst is not null)
+            return worst;
+
+        // No grey: maybe the colours go wrong partway. The break runs along the file's rows.
         if (stored is not { } bottom)
             return null;
         var rows = new EdgeView(bottom, width, height);
@@ -109,27 +119,16 @@ public static class PhotoRepair
     }
 
     /// <summary>
-    /// Fills the lost part from the preview stored in the file (<paramref name="preview"/>, encoded, still
-    /// stored the way the photo's pixels are, so turned with <paramref name="orientation"/>). Returns null when
-    /// the preview can't be read or doesn't have the photo's shape.
+    /// Fills the lost part from the preview stored in the file, decoded (8-bit BGRA) but still stored the way the
+    /// photo's pixels are, so turned with <paramref name="orientation"/>. Returns null when the preview doesn't
+    /// have the photo's shape.
     /// </summary>
-    public static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, byte[] preview, int orientation,
-                               UpscalePicture? upscale = null)
+    public static byte[]? FillFromPreview(byte[] bgra, int width, int height, PhotoDamage damage,
+                                          byte[] preview, int previewWidth, int previewHeight, int orientation,
+                                          UpscalePicture? upscale = null)
     {
-        Image<Bgra32> image;
-        try
-        {
-            image = Image.Load<Bgra32>(preview);
-        }
-        catch (Exception ex) when (ex is UnknownImageFormatException or InvalidImageContentException or NotSupportedException)
-        {
-            return null;
-        }
-        using (image)
-        {
-            image.Mutate(x => x.RotateFlip(RotationOf(orientation), FlipOf(orientation)));
-            return Fill(bgra, width, height, damage, image, upscale);
-        }
+        var (upright, w, h) = ImageMath.Upright(preview, previewWidth, previewHeight, orientation);
+        return Fill(bgra, width, height, damage, upright, w, h, upscale);
     }
 
     /// <summary>
@@ -139,8 +138,36 @@ public static class PhotoRepair
     public static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, byte[] copy, int copyWidth, int copyHeight,
                                UpscalePicture? upscale = null)
     {
-        using var image = Image.LoadPixelData<Bgra32>(copy, copyWidth, copyHeight);
-        return Fill(bgra, width, height, damage, image, upscale);
+        if (!SameShape(width, height, copyWidth, copyHeight))
+            return null;
+        if (upscale is not null && NeedsUpscaling(width, copyWidth))
+        {
+            // AI draws the detail a plain resize can't; the rest of the way is a resize as usual.
+            var (big, bigWidth, bigHeight) = upscale(copy, copyWidth, copyHeight);
+            return Fill(bgra, width, height, damage, big, bigWidth, bigHeight, null);
+        }
+        var upscaled = (double)width / copyWidth;
+        var scaled = ImageMath.Resize(copy, copyWidth, copyHeight, width, height, ImageMath.Resampler.Lanczos3);
+        // A small preview blown up is soft; a little sharpening brings back some edges.
+        if (upscaled > 2)
+            ImageMath.Sharpen(scaled, width, height, (float)Math.Min(2.5, upscaled / 3));
+
+        var result = (byte[])bgra.Clone();
+        var view = new EdgeView(damage.Edge, width, height);
+        for (var y = damage.Kept; y < view.Height; y++)
+        {
+            for (var x = 0; x < view.Width; x++)
+            {
+                var i = view.Index(x, y);
+                var lost = damage.Break is { } broken
+                    ? y >= damage.Kept + broken.BlockHeight || x >= broken.X
+                    : IsFill(result, i, damage.Fill)
+                      || damage.Garbled is { } garbled && y < damage.Kept + garbled.Rows && x >= garbled.X;
+                if (lost)
+                    Buffer.BlockCopy(scaled, i, result, i, 4);
+            }
+        }
+        return result;
     }
 
     /// <summary>
@@ -155,47 +182,6 @@ public static class PhotoRepair
         // shape lines up with it.
         Math.Abs((double)width / height / ((double)copyWidth / copyHeight) - 1) <= 0.04;
 
-    private static byte[]? Fill(byte[] bgra, int width, int height, PhotoDamage damage, Image<Bgra32> source, UpscalePicture? upscale)
-    {
-        if (!SameShape(width, height, source.Width, source.Height))
-            return null;
-        if (upscale is not null && NeedsUpscaling(width, source.Width))
-        {
-            // AI draws the detail a plain resize can't; the rest of the way is a resize as usual.
-            var pixels = new byte[source.Width * source.Height * 4];
-            source.CopyPixelDataTo(pixels);
-            var (big, bigWidth, bigHeight) = upscale(pixels, source.Width, source.Height);
-            using var larger = Image.LoadPixelData<Bgra32>(big, bigWidth, bigHeight);
-            return Fill(bgra, width, height, damage, larger, null);
-        }
-        var upscaled = (double)width / source.Width;
-        source.Mutate(x =>
-        {
-            x.Resize(width, height, KnownResamplers.Lanczos3);
-            // A small preview blown up is soft; a little sharpening brings back some edges.
-            if (upscaled > 2)
-                x.GaussianSharpen((float)Math.Min(2.5, upscaled / 3));
-        });
-        var scaled = new byte[width * height * 4];
-        source.CopyPixelDataTo(scaled);
-
-        var result = (byte[])bgra.Clone();
-        var view = new EdgeView(damage.Edge, width, height);
-        for (var y = damage.Kept; y < view.Height; y++)
-        {
-            for (var x = 0; x < view.Width; x++)
-            {
-                var i = view.Index(x, y);
-                var lost = damage.Break is { } broken
-                    ? y >= damage.Kept + broken.BlockHeight || x >= broken.X
-                    : IsFill(result, i, damage.Fill);
-                if (lost)
-                    Buffer.BlockCopy(scaled, i, result, i, 4);
-            }
-        }
-        return result;
-    }
-
     /// <summary>The picture scaled down to fit <paramref name="size"/> pixels, for showing before and after.</summary>
     public static (byte[] Pixels, int Width, int Height) Shrink(byte[] bgra, int width, int height, int size)
     {
@@ -203,10 +189,7 @@ public static class PhotoRepair
         if (scale >= 1)
             return (bgra, width, height);
         var (w, h) = (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
-        using var image = Image.LoadPixelData<Bgra32>(bgra, width, height);
-        image.Mutate(x => x.Resize(w, h));
-        var result = new byte[w * h * 4];
-        image.CopyPixelDataTo(result);
+        var result = ImageMath.Resize(bgra, width, height, w, h);
         return (result, w, h);
     }
 
@@ -322,7 +305,8 @@ public static class PhotoRepair
     private static float Distance(float[] a, float[] b) =>
         Math.Max(Math.Abs(a[0] - b[0]), Math.Max(Math.Abs(a[1] - b[1]), Math.Abs(a[2] - b[2])));
 
-    private static (int Kept, byte Fill)? FindAtBottom(byte[] p, EdgeView view)
+    // A small lost strip (less than a row of blocks, or than 1% of the photo) counts only when asked for.
+    private static (int Kept, byte Fill, GarbledBlocks? Garbled)? FindAtBottom(byte[] p, EdgeView view, bool small = false)
     {
         var (w, h) = (view.Width, view.Height);
         var corner = view.Index(w - 1, h - 1);
@@ -334,12 +318,46 @@ public static class PhotoRepair
         var top = h;
         while (top > 0 && FlatRun(p, view, top - 1, fill) == w)
             top--;
-        if (h - top < Math.Max(MinBand, h / 100) || top == 0)
+        if (top == 0 || (!small && h - top < Math.Max(MinBand, h / 100)))
             return null;
         // The row of blocks the file broke off in is lost from some point on.
+        var full = top;
         while (top > 0 && FlatRun(p, view, top - 1, fill) >= PartialRun)
             top--;
-        return (top, fill);
+        if (top == h)
+            return null;
+        return (top, fill, top < full ? FindGarbled(p, view, top, full - top, w - FlatRun(p, view, top, fill)) : null);
+    }
+
+    // The blocks just before the grey in the row the file broke off in often come out with wrong colours: the
+    // last bits of data were cut. Going left from the grey, a block counts as garbled while its top edge
+    // doesn't carry on from the row above it, far more than the photo changes from one row to the next there.
+    private static GarbledBlocks? FindGarbled(byte[] p, EdgeView view, int top, int rows, int greyFrom)
+    {
+        const int MaxBlocks = 16;
+        if (top < 2)
+            return null;
+        var block = rows >= 16 ? 16 : 8;
+        var x = greyFrom;
+        for (var n = 0; n < MaxBlocks && x - block >= 0; n++)
+        {
+            double jump = 0, natural = 0;
+            for (var k = x - block; k < x; k++)
+            {
+                int a2 = view.Index(k, top - 2), a1 = view.Index(k, top - 1), b = view.Index(k, top);
+                for (var ch = 0; ch < 3; ch++)
+                {
+                    jump += Math.Abs(p[b + ch] - p[a1 + ch]);
+                    natural += Math.Abs(p[a1 + ch] - p[a2 + ch]);
+                }
+            }
+            jump /= block * 3;
+            natural /= block * 3;
+            if (jump < Math.Max(20, 3 * natural))
+                break;
+            x -= block;
+        }
+        return x < greyFrom ? new GarbledBlocks(x, rows) : null;
     }
 
     // How many pixels at the right end of the row have the fill colour.
@@ -377,15 +395,4 @@ public static class PhotoRepair
             return (py * PhotoWidth + px) * 4;
         }
     }
-
-    // The EXIF orientation as the turn and flip that make the stored pixels upright.
-    private static RotateMode RotationOf(int orientation) => orientation switch
-    {
-        3 or 4 => RotateMode.Rotate180,
-        5 or 6 => RotateMode.Rotate90,
-        7 or 8 => RotateMode.Rotate270,
-        _ => RotateMode.None,
-    };
-
-    private static FlipMode FlipOf(int orientation) => orientation is 2 or 4 or 5 or 7 ? FlipMode.Horizontal : FlipMode.None;
 }

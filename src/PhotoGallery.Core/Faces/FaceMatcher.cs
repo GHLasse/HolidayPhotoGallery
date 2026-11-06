@@ -15,6 +15,13 @@ public sealed class FaceMatcher
     // Faces join a group only when they look clearly alike, so a group rarely mixes two people.
     private const double GroupSimilarity = FaceAnalyzer.SamePerson + 0.05;
 
+    // A group is offered the closest person even when they are not clearly alike, so it comes with a
+    // name to confirm (Lasse, 2026-11-02); below this they are most likely a stranger.
+    public const double LikelyPerson = 0.25;
+
+    // Enough of a group's faces to tell who it is without comparing thousands.
+    private const int GroupSample = 12;
+
     private readonly List<(string Name, List<float[]> Faces)> _people = [];
 
     /// <param name="named">Faces with the name they have been given.</param>
@@ -43,6 +50,58 @@ public sealed class FaceMatcher
                 best = new NameSuggestion(name, similarity);
         }
         return best;
+    }
+
+    /// <summary>
+    /// Who a group of unnamed faces most likely is: the person its faces are most alike on average, faces
+    /// that were told they are not someone counting as unlike them. Null when nobody is even
+    /// <see cref="LikelyPerson"/> alike. A similarity below <see cref="FaceAnalyzer.SamePerson"/> means
+    /// "might be".
+    /// </summary>
+    public NameSuggestion? SuggestForGroup(IReadOnlyList<(float[] Embedding, IReadOnlyList<string> Rejected)> faces,
+                                           IEnumerable<string>? notThese = null)
+    {
+        if (faces.Count == 0)
+            return null;
+        var skip = new HashSet<string>(notThese ?? [], StringComparer.CurrentCultureIgnoreCase);
+        var sample = faces.Count <= GroupSample
+            ? faces
+            : Enumerable.Range(0, GroupSample).Select(i => faces[i * faces.Count / GroupSample]).ToList();
+        NameSuggestion? best = null;
+        foreach (var (name, named) in _people)
+        {
+            if (skip.Contains(name))
+                continue;
+            var sum = 0.0;
+            foreach (var (embedding, rejected) in sample)
+            {
+                if (rejected.Contains(name, StringComparer.CurrentCultureIgnoreCase))
+                    continue;
+                var similarity = double.MinValue;
+                foreach (var face in named)
+                    similarity = Math.Max(similarity, Dot(face, embedding));
+                sum += similarity;
+            }
+            var average = sum / sample.Count;
+            if (average >= LikelyPerson && average > (best?.Similarity ?? double.MinValue))
+                best = new NameSuggestion(name, average);
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// How alike a face is to a person's named faces (the closest one counts); null when the person has no
+    /// named faces.
+    /// </summary>
+    public double? SimilarityTo(string name, float[] embedding)
+    {
+        var person = _people.FirstOrDefault(p => string.Equals(p.Name, name.Trim(), StringComparison.CurrentCultureIgnoreCase));
+        if (person.Faces is null)
+            return null;
+        var similarity = double.MinValue;
+        foreach (var face in person.Faces)
+            similarity = Math.Max(similarity, Dot(face, embedding));
+        return similarity;
     }
 
     /// <summary>

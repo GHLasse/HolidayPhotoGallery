@@ -9,15 +9,22 @@ using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
 
-/// <summary>Unnamed faces that look like the same person, and who they may be.</summary>
-public sealed class FaceGroup(IReadOnlyList<FoundFace> faces, Func<NameSuggestion?> suggest)
+/// <summary>Unnamed faces that look like the same person, and who they most likely are.</summary>
+public sealed class FaceGroup(IReadOnlyList<FoundFace> faces, Func<IReadOnlyCollection<string>, NameSuggestion?> suggest)
 {
-    private readonly Lazy<NameSuggestion?> _suggestion = new(suggest);
+    private readonly Lazy<NameSuggestion?> _suggestion = new(() => suggest([]));
 
     public IReadOnlyList<FoundFace> Faces { get; } = faces;
 
     /// <summary>Worked out when the group is shown: for thousands of groups at once it took many seconds.</summary>
     public NameSuggestion? Suggestion => _suggestion.Value;
+
+    /// <summary>Who else the group most likely is, after being told it is none of these.</summary>
+    public NameSuggestion? SuggestWithout(IReadOnlyCollection<string> notThese) =>
+        notThese.Count == 0 ? Suggestion : suggest(notThese);
+
+    /// <summary>The same suggestions for some of the faces (those not named yet).</summary>
+    public FaceGroup With(IReadOnlyList<FoundFace> rest) => new(rest, suggest);
 }
 
 /// <summary>Finding, recognising and naming the people in the photos.</summary>
@@ -58,6 +65,24 @@ public sealed partial class MainViewModel
             _ = SearchAsync();
         }
     }
+
+    /// <summary>The People view's order (X-1): 0 most photos first, 1 by name; kept in the settings.</summary>
+    public int PeopleSortIndex
+    {
+        get => _settings.PeopleSort == "name" ? 1 : 0;
+        set
+        {
+            var key = value == 1 ? "name" : "count";
+            if (key == _settings.PeopleSort)
+                return;
+            _settings.PeopleSort = key;
+            _settings.Save(SettingsPath);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Everyone named, in the People view's order.</summary>
+    public IReadOnlyList<TagFilterViewModel> PeopleInViewOrder => PeopleSortIndex == 1 ? PeopleByName : People.ToList();
 
     /// <summary>The names already used in the library, most photos first, to pick from when naming a face.</summary>
     public IReadOnlyList<string> KnownNames => People.Select(p => p.Tag).ToList();
@@ -116,6 +141,7 @@ public sealed partial class MainViewModel
     /// <summary>Downloads the face models once (about 39 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadFaceModelAsync()
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -151,14 +177,16 @@ public sealed partial class MainViewModel
         var failures = new List<string>();
         var found = 0;
         var looked = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
-            var todo = items;
+            // Faces are only looked for on photos, not in videos.
+            var todo = items.Where(i => !i.IsVideo).ToList();
             if (!again)
             {
                 var done = await Task.Run(() => _index.GetFaceScanned(items.Select(i => i.Path)));
-                todo = items.Where(i => !done.Contains(i.Path)).ToList();
+                todo = todo.Where(i => !done.Contains(i.Path)).ToList();
             }
 
             if (todo.Count > 0 && _faceAnalyzer is null)
@@ -196,10 +224,11 @@ public sealed partial class MainViewModel
         }
 
         ForgetMatcher();
-        var unnamed = await Task.Run(() => _index.GetAllFaces().Count(f => f.Person is null));
+        var unnamed = await Task.Run(_index.CountUnnamedFaces);
+        UnnamedFaceCount = unnamed;
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be looked at.") + " " + string.Join(" ", failures);
         Inform(looked == 0 && failures.Count == 0
-            ? Tr("These photos were already looked at.")
+            ? items.All(i => i.IsVideo) ? Tr("Faces are only looked for in photos, not in videos.") : Tr("These photos were already looked at.")
             : Tr("Found {0} face(s) in {1} photo(s). {2} face(s) in the library have no name yet.", found, looked, unnamed));
         FacesChanged?.Invoke();
         return unnamed;
@@ -273,11 +302,14 @@ public sealed partial class MainViewModel
                     .Where(p => !_facesNotFound.Contains(p.Path)).Take(Batch).ToList();
                 if (todo.Count == 0)
                     return;
+                var progress = await Task.Run(_index.GetFaceScanProgress);
                 var found = 0;
+                var n = 0;
                 foreach (var (path, orientation) in todo)
                 {
+                    ShowBackground("faces", Tr("Looking for faces: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     // What the user asked for goes first.
-                    while (IsBusy)
+                    while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
                     if (!_settings.FindPeopleAutomatically)
                         return;
@@ -305,6 +337,7 @@ public sealed partial class MainViewModel
         }
         finally
         {
+            ShowBackground("faces", null);
             _findingNewFaces = false;
         }
     }
@@ -379,15 +412,13 @@ public sealed partial class MainViewModel
 
     private void ForgetMatcher() => _matcher = null;
 
-    private static IEnumerable<T> Sample<T>(IReadOnlyList<T> items, int count) =>
-        items.Count <= count ? items : Enumerable.Range(0, count).Select(i => items[i * items.Count / count]);
-
     /// <summary>
     /// The unnamed faces of the library in groups that look like the same person, biggest group first,
     /// each with a suggested name when it looks like someone already named.
     /// </summary>
     public async Task<IReadOnlyList<FaceGroup>> GroupUnnamedFacesAsync()
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Grouping the faces that have no name…");
         try
@@ -411,17 +442,42 @@ public sealed partial class MainViewModel
             foreach (var members in FaceMatcher.Group(unnamed.Select(f => f.Embedding).ToList()))
             {
                 var faces = members.Select(i => unnamed[i]).ToList();
-                // The name most of the group's faces point to; a sample of the group is enough.
-                groups.Add(new FaceGroup(faces, () => Sample(faces, 12)
-                    .Select(f => matcher.Suggest(f.Embedding, f.Rejected))
-                    .OfType<NameSuggestion>()
-                    .GroupBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase)
-                    .OrderByDescending(g => g.Count()).ThenByDescending(g => g.Max(s => s.Similarity))
-                    .Select(g => g.OrderByDescending(s => s.Similarity).First())
-                    .FirstOrDefault()));
+                // The person the group's faces are most alike, so every group comes with a name to confirm.
+                groups.Add(new FaceGroup(faces, notThese => matcher.SuggestForGroup(
+                    faces.Select(f => (f.Embedding, f.Rejected)).ToList(), notThese)));
             }
             return (IReadOnlyList<FaceGroup>)groups;
         });
+    }
+
+    /// <summary>
+    /// The unnamed faces that most likely are this person (nobody else is more alike), most alike first,
+    /// leaving out faces already told they are not them.
+    /// </summary>
+    public async Task<IReadOnlyList<FoundFace>> FindLikelyFacesOfAsync(string name)
+    {
+        await WaitForSavesAsync();
+        IsBusy = true;
+        StatusText = Tr("Looking for faces that may be {0}…", name);
+        try
+        {
+            var matcher = await GetMatcherAsync();
+            return await Task.Run(() => (IReadOnlyList<FoundFace>)_index.GetAllFaces(withThumbnails: true)
+                .Where(f => f.Person is null && !f.Rejected.Contains(name, StringComparer.CurrentCultureIgnoreCase))
+                .Select(f => (Face: f, Similarity: matcher.SimilarityTo(name, f.Embedding) ?? double.MinValue))
+                .Where(m => m.Similarity >= FaceMatcher.LikelyPerson &&
+                            (matcher.Suggest(m.Face.Embedding, m.Face.Rejected) is not { } best ||
+                             string.Equals(best.Name, name, StringComparison.CurrentCultureIgnoreCase) ||
+                             best.Similarity <= m.Similarity))
+                .OrderByDescending(m => m.Similarity)
+                .Select(m => m.Face)
+                .ToList());
+        }
+        finally
+        {
+            IsBusy = false;
+            StatusText = _countText;
+        }
     }
 
     /// <summary>Names faces and writes the names into their photos. Returns how many photos were changed.</summary>
@@ -464,6 +520,110 @@ public sealed partial class MainViewModel
         await AfterPeopleChangedAsync();
     }
 
+    /// <summary>Takes a person off all of <paramref name="items"/> (the info pane with several photos selected).</summary>
+    public async Task RemovePersonFromAsync(IReadOnlyList<PhotoItemViewModel> items, string name)
+    {
+        if (_metadata is null || _indexer is null)
+            return;
+        var named = items.Where(i => i.Photo.People.Any(p => string.Equals(p.Name, name, StringComparison.CurrentCultureIgnoreCase))).ToList();
+        if (named.Count == 0)
+            return;
+        await _peopleWriting.WaitAsync();
+        var failures = new List<string>();
+        var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < named.Count; i++)
+            {
+                if (_stopRequested)
+                    break;
+                var item = named[i];
+                StatusText = Tr("Removing {0} from {1} of {2} photo(s)…", name, i + 1, named.Count);
+                try
+                {
+                    var current = await _metadata.ReadAsync(item.Path);
+                    var people = current.People.Where(p => !string.Equals(p.Name, name, StringComparison.CurrentCultureIgnoreCase)).ToList();
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { People = people });
+                    if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                        item.Photo = updated;
+                    changed++;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{item.FileName}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+            _peopleWriting.Release();
+        }
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
+        Inform(Tr("Removed {0} from {1}", name, PhotoCount(changed)));
+        await AfterPeopleChangedAsync();
+    }
+
+    /// <summary>
+    /// Renames a person on every photo in the library that names them, in the files. Renaming to someone
+    /// already named merges the two. Returns how many photos were changed.
+    /// </summary>
+    public async Task<int> RenamePersonAsync(string from, string to)
+    {
+        to = to.Trim();
+        if (_metadata is null || _indexer is null || to.Length == 0 || string.Equals(from, to, StringComparison.Ordinal))
+            return 0;
+        var paths = await Task.Run(() => _index.GetPathsWithPerson(from));
+        if (paths.Count == 0)
+            return 0;
+        await _peopleWriting.WaitAsync();
+        var failures = new List<string>();
+        var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
+        IsBusy = true;
+        try
+        {
+            for (var i = 0; i < paths.Count; i++)
+            {
+                if (_stopRequested)
+                    break; // what is done stays done
+                var path = paths[i];
+                StatusText = Tr("Renaming {0} to {1} in {2} of {3} photo(s)…", from, to, i + 1, paths.Count);
+                try
+                {
+                    var current = await _metadata.ReadAsync(path);
+                    if (!current.People.Any(p => string.Equals(p.Name, from, StringComparison.CurrentCultureIgnoreCase)))
+                        continue;
+                    var people = current.People
+                        .Select(p => string.Equals(p.Name, from, StringComparison.CurrentCultureIgnoreCase) ? p with { Name = to } : p)
+                        .DistinctBy(p => (p.Name.ToUpperInvariant(), p.Box))
+                        .ToList();
+                    await _metadata.WriteAsync(path, new MetadataChanges { People = people });
+                    var updated = await _indexer.RefreshFileAsync(path);
+                    if (updated is not null && Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
+                        item.Photo = updated;
+                    changed++;
+                }
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                }
+            }
+            await Task.Run(() => _index.RenameRejectedName(from, to));
+        }
+        finally
+        {
+            IsBusy = false;
+            _peopleWriting.Release();
+        }
+        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures.Take(3));
+        Inform(Tr("Renamed {0} to {1} in {2}", from, to, PhotoCount(changed)));
+        await AfterPeopleChangedAsync();
+        return changed;
+    }
+
     private async Task<int> ChangePeopleAsync(IReadOnlyList<FoundFace> faces, Func<IReadOnlyList<PersonTag>, FoundFace, IReadOnlyList<PersonTag>> change, Func<int, int, string> doing)
     {
         if (_metadata is null || _indexer is null || faces.Count == 0)
@@ -475,6 +635,7 @@ public sealed partial class MainViewModel
         var failures = new List<string>();
         var photos = faces.GroupBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
         var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -510,7 +671,7 @@ public sealed partial class MainViewModel
         }
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
-        Inform(Tr("Changed the people in {0} photo(s)", changed));
+        Inform(Tr("Changed the people in {0}", PhotoCount(changed)));
         await AfterPeopleChangedAsync();
         return changed;
     }
@@ -528,6 +689,7 @@ public sealed partial class MainViewModel
         await _peopleWriting.WaitAsync();
         var failures = new List<string>();
         var changed = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -560,7 +722,7 @@ public sealed partial class MainViewModel
         }
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed.") + " " + string.Join(" ", failures);
-        Inform(Tr("Added {0} to {1} photo(s)", name, changed));
+        Inform(Tr("Added {0} to {1}", name, PhotoCount(changed)));
         await AfterPeopleChangedAsync();
         return changed;
     }
@@ -569,6 +731,16 @@ public sealed partial class MainViewModel
     public async Task RejectSuggestionAsync(FoundFace face, string name)
     {
         await Task.Run(() => _index.RejectName(face.Id, name));
+        FacesChanged?.Invoke();
+    }
+
+    /// <summary>Remembers that a whole group of faces is not this person, in one write.</summary>
+    public async Task RejectNameAsync(IReadOnlyList<FoundFace> faces, string name)
+    {
+        var ids = faces.Select(f => f.Id).ToList();
+        if (ids.Count == 0 || string.IsNullOrWhiteSpace(name))
+            return;
+        await Task.Run(() => _index.RejectName(ids, name));
         FacesChanged?.Invoke();
     }
 

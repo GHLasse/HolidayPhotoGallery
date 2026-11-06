@@ -13,9 +13,16 @@ namespace PhotoGallery.Core.Metadata;
 /// </summary>
 public sealed class PhotoMetadataService(ExifToolProcess exifTool)
 {
+    /// <summary>
+    /// A save was refused because the file's name claims another format than it has (a JPEG called .png), so
+    /// the app can note it centrally and offer Fix extension. Raised on a background thread.
+    /// </summary>
+    public event Action<string>? WrongFormatFound;
+
     private static readonly string[] ReadTags =
     [
         "-XMP-dc:Subject", "-IPTC:Keywords", "-XMP-microsoft:LastKeywordXMP", "-IFD0:XPKeywords",
+        "-XMP-lr:HierarchicalSubject", "-XMP-digiKam:TagsList",
         "-XMP-xmp:Rating", "-XMP-microsoft:RatingPercent", "-IFD0:Rating", "-XMP-digiKam:PickLabel",
         "-XMP-dc:Title", "-XMP-dc:Description", "-IFD0:XPTitle", "-IFD0:ImageDescription", "-IPTC:Caption-Abstract",
         "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal",
@@ -24,7 +31,11 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
         "-XMP-photoshop:Country", "-XMP-iptcCore:CountryCode", "-XMP-photoshop:State", "-XMP-photoshop:City", "-XMP-iptcCore:Location",
         "-IPTC:Country-PrimaryLocationName", "-IPTC:Province-State", "-IPTC:City", "-IPTC:Sub-location",
+        "-IFD0:Copyright", "-XMP-dc:Rights", "-IPTC:CopyrightNotice", "-IFD0:Artist", "-XMP-dc:Creator", "-IPTC:By-line",
         $"-{FaceRegions.MwgTag}", $"-{FaceRegions.MicrosoftTag}", $"-{AppNamespace.AutoTagsField}",
+        // Videos (F-4): their own dates, length, turn, camera and place.
+        "-Keys:CreationDate", "-QuickTime:CreateDate", "-QuickTime:Duration", "-Composite:Duration", "-Composite:Rotation", "-VideoFrameRate",
+        "-Keys:Make", "-Keys:Model", "-UserData:Make", "-UserData:Model", "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -88,6 +99,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var args = new List<string> { "-json", "-n", "-G1", "-struct" };
         args.AddRange(ReadTags);
         args.AddRange(paths);
+        // Videos ExifTool can't write keep their details in an XMP sidecar, read along with the video.
+        var withSidecar = paths.Select(p => (Path: p, Sidecar: SupportedFormats.MetadataTarget(p)))
+            .Where(p => p.Sidecar != p.Path && File.Exists(p.Sidecar))
+            .ToList();
+        args.AddRange(withSidecar.Select(p => p.Sidecar));
+        var sidecars = withSidecar.ToDictionary(p => KeyOf(p.Sidecar), p => p.Path, PathComparer);
 
         var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(output.Output))
@@ -97,41 +114,87 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var byKey = paths.ToDictionary(KeyOf, p => p, PathComparer);
 
         using var doc = JsonDocument.Parse(output.Output);
+        var items = new Dictionary<string, JsonElement>(PathComparer);
+        var sidecarItems = new Dictionary<string, JsonElement>(PathComparer);
         foreach (var item in doc.RootElement.EnumerateArray())
         {
             var source = GetString(item, "SourceFile");
-            if (source is null || !byKey.TryGetValue(KeyOf(source), out var originalPath))
+            if (source is null || item.TryGetProperty("Error", out _))
                 continue;
-            if (item.TryGetProperty("Error", out _))
-                continue;
-            result[originalPath] = Parse(originalPath, item);
+            if (sidecars.TryGetValue(KeyOf(source), out var owner))
+                sidecarItems[owner] = item;
+            else if (byKey.TryGetValue(KeyOf(source), out var originalPath))
+                items[originalPath] = item;
         }
+        foreach (var (path, item) in items)
+            result[path] = Parse(path, sidecarItems.TryGetValue(path, out var sidecar) ? Merge(item, sidecar) : item);
         return result;
     }
+
+    // The video's own values with the sidecar's on top.
+    private static JsonElement Merge(JsonElement video, JsonElement sidecar)
+    {
+        var merged = new Dictionary<string, JsonElement>();
+        foreach (var property in video.EnumerateObject())
+            merged[property.Name] = property.Value;
+        foreach (var property in sidecar.EnumerateObject().Where(p => p.Name != "SourceFile"))
+            merged[property.Name] = property.Value;
+        return JsonSerializer.SerializeToElement(merged);
+    }
+
+    /// <summary>
+    /// How the app last read a file (from the index), so a save can find out that another PC or program changed
+    /// it since (M-6); null when not known.
+    /// </summary>
+    public Func<string, Library.IndexedPhoto?>? BasisFor { get; set; }
+
+    /// <summary>
+    /// A save found the file changed by someone else and merged: the path, and the fields both sides changed
+    /// differently (the user's value was saved). Raised on a background thread.
+    /// </summary>
+    public event Action<string, IReadOnlyList<string>>? ChangedElsewhere;
 
     public async Task WriteAsync(string path, MetadataChanges changes, CancellationToken cancellationToken = default)
     {
         if (changes.IsEmpty)
             return;
+        if (BasisFor?.Invoke(path) is { } basis && SaveCheck.ChangedSince(basis, new FileInfo(path)))
+        {
+            var theirs = await ReadAsync(path, cancellationToken).ConfigureAwait(false);
+            changes = SaveCheck.Merge(basis, theirs, changes, out var clashes);
+            ChangedElsewhere?.Invoke(path, clashes);
+        }
+        if (SupportedFormats.IsVideo(path) && (changes.Orientation is not null || changes.People is not null))
+            throw new NotSupportedException(Tr("Videos can't be turned or have people marked yet."));
 
         if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
+        var target = SupportedFormats.MetadataTarget(path);
 
         // People tags are rewritten as a whole, keeping the file's other regions; Windows' copy of them
         // is measured on the upright photo, so it changes when the photo is rotated.
         var current = changes.People is not null || changes.Orientation is not null
             ? await ReadAsync(path, cancellationToken).ConfigureAwait(false)
             : null;
-        var args = BuildWriteArguments(path, changes, current);
+        // Tag trees (M-5): a tag list from before the app knew trees ("Seagull" for "Animals/Birds/Seagull")
+        // keeps the file's tree, and a file without trees gets no tree fields.
+        IReadOnlyList<string>? fileTrees = null;
+        if (changes.Tags is { } newTags)
+        {
+            fileTrees = current?.Tags.Where(TagTree.IsPath).ToList() ?? await ReadTreesAsync(target, cancellationToken).ConfigureAwait(false);
+            if (fileTrees.Count > 0)
+                changes = changes with { Tags = TagTree.KeepTrees(newTags, fileTrees) };
+        }
+        var args = BuildWriteArguments(path, changes, current, fileTrees);
         for (var attempt = 1; ; attempt++)
         {
-            await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+            await RemoveStaleTempFileAsync(target, cancellationToken).ConfigureAwait(false);
             var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
             // ExifTool ignores a failure to delete its temp file after a successful save; tidy up so the
             // next save of this photo is not blocked.
             try
             {
-                await RemoveStaleTempFileAsync(path, cancellationToken).ConfigureAwait(false);
+                await RemoveStaleTempFileAsync(target, cancellationToken).ConfigureAwait(false);
             }
             catch (ExifToolException)
             {
@@ -151,6 +214,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
 
             var reason = string.Join(" ", errors);
+            if (WrongFormat(reason) is var (claimed, real) && real is not null)
+            {
+                WrongFormatFound?.Invoke(path);
+                reason = Tr("the name ends in .{0}, but the file is really a {1}. Choose Repair to give it the right extension, .{2}, then try again.",
+                    claimed!.ToLowerInvariant(), real, real.ToLowerInvariant());
+            }
             if (errors.Any(IsFileLockedError))
                 reason += " " + Tr("Another program may have the photo open; close it and try again.");
             throw new ExifToolException(Tr("Could not save {0}: {1}", Path.GetFileName(path), reason));
@@ -180,6 +249,16 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     }
 
     private const int WriteAttempts = 5;
+
+    // ExifTool goes by the file's name: a JPEG called .png is refused with "Not a valid PNG (looks
+    // more like a JPEG)". Phone transfers and downloads do produce such files, so say what is wrong
+    // rather than passing ExifTool's wording on.
+    internal static (string? Claimed, string? Real) WrongFormat(string error)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(
+            error, @"Not a valid (\w+) \(looks more like an? (\w+)\)");
+        return match.Success ? (match.Groups[1].Value, match.Groups[2].Value) : (null, null);
+    }
 
     private static bool IsFileLockedError(string error) =>
         error.Contains("for writing", StringComparison.OrdinalIgnoreCase) ||
@@ -212,7 +291,32 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
     }
 
-    internal static List<string> BuildWriteArguments(string path, MetadataChanges changes, PhotoMetadata? current = null)
+    // The tag trees in the file, as the app's paths ("Animals/Birds/Seagull").
+    private async Task<IReadOnlyList<string>> ReadTreesAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+            return [];
+        var output = await exifTool.RunAsync(["-json", "-G1", "-XMP-lr:HierarchicalSubject", "-XMP-digiKam:TagsList", path], cancellationToken)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(output.Output))
+            return [];
+        try
+        {
+            using var json = JsonDocument.Parse(output.Output);
+            return json.RootElement.EnumerateArray().SelectMany(item =>
+                    GetList(item, "XMP-lr:HierarchicalSubject").Select(TagTree.FromLightroom)
+                        .Concat(GetList(item, "XMP-digiKam:TagsList").Select(TagTree.FromDigiKam)))
+                .Where(TagTree.IsPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    /// <param name="fileTrees">The tag trees the file has; null when unknown, then the tree fields are always rewritten.</param>
+    internal static List<string> BuildWriteArguments(string path, MetadataChanges changes, PhotoMetadata? current = null,
+                                                     IReadOnlyList<string>? fileTrees = null)
     {
         var hasIptc = HasIptc(path);
         var args = new List<string>
@@ -226,6 +330,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.Tags is { } tags)
         {
             tags = TagList.Normalize(tags);
+            // Tag trees (M-5): the plain fields get each part, Windows' own field and the tree fields the paths.
+            var plain = TagTree.Plain(tags);
+            var paths = TagTree.Paths(tags);
             if (tags.Count == 0)
             {
                 args.AddRange(["-XMP-dc:Subject=", "-XMP-microsoft:LastKeywordXMP=", "-IFD0:XPKeywords="]);
@@ -234,14 +341,25 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
             else
             {
-                foreach (var tag in tags)
+                foreach (var tag in plain)
                 {
                     args.Add($"-XMP-dc:Subject={tag}");
-                    args.Add($"-XMP-microsoft:LastKeywordXMP={tag}");
                     if (hasIptc)
                         args.Add($"-IPTC:Keywords={tag}");
                 }
-                args.Add($"-IFD0:XPKeywords={string.Join(";", tags)}");
+                foreach (var tag in tags)
+                    args.Add($"-XMP-microsoft:LastKeywordXMP={tag}");
+                args.Add($"-IFD0:XPKeywords={string.Join(";", plain)}");
+            }
+            // Only touched when there is a tree now or was one, so files without trees get no new fields.
+            if (paths.Count > 0 || fileTrees is null || fileTrees.Count > 0)
+            {
+                args.AddRange(["-XMP-lr:HierarchicalSubject=", "-XMP-digiKam:TagsList="]);
+                foreach (var tree in paths)
+                {
+                    args.Add($"-XMP-lr:HierarchicalSubject={TagTree.ToLightroom(tree)}");
+                    args.Add($"-XMP-digiKam:TagsList={tree}");
+                }
             }
         }
 
@@ -375,6 +493,33 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        if (changes.Camera is { } camera)
+        {
+            foreach (var (name, value) in camera)
+            {
+                if (CameraTags.Names.Contains(name))
+                    args.Add($"-{name}#={value}");
+            }
+        }
+
+        if (changes.Copyright is { } copyright)
+        {
+            copyright = copyright.Trim();
+            args.Add($"-IFD0:Copyright={copyright}");
+            args.Add($"-XMP-dc:Rights={copyright}");
+            if (hasIptc)
+                args.Add($"-IPTC:CopyrightNotice={copyright}");
+        }
+
+        if (changes.Creator is { } creator)
+        {
+            creator = creator.Trim();
+            args.Add($"-IFD0:Artist={creator}");
+            args.Add($"-XMP-dc:Creator={creator}");
+            if (hasIptc)
+                args.Add($"-IPTC:By-line={creator}");
+        }
+
         var people = changes.People ?? (changes.Orientation is not null && current is { People.Count: > 0 } ? current.People : null);
         if (people is not null)
         {
@@ -384,10 +529,48 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
 
         // IPTC needs to be told its text is UTF-8, or non-ASCII tags and captions are garbled in other apps.
-        if (hasIptc && (changes.Tags is not null || changes.Caption is not null || changes.Place is not null))
+        if (hasIptc && (changes.Tags is not null || changes.Caption is not null || changes.Place is not null ||
+                       changes.Copyright is not null || changes.Creator is not null))
             args.Add("-IPTC:CodedCharacterSet=UTF8");
 
+        if (SupportedFormats.IsVideo(path))
+            return VideoArguments(path, changes, args);
         args.Add(path);
+        return args;
+    }
+
+    /// <summary>
+    /// A video keeps its details in XMP, in the file (MP4, MOV) or in a sidecar (AVI, MTS…), plus the QuickTime
+    /// date and place that phones, Windows and Google Photos read. The photo-only EXIF and IPTC tags are left out.
+    /// </summary>
+    private static List<string> VideoArguments(string path, MetadataChanges changes, List<string> photoArgs)
+    {
+        var target = SupportedFormats.MetadataTarget(path);
+        var args = photoArgs.Where(a => !a.StartsWith('-') || a.StartsWith("-overwrite", StringComparison.Ordinal) || a is "-P" or "-m" ||
+                                         a.StartsWith("-XMP", StringComparison.Ordinal) ||
+                                         (target == path && a.StartsWith("-File", StringComparison.Ordinal)))
+            .ToList();
+        if (target == path)
+        {
+            if (changes.DateTaken is { } date)
+            {
+                // QuickTime's own dates are in UTC; a date without a time zone is taken as this PC's.
+                var instant = date.Instant ?? new DateTimeOffset(date.Local, TimeZoneInfo.Local.GetUtcOffset(date.Local));
+                var utc = instant.UtcDateTime.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture);
+                args.Add($"-Keys:CreationDate={date.ToExifDate()}{DateTaken.FormatOffset(instant.Offset)}");
+                args.Add($"-QuickTime:CreateDate={utc}");
+                if (changes.SyncOtherDates)
+                    args.Add($"-QuickTime:ModifyDate={utc}");
+            }
+            if (changes.RemoveLocation)
+                args.AddRange(["-Keys:GPSCoordinates=", "-UserData:GPSCoordinates="]);
+            if (changes.Location is { } location)
+            {
+                var text = FormattableString.Invariant($"{location.Latitude:0.0000000}, {location.Longitude:0.0000000}");
+                args.Add($"-Keys:GPSCoordinates={text}");
+            }
+        }
+        args.Add(target);
         return args;
     }
 
@@ -424,6 +607,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             tags.AddRange(GetList(item, "XMP-microsoft:LastKeywordXMP"));
         if (tags.Count == 0)
             tags.AddRange(TagList.Parse(GetString(item, "IFD0:XPKeywords")));
+        // Tag trees from Lightroom and digiKam (M-5) become one tag with its path.
+        var paths = GetList(item, "XMP-lr:HierarchicalSubject").Select(TagTree.FromLightroom)
+            .Concat(GetList(item, "XMP-digiKam:TagsList").Select(TagTree.FromDigiKam))
+            .Where(p => p.Length > 0).ToList();
+        if (paths.Count > 0)
+            tags = [.. TagTree.Merge(tags, paths)];
 
         var rating = 0;
         if (GetNumber(item, "XMP-xmp:Rating") is { } xmpRating)
@@ -450,6 +639,10 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        // A phone video filmed upright is stored on its side with a turn to show it at.
+        if (GetNumber(item, "Composite:Rotation") is 90 or 270 && width is not null)
+            (width, height) = (height, width);
+
         var orientation = (int)(GetNumber(item, "IFD0:Orientation") ?? GetNumber(item, "XMP-tiff:Orientation") ?? 1);
         var (people, otherRegions) = FaceRegions.Read(item, Orientation.Normalize(orientation));
 
@@ -468,13 +661,35 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             Orientation = Orientation.Normalize(orientation),
             Width = width,
             Height = height,
-            Latitude = GetNumber(item, "Composite:GPSLatitude"),
-            Longitude = GetNumber(item, "Composite:GPSLongitude"),
-            Camera = CameraName(GetString(item, "IFD0:Make"), GetString(item, "IFD0:Model")),
+            // A video's sidecar has only the XMP copy of the position.
+            Latitude = GetNumber(item, "Composite:GPSLatitude") ?? GetNumber(item, "XMP-exif:GPSLatitude"),
+            Longitude = GetNumber(item, "Composite:GPSLongitude") ?? GetNumber(item, "XMP-exif:GPSLongitude"),
+            Camera = CameraName(FirstText(item, "IFD0:Make", "Keys:Make", "UserData:Make"), FirstText(item, "IFD0:Model", "Keys:Model", "UserData:Model")),
             Place = ParsePlace(item),
+            Copyright = FirstText(item, "XMP-dc:Rights", "IFD0:Copyright", "IPTC:CopyrightNotice"),
+            Creator = FirstText(item, "XMP-dc:Creator", "IFD0:Artist", "IPTC:By-line"),
             People = people,
             OtherRegions = otherRegions,
+            Duration = SupportedFormats.IsVideo(path) ? GetNumber(item, "QuickTime:Duration") ?? GetNumber(item, "Composite:Duration") : null,
+            FrameRate = SupportedFormats.IsVideo(path) ? FrameRateOf(item) : null,
         };
+    }
+
+    // The first field that has text; a list (XMP Creator) gives its entries joined.
+    private static string? FirstText(JsonElement item, params string[] keys) =>
+        keys.Select(k => string.Join("; ", GetList(item, k)).Trim()).FirstOrDefault(v => v.Length > 0);
+
+    /// <summary>
+    /// The camera and exposure tags of a photo (<see cref="CameraTags.Names"/>), as numbers so they can be
+    /// written into another photo unchanged. Tags the photo doesn't have are left out.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string>> ReadCameraAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "-json", "-n", "-G1" };
+        args.AddRange(CameraTags.Names.Select(n => "-" + n));
+        args.Add(path);
+        var output = await exifTool.RunAsync(args, cancellationToken).ConfigureAwait(false);
+        return CameraTags.Parse(output.Output);
     }
 
     private static PlaceName? ParsePlace(JsonElement item)
@@ -527,10 +742,19 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
 
         if (xmp is not null)
             return xmp;
+        // A phone's video: the local time with its time zone.
+        if (DateTaken.TryParse(GetString(item, "Keys:CreationDate"), out var keys))
+            return keys;
         if (DateTaken.TryParse(GetString(item, "XMP-photoshop:DateCreated"), out var created))
             return created;
         if (DateTaken.TryParse(GetString(item, "ExifIFD:CreateDate"), out var digitized))
             return digitized;
+        // Other videos only have QuickTime's date in UTC (zero when the camera had no clock), shown in this PC's time zone.
+        if (DateTaken.TryParse(GetString(item, "QuickTime:CreateDate"), out var quickTime) && quickTime.Local.Year > 1904)
+        {
+            var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(quickTime.Local, DateTimeKind.Utc), TimeZoneInfo.Local);
+            return new DateTaken(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeZoneInfo.Local.GetUtcOffset(local));
+        }
         return null;
     }
 
@@ -561,6 +785,11 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             _ => [],
         };
     }
+
+    // The video track's rate: its group depends on the container (Track1 in MP4/MOV, RIFF in AVI, Matroska …).
+    private static double? FrameRateOf(JsonElement item) =>
+        item.EnumerateObject().Where(p => p.Name.EndsWith(":VideoFrameRate", StringComparison.Ordinal))
+            .Select(p => GetNumber(item, p.Name)).FirstOrDefault(r => r is > 0);
 
     private static double? GetNumber(JsonElement item, string key)
     {

@@ -33,6 +33,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string? _sort;
     private int _minRating;
     private bool _flaggedOnly;
+    private MediaKind _media;
     private bool _withoutTags;
     private bool _withoutPeople;
     private bool _withoutLocation;
@@ -48,7 +49,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string? _selectedCamera;
     private int _cameraIndex;
     private bool _isUpdatingCameras;
-    private List<CameraFilterViewModel> _cameras = [AllCameras];
+    private List<CameraFilterViewModel> _cameras = [AllCameras, NoCamera];
     private ReverseGeocoder? _geocoder;
     private readonly PhotoEditService? _photoEditor;
     private ImageTagger? _tagger;
@@ -58,25 +59,42 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _settings = LibrarySettings.Load(SettingsPath);
         _index = new PhotoIndex(Path.Combine(DataFolder, "index.db"));
+        // Copies without the GPS position left from the last run (a share keeps its copies until the next one).
+        _ = Task.Run(() => Core.Cloud.OutgoingCopies.Clear(OutgoingFolder));
 
         _exifTool = ExifToolProcess.TryStart();
         if (_exifTool is not null)
         {
             _metadata = new PhotoMetadataService(_exifTool);
+            _metadata.WrongFormatFound += path => _uiContext?.Post(_ => _ = NoteHealthAsync(path), null);
+            // M-6: a save first checks the file is as the index read it; another PC's change is merged in.
+            _metadata.BasisFor = path => _index.GetPhoto(path);
+            _metadata.ChangedElsewhere += (path, clashes) => _uiContext?.Post(_ => ChangedElsewhere(path, clashes), null);
             _indexer = new LibraryIndexer(_index, _metadata);
             _photoEditor = new PhotoEditService(_metadata);
         }
 
-        foreach (var folder in _settings.Folders)
+        foreach (var folder in _settings.Folders.Where(f => !PrivateMarks.IsFolderPrivate(f)))
             Folders.Add(new FolderNodeViewModel(folder, isRoot: true));
     }
 
     public ObservableCollection<FolderNodeViewModel> Folders { get; } = [];
 
+    /// <summary>Lists the library's subfolders again, so folders made by an import or outside the app show.</summary>
+    public void RefreshFolderTree()
+    {
+        foreach (var root in Folders)
+            root.Refresh();
+    }
+
     public ObservableCollection<TagFilterViewModel> Tags { get; } = [];
 
     /// <summary>"All cameras" followed by the cameras in the current folder.</summary>
     private static readonly CameraFilterViewModel AllCameras = new(null, Tr("All cameras"));
+
+    // "No camera" is picked with a key no camera name can have.
+    private const string NoCameraKey = "\u0001";
+    private static readonly CameraFilterViewModel NoCamera = new(NoCameraKey, Tr("No camera"));
 
     /// <summary>"All cameras", then each camera in the current folder. Replaced as a whole, never edited.</summary>
     public List<CameraFilterViewModel> Cameras
@@ -89,13 +107,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public bool IsExifToolMissing => _exifTool is null;
 
-    public bool HasNoFolders => Folders.Count == 0;
+    public bool HasNoFolders => _settings.Folders.Count == 0;
 
     public ObservableCollection<PhotoItemViewModel> Photos
     {
         get => _photos;
-        private set => SetProperty(ref _photos, value);
+        private set
+        {
+            if (SetProperty(ref _photos, value))
+                OnPropertyChanged(nameof(ShownDetails));
+        }
     }
+
+    /// <summary>
+    /// What the info pane says about the folder, album, month or place shown while no photo is selected
+    /// (under <see cref="HeaderText"/>).
+    /// </summary>
+    public string ShownDetails => IsAlbumView
+        ? Albums.Count == 1 ? Tr("1 album") : Tr("{0:N0} albums", Albums.Count)
+        : ViewSummary.Describe(Photos.Select(p => p.Photo).ToList());
 
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
 
@@ -106,8 +136,44 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (value)
                 _stopRequested = false;
-            SetProperty(ref _isBusy, value);
+            if (!SetProperty(ref _isBusy, value) || value)
+                return;
+            if (_queuedFolders.Count > 0)
+                _ = RunQueuedFoldersAsync();
+            // What the job just did may have given the background jobs new work (new or changed photos).
+            StartBackgroundJobsSoon();
         }
+    }
+
+    // Library folders to read once the job that is running has finished: added or rescanned meanwhile.
+    private readonly List<string> _queuedFolders = [];
+
+    /// <summary>What waits for the running job, for the progress details; empty when nothing does.</summary>
+    public string QueuedText => _queuedFolders.Count == 0 ? ""
+        : Tr("Next: reading {0}", string.Join(", ", _queuedFolders.Select(f => Path.GetFileName(f) is { Length: > 0 } name ? name : f)));
+
+    public bool HasQueuedWork => _queuedFolders.Count > 0;
+
+    private void QueueFolders(IReadOnlyList<string> folders)
+    {
+        foreach (var folder in folders)
+            if (!_queuedFolders.Contains(folder, StringComparer.OrdinalIgnoreCase))
+                _queuedFolders.Add(folder);
+        OnPropertyChanged(nameof(QueuedText));
+        OnPropertyChanged(nameof(HasQueuedWork));
+    }
+
+    private async Task RunQueuedFoldersAsync()
+    {
+        // Let the finished job wrap up (its banner, refreshing the grid) before the next one starts.
+        await Task.Delay(200);
+        if (IsBusy || _queuedFolders.Count == 0)
+            return;
+        var folders = _queuedFolders.ToList();
+        _queuedFolders.Clear();
+        OnPropertyChanged(nameof(QueuedText));
+        OnPropertyChanged(nameof(HasQueuedWork));
+        await IndexFoldersAsync(folders);
     }
 
     private bool _stopRequested;
@@ -141,22 +207,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>A result for the user, shown as a blue banner; the filter row goes back to the photo count.</summary>
     public void Inform(string message) => Notify(message, NoticeSeverity.Info);
 
+    /// <summary>A red banner with buttons, e.g. to show what went wrong.</summary>
+    public void Fail(string message, IReadOnlyList<NoticeAction> actions) => Notify(message, NoticeSeverity.Error, actions: actions);
+
     /// <summary>A result with an Undo button on its banner.</summary>
-    public void Inform(string message, Func<Task> undo) => Notify(message, NoticeSeverity.Info, undo);
+    public void Inform(string message, Func<Task> undo) => Notify(message, NoticeSeverity.Info, RememberUndo(message, undo));
+
+    /// <summary>News with buttons, such as a new version with "What's new" and "Update now", as a blue banner.</summary>
+    public void Offer(string message, IReadOnlyList<NoticeAction> actions) => Notify(message, NoticeSeverity.Info, actions: actions);
 
     /// <summary>Something the user should do differently, shown as a yellow banner.</summary>
     public void Warn(string message) => Notify(message, NoticeSeverity.Warning);
 
+    /// <summary>A yellow banner with buttons, e.g. to fix what was found.</summary>
+    public void Warn(string message, IReadOnlyList<NoticeAction> actions) => Notify(message, NoticeSeverity.Warning, actions: actions);
+
     private const int MaxNotices = 3;
 
-    private void Notify(string message, NoticeSeverity severity, Func<Task>? undo = null)
+    private void Notify(string message, NoticeSeverity severity, Func<Task>? undo = null, IReadOnlyList<NoticeAction>? actions = null)
     {
+        _noticesMade++;
         if (!IsBusy)
             StatusText = _countText;
         // The same message again moves to the top instead of showing twice.
         if (Notices.FirstOrDefault(n => n.Message == message) is { } same)
             Notices.Remove(same);
-        var notice = new Notice(message, severity, undo);
+        var notice = new Notice(message, severity, undo, actions);
         Notices.Insert(0, notice);
         while (Notices.Count > MaxNotices)
             Notices.RemoveAt(Notices.Count - 1);
@@ -183,6 +259,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 _sort = null;
                 OnPropertyChanged(nameof(SortIndex));
                 OnPropertyChanged(nameof(HeaderText));
+                OnPropertyChanged(nameof(HeaderTip));
+                // The last folder's photos go at once, and the grid says it is loading until the new ones are
+                // there: in a big album they showed for a moment as if they belonged to the new one.
+                _switchingFolder = true;
+                Photos = [];
+                OnPropertyChanged(nameof(IsLoading));
                 _ = SearchAsync();
                 _ = CheckReadOnlyAsync();
             }
@@ -202,6 +284,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged();
             _ = SearchAsync();
         }
+    }
+
+    /// <summary>The choices for what the app opens on, as Settings lists them.</summary>
+    public static readonly (string Key, string Label)[] StartPages =
+        [("albums", Tr("The albums")), ("folders", Tr("All photos, with the folders open")), ("last", Tr("Where I left off"))];
+
+    public int StartPageIndex => Math.Max(0, Array.FindIndex(StartPages, p => p.Key == _settings.StartPage));
+
+    public string StartPage => StartPages[StartPageIndex].Key;
+
+    public string? LastPlace => _settings.LastPlace;
+
+    public void SaveStartPage(int index)
+    {
+        var key = StartPages[Math.Clamp(index, 0, StartPages.Length - 1)].Key;
+        if (key == _settings.StartPage)
+            return;
+        _settings.StartPage = key;
+        _settings.Save(SettingsPath);
+    }
+
+    /// <summary>Remembers where the app was, for opening there next time; saved as it closes.</summary>
+    public void SaveLastPlace(string place)
+    {
+        if (place == _settings.LastPlace)
+            return;
+        _settings.LastPlace = place;
+        _settings.Save(SettingsPath);
+    }
+
+    /// <summary>Shows a folder's photos, as when it is picked in the folder tree.</summary>
+    public void ShowFolder(string path)
+    {
+        IsAlbumView = false;
+        SelectedFolder = new FolderNodeViewModel(path, isRoot: _settings.Folders.Contains(path, StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>The order every folder starts in.</summary>
@@ -258,6 +375,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         set
         {
             if (SetProperty(ref _flaggedOnly, value))
+                _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Photos and videos, only photos, or only videos (F-4); the media filter's index.</summary>
+    public int MediaIndex
+    {
+        get => (int)_media;
+        set
+        {
+            if (value >= 0 && SetProperty(ref _media, (MediaKind)value))
                 _ = SearchAsync();
         }
     }
@@ -331,22 +459,39 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>How many filters "Clear filters" would reset: the search text, each tag and person, and every other filter set.</summary>
     public int ActiveFilterCount =>
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
-        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) +
+        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) + (_media == MediaKind.All ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
-        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
-        (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0);
+        (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (QualityHintsOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
+        (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0) + (_similarTo is null ? 0 : 1);
+
+    /// <summary>
+    /// True once the photos, filters and people from the index are shown (U-9): until then views show that
+    /// they are loading instead of saying there is nothing.
+    /// </summary>
+    public bool HasLoaded { get; private set; }
+
+    /// <summary>The grid or the album view is still waiting for its first content, or the grid for another folder’s photos.</summary>
+    public bool IsLoading => IsAlbumView ? !_albumsLoaded : !HasLoaded || _switchingFolder;
+
+    private bool _switchingFolder; // from choosing another folder or album until its photos are shown
+
+    public string LoadingText => IsAlbumView ? Tr("Looking for albums…") : Tr("Loading the photos…");
 
     /// <summary>Shows what is already indexed straight away, then checks the folders for changes.</summary>
     public async Task InitializeAsync()
     {
         await SearchAsync();
-        _ = LoadCloudUploadsAsync();
+        HasLoaded = true;
+        OnPropertyChanged(nameof(HasLoaded));
+        OnPropertyChanged(nameof(IsLoading));
+        _ = LoadCloudUploadsAsync().ContinueWith(_ => RenameOwedCloudAlbumsAsync(), TaskScheduler.FromCurrentSynchronizationContext());
         if (IsExifToolMissing)
         {
             ErrorMessage = Tr("ExifTool was not found, so photos cannot be indexed or edited. Run scripts\\Get-ExifTool.ps1 and rebuild, or install ExifTool and add it to the PATH.");
             return;
         }
         await RescanAsync();
+        _ = KeepBackgroundJobsGoingAsync();
     }
 
     public async Task AddFolderAsync(string path)
@@ -384,12 +529,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Checks every library folder for new, changed and deleted photos.</summary>
     public Task RescanAsync() => IndexFoldersAsync(_settings.Folders.ToList());
 
-    private async Task IndexFoldersAsync(IReadOnlyList<string> folders)
+    /// <summary>The rescan asked for with the button: like <see cref="RescanAsync"/>, then says what it found.</summary>
+    public Task RescanAndReportAsync() => IndexFoldersAsync(_settings.Folders.ToList(), report: true);
+
+    private async Task IndexFoldersAsync(IReadOnlyList<string> folders, bool report = false)
     {
-        if (_indexer is null || IsBusy)
+        if (_indexer is null)
             return;
+        if (IsBusy)
+        {
+            // Another job (tagging, say) is running: the folders are read right after it, and the
+            // progress details say so.
+            QueueFolders(folders);
+            return;
+        }
+
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
 
         IsBusy = true;
+        int read = 0, removed = 0;
         try
         {
             var progress = new Progress<IndexProgress>(p =>
@@ -403,10 +561,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     break;
                 try
                 {
-                    await _indexer.SyncFolderAsync(folder, progress);
+                    var changes = await _indexer.SyncFolderAsync(folder, progress, fileFailed: (path, ex) =>
+                        App.Trace($"Could not read {path}: {ex}"));
+                    (read, removed) = (read + changes.Read, removed + changes.Removed);
+                    App.Trace($"Rescan of \"{folder}\": exists {Directory.Exists(folder)}, {changes.OnDisk} photos on disk, {changes.Known} in the index");
+                    if (!Directory.Exists(folder))
+                        Warn(Tr("The library folder {0} can't be found. Is the drive connected?", folder));
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ExifToolException)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    // Whatever went wrong, the other library folders are still checked.
+                    App.Trace($"Could not check {folder}: {ex}");
                     ErrorMessage = Tr("Could not read {0}: {1}", folder, ex.Message);
                 }
             }
@@ -415,12 +580,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+        RefreshFolderTree();
+        App.Trace($"Rescan of {folders.Count} folder(s): {read} new or changed, {removed} removed");
+        if (report)
+            Inform(read == 0 && removed == 0 ? Tr("No new, changed or deleted photos found.")
+                : Tr("Photos read: {0}. Photos no longer there: {1}.", read, removed));
+        LivePhotos.Forget(); // new or moved clips
         await SearchAsync();
         await CheckReadOnlyAsync();
         if (IsAlbumView)
             await LoadAlbumsAsync();
-        _ = FindFacesInNewPhotosAsync();
-        _ = CheckFilesInBackgroundAsync();
+        StartBackgroundJobs();
+        _ = RefreshLibraryCountsAsync();
     }
 
     private async Task SearchSoonAsync()
@@ -451,15 +622,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             MinRating = MinRating,
             FlaggedOnly = FlaggedOnly,
             RejectedOnly = RejectedOnly,
+            Media = _media,
             WithoutTags = WithoutTags,
             WithoutPeople = WithoutPeople,
             WithoutLocation = WithoutLocation,
             WithoutDate = WithoutDate,
             DamagedOnly = DamagedOnly,
-            Country = SelectedPlace?.Country,
+            QualityHintsOnly = QualityHintsOnly,
+            Countries = SelectedPlace?.CountryNames,
             City = SelectedPlace?.City,
             WithoutPlace = SelectedPlace?.IsNoPlace ?? false,
-            Camera = _selectedCamera,
+            Camera = _selectedCamera == NoCameraKey ? null : _selectedCamera,
+            WithoutCamera = _selectedCamera == NoCameraKey,
             TakenFrom = TakenFrom?.Date,
             TakenTo = TakenTo?.Date,
         };
@@ -467,10 +641,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var (photos, counts) = await Task.Run(() => (_index.Search(query), LibraryCounts(query.Folder)));
         if (version != _searchVersion)
             return; // A newer search has started meanwhile.
+        (photos, var shares) = await WithMeaningAsync(query, photos);
+        if (version != _searchVersion)
+            return;
         var (tags, autoTagNames, cameras, people, dates, places) = counts;
 
         photos = FilterByCloud(photos);
-        Photos = new ObservableCollection<PhotoItemViewModel>(photos.Select(NewPhotoItem));
+        var wasSwitching = _switchingFolder;
+        _switchingFolder = false; // before the photos change, so "no photos match" can show for an empty result
+        MatchShares = shares; // before the photos, which the grid groups by it
+        var items = photos.Select(NewPhotoItem).ToList();
+        // The tiles' quality hint icons: at once when the hints are loaded, else as soon as they are.
+        if (_qualities is { } qualities)
+            ShowQualityHints(items, qualities);
+        else
+            _ = ShowQualityHintsAsync(items);
+        // Similar shots stacked before the photos show, when that is quick; else right after.
+        var stacked = _vectors is not null ? await StackShotsAsync(version, items) : null;
+        if (version != _searchVersion)
+            return;
+        AllShown = items;
+        Photos = new ObservableCollection<PhotoItemViewModel>(stacked ?? items);
+        if (stacked is null)
+            _ = RestackAsync(version, items);
+        if (wasSwitching)
+            OnPropertyChanged(nameof(IsLoading));
         AutoTagNames = autoTagNames;
         UpdateTags(tags);
         UpdatePeople(people);
@@ -497,7 +692,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var change = _index.ChangeCount;
         if (_counts is { } kept && kept.Change == change && string.Equals(kept.Folder, folder, StringComparison.OrdinalIgnoreCase))
             return kept.Counts;
-        var counts = new Counts(_index.GetTagCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(folder),
+        var counts = new Counts(_index.GetTagTreeCounts(), _index.GetAutoTagNames(), _index.GetCameraCounts(folder),
                                 _index.GetPeopleCounts(), _index.GetDateCounts(), _index.GetPlaceCounts());
         _counts = new KeptCounts(change, folder, counts);
         return counts;
@@ -537,15 +732,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void UpdateCameras(IReadOnlyList<(string Camera, int Count)> cameras)
     {
         var wanted = cameras.Select(c => new CameraFilterViewModel(c.Camera, $"{c.Camera} ({c.Count:N0})")).ToList();
-        if (wanted.SequenceEqual(Cameras.Skip(1)))
+        if (wanted.SequenceEqual(Cameras.Skip(2)))
             return;
 
         // Rebuilding the list resets the combo box, so the chosen camera is put back afterwards.
         _isUpdatingCameras = true;
         try
         {
-            Cameras = [AllCameras, .. wanted];
-            var index = _selectedCamera is null ? 0 : wanted.FindIndex(c => c.Camera == _selectedCamera) + 1;
+            Cameras = [AllCameras, NoCamera, .. wanted];
+            var index = _selectedCamera switch
+            {
+                null => 0,
+                NoCameraKey => 1,
+                var camera => wanted.FindIndex(c => c.Camera == camera) is >= 0 and var i ? i + 2 : 0,
+            };
             _cameraIndex = -1;
             CameraIndex = index;
         }
@@ -569,28 +769,56 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SelectedTags = Tags.Where(t => t.IsSelected).Select(t => t.Tag).ToList();
     }
 
-    /// <summary>Writes the metadata panel's edits into the selected files.</summary>
-    public async Task<bool> SaveEditsAsync()
+    /// <summary>
+    /// Takes the metadata panel's edits for the selected files: shown on the photos at once and written in the
+    /// background (MainViewModel.SaveQueue.cs), so the panel is free for the next selection right away. False
+    /// only when the typed date can't be understood (the panel keeps the edit to fix).
+    /// </summary>
+    public Task<bool> SaveEditsAsync()
     {
         if (_metadata is null || _indexer is null || !Editor.IsDirty)
-            return true;
+            return Task.FromResult(true);
 
         var items = Editor.Items.ToList();
         var edits = new List<(PhotoItemViewModel Item, MetadataChanges Changes)>();
         foreach (var item in items)
         {
             if (!Editor.TryBuildChanges(item, out var changes))
-                return false;
+                return Task.FromResult(false);
             edits.Add((item, changes));
         }
 
-        IsBusy = true;
+        // What each photo had before, to put back with Undo.
+        var before = edits.Select(e => (e.Item, Undo(e.Item.Photo, e.Changes))).ToList();
+        QueueSave(edits, before);
+        Editor.Load(items);
+        return Task.FromResult(true);
+    }
+
+    // The changes that undo a save: the fields it changed, back to what the photo had.
+    private static MetadataChanges Undo(IndexedPhoto old, MetadataChanges changes) => new()
+    {
+        Caption = changes.Caption is null ? null : old.Caption ?? "",
+        Rating = changes.Rating is null ? null : old.Rating,
+        Tags = changes.Tags is null ? null : old.Tags,
+        AutoTags = changes.Tags is null ? null : old.AutoTags,
+        DateTaken = changes.DateTaken is null ? null : old.DateTaken,
+    };
+
+    private async Task<List<string>> WriteChangesAsync(IReadOnlyList<(PhotoItemViewModel Item, MetadataChanges Changes)> edits)
+    {
         var failures = new List<string>();
+        if (_metadata is null || _indexer is null)
+            return failures;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
+        IsBusy = true;
         try
         {
             for (var i = 0; i < edits.Count; i++)
             {
                 var (item, changes) = edits[i];
+                if (changes.IsEmpty)
+                    continue;
                 StatusText = Tr("Saving {0} of {1}…", i + 1, edits.Count);
                 try
                 {
@@ -607,13 +835,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         finally
         {
             IsBusy = false;
+            StatusText = _countText;
         }
-
-        ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be saved.") + " " + string.Join(" ", failures);
-        Inform(failures.Count == 0 ? Tr("Saved {0} photo(s)", edits.Count) : Tr("Saved {0} of {1} photos", edits.Count - failures.Count, edits.Count));
-        Editor.Load(items);
-        await RefreshTagsAsync();
-        return failures.Count == 0;
+        return failures;
     }
 
     /// <summary>
@@ -628,6 +852,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var rotatable = items.Where(i => i.CanRotate).ToList();
         var skipped = items.Count - rotatable.Count;
         var failed = 0;
+
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
 
         IsBusy = true;
         try
@@ -656,7 +882,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     }
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException
-                                               or System.Runtime.InteropServices.COMException or SixLabors.ImageSharp.ImageFormatException)
+                                               or System.Runtime.InteropServices.COMException)
                 {
                     failed++;
                     ErrorMessage = Tr("Could not rotate {0}: {1}", item.FileName, ex.Message) +
@@ -672,11 +898,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var done = rotatable.Count - failed;
-        if (skipped == 0 && failed == 0)
-            Inform(Tr("Rotated {0} photo(s)", done));
+        // One photo turned is seen on the photo itself, so only several get a banner.
+        if (skipped == 0 && failed == 0 && done > 1)
+            Inform(Tr("Rotated {0}.", PhotoCount(done)));
+        else if (skipped > 0 && items.Count == 1)
+            Warn(PixelTurner.AnimatedWebpHint);
         else if (skipped > 0)
-            Warn(Tr("Rotated {0} photo(s). {1} skipped: their format can't be rotated.", done, skipped));
+            Warn(Tr("Rotated {0}. {1} skipped: animated WebP pictures can't be rotated.", PhotoCount(done), skipped));
     }
+
+    /// <summary>"1 photo" or "12 photos".</summary>
+    public static string PhotoCount(int count) => count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", count);
 
     /// <summary>Turns a photo whose format has no orientation tag, by saving its turned pixels as an edit.</summary>
     private async Task TurnPixelsAsync(PhotoItemViewModel item, bool clockwise)
@@ -684,15 +916,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var path = item.Path;
         var turn = clockwise ? 6 : 8;
         string newPath;
-        if (PixelRotation.Handles(path))
+        if (WebpRotation.Handles(path))
         {
-            var (width, height) = await PixelRotation.TurnedSizeAsync(path);
+            // Windows can't write WebP: SkiaSharp turns it, lossless staying lossless.
+            var (width, height) = await Task.Run(() => WebpRotation.TurnedSize(path));
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), width, height,
-                                                        target => PixelRotation.TurnAsync(path, target, clockwise), turn: turn);
+                                                        target => Task.Run(() => WebpRotation.Turn(path, target, clockwise)), turn: turn);
+        }
+        else if (PixelTurner.Handles(path))
+        {
+            // GIF: every frame of an animation is turned with Windows' GIF codec.
+            var (width, height) = await PixelTurner.TurnedSizeAsync(path);
+            newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), width, height,
+                                                        target => PixelTurner.TurnAsync(path, target, clockwise), turn: turn);
         }
         else
         {
-            // HEIC: Windows decodes it upright, and its HEIF encoder (HEVC Video Extensions) saves it again.
+            // PNG and HEIC: Windows decodes them upright, and its encoders save them again (HEIC needs the HEVC Video Extensions).
             var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
             var turned = await Task.Run(() => new DecodedImage(ImageMath.Rotate90(image.Pixels, image.Width, image.Height, clockwise), image.Height, image.Width));
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), turned.Width, turned.Height,
@@ -739,6 +979,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Sets one photo's star rating straight away, as the compare view does.</summary>
     public async Task SetRatingAsync(PhotoItemViewModel item, int stars)
     {
+        var before = Marks([item]);
+        await WriteRatingAsync(item, stars);
+        RememberMarks(Tr("rating of {0}", item.FileName), before);
+    }
+
+    private async Task WriteRatingAsync(PhotoItemViewModel item, int stars)
+    {
         if (_metadata is null || _indexer is null || item.Photo.Rating == stars)
             return;
         try
@@ -756,8 +1003,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Rates several photos at once, e.g. with the number keys in the grid.</summary>
     public async Task SetRatingAsync(IReadOnlyList<PhotoItemViewModel> items, int stars)
     {
+        var before = Marks(items);
         foreach (var item in items)
-            await SetRatingAsync(item, stars);
+            await WriteRatingAsync(item, stars);
+        RememberMarks(Tr("rating of {0}", PhotoCount(items.Count)), before);
     }
 
     /// <summary>
@@ -769,6 +1018,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (_metadata is null || _indexer is null || items.Count == 0)
             return;
         var flag = items.Any(i => !i.Photo.Flagged);
+        var before = Marks(items);
         var failures = new List<string>();
         foreach (var item in items.Where(i => i.Photo.Flagged != flag))
         {
@@ -785,6 +1035,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         ErrorMessage = failures.Count == 0 ? null : (flag ? Tr("Some photos could not be flagged.") : Tr("Some flags could not be removed.")) + " " + string.Join(" ", failures);
         FlagsChanged?.Invoke();
+        RememberMarks(flag ? Tr("flag on {0}", PhotoCount(items.Count)) : Tr("removing the flag from {0}", PhotoCount(items.Count)), before);
     }
 
     /// <summary>Raised after flags were written, so the info pane can show them.</summary>
@@ -802,6 +1053,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var dated = items.Where(i => i.Photo.DateTaken is not null).ToList();
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -843,13 +1095,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Writes a GPS position into the photos, or with null removes their GPS information.</summary>
-    public async Task SetLocationAsync(IReadOnlyList<PhotoItemViewModel> items, GeoPosition? position)
+    public Task SetLocationAsync(IReadOnlyList<PhotoItemViewModel> items, GeoPosition? position) =>
+        SetLocationsAsync(items.Select(i => (i, position)).ToList(), removing: position is null);
+
+    /// <summary>Writes each photo's own GPS position (estimates, G-3).</summary>
+    public Task SetLocationsAsync(IReadOnlyList<(PhotoItemViewModel Item, GeoPosition Position)> placed) =>
+        SetLocationsAsync(placed.Select(p => (p.Item, (GeoPosition?)p.Position)).ToList(), removing: false);
+
+    private async Task SetLocationsAsync(IReadOnlyList<(PhotoItemViewModel Item, GeoPosition? Position)> placed, bool removing)
     {
-        if (_metadata is null || _indexer is null || items.Count == 0)
+        if (_metadata is null || _indexer is null || placed.Count == 0)
             return;
 
-        var changes = position is { } p ? new MetadataChanges { Location = p } : new MetadataChanges { RemoveLocation = true };
+        var items = placed.Select(p => p.Item).ToList();
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -861,6 +1121,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = Tr("Saving the location of {0} of {1}…", i + 1, items.Count);
                 try
                 {
+                    var changes = placed[i].Position is { } p ? new MetadataChanges { Location = p } : new MetadataChanges { RemoveLocation = true };
                     await _metadata.WriteAsync(item.Path, changes);
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
@@ -878,7 +1139,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some locations could not be saved.") + " " + string.Join(" ", failures);
         var done = items.Count - failures.Count;
-        Inform(position is null
+        Inform(removing
             ? Tr("Removed the location from {0} photo(s)", done)
             : Tr("Placed {0} photo(s) on the map", done));
     }
@@ -908,6 +1169,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _geocoder ??= new ReverseGeocoder(PlaceNameLanguageCode);
         var failures = new List<string>();
         var unknown = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -993,22 +1255,28 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Saves the tag list (null means the starter list), its language and how clearly a tag must stand out.</summary>
     public void SaveAutoTagSettings(IReadOnlyList<string>? labels, string language, double threshold)
     {
+        var before = (string.Join("\n", AutoTagLabels), AutoTagLanguage, AutoTagThreshold);
         _settings.AutoTagging.Tags = labels?.ToList();
         _settings.AutoTagging.Language = language;
         _settings.AutoTagging.Threshold = Math.Clamp(threshold, 0.01, 0.99);
         _settings.Save(SettingsPath);
         _labelVectors = null;
+        // Another list, language or bar: photos that got no tags before may get some now.
+        if (before != (string.Join("\n", AutoTagLabels), AutoTagLanguage, AutoTagThreshold))
+            _index.ForgetAutoTagSeen();
     }
 
     /// <summary>Downloads the tagging model once (about 755 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadTagModelAsync()
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
             var progress = new Progress<double>(p => StatusText = Tr("Downloading the tagging model… {0:P0}", p));
             await TagModel.DownloadAsync(TagModelFolder, progress);
             Inform(Tr("The tagging model is ready."));
+            _ = TagInBackgroundAsync();
             return true;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
@@ -1048,22 +1316,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var failures = new List<string>();
         var tagged = 0;
         var added = 0;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
             if (_tagger is null)
-            {
                 StatusText = Tr("Loading the tagging model…");
-                _tagger = await Task.Run(() => ImageTagger.Load(TagModelFolder));
-            }
-            if (_labelVectors is null)
-            {
-                var tagger = _tagger;
-                var language = AutoTagLanguage;
-                var prompts = labels.Select(l => AutoTags.Prompt(l, language)).ToList();
-                _labelVectors = await Task.Run(() => tagger.EmbedTexts(prompts));
-            }
-            var vectors = _labelVectors;
+            var vectors = await LabelVectorsAsync();
 
             for (var i = 0; i < items.Count; i++)
             {
@@ -1073,14 +1332,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = Tr("Tagging {0} of {1}…", i + 1, items.Count);
                 try
                 {
-                    // A small copy is plenty: the model looks at 224 × 224 pixels.
-                    var image = await ImageLoader.DecodePixelsAsync(item.Path, 512);
-                    var tagger = _tagger;
-                    var scores = await Task.Run(() =>
-                    {
-                        var vector = tagger.EmbedImage(image.Pixels, image.Width, image.Height);
-                        return ImageTagger.Scores(vector, vectors);
-                    });
+                    // The vector kept from an earlier look at the photo, so a new tag list needs no photo opened.
+                    var scores = ImageTagger.Scores(await PictureVectorAsync(item.Path, item.IsVideo), vectors);
                     var picked = AutoTags.Pick(labels, scores, threshold);
                     var (tags, autoTags) = AutoTags.Replace(item.Photo.Tags, item.Photo.AutoTags, picked);
                     tagged++;
@@ -1111,7 +1364,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be tagged.") + " " + string.Join(" ", failures);
-        Inform(Tr("Auto-tagged {0} photo(s) with {1} tag(s)", tagged, added));
+        Inform(Tr("Auto-tagged {0}, tags added: {1}", PhotoCount(tagged), added));
         await RefreshTagsAsync();
     }
 
@@ -1128,6 +1381,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var failures = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1156,7 +1410,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         ErrorMessage = failures.Count == 0 ? null : Tr("Some auto tags could not be removed.") + " " + string.Join(" ", failures);
-        Inform(Tr("Removed auto tags from {0} photo(s)", tagged.Count - failures.Count));
+        Inform(Tr("Removed auto tags from {0}", PhotoCount(tagged.Count - failures.Count)));
         await RefreshTagsAsync();
     }
 
@@ -1174,6 +1428,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var isJpeg = extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".jpe";
         if ((asJpeg && !isJpeg) || !ImageEncoder.CanEncode(extension))
             extension = ".jpg";
+
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
 
         IsBusy = true;
         StatusText = Tr("Saving the edit of {0}…", item.FileName);
@@ -1230,6 +1486,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (restore is null)
             return;
         var path = item.Path;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -1254,15 +1511,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             await Task.Run(() => _index.Remove([oldPath]));
         if (await _indexer!.RefreshFileAsync(newPath) is { } updated)
             item.Photo = updated;
-        // The pixels changed, so the faces found before are looked for again.
-        await Task.Run(() => _index.ForgetFaces(newPath));
-        ForgetMatcher();
+        await ForgetPictureAsync(oldPath, newPath);
         await item.ReloadThumbnailAsync();
+        StartBackgroundJobsSoon(); // faces, vector, measure and file check for the new pixels
+    }
+
+    /// <summary>
+    /// After the pixels changed (here or in another app): the faces, picture vector (L-7), fingerprint and
+    /// quality measure found before are forgotten, so the background jobs work them out again.
+    /// </summary>
+    private async Task ForgetPictureAsync(string oldPath, string newPath)
+    {
+        await Task.Run(() =>
+        {
+            _index.ForgetFaces(newPath);
+            _index.ForgetPictureVector(newPath);
+            _index.ForgetPictureHash(newPath);
+        });
+        ForgetMatcher();
+        _vectors?.Remove(oldPath);
+        _vectors?.Remove(newPath);
+        await ForgetQualityAsync(oldPath, newPath);
     }
 
     private async Task RefreshTagsAsync()
     {
-        var (tags, autoTagNames) = await Task.Run(() => (_index.GetTagCounts(), _index.GetAutoTagNames()));
+        var (tags, autoTagNames) = await Task.Run(() => (_index.GetTagTreeCounts(), _index.GetAutoTagNames()));
         AutoTagNames = autoTagNames;
         UpdateTags(tags);
     }

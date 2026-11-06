@@ -39,8 +39,14 @@ public sealed record PhotoQuery
     /// <summary>Only photos without a date taken.</summary>
     public bool WithoutDate { get; init; }
 
+    /// <summary>Only photos with no camera in their metadata (scans, screenshots, edited copies).</summary>
+    public bool WithoutCamera { get; init; }
+
     /// <summary>Only photos from this country (as written in the file's place names).</summary>
     public string? Country { get; init; }
+
+    /// <summary>Only photos from one of these countries: one country's names in the languages it was tagged in.</summary>
+    public IReadOnlyList<string>? Countries { get; init; }
 
     /// <summary>Only photos from this city.</summary>
     public string? City { get; init; }
@@ -57,6 +63,26 @@ public sealed record PhotoQuery
     /// <summary>Inclusive: a date with no time covers that whole day.</summary>
     public DateTime? TakenTo { get; init; }
 
+    /// <summary>Photos, videos or both.</summary>
+    public MediaKind Media { get; init; }
+
     /// <summary>Only photos whose file the health check found damaged (<see cref="FileCheck"/>).</summary>
     public bool DamagedOnly { get; init; }
+
+    /// <summary>Only photos whose name claims the wrong format (<see cref="FileHealth.Misnamed"/>).</summary>
+    public bool MisnamedOnly { get; init; }
+
+    /// <summary>Only photos with a quality hint to show (C-4): possibly blurry, too dark or too bright.</summary>
+    public bool QualityHintsOnly { get; init; }
+
+    /// <summary>Only the photo with this path.</summary>
+    public string? ExactPath { get; init; }
+}
+
+/// <summary>Which kind of files the grid shows.</summary>
+public enum MediaKind
+{
+    All,
+    Photos,
+    Videos,
 }

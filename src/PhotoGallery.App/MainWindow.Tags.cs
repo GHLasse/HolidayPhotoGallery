@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -33,8 +34,11 @@ public sealed partial class MainWindow
                 ? (badge.IsAuto ? Tr("Show only photos tagged {0} (added by auto-tagging)", tag) : Tr("Show only photos tagged {0}", tag))
                 : Tr("{0} of the {1} selected photos have this tag. Click to add it to all of them.", badge.Count, badge.Of);
             Action click = badge.IsOnAll ? () => ViewModel.FilterByTag(tag) : () => ViewModel.Editor.AddTags([tag]);
+            // A tag in a tree (M-5): each level can be clicked on its own, "Animals" shows every animal.
+            var levels = badge.IsOnAll && TagTree.IsPath(tag) ? TagTree.Ancestors(tag).Append(tag).ToList() : null;
             TagBadges.Children.Add(Badge(badge.Label, badge.IsAuto, outlined: !badge.IsOnAll, tooltip, click,
-                                         Tr("Remove {0}", tag), () => ViewModel.Editor.RemoveTag(tag)));
+                                         Tr("Remove {0}", tag), () => ViewModel.Editor.RemoveTag(tag),
+                                         levels: levels, clickLevel: ViewModel.FilterByTag));
         }
         var partial = badges.Count(b => !b.IsOnAll);
         TagHint.Text = partial > 0 ? Tr("Outlined tags are on only some of the selected photos; click one to add it to all.") : "";
@@ -74,15 +78,66 @@ public sealed partial class MainWindow
     {
         if (!_suggestions.TryGetValue(box, out var list))
         {
-            list = [];
-            _suggestions.Add(box, list);
-            box.ItemsSource = list;
+            // Normally given when the box is made (PrepareSuggestions); setting it while the user types can
+            // fail the same way, so then the box just goes without suggestions.
+            try
+            {
+                list = PrepareSuggestions(box);
+            }
+            catch (System.Runtime.InteropServices.COMException ex)
+            {
+                App.Trace($"suggestions: no list for the box: {ex.Message}");
+                return;
+            }
         }
         if (items.SequenceEqual(list))
             return;
         list.Clear();
         foreach (var item in items)
             list.Add(item);
+    }
+
+    /// <summary>Gives a box its one suggestion list, before anything is typed (setting it later crashed).</summary>
+    private System.Collections.ObjectModel.ObservableCollection<string> PrepareSuggestions(AutoSuggestBox box)
+    {
+        if (_suggestions.TryGetValue(box, out var list))
+            return list;
+        list = [];
+        box.ItemsSource = list;
+        _suggestions.Add(box, list);
+        NoTextPrediction(box);
+        return list;
+    }
+
+    /// <summary>
+    /// Turns off Windows' own word suggestions (and spell check) in a box with the app's suggestions: its row of
+    /// guessed words ("Normandy", "Normanby") opens right over the app's list of names and tags.
+    /// </summary>
+    private static void NoTextPrediction(AutoSuggestBox box)
+    {
+        void Apply()
+        {
+            if (FindChild<TextBox>(box) is { } text)
+            {
+                text.IsTextPredictionEnabled = false;
+                text.IsSpellCheckEnabled = false;
+            }
+        }
+        box.Loaded += (_, _) => Apply();
+        Apply();
+    }
+
+    private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T found)
+                return found;
+            if (FindChild<T>(child) is { } deeper)
+                return deeper;
+        }
+        return null;
     }
 
     private void TagBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>
@@ -94,6 +149,73 @@ public sealed partial class MainWindow
         ViewModel.Editor.AddTags(TagList.Parse(text));
         sender.Text = "";
         ShowSuggestions(sender, []);
+    }
+
+    /// <summary>
+    /// A tag picker for a dialog, like the info pane's: a box that suggests the library's tags (most used first)
+    /// and the chosen tags as badges with a cross to take one off again. <paramref name="chosen"/> is kept current.
+    /// </summary>
+    private FrameworkElement TagPicker(string header, List<string> chosen)
+    {
+        var badges = new Controls.WrapPanel();
+        var box = new AutoSuggestBox { PlaceholderText = Tr("Add a tag"), QueryIcon = new SymbolIcon(Symbol.Add) };
+        AutomationProperties.SetName(box, header);
+        PrepareSuggestions(box);
+
+        void Show()
+        {
+            badges.Children.Clear();
+            foreach (var tag in chosen.ToList())
+                badges.Children.Add(Badge(TagTree.IsPath(tag) ? TagTree.Display(tag) : tag, isAuto: false, outlined: false, tag, click: null,
+                                          Tr("Remove {0}", tag), () => { chosen.Remove(tag); Show(); }));
+            badges.Visibility = chosen.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        void Add(IEnumerable<string> tags)
+        {
+            foreach (var tag in tags)
+                if (tag.Length > 0 && !chosen.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                    chosen.Add(tag);
+            Show();
+        }
+
+        box.TextChanged += (sender, args) =>
+        {
+            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+                return;
+            var text = sender.Text;
+            var cut = text.LastIndexOfAny(TagSeparators);
+            if (cut >= 0)
+            {
+                Add(TagList.Parse(text[..cut]));
+                sender.Text = text[(cut + 1)..].TrimStart();
+                text = sender.Text;
+            }
+            var typed = text.Trim();
+            ShowSuggestions(sender, typed.Length == 0
+                ? []
+                : ViewModel.Tags.OrderByDescending(t => t.Count).Select(t => t.Tag)
+                    .Where(t => t.Contains(typed, StringComparison.CurrentCultureIgnoreCase) && !chosen.Contains(t, StringComparer.OrdinalIgnoreCase))
+                    .Take(8)
+                    .ToList());
+        };
+        box.SuggestionChosen += (sender, args) => sender.Text = args.SelectedItem as string ?? sender.Text;
+        box.QuerySubmitted += (sender, args) =>
+        {
+            Add(TagList.Parse(args.ChosenSuggestion as string ?? args.QueryText));
+            sender.Text = "";
+            ShowSuggestions(sender, []);
+        };
+        // What is still typed when the dialog closes counts too.
+        box.LostFocus += (_, _) =>
+        {
+            if (box.Text.Trim().Length > 0 && !box.IsSuggestionListOpen)
+            {
+                Add(TagList.Parse(box.Text));
+                box.Text = "";
+            }
+        };
+        Show();
+        return new StackPanel { Spacing = 6, Children = { new TextBlock { Text = header }, badges, box } };
     }
 
     // ---- Filter bar ----
@@ -160,7 +282,7 @@ public sealed partial class MainWindow
     {
         // The count on "Clear filters" points at filters set somewhere easy to overlook.
         var active = ViewModel.ActiveFilterCount;
-        var none = active > 0 && ViewModel.Photos.Count == 0 && !ViewModel.IsAlbumView;
+        var none = active > 0 && ViewModel.Photos.Count == 0 && !ViewModel.IsAlbumView && !ViewModel.IsLoading;
         NoMatchHint.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
         if (none)
             NoMatchText.Text = active == 1
@@ -189,6 +311,10 @@ public sealed partial class MainWindow
         if (ViewModel.DamagedOnly)
             FilterBadges.Children.Add(Badge(Tr("Damaged files"), false, outlined: false, Tr("Showing photos whose file is damaged"),
                                             null, Tr("Stop filtering by damaged files"), () => ViewModel.DamagedOnly = false));
+        if (ViewModel.QualityHintsOnly)
+            FilterBadges.Children.Add(Badge(Tr("Possibly weak shots"), false, outlined: false,
+                                            Tr("Showing photos that may be blurry, too dark or too bright, not yet rated or flagged"),
+                                            null, Tr("Stop filtering by possibly weak shots"), () => ViewModel.QualityHintsOnly = false));
         if (ViewModel.OnGoogleOnly)
             FilterBadges.Children.Add(Badge(Tr("In Google Photos"), false, outlined: false, Tr("Showing photos uploaded to Google Photos"),
                                             null, Tr("Stop filtering by Google Photos"), () => ViewModel.OnGoogleOnly = false));
@@ -201,10 +327,14 @@ public sealed partial class MainWindow
         if (ViewModel.NotOnOneDriveOnly)
             FilterBadges.Children.Add(Badge(Tr("Not in OneDrive"), false, outlined: false, Tr("Showing photos not in OneDrive yet"),
                                             null, Tr("Stop filtering by OneDrive"), () => ViewModel.NotOnOneDriveOnly = false));
+        if (ViewModel.SimilarTo is { } similar)
+            FilterBadges.Children.Add(Badge(Tr("Like {0}", System.IO.Path.GetFileName(similar)), false, outlined: false, Tr("Showing photos that look like {0}, most alike first", System.IO.Path.GetFileName(similar)),
+                                            null, Tr("Stop showing look-alikes"), () => _ = ViewModel.StopSimilarAsync()));
         foreach (var tag in ViewModel.Tags.Where(t => t.IsSelected).ToList())
         {
-            FilterBadges.Children.Add(Badge(tag.Tag, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", tag.Tag),
-                                            null, Tr("Stop filtering by {0}", tag.Tag), () => tag.IsSelected = false));
+            var shown = PhotoGallery.Core.Metadata.TagTree.Display(tag.Tag);
+            FilterBadges.Children.Add(Badge(shown, ViewModel.IsAutoTag(tag.Tag), outlined: false, Tr("Showing photos tagged {0}", shown),
+                                            null, Tr("Stop filtering by {0}", shown), () => tag.IsSelected = false));
         }
         foreach (var person in ViewModel.People.Where(p => p.IsSelected).ToList())
         {
@@ -248,7 +378,7 @@ public sealed partial class MainWindow
                 Stroke = ThemeBrush("AccentFillColorDefaultBrush"),
                 Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush"),
             };
-            if (_latestFaces[person.Tag] is { } thumbnail)
+            if (_latestFaces.GetValueOrDefault(person.Tag) is { } thumbnail)
                 LoadFaceFill(face, thumbnail);
 
             var button = new Button
@@ -267,8 +397,27 @@ public sealed partial class MainWindow
             ToolTipService.SetToolTip(button, tip);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, person.Tag);
             button.Click += (_, _) => person.IsSelected = !person.IsSelected;
+            button.ContextFlyout = new MenuFlyout { Items = { ReviewMatchesItem(person.Tag) } };
             TopPeople.Children.Add(button);
         }
+    }
+
+    // Each name in the list of everyone with their face (X-1), loaded as the rows come into view.
+    private async void MorePeopleList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (args.InRecycleQueue || args.Item is not TagFilterViewModel person ||
+            (args.ItemContainer.ContentTemplateRoot as Grid)?.Children.OfType<Ellipse>().FirstOrDefault() is not { } face)
+            return;
+        face.Tag = person.Tag;
+        face.Fill = ThemeBrush("CardBackgroundFillColorSecondaryBrush");
+        var review = ReviewMatchesItem(person.Tag);
+        review.Click += (_, _) => PeopleFlyout.Hide();
+        args.ItemContainer.ContextFlyout = new MenuFlyout { Items = { review } };
+        if (!_latestFaces.TryGetValue(person.Tag, out var thumbnail))
+            _latestFaces[person.Tag] = thumbnail = await ViewModel.GetLatestFaceAsync(person.Tag);
+        // The row may show someone else by now.
+        if (thumbnail is not null && Equals(face.Tag, person.Tag))
+            LoadFaceFill(face, thumbnail);
     }
 
     private static async void LoadFaceFill(Ellipse face, byte[] thumbnail)
@@ -290,17 +439,46 @@ public sealed partial class MainWindow
     /// Auto tags get a mark, people a person symbol.
     /// </summary>
     private static Border Badge(string label, bool isAuto, bool outlined, string tooltip, Action? click,
-                                string removeTooltip, Action remove, bool person = false)
+                                string removeTooltip, Action remove, bool person = false,
+                                IReadOnlyList<string>? levels = null, Action<string>? clickLevel = null)
     {
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         if (person)
             content.Children.Add(new FontIcon { Glyph = "\uE77B", FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
         else if (isAuto)
             content.Children.Add(new Controls.AiSparkle { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center });
-        content.Children.Add(new TextBlock { Text = isAuto ? Core.Tagging.AutoTags.Label(label) : label, VerticalAlignment = VerticalAlignment.Center });
 
         UIElement body = content;
-        if (click is not null)
+        if (levels is { Count: > 1 } && clickLevel is not null)
+        {
+            // One button per level of the tree, with › between them.
+            for (var i = 0; i < levels.Count; i++)
+            {
+                if (i > 0)
+                    content.Children.Add(new TextBlock { Text = "›", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 });
+                var level = levels[i];
+                var part = new Button
+                {
+                    Content = new TextBlock { Text = TagTree.Leaf(level) },
+                    Padding = new Thickness(0),
+                    MinHeight = 0,
+                    MinWidth = 0,
+                    Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                    BorderThickness = new Thickness(0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                part.Click += (_, _) => clickLevel(level);
+                ToolTipService.SetToolTip(part, Tr("Show only photos tagged {0}", TagTree.Display(level)));
+                content.Children.Add(part);
+            }
+            tooltip = "";
+        }
+        else
+        {
+            content.Children.Add(new TextBlock { Text = isAuto ? Core.Tagging.AutoTags.Label(label) : label, VerticalAlignment = VerticalAlignment.Center });
+        }
+
+        if (click is not null && levels is not { Count: > 1 })
         {
             var button = new Button
             {
@@ -314,7 +492,8 @@ public sealed partial class MainWindow
             button.Click += (_, _) => click();
             body = button;
         }
-        ToolTipService.SetToolTip(body, tooltip);
+        if (tooltip.Length > 0)
+            ToolTipService.SetToolTip(body, tooltip);
 
         var close = new Button
         {

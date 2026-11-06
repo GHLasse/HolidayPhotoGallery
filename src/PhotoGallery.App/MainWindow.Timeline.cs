@@ -11,12 +11,12 @@ using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
-/// <summary>The photos of one month, under a header in the grid.</summary>
-public sealed class PhotoGroup(DateTime? month, IEnumerable<PhotoItemViewModel> photos) : List<PhotoItemViewModel>(photos)
+/// <summary>The photos of one month (or of one level of match, for a search by meaning), under a header in the grid.</summary>
+public sealed class PhotoGroup(DateTime? month, IEnumerable<PhotoItemViewModel> photos, string? title = null) : List<PhotoItemViewModel>(photos)
 {
     public DateTime? Month { get; } = month;
 
-    public string Title { get; } = month is { } m ? Capitalized(m.ToString("MMMM yyyy", CultureInfo.CurrentCulture)) : Tr("No date");
+    public string Title { get; } = title ?? (month is { } m ? Capitalized(m.ToString("MMMM yyyy", CultureInfo.CurrentCulture)) : Tr("No date"));
 
     public string CountText => Count == 1 ? Tr("1 photo") : Tr("{0:N0} photos", Count);
 
@@ -113,6 +113,88 @@ public sealed partial class MainWindow
         _anchorRetries = 0;
     }
 
+    private bool _carryingSelection;
+
+    /// <summary>
+    /// Before new search results replace the grid (a filter set or cleared): the selected photos, and where the
+    /// last selected one is on screen if it is.
+    /// </summary>
+    private (List<string> Paths, string? Anchor, double Y, List<string> Neighbours) NoteSelectionPlace()
+    {
+        var selected = PhotoGrid.SelectedItems.OfType<PhotoItemViewModel>().ToList();
+        string? anchor = null;
+        double y = 0;
+        if (_gridScroller is { } scroller)
+        {
+            foreach (var item in Enumerable.Reverse(selected))
+            {
+                if (TopInGrid(item) is { } top && top > -ViewModel.TileSize && top < scroller.ViewportHeight)
+                {
+                    (anchor, y) = (item.Path, top);
+                    break;
+                }
+            }
+        }
+        // The photos around the last selected one, next ones first: if a change takes the selected photos out
+        // of the filter, the next photo still shown takes their place instead of the view jumping to the top.
+        var neighbours = new List<string>();
+        if (selected.Count > 0)
+        {
+            var shown = PhotoGrid.Items.OfType<PhotoItemViewModel>().ToList();
+            var at = shown.IndexOf(selected[^1]);
+            if (at >= 0)
+            {
+                var chosen = selected.Select(i => i.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                neighbours.AddRange(shown.Skip(at + 1).Take(50).Select(i => i.Path).Where(p => !chosen.Contains(p)));
+                neighbours.AddRange(shown.Take(at).Reverse().Take(50).Select(i => i.Path).Where(p => !chosen.Contains(p)));
+            }
+        }
+        return (selected.Select(i => i.Path).ToList(), anchor, y, neighbours);
+    }
+
+    /// <summary>
+    /// After new search results: the photos that were selected and are still shown stay selected, and the
+    /// grid scrolls so the one that was on screen stays at the same height, instead of the view jumping back
+    /// to the top of a much longer list.
+    /// </summary>
+    private void KeepSelectionPlace((List<string> Paths, string? Anchor, double Y, List<string> Neighbours) place)
+    {
+        if (place.Paths.Count == 0)
+            return;
+        var byPath = new Dictionary<string, PhotoItemViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in ViewModel.Photos)
+            byPath.TryAdd(item.Path, item);
+        var kept = place.Paths.Select(p => byPath.GetValueOrDefault(p)).OfType<PhotoItemViewModel>().ToList();
+        if (kept.Count == 0)
+        {
+            // The selected photos left the filter (rated, flagged, tagged…): the next one still shown (else the
+            // one before) is selected and put where they were.
+            if (place.Neighbours.Select(p => byPath.GetValueOrDefault(p)).FirstOrDefault(i => i is not null) is not { } next)
+                return;
+            kept = [next];
+            place = (place.Paths, place.Anchor is null ? null : next.Path, place.Y, place.Neighbours);
+            if (place.Anchor is null)
+                DispatcherQueue.TryEnqueue(() => PhotoGrid.ScrollIntoView(next));
+        }
+        _carryingSelection = true;
+        try
+        {
+            PhotoGrid.SelectedItems.Clear();
+            foreach (var item in kept)
+                PhotoGrid.SelectedItems.Add(item);
+        }
+        finally
+        {
+            _carryingSelection = false;
+        }
+        if (place.Anchor is { } anchor && byPath.GetValueOrDefault(anchor) is { } anchorItem)
+        {
+            (_anchorItem, _anchorY) = (anchorItem, place.Y);
+            _anchorRetries = 0;
+            _restoreAnchor = true;
+        }
+    }
+
     private double? TopInGrid(PhotoItemViewModel item) =>
         _gridScroller is { } scroller && PhotoGrid.ContainerFromItem(item) is UIElement container
             ? container.TransformToVisual(scroller).TransformPoint(new Windows.Foundation.Point(0, 0)).Y
@@ -159,13 +241,20 @@ public sealed partial class MainWindow
         TimelineBubble.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>Called when the photos change: grouped by month when sorted by date, a plain list otherwise.</summary>
+    /// <summary>
+    /// Called when the photos change: grouped by month when sorted by date, a plain list otherwise. Photos
+    /// found by meaning are in order of how well they match, so they are grouped by that instead (95–100 %,
+    /// 90–95 % …), after the ones whose words match.
+    /// </summary>
     private void ShowPhotoGroups()
     {
         var byDate = PhotoSort.All[ViewModel.SortIndex].Key is PhotoSort.Oldest or PhotoSort.Newest;
-        _photoGroups = byDate
-            ? MonthGroups.Split(ViewModel.Photos, p => p.Photo.DateTaken?.Local).Select(g => new PhotoGroup(g.Month, g.Items)).ToList()
-            : [];
+        _byMatch = ViewModel.MatchShares is not null;
+        _photoGroups = ViewModel.MatchShares is { } shares
+            ? MatchGroups(shares)
+            : byDate
+                ? MonthGroups.Split(ViewModel.Photos, p => p.Photo.DateTaken?.Local).Select(g => new PhotoGroup(g.Month, g.Items)).ToList()
+                : [];
         if (_photoGroups.Count > 0)
         {
             _photoGroupsSource.Source = _photoGroups;
@@ -175,9 +264,39 @@ public sealed partial class MainWindow
         {
             PhotoGrid.ItemsSource = ViewModel.Photos;
         }
-        TimelineRail.Visibility = _photoGroups.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        // The rail shows years, which match groups don't have.
+        TimelineRail.Visibility = _photoGroups.Count > 1 && !_byMatch ? Visibility.Visible : Visibility.Collapsed;
         ApplyGridPadding();
         DrawTimeline();
+    }
+
+    private bool _byMatch;
+
+    // Consecutive photos of the same level of match, in the order found.
+    private List<PhotoGroup> MatchGroups(IReadOnlyDictionary<string, double> shares)
+    {
+        var groups = new List<PhotoGroup>();
+        var run = new List<PhotoItemViewModel>();
+        int? runKey = null;
+        void Close()
+        {
+            if (run.Count == 0)
+                return;
+            var title = runKey is { } low ? Tr("{0}–{1} % match", low, low + 5) : Tr("Matching words");
+            groups.Add(new PhotoGroup(null, run, title));
+            run = [];
+        }
+        foreach (var item in ViewModel.Photos)
+        {
+            // Photos whose words match (tags, caption, place, name) have no share: -1, before the rest.
+            int? key = shares.TryGetValue(item.Path, out var share) ? PhotoGallery.Core.Tagging.MeaningSearch.Bucket(share) : null;
+            if (run.Count > 0 && key != runKey)
+                Close();
+            runKey = key;
+            run.Add(item);
+        }
+        Close();
+        return groups;
     }
 
     private bool TimelineShown => TimelineRail.Visibility == Visibility.Visible;

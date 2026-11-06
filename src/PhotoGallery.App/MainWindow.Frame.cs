@@ -73,6 +73,7 @@ public sealed partial class MainWindow
         AddTabAccelerators();
         SetUpFilterFolding();
         SetUpViewerMotion();
+        WatchForCards();
     }
 
     private void AddAccelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
@@ -140,6 +141,7 @@ public sealed partial class MainWindow
     /// </summary>
     private void ApplyChrome(bool animate = true)
     {
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, PlaceNotices);
         var panes = !_panesHidden && !_chromeHidden;
         var nav = panes && !_navFolded;
         var rail = panes && _navFolded;
@@ -231,12 +233,61 @@ public sealed partial class MainWindow
 
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (CompareLayer.Visibility == Visibility.Visible)
+        {
+            CompareLayer.PreviewKey(e, WasdArrow(e.Key));
+            return;
+        }
+        if (HandleWasd(e) || HandleCopyPaste(e) || HandleCommandKeys(e))
+            return;
+        if (IsViewerOpen && GridHasFocus() && CompareLayer.Visibility != Visibility.Visible)
+        {
+            // The grid behind the viewer must not take keys: it moved its own selection, so the details pane
+            // showed another photo than the viewer and a rating went to that photo.
+            if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down or
+                VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Home or VirtualKey.End or VirtualKey.Space or VirtualKey.Enter)
+            {
+                e.Handled = true;
+                ViewerCloseButton.Focus(FocusState.Programmatic);
+                if (e.Key == VirtualKey.Left && !IsEditing)
+                    ViewerPrevious_Click(this, new RoutedEventArgs());
+                else if (e.Key == VirtualKey.Right && !IsEditing)
+                    ViewerNext_Click(this, new RoutedEventArgs());
+                return;
+            }
+            ViewerCloseButton.Focus(FocusState.Programmatic);
+        }
         if (e.Key != VirtualKey.Tab || !TabHidesPanes())
             return;
         e.Handled = true;
         _tabHandledByPreview = true;
         DispatcherQueue.TryEnqueue(() => _tabHandledByPreview = false);
         TogglePanes(IsDown(VirtualKey.Shift));
+    }
+
+    // Banners float over the top of the photos; in the viewer they go below its bar, which they covered
+    // (Rotate and Crop could not be clicked while one showed).
+    private void PlaceNotices()
+    {
+        var top = 8.0;
+        if (IsViewerOpen && ViewerTopBar.ActualHeight > 0)
+        {
+            var barBottom = ViewerTopBar.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, ViewerTopBar.ActualHeight)).Y;
+            var panelTop = NoticePanel.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0)).Y - NoticePanel.Margin.Top;
+            top = Math.Max(8, barBottom - panelTop + 8);
+        }
+        NoticePanel.Margin = new Thickness(12, top, 12, 0);
+    }
+
+    private bool GridHasFocus()
+    {
+        for (DependencyObject? element = FocusManager.GetFocusedElement(Root.XamlRoot) as UIElement; element is not null;
+             element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
+        {
+            if (element == PhotoGrid)
+                return true;
+        }
+        return false;
     }
 
     private void TogglePanes(bool shift)
@@ -347,8 +398,7 @@ public sealed partial class MainWindow
         if (more)
         {
             Grid.SetRow(NavFade, Grid.GetRow(open!));
-            var background = Root.Background is SolidColorBrush solid ? solid.Color
-                : (Root.ActualTheme == ElementTheme.Dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
+            var background = NavBackground();
             NavFade.Background = new LinearGradientBrush
             {
                 StartPoint = new Windows.Foundation.Point(0, 0),
@@ -361,6 +411,42 @@ public sealed partial class MainWindow
             };
         }
         NavFade.Visibility = more ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // The colour the pane is drawn on: the first solid background from the pane up (the palette tints it), else
+    // the window's in the pane's own light or dark mode. The window's root brush isn't always it: in light
+    // mode it could be a dark tint, which made the fade a dark band (Lasse 2026-11-01).
+    private Windows.UI.Color NavBackground()
+    {
+        var color = NavPane.ActualTheme == ElementTheme.Dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243);
+        // The see-through washes from the window down to the pane, laid over the plain window colour in turn.
+        var layers = new List<Windows.UI.Color>();
+        for (DependencyObject? at = NavPane; at is not null; at = VisualTreeHelper.GetParent(at))
+        {
+            var brush = at switch
+            {
+                Panel panel => panel.Background,
+                Border border => border.Background,
+                Control control => control.Background,
+                _ => null,
+            };
+            if (brush is not SolidColorBrush solid)
+                continue;
+            var alpha = solid.Color.A * Math.Clamp(brush.Opacity, 0, 1);
+            if (alpha <= 0)
+                continue;
+            layers.Add(Windows.UI.Color.FromArgb((byte)Math.Round(alpha), solid.Color.R, solid.Color.G, solid.Color.B));
+            if (layers[^1].A == 255)
+                break; // nothing below shows through
+        }
+        for (var i = layers.Count - 1; i >= 0; i--)
+        {
+            var top = layers[i];
+            var a = top.A / 255.0;
+            color = Windows.UI.Color.FromArgb(255, (byte)Math.Round(top.R * a + color.R * (1 - a)),
+                (byte)Math.Round(top.G * a + color.G * (1 - a)), (byte)Math.Round(top.B * a + color.B * (1 - a)));
+        }
+        return color;
     }
 
     // Opening a branch or scrolling changes what lies below; the fade follows.
@@ -397,13 +483,31 @@ public sealed partial class MainWindow
         {
             _hadSelection = has;
             _infoForced = null; // I only holds until the selection comes or goes
-            ApplyChrome();
+            var version = ++_paneSlideVersion;
+            if (!IsViewerOpen)
+            {
+                // The details pane waits until a double-click could have happened: sliding in or out at once
+                // moved the tiles, so the second click of a double-click opened another photo (U-8).
+                _ = Task.Delay((int)GetDoubleClickTime()).ContinueWith(_ => DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (version == _paneSlideVersion)
+                        ApplyChrome();
+                }));
+            }
+            else
+                ApplyChrome();
         }
         SelectionCountText.Text = Tr("{0} selected", count);
+        _ = ShowRepairAsync();
         ShowSelectionBar(has);
         // Room under the last row, so the bar never covers a photo that is scrolled to the end.
         ApplyGridPadding(has ? 80 : 8);
     }
+
+    private int _paneSlideVersion;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
 
     private bool _selectionBarShown, _selectionBarAllowed = true;
     private int _selectionBarVersion;
@@ -443,6 +547,28 @@ public sealed partial class MainWindow
         await ViewModel.SetRatingAsync(item, item.Rating == stars ? 0 : stars);
         if (!ViewModel.Editor.IsDirty)
             ViewModel.Editor.Load(SelectedPhotos);
+    }
+
+    private async void TileShots_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is PhotoItemViewModel item)
+            await GoThroughSimilarShotsAsync(item);
+    }
+
+    // A quality hint's icon offers to ignore the hints for this photo (C-4); the tooltip says what it means.
+    private void TileQualityHint_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: PhotoItemViewModel item } button)
+            return;
+        var ignore = new MenuFlyoutItem
+        {
+            Text = Tr("Ignore quality hints for this photo"),
+            Icon = new FontIcon { Glyph = "\uE7BA" },
+        };
+        ignore.Click += async (_, _) => await ViewModel.IgnoreQualityHintsAsync([item]);
+        var menu = new MenuFlyout();
+        menu.Items.Add(ignore);
+        menu.ShowAt(button);
     }
 
     private async void TileFlag_Click(object sender, RoutedEventArgs e)
@@ -521,7 +647,6 @@ public sealed partial class MainWindow
         // handledEventsToo: the grid's items take these events for their own selection handling.
         PhotoGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
         {
-            _pressedSelected = null;
             var point = e.GetCurrentPoint(PhotoGrid);
             if (point.Properties.IsRightButtonPressed)
             {
@@ -529,23 +654,25 @@ public sealed partial class MainWindow
                 SelectForMenu(e.OriginalSource);
                 return;
             }
-            if (!point.Properties.IsLeftButtonPressed || e.KeyModifiers != VirtualKeyModifiers.None)
+            if (!point.Properties.IsLeftButtonPressed)
                 return;
-            if (ClickedPhoto(e.OriginalSource) is { } item && PhotoGrid.SelectedItems.Count == 1 && ReferenceEquals(PhotoGrid.SelectedItems[0], item))
-                _pressedSelected = item;
-        }), true);
-        PhotoGrid.AddHandler(UIElement.TappedEvent, new TappedEventHandler((_, e) =>
-        {
-            var item = _pressedSelected;
-            _pressedSelected = null;
-            if (item is not null && ReferenceEquals(ClickedPhoto(e.OriginalSource), item) &&
-                PhotoGrid.SelectedItems.Count == 1 && ReferenceEquals(PhotoGrid.SelectedItems[0], item))
+            // A double-click opens the photo of its first click, even if the tiles moved in between (U-8).
+            if (ClickedPhoto(e.OriginalSource) is { } item &&
+                (_pressedSelected is null || Environment.TickCount64 - _pressedAt > GetDoubleClickTime()))
             {
-                App.Trace("selection: click on the selected photo clears it");
-                PhotoGrid.SelectedItems.Clear();
+                _pressedSelected = item;
+                _pressedAt = Environment.TickCount64;
             }
         }), true);
+        // A plain click on the only selected photo keeps it selected (Ctrl+click takes it out): clearing it
+        // folded the details pane away between the two clicks of a double-click.
     }
+
+    private long _pressedAt;
+
+    /// <summary>The photo the first click of a double-click went to, when that was just now.</summary>
+    private PhotoItemViewModel? FirstClickedPhoto() =>
+        Environment.TickCount64 - _pressedAt <= GetDoubleClickTime() * 2 ? _pressedSelected : null;
 
     // The photo whose tile was clicked, unless the click was on one of the tile's own buttons (stars, flag, tick).
     private PhotoItemViewModel? ClickedPhoto(object source)

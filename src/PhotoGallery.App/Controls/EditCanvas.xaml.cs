@@ -96,7 +96,17 @@ public sealed partial class EditCanvas : UserControl
             return;
         var fit = Core.Editing.ImageMath.Fit(_ratio, (int)Math.Round(w * 1000), (int)Math.Round(h * 1000));
         _crop = new Rect(fit.X / 1000.0, fit.Y / 1000.0, fit.Width / 1000.0, fit.Height / 1000.0);
+        KeepCropInFrame();
         Draw();
+    }
+
+    // The crop never reaches past the photo, not even by a rounding error: moving it relies on that (a crop
+    // a hair wider than the photo made the move's clamp throw and crashed the app).
+    private void KeepCropInFrame()
+    {
+        var w = Math.Min(_crop.Width, Frame.Width);
+        var h = Math.Min(_crop.Height, Frame.Height);
+        _crop = new Rect(Math.Clamp(_crop.X, 0, Frame.Width - w), Math.Clamp(_crop.Y, 0, Frame.Height - h), w, h);
     }
 
     private void Host_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -109,6 +119,7 @@ public sealed partial class EditCanvas : UserControl
             return;
         }
         _crop = new Rect(old.X * Frame.Width, old.Y * Frame.Height, old.Width * Frame.Width, old.Height * Frame.Height);
+        KeepCropInFrame();
         Draw();
         KeepInside();
     }
@@ -289,8 +300,8 @@ public sealed partial class EditCanvas : UserControl
         }
         else if (_moveStart is { } start)
         {
-            var x = Math.Clamp(_cropAtMoveStart.X + p.X - start.X, 0, Frame.Width - _crop.Width);
-            var y = Math.Clamp(_cropAtMoveStart.Y + p.Y - start.Y, 0, Frame.Height - _crop.Height);
+            var x = Math.Clamp(_cropAtMoveStart.X + p.X - start.X, 0, Math.Max(0, Frame.Width - _crop.Width));
+            var y = Math.Clamp(_cropAtMoveStart.Y + p.Y - start.Y, 0, Math.Max(0, Frame.Height - _crop.Height));
             _crop = new Rect(x, y, _crop.Width, _crop.Height);
             Draw();
             e.Handled = true;
@@ -327,6 +338,7 @@ public sealed partial class EditCanvas : UserControl
         var x = sx > 0 ? anchor.X : anchor.X - w;
         var y = sy > 0 ? anchor.Y : anchor.Y - h;
         _crop = new Rect(Math.Max(0, x), Math.Max(0, y), w, h);
+        KeepCropInFrame();
         Draw();
     }
 

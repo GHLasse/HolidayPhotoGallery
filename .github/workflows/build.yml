@@ -1,27 +1,57 @@
 name: Build
 
-# Builds cost GitHub Actions minutes (Windows ones count double), so only pull requests build,
-# never for documentation alone, and a new push stops the build still running for the same PR.
-# A release is made by running this workflow by hand (Actions > Build > Run workflow) with a version
-# such as 1.0.0: it builds and tests as usual, then publishes GitHub Release v1.0.0 with the installer
-# and the zip attached.
+# Branches (see CONTRIBUTING.md): work happens in pull requests into "prep"; a release is a pull request
+# from prep into "main".
+# - Pull requests build and test, never for documentation alone; a new push stops the build still running.
+# - Versions are MAJOR.MINOR.BUILD, worked out by scripts/version.sh from the newest release.
+# - Every push to prep (a merged pull request) also publishes the "experimental" pre-release: the latest
+#   test version, for testers to install, e.g. 0.1.140 (the newest release's 0.1, then the run number).
+# - Every push to main (a merged release pull request) publishes the next release with the installer and
+#   the zip: v0.1.0, then v0.2.0, and so on. VERSION holds only the major version (0 until 1.0).
+# - Running the workflow by hand (Actions > Build > Run workflow) builds any branch; with a version such
+#   as 0.2.0 it also publishes that release.
 on:
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  push:
+    branches: [main, prep]
     paths-ignore:
       - '**.md'
       - 'docs/**'
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Version to release, such as 1.0.0 (leave empty for a test build only)'
+        description: 'Version to release, such as 0.2.0 (leave empty for a test build only)'
         required: false
         default: ''
 
+# The token each job gets can only read the repository; the release job asks for more on its own.
+permissions:
+  contents: read
+
 concurrency:
   group: build-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A release (push to main) is never stopped halfway.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          version="$(scripts/version.sh '${{ github.event_name }}' '${{ github.ref_name }}' '${{ github.run_number }}' "$RELEASE_VERSION")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version $version"
+
   core-tests-linux:
     runs-on: ubuntu-latest
     steps:
@@ -41,12 +71,17 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/tag-model"
           mkdir -p "$dir"
-          base=https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main
+          base=https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4
           for f in onnx/vision_model_fp16.onnx onnx/text_model_fp16.onnx tokenizer.model; do
             [ -f "$dir/$(basename $f)" ] || curl -sSfL --retry 3 -o "$dir/$(basename $f)" "$base/$f"
           done
           [ -f "$dir/cats.jpg" ] || curl -sSfL --retry 3 -o "$dir/cats.jpg" http://images.cocodataset.org/val2017/000000039769.jpg
           ls -l "$dir"
+          # The same revision and hashes as TagModel.cs.
+          printf '%s  %s\n' \
+            a1959f7bd3993a607e48839f6d01e25b876fe76afda301b028b78eef68aabd95 "$dir/vision_model_fp16.onnx" \
+            711da56ada0a4aa11c7dd3320df741081a3cae4f0ae1b5e5c6d5b294738d0eb0 "$dir/text_model_fp16.onnx" \
+            61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2 "$dir/tokenizer.model" | sha256sum -c
           echo "PHOTOGALLERY_TAG_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Cache face models
         uses: actions/cache@v4
@@ -80,19 +115,12 @@ jobs:
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 
   windows:
+    needs: version
     runs-on: windows-latest
+    env:
+      APP_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      # Release builds carry the release version; test builds 0.0.<run number>.
-      - name: Version
-        shell: pwsh
-        env:
-          RELEASE_VERSION: ${{ inputs.release_version }}
-        run: |
-          $version = if ($env:RELEASE_VERSION) { $env:RELEASE_VERSION.Trim().TrimStart('v') } else { "0.0.${{ github.run_number }}" }
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Version '$version' must look like 1.2.3" }
-          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "Version $version"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -112,7 +140,7 @@ jobs:
         run: |
           $dir = Join-Path $env:RUNNER_TEMP 'tag-model'
           New-Item -ItemType Directory -Force $dir | Out-Null
-          $base = 'https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main'
+          $base = 'https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4'
           foreach ($f in 'onnx/vision_model_fp16.onnx', 'onnx/text_model_fp16.onnx', 'tokenizer.model') {
             $target = Join-Path $dir (Split-Path $f -Leaf)
             if (-not (Test-Path $target)) { curl.exe -sSfL --retry 3 -o $target "$base/$f" }
@@ -150,7 +178,8 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           ONEDRIVE_CLIENT_ID: ${{ secrets.ONEDRIVE_CLIENT_ID }}
-        run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64 "-p:GoogleClientId=$env:GOOGLE_CLIENT_ID" "-p:GoogleClientSecret=$env:GOOGLE_CLIENT_SECRET" "-p:OneDriveClientId=$env:ONEDRIVE_CLIENT_ID" "-p:Version=$env:APP_VERSION"
+          ESRI_API_KEY: ${{ secrets.ESRI_API_KEY }}
+        run: dotnet build src/PhotoGallery.App/PhotoGallery.App.csproj -c Release -p:Platform=x64 "-p:GoogleClientId=$env:GOOGLE_CLIENT_ID" "-p:GoogleClientSecret=$env:GOOGLE_CLIENT_SECRET" "-p:OneDriveClientId=$env:ONEDRIVE_CLIENT_ID" "-p:EsriApiKey=$env:ESRI_API_KEY" "-p:Version=$env:APP_VERSION"
       - name: Smoke test (start the app and check it stays up)
         shell: pwsh
         run: |
@@ -265,14 +294,18 @@ jobs:
           name: HolidayPhotoGallery-Setup-x64
           path: installer-output/*.exe
 
-  # Runs only for a release (see the top): tags the commit and publishes the GitHub Release.
+  # Publishes a release (push to main, or a version typed in by hand) or the experimental pre-release
+  # (push to prep); see the top.
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_version != ''
-    needs: [core-tests-linux, windows]
+    if: (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || github.event_name == 'push'
+    needs: [version, core-tests-linux, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -280,16 +313,58 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_VERSION: ${{ inputs.release_version }}
+          VERSION: ${{ needs.version.outputs.version }}
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          version="${RELEASE_VERSION#v}"
-          tag="v$version"
+          version="$VERSION"
           # The file names stay the same for every release, so .../releases/latest/download/<name> always works.
           cp artifacts/HolidayPhotoGallery-Setup-x64/*.exe HolidayPhotoGallery-Setup-x64.exe
           (cd artifacts/HolidayPhotoGallery-win-x64 && zip -qr ../../HolidayPhotoGallery-win-x64.zip .)
-          if gh release view "$tag" > /dev/null 2>&1; then
-            gh release upload "$tag" HolidayPhotoGallery-Setup-x64.exe HolidayPhotoGallery-win-x64.zip --clobber
+          # The app checks its download against this before installing an update (GitHub's own asset digest
+          # is checked too, when there is one).
+          sha256sum HolidayPhotoGallery-Setup-x64.exe | cut -d' ' -f1 > HolidayPhotoGallery-Setup-x64.exe.sha256
+          files="HolidayPhotoGallery-Setup-x64.exe HolidayPhotoGallery-Setup-x64.exe.sha256 HolidayPhotoGallery-win-x64.zip"
+          if [ "$EVENT" = push ] && [ "$BRANCH" = prep ]; then
+            # What's new since the previous experimental build, shown by the app's update banner.
+            previous="$(git rev-list -n 1 experimental 2> /dev/null || true)"
+            {
+              echo "Test version $version, built from prep at ${{ github.sha }}. It may have bugs; for everyday use take the latest release."
+              echo
+              if [ -n "$previous" ]; then
+                echo "What's new since the previous test version:"
+                git log --no-merges --format='- %s' "$previous..${{ github.sha }}"
+              fi
+            } > notes.md
+            # One rolling pre-release: the old one goes, the new one points at this commit.
+            gh release delete experimental --yes --cleanup-tag > /dev/null 2>&1 || true
+            gh release create experimental $files \
+              --prerelease --target "${{ github.sha }}" --title "Holiday Photo Gallery $version (experimental)" \
+              --notes-file notes.md
+            exit 0
+          fi
+          if [ "$EVENT" = push ] && [ "$BRANCH" != main ]; then
+            exit 0
+          fi
+          tag="v$version"
+          if [ "$EVENT" = push ] && gh release view "$tag" > /dev/null 2>&1; then
+            echo "::error::Release $tag already exists."
+            exit 1
+          fi
+          # Written release notes (docs/release-notes/v0.2.0.md) are what the app's update banner shows as
+          # "What's new"; without them GitHub lists the merged pull requests.
+          notes="docs/release-notes/$tag.md"
+          if [ -f "$notes" ]; then
+            notes_args=(--notes-file "$notes")
           else
-            gh release create "$tag" HolidayPhotoGallery-Setup-x64.exe HolidayPhotoGallery-win-x64.zip \
-              --target "${{ github.sha }}" --title "Holiday Photo Gallery $version" --generate-notes
+            notes_args=(--generate-notes)
+          fi
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" $files --clobber
+            if [ -f "$notes" ]; then
+              gh release edit "$tag" --notes-file "$notes"
+            fi
+          else
+            gh release create "$tag" $files \
+              --target "${{ github.sha }}" --title "Holiday Photo Gallery $version" "${notes_args[@]}"
           fi

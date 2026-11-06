@@ -60,7 +60,7 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                tokens.Add((i, await UploadAsync(photos[i].Path, cancellationToken).ConfigureAwait(false)));
+                tokens.Add((i, await UploadAsync(photos[i].Source, cancellationToken).ConfigureAwait(false)));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or GooglePhotosException)
             {
@@ -138,6 +138,16 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
         return ReadAlbum(doc.RootElement);
     }
 
+    /// <summary>Renames an album; Google allows it for albums this app made, which are the only ones it uploads to.</summary>
+    public async Task RenameAlbumAsync(CloudAlbumLink album, string oldName, string newName, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"albums/{Uri.EscapeDataString(album.AlbumId)}?updateMask=title")
+        {
+            Content = JsonContent.Create(new { title = Truncate(newName, 500) }, options: Json),
+        };
+        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>The albums this app created (Google lists no others to apps any more).</summary>
     public async Task<IReadOnlyList<GoogleAlbum>> ListAlbumsAsync(CancellationToken cancellationToken = default)
     {
@@ -206,6 +216,13 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
         ".webp" => "image/webp",
         ".gif" => "image/gif",
         ".tif" or ".tiff" => "image/tiff",
+        ".mp4" or ".m4v" => "video/mp4",
+        ".mov" => "video/quicktime",
+        ".3gp" => "video/3gpp",
+        ".avi" => "video/x-msvideo",
+        ".mts" or ".m2ts" => "video/mp2t",
+        ".mkv" => "video/x-matroska",
+        ".wmv" => "video/x-ms-wmv",
         _ => "application/octet-stream",
     };
 

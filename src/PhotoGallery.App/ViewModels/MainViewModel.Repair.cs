@@ -102,21 +102,13 @@ public sealed partial class MainViewModel
     /// <summary>Looks at the photo for the repair wizard.</summary>
     public async Task<DamagedPhoto> FindDamageAsync(PhotoItemViewModel item)
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Looking for the damaged part of {0}…", item.FileName);
         try
         {
-            var health = await Task.Run(() =>
-            {
-                try
-                {
-                    return FileCheck.Check(item.Path);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    return FileHealth.Unreadable;
-                }
-            });
+            // Checked afresh, and kept in the index so the filters and the bottom bar agree with the wizard.
+            var health = await NoteHealthAsync(item.Path);
             DecodedImage? image = null;
             try
             {
@@ -126,7 +118,8 @@ public sealed partial class MainViewModel
             {
                 // Not even a broken picture: only a copy can help.
             }
-            var damage = image is null ? null : await Task.Run(() => PhotoRepair.Find(image.Pixels, image.Width, image.Height, item.Photo.Orientation));
+            var damage = image is null ? null : await Task.Run(() => PhotoRepair.Find(image.Pixels, image.Width, image.Height, item.Photo.Orientation,
+                                                                                                 cutOff: health == FileHealth.CutOff));
             double? damagedFrom = null;
             var canMend = false;
             try
@@ -172,6 +165,7 @@ public sealed partial class MainViewModel
                                                        UpscaleQuality? upscale = null, bool evenIfSlow = false,
                                                        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Repairing {0}…", item.FileName);
         Upscaler? upscaler = null;
@@ -202,7 +196,9 @@ public sealed partial class MainViewModel
                 }
                 case RepairWay.FillFromPreview when damaged is { Image: { } image, Damage: { } damage, Preview: { } preview }:
                 {
-                    var pixels = await Task.Run(() => PhotoRepair.Fill(image.Pixels, image.Width, image.Height, damage, preview, item.Photo.Orientation, ai), cancellationToken);
+                    var stored = await ImageLoader.DecodeStoredPixelsAsync(preview);
+                    var pixels = await Task.Run(() => PhotoRepair.FillFromPreview(image.Pixels, image.Width, image.Height, damage,
+                                                                                  stored.Pixels, stored.Width, stored.Height, item.Photo.Orientation, ai), cancellationToken);
                     if (pixels is not null)
                         return new RepairedPhoto(image with { Pixels = pixels }, null) { Note = note };
                     ErrorMessage = Tr("The preview stored in {0} has another shape than the photo, so it can't fill it. Try a copy, or crop.", item.FileName);
@@ -251,6 +247,7 @@ public sealed partial class MainViewModel
         if (_photoEditor is null)
             return false;
         var path = item.Path;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         StatusText = Tr("Repairing {0}…", item.FileName);
         try

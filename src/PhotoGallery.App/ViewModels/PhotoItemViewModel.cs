@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml.Media;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.Core;
+using PhotoGallery.Core.Culling;
 using PhotoGallery.Core.Library;
 
 namespace PhotoGallery.App.ViewModels;
@@ -36,6 +37,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 OnPropertyChanged(nameof(RejectVisibility));
                 OnPropertyChanged(nameof(ThumbnailOpacity));
                 OnPropertyChanged(nameof(Tooltip));
+                OnPropertyChanged(nameof(DurationText));
+                NotifyQualityHints();
             }
         }
     }
@@ -56,9 +59,153 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
         set => SetProperty(ref _isOnOneDrive, value);
     }
 
+    private int _shotCount;
+    private bool _isBestShot;
+
+    /// <summary>
+    /// How many similar shots (C-4) this photo is one of among the photos shown, 0 when none; the tile then shows
+    /// a badge with the number that opens them in Compare.
+    /// </summary>
+    public int ShotCount
+    {
+        get => _shotCount;
+        private set
+        {
+            if (SetProperty(ref _shotCount, value))
+            {
+                OnPropertyChanged(nameof(ShotBadgeVisibility));
+                OnPropertyChanged(nameof(ShotBadgeText));
+                OnPropertyChanged(nameof(ShotTip));
+            }
+        }
+    }
+
+    /// <summary>The sharpest of its similar shots (its badge is coloured).</summary>
+    public bool IsBestShot
+    {
+        get => _isBestShot;
+        private set
+        {
+            if (SetProperty(ref _isBestShot, value))
+            {
+                OnPropertyChanged(nameof(BestShotBadgeVisibility));
+                OnPropertyChanged(nameof(ShotBadgeVisibility));
+                OnPropertyChanged(nameof(ShotTip));
+            }
+        }
+    }
+
+    public void SetShots(int count, bool best)
+    {
+        ShotCount = count;
+        IsBestShot = count > 0 && best;
+    }
+
+    public Microsoft.UI.Xaml.Visibility ShotBadgeVisibility =>
+        ShotCount > 0 && !IsBestShot ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility BestShotBadgeVisibility =>
+        ShotCount > 0 && IsBestShot ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public string ShotBadgeText => ShotCount > 0 ? ShotCount.ToString(System.Globalization.CultureInfo.CurrentCulture) : "";
+
+    public string ShotTip => ShotCount == 0 ? ""
+        : IsBestShot ? Core.Localization.Strings.Tr("The sharpest of {0} similar shots. Click to compare them", ShotCount)
+        : Core.Localization.Strings.Tr("One of {0} similar shots. Click to compare them", ShotCount);
+
+    private QualityHint _qualityHints;
+    private bool _facesBlurry;
+
+    /// <summary>
+    /// The photo's quality hints (C-4) as measured, without the ignored ones; the tile shows a small warning
+    /// icon for each. Set by the main view model once the hints are loaded.
+    /// </summary>
+    public void SetQualityHints(QualityHint hints, bool facesBlurry)
+    {
+        if (hints == _qualityHints && facesBlurry == _facesBlurry)
+            return;
+        _qualityHints = hints;
+        _facesBlurry = facesBlurry;
+        NotifyQualityHints();
+    }
+
+    /// <summary>
+    /// The hints to show now: none once the photo is rated, as the user has judged it then (Lasse: only a rating
+    /// hides them, not a flag or reject; the same rule as the "Possibly weak shots" filter).
+    /// </summary>
+    public QualityHint ShownQualityHints =>
+        Photo.Rating > 0 || Photo.IsVideo ? QualityHint.None : _qualityHints;
+
+    /// <summary>The faces in the photo are what looks blurry (the blur hint then says so).</summary>
+    public bool FacesBlurry => _facesBlurry;
+
+    public Microsoft.UI.Xaml.Visibility BlurryHintVisibility => HintVisibility(QualityHint.Blurry);
+
+    public Microsoft.UI.Xaml.Visibility DarkHintVisibility => HintVisibility(QualityHint.TooDark);
+
+    public Microsoft.UI.Xaml.Visibility BrightHintVisibility => HintVisibility(QualityHint.TooBright);
+
+    public Microsoft.UI.Xaml.Visibility QualityHintsVisibility =>
+        ShownQualityHints != QualityHint.None ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public string BlurryHintTip => QualityHintTip(QualityHint.Blurry, _facesBlurry);
+
+    public string DarkHintTip => QualityHintTip(QualityHint.TooDark, false);
+
+    public string BrightHintTip => QualityHintTip(QualityHint.TooBright, false);
+
+    /// <summary>What a quality hint's icon means, for its tooltip (the tile and the viewer show the same).</summary>
+    public static string QualityHintTip(QualityHint hint, bool faces)
+    {
+        var what = hint switch
+        {
+            QualityHint.Blurry when faces => Core.Localization.Strings.Tr("Faces possibly blurry: the faces in this photo don’t look sharp, e.g. because someone moved or the camera focused elsewhere."),
+            QualityHint.Blurry => Core.Localization.Strings.Tr("Possibly blurry: no part of this photo looks really sharp, e.g. because the camera shook or didn’t focus."),
+            QualityHint.TooDark => Core.Localization.Strings.Tr("Too dark: most of this photo is nearly black."),
+            _ => Core.Localization.Strings.Tr("Too bright: most of this photo is nearly white."),
+        };
+        return what + Environment.NewLine + Core.Localization.Strings.Tr("The hint goes away once you rate the photo, or choose Ignore quality hints in its right-click menu.");
+    }
+
+    private Microsoft.UI.Xaml.Visibility HintVisibility(QualityHint hint) =>
+        ShownQualityHints.HasFlag(hint) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    private void NotifyQualityHints()
+    {
+        OnPropertyChanged(nameof(ShownQualityHints));
+        OnPropertyChanged(nameof(QualityHintsVisibility));
+        OnPropertyChanged(nameof(BlurryHintVisibility));
+        OnPropertyChanged(nameof(DarkHintVisibility));
+        OnPropertyChanged(nameof(BrightHintVisibility));
+        OnPropertyChanged(nameof(BlurryHintTip));
+    }
+
     public string FileName => Photo.FileName;
 
     public bool CanRotate => SupportedFormats.CanRotate(Path);
+
+    public bool IsVideo => Photo.IsVideo;
+
+    /// <summary>Videos show a play mark and their length on the tile.</summary>
+    public Microsoft.UI.Xaml.Visibility VideoVisibility =>
+        Photo.IsVideo ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    /// <summary>A Live Photo (its clip is hidden with it) shows "LIVE" in the info pane, as on the iPhone.</summary>
+    public bool IsLive => LivePhotos.Has(Path);
+
+    /// <summary>A video's frame rate class for its quality badge (59 → "60fps", see PhotoQuality.FrameRateClass); else empty.</summary>
+    public string FrameRateText => Core.Metadata.PhotoQuality.FrameRateClass(Photo.FrameRate) ?? "";
+
+    /// <summary>A video's length as 0:42 or 1:02:03; empty when it isn't known.</summary>
+    public string DurationText => FormatDuration(Photo.Duration);
+
+    public static string FormatDuration(double? seconds)
+    {
+        if (seconds is not { } s || s <= 0)
+            return "";
+        var time = TimeSpan.FromSeconds(Math.Round(s));
+        return time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");
+    }
 
     public int Rating => Photo.Rating;
 
@@ -218,7 +365,8 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
         _thumbnailRequested = true;
         try
         {
-            Thumbnail = await ImageLoader.DecodeAsync(Path, ThumbnailSize);
+            // Windows' own thumbnail is the only picture of a video the app has.
+            Thumbnail = IsVideo ? await ImageLoader.LoadShellThumbnailAsync(Path, ThumbnailSize) : await ImageLoader.DecodeAsync(Path, ThumbnailSize);
             Keep();
         }
         catch (Exception)

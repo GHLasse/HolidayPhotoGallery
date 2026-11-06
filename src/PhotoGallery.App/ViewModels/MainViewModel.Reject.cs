@@ -33,6 +33,7 @@ public sealed partial class MainViewModel
         if (_metadata is null || _indexer is null || items.Count == 0)
             return;
         var reject = items.Any(i => !i.Photo.Rejected);
+        var before = Marks(items);
         var failures = new List<string>();
         foreach (var item in items.Where(i => i.Photo.Rejected != reject))
         {
@@ -49,6 +50,7 @@ public sealed partial class MainViewModel
         }
         ErrorMessage = failures.Count == 0 ? null : (reject ? Tr("Some photos could not be rejected.") : Tr("Some reject marks could not be removed.")) + " " + string.Join(" ", failures);
         FlagsChanged?.Invoke();
+        RememberMarks(reject ? Tr("reject mark on {0}", PhotoCount(items.Count)) : Tr("removing the reject mark from {0}", PhotoCount(items.Count)), before);
     }
 
     /// <summary>The rejected photos among those shown now.</summary>
@@ -58,9 +60,14 @@ public sealed partial class MainViewModel
     /// Moves the rejected photos shown now to the Recycle Bin, with their earlier versions from the
     /// .originals folder, so nothing of them is left behind. They can be restored from the Recycle Bin.
     /// </summary>
-    public async Task RecycleRejectedAsync()
+    public Task RecycleRejectedAsync() => RecycleAsync(ShownRejectedPhotos);
+
+    /// <summary>
+    /// Moves the photos to the Recycle Bin with their earlier versions from the .originals folder (Del, or the
+    /// rejected ones at once). They can be restored from the Recycle Bin.
+    /// </summary>
+    public async Task RecycleAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
-        var items = ShownRejectedPhotos;
         if (items.Count == 0)
             return;
         if (IsBusy)
@@ -71,6 +78,7 @@ public sealed partial class MainViewModel
 
         var failures = new List<string>();
         var moved = new List<string>();
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
         {
@@ -79,7 +87,7 @@ public sealed partial class MainViewModel
                 if (_stopRequested)
                     break; // Stop in the progress details: what is done stays done
                 var item = items[i];
-                StatusText = Tr("Moving {0:N0} of {1:N0} rejected photos to the Recycle Bin…", i + 1, items.Count);
+                StatusText = Tr("Moving {0:N0} of {1:N0} photos to the Recycle Bin…", i + 1, items.Count);
                 try
                 {
                     await Task.Run(() =>
@@ -105,7 +113,7 @@ public sealed partial class MainViewModel
 
         if (failures.Count > 0)
             ErrorMessage = Tr("{0:N0} photo(s) could not be moved to the Recycle Bin.", failures.Count) + " " + string.Join(" ", failures.Take(3));
-        Inform(Tr("Moved {0:N0} rejected photo(s) to the Recycle Bin. You can restore them from there.", moved.Count));
+        Inform(Tr("Moved {0} to the Recycle Bin. You can restore them from there.", PhotoCount(moved.Count)));
         await SearchAsync();
         await RefreshTagsAsync();
     }

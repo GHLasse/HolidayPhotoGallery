@@ -62,6 +62,7 @@ public sealed partial class MainWindow
     private FrameworkElement GoogleSection(CancellationToken closed)
     {
         var panel = new StackPanel { Spacing = 12 };
+        var signInChecked = false;
         CancellationTokenSource? signingIn = null;
         closed.Register(() => signingIn?.Cancel());
 
@@ -101,6 +102,12 @@ public sealed partial class MainWindow
             }
         }
 
+        async Task CheckAsync()
+        {
+            if (await ViewModel.CheckSignInAsync(CloudService.GooglePhotos) && !closed.IsCancellationRequested)
+                ShowStatus();
+        }
+
         void ShowStatus()
         {
             panel.Children.Clear();
@@ -116,8 +123,25 @@ public sealed partial class MainWindow
             });
             panel.Children.Add(Text(Tr("Upload albums and photos to your Google Photos. Each album becomes a Google Photos album of the same name, and uploading it again later only sends the new photos. Only you see the uploaded albums, until you share them in Google Photos.")));
 
+            if (ViewModel.SignInExpired(CloudService.GooglePhotos))
+            {
+                panel.Children.Add(new InfoBar
+                {
+                    IsOpen = true,
+                    IsClosable = false,
+                    Severity = InfoBarSeverity.Warning,
+                    Title = Tr("Sign-in expired"),
+                    Message = Tr("{0} no longer accepts the saved sign-in: it ran out or was withdrawn. Sign in again, and album renames that didn't go through are sent then.", "Google"),
+                });
+            }
             if (ViewModel.IsGoogleSignedIn)
             {
+                // The saved sign-in can have run out without the app noticing yet: ask once, and show the truth.
+                if (!signInChecked)
+                {
+                    signInChecked = true;
+                    _ = CheckAsync();
+                }
                 panel.Children.Add(new InfoBar
                 {
                     IsOpen = true,

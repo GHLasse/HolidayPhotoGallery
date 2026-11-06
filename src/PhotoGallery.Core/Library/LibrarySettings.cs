@@ -38,8 +38,41 @@ public sealed class LibrarySettings
     /// <summary>New photos are looked at for faces in the background, once the face models are downloaded.</summary>
     public bool FindPeopleAutomatically { get; set; } = true;
 
+    /// <summary>Photos get their picture fingerprints in the background, so duplicates are ready to go through.</summary>
+    public bool FindDuplicatesAutomatically { get; set; } = true;
+
+    /// <summary>Photos are measured in the background for hints that they may be blurry, too dark or too bright (C-4).</summary>
+    public bool CheckQualityAutomatically { get; set; } = true;
+
+    /// <summary>
+    /// Photos with a GPS position and no place names get them in the background (country, region, city,
+    /// district), looked up at OpenStreetMap Nominatim. Off until the user turns it on: positions leave the PC.
+    /// </summary>
+    public bool AddPlaceNamesAutomatically { get; set; }
+
+    /// <summary>Similar shots fold into their sharpest one in the grid, like a stack of prints (C-4, filter bar switch).</summary>
+    public bool StackSimilarShots { get; set; } = true;
+
+    /// <summary>
+    /// The Windows time zone the camera's clock was set to, for matching photos without a saved UTC offset to GPS
+    /// tracks (G-4); null means this PC's own time zone.
+    /// </summary>
+    public string? TrackTimeZone { get; set; }
+
+    /// <summary>How many minutes the camera's clock was ahead (negative: behind) of the track's clock.</summary>
+    public int TrackClockErrorMinutes { get; set; }
+
+    /// <summary>A photo between two track points further apart than this many minutes gets no position from the track.</summary>
+    public int TrackMaxGapMinutes { get; set; } = 30;
+
     /// <summary>After a rating, flag or reject in the viewer, move on to the next photo.</summary>
     public bool AutoAdvance { get; set; }
+
+    /// <summary>Short tips the first time a view opens, and a key hint after a command was clicked three times.</summary>
+    public bool ShowTips { get; set; } = true;
+
+    /// <summary>The tips already shown (each only once), by id such as "viewer" or "key:Ctrl+D".</summary>
+    public List<string> SeenTips { get; set; } = [];
 
     /// <summary>The language of place names: "de", "en", "local" (as written there), or null for the app's language.</summary>
     public string? PlaceLanguage { get; set; }
@@ -61,6 +94,36 @@ public sealed class LibrarySettings
     /// <summary>True when the folder pane was folded into its strip of icons.</summary>
     public bool NavPaneFolded { get; set; }
 
+    /// <summary>What the app opens on: "albums", "folders" (all photos, with the folder tree open) or "last".</summary>
+    public string StartPage { get; set; } = "albums";
+
+    /// <summary>
+    /// Where the app was when it closed, for <see cref="StartPage"/> "last": "albums", "all", "map", "people"
+    /// or "folder:" and the folder's path.
+    /// </summary>
+    public string? LastPlace { get; set; }
+
+    /// <summary>Where imported photos go (F-1); null: the first library folder.</summary>
+    public string? ImportFolder { get; set; }
+
+    /// <summary>The dated folders imported photos go into, e.g. "{year}/{date} {event}".</summary>
+    public string ImportPattern { get; set; } = Import.ImportPlanner.DefaultPattern;
+
+    /// <summary>The note that private photos are only hidden in this app was shown (P-1).</summary>
+    public bool PrivateNoteShown { get; set; }
+
+    /// <summary>The pattern used last to rename photos (F-2).</summary>
+    public string RenamePattern { get; set; } = Library.RenamePattern.Default;
+
+    /// <summary>The parts ticked last time details were pasted (M-4).</summary>
+    public Metadata.MetadataParts PasteParts { get; set; } = Metadata.MetadataParts.All;
+
+    /// <summary>Pasting a date keeps the time between the photos (moves them together) instead of giving all the same date.</summary>
+    public bool PasteKeepsGaps { get; set; } = true;
+
+    /// <summary>How the People view is sorted: "count" (most photos first) or "name" (A–Z).</summary>
+    public string PeopleSort { get; set; } = "count";
+
     /// <summary>How the album view is sorted (an <see cref="Albums.Album"/> Sort… key).</summary>
     public string AlbumSort { get; set; } = Albums.Album.SortNewest;
 
@@ -81,8 +144,20 @@ public sealed class LibrarySettings
     /// <summary>The user's own Microsoft app registration, when they use one instead of the app's built-in one.</summary>
     public string? OneDriveClientId { get; set; }
 
+    /// <summary>Uploaded and shared photos leave without their GPS position (a copy is sent; the photo keeps it).</summary>
+    public bool SendWithoutGps { get; set; }
+
     /// <summary>The Microsoft account signed in, for display.</summary>
     public string? OneDriveAccount { get; set; }
+
+    /// <summary>Which versions the app offers to update to (an <see cref="Updates.AppUpdates"/> channel).</summary>
+    public string UpdateChannel { get; set; } = Updates.AppUpdates.Stable;
+
+    /// <summary>Whether the app looks for a new version by itself, at most once a day.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>When the app last asked GitHub for a new version.</summary>
+    public DateTimeOffset? LastUpdateCheck { get; set; }
 
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HolidayPhotoGallery");
@@ -129,4 +204,21 @@ public sealed class AutoTagSettings
     public double Threshold { get; set; } = DefaultThreshold;
 
     public const double DefaultThreshold = 0.15;
+
+    /// <summary>
+    /// Which photos are tagged in the background, without being asked (Lasse, 2026-10-31): "new" (photos that
+    /// arrive in a folder the library already knew, e.g. an import), "all" (existing photos without auto tags
+    /// too) or "off".
+    /// </summary>
+    public string Automatic { get; set; } = AutomaticNew;
+
+    public const string AutomaticNew = "new";
+    public const string AutomaticAll = "all";
+    public const string AutomaticOff = "off";
+
+    /// <summary>
+    /// The search box also finds photos by what they show, in your own words (L-7), and the photos are got
+    /// ready for that in the background, once the tagging model is downloaded.
+    /// </summary>
+    public bool SearchByMeaning { get; set; } = true;
 }

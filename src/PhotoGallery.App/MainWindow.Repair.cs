@@ -19,6 +19,31 @@ public sealed partial class MainWindow
 {
     private const int CompareSize = 360;
 
+    private int _repairVersion;
+    private PhotoItemViewModel? _damagedInSelection;
+    private static bool _bestUpscaleTooSlow;
+
+    // The selection bar and the right-click menu offer Repair only while a selected photo is damaged (a wrong
+    // extension counts).
+    private async Task ShowRepairAsync()
+    {
+        var version = ++_repairVersion;
+        var damaged = (await ViewModel.DamagedAmongAsync(SelectedPhotos)).FirstOrDefault();
+        if (version != _repairVersion)
+            return;
+        _damagedInSelection = damaged;
+        RepairButton.Visibility = damaged is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // Repair from the grid: the wizard works on the photo in the viewer, so the damaged photo opens there first.
+    private void RepairSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (_damagedInSelection is not { } item)
+            return;
+        OpenViewer(item);
+        ViewerRepair_Click(sender, e);
+    }
+
     private async void ViewerRepair_Click(object sender, RoutedEventArgs e)
     {
         if (ViewerItem is not { } item || WaitsForBusyWork())
@@ -27,6 +52,18 @@ public sealed partial class MainWindow
         ViewModel.ErrorMessage = null;
         var damaged = await ViewModel.FindDamageAsync(item);
         var copies = await ViewModel.FindCopiesAsync(item);
+        // A name claiming the wrong format (a JPEG called .png) counts as damage too: details can't be saved.
+        var rightName = await Task.Run(() =>
+        {
+            try
+            {
+                return FileCheck.CorrectName(item.Path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        });
         ViewerProgress.IsActive = false;
 
         string? copyPath = copies.FirstOrDefault();
@@ -37,24 +74,36 @@ public sealed partial class MainWindow
         var markDamage = damaged.Damage is null && damaged.Image is not null && damaged.Health == FileHealth.Garbled;
         var lost = damaged.Damage is { Break: not null } b
             ? Tr("About {0:P0} of this photo is damaged: its picture data broke, so from there on the colours are wrong.", b.LostShare)
+            : damaged.Damage is { LostShare: < 0.005 }
+                ? Tr("A thin strip at the edge of this photo was lost: the end of its file is missing, and the lost part shows grey.")
             : damaged.Damage is { } d
                 ? Tr("About {0:P0} of this photo was lost: the end of its file is missing, and the lost part shows grey.", d.LostShare)
                 : damaged.Image is null
                     ? Tr("This file can't be read as a picture at all. Only another copy of the photo can bring it back.")
+                    : damaged.Health == FileHealth.Misnamed && rightName is not null
+                        ? Tr("The name of this file claims the wrong format, so its details can’t be saved. Giving it the right extension fixes that; the picture stays exactly as it is.")
                     : damaged.CanMend
                         ? Tr("The end of this file is missing, but its picture is complete. Mending adds the missing end; the picture stays exactly as it is.")
                         : markDamage
                             ? Tr("The picture data of this file is damaged, but where it starts can't be seen for sure. Move the line to where the photo starts to look wrong.")
+                            : damaged.Health == FileHealth.CutOff
+                                ? Tr("The end of this file is missing, but no lost area shows in the picture. If the photo looks fine, you can stop marking it as damaged; if it looks wrong, replace it with another copy.")
                             : damaged.Health != FileHealth.Whole
-                                ? Tr("The file is damaged, but no lost area shows in the picture. If it looks wrong, replace it with another copy.")
+                                ? Tr("The structure of this file is damaged, but no lost area shows in the picture. If the photo looks fine, you can stop marking it as damaged; if it looks wrong, replace it with another copy.")
                                 : Tr("No damage found in this file. If the photo looks wrong anyway, you can replace it with another copy.");
         var canFill = damaged.Damage is not null || markDamage;
+        var rename = Way(Tr("Give the file the right extension: {0}", rightName ?? ""), rightName is not null);
+        var renameChosen = false;
         var mend = Way(Tr("Mend the file without changing the picture"), damaged.CanMend);
         var fromPreview = Way(Tr("Fill the lost part from the small preview the camera stored in the file"),
                               canFill && damaged.Preview is not null);
         var fromCopy = Way(Tr("Fill the lost part from another copy of this photo"), canFill);
         var replace = Way(Tr("Replace the photo with another copy of it"), true);
         var crop = Way(Tr("Crop the photo to the part that is undamaged"), canFill);
+        // The check can flag a file whose picture is fine to the eye; the user has the last word.
+        var showFine = damaged.Image is not null && damaged.Health is not (FileHealth.Whole or FileHealth.Misnamed) && rightName is null;
+        var fine = Way(Tr("The photo looks fine: stop marking it as damaged"), showFine);
+        var markFine = false;
 
         // The line the user moves to where the damage starts, over a small picture of the photo.
         var markSlider = new Slider
@@ -104,7 +153,7 @@ public sealed partial class MainWindow
             }
         };
         // The best way that needs no further choice: the preview, a copy found in the library, else cropping.
-        var first = new[] { mend, fromPreview, copyPath is null ? null : fromCopy, crop }.FirstOrDefault(r => r is { IsEnabled: true }) ?? replace;
+        var first = new[] { rightName is null ? null : rename, mend, fromPreview, copyPath is null ? null : fromCopy, crop }.FirstOrDefault(r => r is { IsEnabled: true }) ?? replace;
         first.IsChecked = true;
 
         // AI upscaling (Real-ESRGAN) for the two ways that fill from a smaller picture.
@@ -116,7 +165,7 @@ public sealed partial class MainWindow
         var aiQuality = new ComboBox { MinWidth = 260 };
         aiQuality.Items.Add(Tr("Fast"));
         aiQuality.Items.Add(Tr("Best quality (much slower)"));
-        aiQuality.SelectedIndex = 0;
+        aiQuality.SelectedIndex = _bestUpscaleTooSlow ? 0 : 1; // best quality, unless this PC was too slow for it
         var aiDownload = Hint("");
         var aiRow = new StackPanel { Spacing = 6, Margin = new Thickness(28, 0, 0, 0), Children = { useAi, aiQuality, aiDownload } };
         UpscaleQuality ChosenQuality() => aiQuality.SelectedIndex == 1 ? UpscaleQuality.Best : UpscaleQuality.Fast;
@@ -139,7 +188,7 @@ public sealed partial class MainWindow
                 : "";
             aiDownload.Visibility = aiDownload.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
-        foreach (var way in new[] { mend, fromPreview, fromCopy, replace, crop })
+        foreach (var way in new[] { rename, mend, fromPreview, fromCopy, replace, crop, fine })
             way.Checked += (_, _) => ShowAi();
         useAi.Checked += (_, _) => ShowAi();
         useAi.Unchecked += (_, _) => ShowAi();
@@ -148,6 +197,8 @@ public sealed partial class MainWindow
         choosePage.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Text = lost });
         if (markDamage)
             choosePage.Children.Add(markRow);
+        if (rightName is not null)
+            choosePage.Children.Add(rename);
         if (damaged.CanMend)
             choosePage.Children.Add(mend);
         choosePage.Children.Add(fromPreview);
@@ -156,7 +207,11 @@ public sealed partial class MainWindow
         choosePage.Children.Add(fromCopy);
         choosePage.Children.Add(replace);
         choosePage.Children.Add(crop);
-        choosePage.Children.Add(Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder.")));
+        if (showFine)
+            choosePage.Children.Add(fine);
+        // Renaming and taking off the mark happen at once, with no result to look at first.
+        var saveNote = Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder."));
+        choosePage.Children.Add(saveNote);
         ShowAi();
 
         // ---- Page 2: before and after ----
@@ -193,10 +248,20 @@ public sealed partial class MainWindow
             XamlRoot = Root.XamlRoot,
             Title = Tr("Repair damaged file"),
             Content = new ScrollViewer { Content = body, MaxHeight = 600 },
-            PrimaryButtonText = Tr("Next"),
+            PrimaryButtonText = FirstButtonText(),
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
+        // Renaming and taking off the mark are done at once, so their button names the action instead of "Next".
+        string FirstButtonText() => rename.IsChecked == true ? Tr("Rename") : fine.IsChecked == true ? Tr("Mark as fine") : Tr("Next");
+        void ShowAtOnce()
+        {
+            dialog.PrimaryButtonText = FirstButtonText();
+            saveNote.Visibility = rename.IsChecked == true || fine.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+        }
+        foreach (var way in new[] { rename, mend, fromPreview, fromCopy, replace, crop, fine })
+            way.Checked += (_, _) => ShowAtOnce();
+        ShowAtOnce();
         dialog.Resources["ContentDialogMaxWidth"] = 2.0 * CompareSize + 120;
         dialog.Closing += (_, _) => closing.Cancel();
         ShowBefore();
@@ -205,6 +270,16 @@ public sealed partial class MainWindow
         {
             if (repaired is not null)
                 return; // "Keep the repair": the dialog closes and the repair is saved below
+            if (rename.IsChecked == true)
+            {
+                renameChosen = true; // the dialog closes and the file is renamed below
+                return;
+            }
+            if (fine.IsChecked == true)
+            {
+                markFine = true; // the dialog closes and the mark is taken off below
+                return;
+            }
             args.Cancel = true;
             var way = mend.IsChecked == true ? RepairWay.Mend
                 : fromPreview.IsChecked == true ? RepairWay.FillFromPreview
@@ -262,6 +337,8 @@ public sealed partial class MainWindow
             {
                 // Say how long it would take and let the user choose: the fast model, no AI, or wait.
                 slowAccepted = quality;
+                if (quality == UpscaleQuality.Best)
+                    _bestUpscaleTooSlow = true;
                 var device = slow.OnGraphicsCard ? Tr("graphics card") : Tr("processor");
                 problem.Text = quality == UpscaleQuality.Best
                     ? Tr("With the best-quality model this takes about {0} on this PC ({1}); the fast model takes about a tenth of that. Choose Fast, or press Next again to wait.", Duration(slow.Estimate), device)
@@ -280,11 +357,27 @@ public sealed partial class MainWindow
             repaired = null;
             body.Children.Remove(comparePage);
             body.Children.Insert(0, choosePage);
-            dialog.PrimaryButtonText = Tr("Next");
+            dialog.PrimaryButtonText = FirstButtonText();
             dialog.SecondaryButtonText = "";
         };
 
-        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary || repaired is null)
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return;
+        if (renameChosen)
+        {
+            // From the grid, the other misnamed photos of the selection get their right extension too.
+            var selected = SelectedPhotos;
+            await ViewModel.FixMisnamedAsync(selected.Contains(item) ? selected : [item]);
+            await ShowRepairAsync();
+            return;
+        }
+        if (markFine)
+        {
+            await ViewModel.MarkAsFineAsync(item);
+            await ShowRepairAsync();
+            return;
+        }
+        if (repaired is null)
             return;
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveRepairAsync(item, repaired);

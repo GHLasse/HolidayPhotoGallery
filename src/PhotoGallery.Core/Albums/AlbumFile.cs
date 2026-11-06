@@ -33,6 +33,12 @@ public sealed record CloudAlbumLink
     /// <summary>The album's page in the service.</summary>
     public string? Url { get; init; }
 
+    /// <summary>
+    /// The album's name in the service, as far as the app knows; when it differs from the album's name, a rename
+    /// there is still owed (it failed, e.g. offline) and is tried again. Null for links saved before it was kept.
+    /// </summary>
+    public string? Title { get; init; }
+
     /// <summary>Photo path relative to the album folder (with "/") → the service's id for it.</summary>
     public Dictionary<string, string> Items { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -55,6 +61,20 @@ public static class AlbumFile
     public static string PathIn(string folder) => Path.Combine(folder, FileName);
 
     public static bool IsAlbum(string folder) => File.Exists(PathIn(folder));
+
+    /// <summary>A photo used as an album's cover was renamed or moved: the album follows it.</summary>
+    public static void FollowCover(string oldPath, string newPath)
+    {
+        for (var folder = Path.GetDirectoryName(oldPath); folder is not null; folder = Path.GetDirectoryName(folder))
+        {
+            if (Read(folder) is not { Cover: { } cover } info)
+                continue;
+            var relative = Path.GetRelativePath(folder, oldPath);
+            if (string.Equals(cover.Replace('\\', '/'), relative.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase) &&
+                Path.GetRelativePath(folder, newPath) is var moved && !moved.StartsWith("..", StringComparison.Ordinal))
+                Write(folder, info with { Cover = moved });
+        }
+    }
 
     /// <summary>The album's settings, or null when the folder is not an album.</summary>
     public static AlbumInfo? Read(string folder)
@@ -94,26 +114,7 @@ public static class AlbumFile
         File.Delete(path);
     }
 
-    /// <summary>Every album folder in and below <paramref name="root"/>, the root included, skipping hidden folders.</summary>
-    public static IEnumerable<string> FindAlbums(string root)
-    {
-        if (!Directory.Exists(root))
-            return [];
-        var options = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
-        };
-        IEnumerable<string> folders = [root];
-        try
-        {
-            folders = folders.Concat(Directory.EnumerateDirectories(root, "*", options).ToList());
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Only the root then.
-        }
-        return folders.Where(IsAlbum);
-    }
+    /// <summary>Every album folder in and below <paramref name="root"/>, the root included.</summary>
+    public static IEnumerable<string> FindAlbums(string root) =>
+        Library.LibraryWalk.Folders(root).Select(d => d.FullName).Where(IsAlbum).ToList();
 }
