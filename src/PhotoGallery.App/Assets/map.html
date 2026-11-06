@@ -18,20 +18,24 @@
      border, Segoe Fluent Icons and the app's accent colour, which the app sends ({type:"style"}). */
   :root { --accent: #0067c0; --on-accent: #fff; --stroke: rgba(0,0,0,.0578); --stroke-bottom: rgba(0,0,0,.1622);
           --text: #1b1b1b; --text-2: #5d5d5d; --icons: "Segoe Fluent Icons", "Segoe MDL2 Assets"; }
-  .card { background: #fff; border: 1px solid var(--stroke); border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
+  /* Dark mode (the app sends it with its colours): the controls dark like the app's, the map itself unchanged. */
+  :root.dark { --stroke: rgba(255,255,255,.07); --stroke-bottom: rgba(255,255,255,.05); --text: #fff; --text-2: #c5c5c5;
+               --surface: #2c2c2c; --surface-hover: #333; --surface-pressed: #282828; }
+  :root { --surface: #fff; --surface-hover: #f9f9f9; --surface-pressed: #f5f5f5; }
+  .card { background: var(--surface); border: 1px solid var(--stroke); border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
   .ctl { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 32px; padding: 4px 11px;
          box-sizing: border-box; border: 1px solid var(--stroke); border-bottom-color: var(--stroke-bottom); border-radius: 4px;
-         background: #fff; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
-  .ctl:hover { background: #f9f9f9; }
-  .ctl:active { background: #f5f5f5; color: var(--text-2); }
+         background: var(--surface); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+  .ctl:hover { background: var(--surface-hover); }
+  .ctl:active { background: var(--surface-pressed); color: var(--text-2); }
   .icon { font-family: var(--icons); font-size: 16px; line-height: 1; font-style: normal; }
   /* The search box is the app's own (WinUI AutoSuggestBox): one box, the magnifier inside it on the right. */
   #search { position: absolute; z-index: 1000; top: 10px; left: 56px; right: 10px; max-width: 360px; display: flex;
             border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
   #search input { flex: 1; min-width: 0; height: 36px; padding: 0 40px 1px 11px; box-sizing: border-box; border: 1px solid var(--stroke);
-                  border-bottom: 1px solid #868686; border-radius: 4px; background: #fff; color: var(--text); font: inherit; font-size: 14px; outline: none; }
-  #search input:hover { background: #f9f9f9; }
-  #search input:focus { background: #fff; border-bottom: 2px solid var(--accent); padding-bottom: 0; }
+                  border-bottom: 1px solid #868686; border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; outline: none; }
+  #search input:hover { background: var(--surface-hover); }
+  #search input:focus { background: var(--surface); border-bottom: 2px solid var(--accent); padding-bottom: 0; }
   #search input::placeholder { color: var(--text-2); }
   #search input::-webkit-search-cancel-button { display: none; }
   #search button { position: absolute; right: 3px; top: 4px; width: 32px; height: 28px; padding: 0; border: none; border-radius: 4px;
@@ -41,11 +45,12 @@
   .leaflet-touch .leaflet-bar, .leaflet-bar { border: 1px solid var(--stroke) !important; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); overflow: hidden; }
   .leaflet-bar a, .leaflet-touch .leaflet-bar a { width: 36px; height: 36px; line-height: 36px; color: var(--text); border-bottom: 1px solid var(--stroke);
                     font-family: var(--icons); font-size: 16px; font-weight: normal; }
-  .leaflet-bar a:hover { background: #f9f9f9; color: var(--text); }
-  .leaflet-bar a.leaflet-disabled { color: #bdbdbd; background: #fff; }
-  #legend { position: absolute; z-index: 1000; bottom: 56px; left: 10px; padding: 6px 10px; font-size: 12px; color: var(--text); display: none; }
+  .leaflet-bar a, .leaflet-bar a.leaflet-disabled { background: var(--surface); }
+  .leaflet-bar a:hover { background: var(--surface-hover); color: var(--text); }
+  .leaflet-bar a.leaflet-disabled { color: var(--text-2); opacity: .5; }
+  #legend { position: absolute; z-index: 1000; bottom: 24px; left: 10px; right: 10px; width: fit-content; padding: 4px 8px; font-size: 12px; color: var(--text); display: none; }
   #legend svg { vertical-align: middle; margin-right: 6px; }
-  #message { position: absolute; z-index: 1000; bottom: 24px; left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
+  #message { position: absolute; z-index: 1000; bottom: 52px; left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
   /* The picture box has a fixed size, so the bubble is laid out right before the picture arrives; the close
      button sits above it (it covered the picture, which stuck out on the right). */
   .leaflet-popup-content:has(.preview) { margin: 26px 12px 10px; }
@@ -58,15 +63,6 @@
   .preview .row .count { flex: 1; text-align: center; font-size: 12px; color: #555; }
   .preview button { flex: none; }
   .preview .actions button { flex: 1; }
-  #layers { display: flex; flex-direction: column; gap: 6px; padding: 6px; font-size: 14px; color: var(--text); }
-  /* Map | Satellite as one switch, the chosen side filled with the accent colour like the app's selected tab. */
-  #layers .modes { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--stroke); border-radius: 6px; background: #f3f3f3; }
-  #layers .modes button { flex: 1; padding: 4px 12px; border: none; border-radius: 4px; background: transparent; color: var(--text);
-                          font: inherit; cursor: pointer; }
-  #layers .modes button:hover:not(.on) { background: rgba(0,0,0,.04); }
-  #layers .modes button.on { background: var(--accent); color: var(--on-accent); }
-  #layers label { display: flex; align-items: center; gap: 8px; padding: 2px 4px; cursor: pointer; }
-  #layers input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
   #offline { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 14px; color: #555; }
 </style>
 </head>
@@ -89,12 +85,13 @@
 //                 switch in the app's language; "of" is like "{0} of {1}")
 //                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
 //                 (also trackLine, routeLine: the legend under a drawn line; a track message's label replaces it)
-//                 {type:"style", accent, onAccent} (the app's accent colour and the text on it, "#rrggbb")
+//                 {type:"style", accent, onAccent, dark} (the app's accent colour and the text on it, "#rrggbb")
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
 //                 {type:"estimate"} (the pin's right-click menu: estimate from the photos before and after)
-//                 {type:"tracks", on} (the Tracks switch beside Map | Satellite, also sent once at the start)
+//                 {type:"layers", mode, labels, tracks, canLabel} (what the map shows, at the start and after each change;
+//                 the app's Map options menu sets them with the same message, canLabel left out)
 //   (a track message from the app: {type:"track", lines:[[[lat,lon],...],...], route, fit, label})
 const host = window.chrome && window.chrome.webview;
 const send = message => host && host.postMessage(message);
@@ -220,49 +217,10 @@ function start() {
       if (satellite && map.hasLayer(base.plain)) map.removeLayer(base.plain);
       else if (!satellite && !map.hasLayer(base.plain)) base.plain.addTo(map);
     }
-    for (const b of modeButtons) b.classList.toggle("on", b.dataset.mode === mode);
-    labelsBox.parentElement.style.display = base.gl ? "flex" : "none";
     try { localStorage.setItem("layers", JSON.stringify({ mode, labels, tracks })); } catch (e) { }
+    // The app's Map options menu below the map shows the same choices.
+    send({ type: "layers", mode, labels, tracks, canLabel: !!base.gl });
   }
-  const switcher = L.control({ position: "bottomright" });
-  const modeButtons = [], labelsBox = document.createElement("input");
-  const modeTexts = {}, labelsText = document.createElement("span");
-  // Tracks: the app draws the GPS tracks (or the route between photos) only while this is ticked.
-  const tracksBox = document.createElement("input"), tracksText = document.createElement("span");
-  switcher.onAdd = () => {
-    const box = L.DomUtil.create("div", "card");
-    box.id = "layers";
-    const modes = document.createElement("div");
-    modes.className = "modes";
-    for (const [key, text] of [["map", "Map"], ["satellite", "Satellite"]]) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.dataset.mode = key;
-      b.textContent = text;
-      b.addEventListener("click", () => { mode = key; showLayers(); });
-      modeButtons.push(b);
-      modeTexts[key] = b;
-      modes.append(b);
-    }
-    const label = document.createElement("label");
-    labelsBox.type = "checkbox";
-    labelsBox.checked = labels;
-    labelsBox.addEventListener("change", () => { labels = labelsBox.checked; showLayers(); });
-    labelsText.textContent = "Labels";
-    label.append(labelsBox, labelsText);
-    const trackLabel = document.createElement("label");
-    trackLabel.id = "tracksToggle";
-    tracksBox.type = "checkbox";
-    tracksBox.checked = tracks;
-    tracksBox.addEventListener("change", () => { tracks = tracksBox.checked; showLayers(); send({ type: "tracks", on: tracks }); });
-    tracksText.textContent = "Tracks";
-    trackLabel.append(tracksBox, tracksText);
-    box.append(modes, label, trackLabel);
-    L.DomEvent.disableClickPropagation(box);
-    L.DomEvent.disableScrollPropagation(box);
-    return box;
-  };
-  switcher.addTo(map);
   base.ready.push(showLayers);
   showLayers();
   map.on("moveend", () => {
@@ -491,14 +449,15 @@ function start() {
         if (m.offline) document.getElementById("offline").textContent = m.offline;
         if (m.zoomIn) document.querySelector(".leaflet-control-zoom-in").title = m.zoomIn;
         if (m.zoomOut) document.querySelector(".leaflet-control-zoom-out").title = m.zoomOut;
-        if (m.map) modeTexts.map.textContent = m.map;
-        if (m.satellite) modeTexts.satellite.textContent = m.satellite;
-        if (m.labels) labelsText.textContent = m.labels;
-        if (m.tracks) tracksText.textContent = m.tracks;
-        if (m.tracksTip) document.getElementById("tracksToggle").title = m.tracksTip;
+      } else if (m.type === "layers") {
+        if (m.mode) mode = m.mode === "satellite" ? "satellite" : "map";
+        if (typeof m.labels === "boolean") labels = m.labels;
+        if (typeof m.tracks === "boolean") tracks = m.tracks;
+        showLayers();
       } else if (m.type === "style") {
         document.documentElement.style.setProperty("--accent", m.accent);
         document.documentElement.style.setProperty("--on-accent", m.onAccent);
+        document.documentElement.classList.toggle("dark", !!m.dark);
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)
@@ -534,7 +493,7 @@ function start() {
     });
   }
   send({ type: "ready" });
-  send({ type: "tracks", on: tracks });
+  showLayers();
 }
 </script>
 </body>

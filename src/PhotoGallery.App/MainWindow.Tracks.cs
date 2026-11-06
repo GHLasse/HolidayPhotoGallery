@@ -82,7 +82,7 @@ public sealed partial class MainWindow
 
         var onMap = new TextBlock
         {
-            Text = Tr("To see them: tick Tracks at the bottom right of the map. It shows the tracks around the selected photo, or with none selected those between the first and last photo shown."),
+            Text = Tr("To see them: turn on Tracks in Map options below the map. It shows the tracks around the selected photo, or with none selected those between the first and last photo shown."),
             TextWrapping = TextWrapping.Wrap,
             Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
         };
