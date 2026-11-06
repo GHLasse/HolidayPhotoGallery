@@ -1759,6 +1759,15 @@ public sealed partial class MainWindow : Window
             Margin = new Thickness(0, 12, 0, 0),
         };
 
+        // What the Beauty look does (E-10); the same choice is in the right-click menu of its button.
+        var beautyChecks = BeautyPartLabels()
+            .Select(p => (p.Part, Box: new CheckBox { Content = p.Label, IsChecked = ViewModel.BeautyParts.HasFlag(p.Part) }))
+            .ToList();
+        var beautyPanel = new StackPanel { Spacing = 0, Margin = new Thickness(0, 12, 0, 0) };
+        beautyPanel.Children.Add(new TextBlock { Text = Tr("The Beauty look"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+        foreach (var check in beautyChecks)
+            beautyPanel.Children.Add(check.Box);
+
         var croppingPanel = new StackPanel
         {
             Spacing = 12,
@@ -1783,6 +1792,7 @@ public sealed partial class MainWindow : Window
                     Text = Tr("Repairing a damaged photo can bring back detail with AI. It runs on the graphics card when there is one; turn this on if it fails there or the result looks wrong."),
                     TextWrapping = TextWrapping.Wrap,
                 },
+                beautyPanel,
             },
         };
         var cropping = new ScrollViewer
@@ -2058,6 +2068,9 @@ public sealed partial class MainWindow : Window
             ViewModel.SaveBackUpBeforeOpenWith(backUp.IsOn);
         if (processorOnly.IsOn != ViewModel.UpscaleOnProcessorOnly)
             ViewModel.SaveUpscaleOnProcessorOnly(processorOnly.IsOn);
+        var beautyParts = beautyChecks.Where(c => c.Box.IsChecked == true).Aggregate(BeautyParts.None, (all, c) => all | c.Part);
+        if (beautyParts != ViewModel.BeautyParts)
+            ViewModel.SaveBeautyParts(beautyParts);
         var (updateChannel, checkForUpdates) = chosenUpdates();
         ViewModel.SaveUpdateSettings(updateChannel, checkForUpdates);
         if (updateTo is not null)
@@ -2143,6 +2156,7 @@ public sealed partial class MainWindow : Window
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
                                                   ChosenLook, _lookStrength, _strokes.ToList(),
+                                                  ChosenLook is { Beauty: true } ? _beautyFaces ?? [] : [], ViewModel.BeautyParts,
                                                   asJpeg: SaveFormatCombo.SelectedIndex == 1);
         ViewerProgress.IsActive = false;
         if (saved)

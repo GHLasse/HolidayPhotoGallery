@@ -7,7 +7,14 @@ namespace PhotoGallery.Core.Faces;
 /// <param name="Box">Where it is on the upright photo, as fractions of its width and height.</param>
 /// <param name="Score">How sure the detector is that it is a face, 0 to 1.</param>
 /// <param name="Embedding">A unit-length vector; faces of the same person point the same way (see <see cref="FaceAnalyzer.Similarity"/>).</param>
-public sealed record DetectedFace(FaceBox Box, float Score, float[] Embedding);
+public sealed record DetectedFace(FaceBox Box, float Score, float[] Embedding)
+{
+    /// <summary>
+    /// The eyes, the nose tip and the mouth corners as fractions of the photo's width and height, in that order and
+    /// from left to right as seen on the photo.
+    /// </summary>
+    public IReadOnlyList<(double X, double Y)> Points { get; init; } = [];
+}
 
 /// <summary>
 /// Finds faces with YuNet and describes each with SFace, on the PC's own processor. The photo is
@@ -93,7 +100,8 @@ public sealed class FaceAnalyzer : IDisposable
             if (face.Width < MinFacePixels || face.Height < MinFacePixels)
                 continue;
             var box = new FaceBox((double)face.X / width, (double)face.Y / height, (double)face.Width / width, (double)face.Height / height).Clamp();
-            faces.Add(new DetectedFace(box, face.Score, Embed(bgra, width, height, face.Landmarks)));
+            var points = Enumerable.Range(0, 5).Select(n => ((double)face.Landmarks[2 * n] / width, (double)face.Landmarks[2 * n + 1] / height)).ToList();
+            faces.Add(new DetectedFace(box, face.Score, Embed(bgra, width, height, face.Landmarks)) { Points = points });
         }
         return faces;
     }
