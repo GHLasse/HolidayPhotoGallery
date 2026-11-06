@@ -1290,6 +1290,13 @@
                     <!-- One-click looks (E-9), each a small preview of the photo; filled from code (MainWindow.EditPane.cs). -->
                     <TextBlock Text="{local:Loc Text='Looks'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
                     <controls:WrapPanel x:Name="LookPanel" Spacing="6" />
+                    <TextBlock x:Name="LookPinHint" Text="{local:Loc Text='Right-click a look to pin it to the top.'}" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <!-- Shown once a look is pinned (right-click): the looks not pinned wait here. -->
+                    <Expander x:Name="MoreLooksExpander" Header="{local:Loc Text='More looks'}" IsExpanded="False" Visibility="Collapsed"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <controls:WrapPanel x:Name="MoreLookPanel" Spacing="6" />
+                    </Expander>
                     <Slider x:Name="LookStrengthSlider" Header="{local:Loc Text='Strength of the look'}" Minimum="0" Maximum="100" StepFrequency="1"
                             Value="100" Visibility="Collapsed" ValueChanged="LookStrength_ValueChanged" />
 
