@@ -1,0 +1,234 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
+using PhotoGallery.App.Imaging;
+using PhotoGallery.Core.Editing;
+using static PhotoGallery.Core.Localization.Strings;
+
+namespace PhotoGallery.App;
+
+// The Edit pane (E-13) beside the viewer: quick fixes, crop and the light and colour sliders (E-8). Like crop and
+// auto adjust, every change is only a preview until Save in the viewer's edit bar, which writes the full-size photo
+// and keeps the original in .originals (E-4). Beside the grid, choosing Edit opens the selected photo.
+public sealed partial class MainWindow
+{
+    // The preview is worked out on a copy at most this many pixels across, so the sliders follow the mouse.
+    private const int PreviewSize = 2048;
+
+    private Adjustments _adjustments = Adjustments.None;
+    private bool _flipHorizontal, _flipVertical;
+    private DecodedImage? _previewBase;      // the viewer's photo, made smaller for the preview
+    private bool _rendering, _renderAgain, _syncingEditPane;
+
+    /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
+    private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical;
+
+    private void SetUpEditPane()
+    {
+        foreach (var slider in EditSliders())
+        {
+            // handledEventsToo: the slider's thumb takes the pointer for itself.
+            slider.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler((s, _) => ((Slider)s).Value = 0), true);
+        }
+    }
+
+    private Slider[] EditSliders() =>
+        [BrightnessSlider, ContrastSlider, HighlightsSlider, ShadowsSlider, SaturationSlider, WarmthSlider];
+
+    // Beside the grid: open the selected photo with the Edit pane beside it.
+    private void EditSelectedPhoto()
+    {
+        var selected = SelectedPhotos;
+        if (selected.Count == 0)
+        {
+            ViewModel.Inform(Tr("Select a photo to edit it."));
+            return;
+        }
+        _viewerPane = SidePane.Edit;
+        _viewerFolded = false;
+        OpenViewer(selected[0]);
+    }
+
+    private void ToggleViewerEdit()
+    {
+        if (RightSide() == RightPane.Edit)
+        {
+            _viewerFolded = true;
+            ApplyChrome();
+        }
+        else
+            _ = SetViewerPaneAsync(SidePane.Edit);
+    }
+
+    /// <summary>Shows the tools when there is a photo to edit, otherwise says why not.</summary>
+    private void UpdateEditPane()
+    {
+        string? why = null;
+        if (!IsViewerOpen)
+            why = Tr("Open a photo to edit it.");
+        else if (_viewerShowsVideo)
+            why = Tr("Videos can't be edited here. Use Open with to edit them in another app.");
+        else if (_viewerPixels is null)
+            why = Tr("This photo cannot be edited because it cannot be shown.");
+        EditPaneHint.Text = why ?? "";
+        EditPaneHint.Visibility = why is null ? Visibility.Collapsed : Visibility.Visible;
+        EditTools.Visibility = why is null ? Visibility.Visible : Visibility.Collapsed;
+
+        var turnable = ViewerItem?.CanRotate ?? false;
+        EditRotateLeftButton.Opacity = EditRotateRightButton.Opacity = turnable ? 1 : 0.4;
+        SyncEditPane();
+    }
+
+    // The pane's toggles follow the viewer's own buttons and the edit being previewed.
+    private void SyncEditPane()
+    {
+        _syncingEditPane = true;
+        EditAutoButton.IsChecked = ViewerAutoButton.IsChecked == true;
+        EditCropButton.IsChecked = ViewerCropButton.IsChecked == true;
+        EditEnhanceButton.IsChecked = _adjustments.Vibrance != 0;
+        EditFlipHorizontalButton.IsChecked = _flipHorizontal;
+        EditFlipVerticalButton.IsChecked = _flipVertical;
+        BrightnessSlider.Value = _adjustments.Brightness;
+        ContrastSlider.Value = _adjustments.Contrast;
+        HighlightsSlider.Value = _adjustments.Highlights;
+        ShadowsSlider.Value = _adjustments.Shadows;
+        SaturationSlider.Value = _adjustments.Saturation;
+        WarmthSlider.Value = _adjustments.Warmth;
+        if (!IsEditing)
+            EditBeforeButton.IsChecked = false;
+        EditBeforeButton.IsEnabled = EditResetButton.IsEnabled = IsEditing;
+        _syncingEditPane = false;
+    }
+
+    private void EditAuto_Click(object sender, RoutedEventArgs e)
+    {
+        ViewerAutoButton.IsChecked = EditAutoButton.IsChecked == true;
+        ViewerAuto_Click(sender, e);
+    }
+
+    private void EditCrop_Click(object sender, RoutedEventArgs e)
+    {
+        ViewerCropButton.IsChecked = EditCropButton.IsChecked == true;
+        ViewerCrop_Click(sender, e);
+    }
+
+    private void EditEnhance_Click(object sender, RoutedEventArgs e) =>
+        ChangeEdit(() => _adjustments = _adjustments with { Vibrance = EditEnhanceButton.IsChecked == true ? Adjustments.EnhanceColours : 0 });
+
+    private void EditFlip_Click(object sender, RoutedEventArgs e) =>
+        ChangeEdit(() =>
+        {
+            _flipHorizontal = EditFlipHorizontalButton.IsChecked == true;
+            _flipVertical = EditFlipVerticalButton.IsChecked == true;
+        });
+
+    private void EditSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_syncingEditPane || BrightnessSlider is null || WarmthSlider is null)
+            return;
+        ChangeEdit(() => _adjustments = _adjustments with
+        {
+            Brightness = (int)BrightnessSlider.Value,
+            Contrast = (int)ContrastSlider.Value,
+            Highlights = (int)HighlightsSlider.Value,
+            Shadows = (int)ShadowsSlider.Value,
+            Saturation = (int)SaturationSlider.Value,
+            Warmth = (int)WarmthSlider.Value,
+        });
+    }
+
+    private void EditBefore_Click(object sender, RoutedEventArgs e) => RenderPreview();
+
+    private void EditReset_Click(object sender, RoutedEventArgs e)
+    {
+        var shown = _viewerPixels;
+        EndEdit();
+        if (shown is not null)
+            _ = ShowPixelsAsync(shown);
+    }
+
+    private void ChangeEdit(Action change)
+    {
+        if (_viewerPixels is null || _syncingEditPane)
+            return;
+        change();
+        EditBeforeButton.IsChecked = false; // a change is to be seen
+        if (ViewerCropButton.IsChecked == true && (_flipHorizontal || _flipVertical))
+            ViewerCanvas.Ratio = SelectedCropRatio(); // a fresh frame on the flipped photo
+        UpdateEditBar();
+        RenderPreview();
+    }
+
+    /// <summary>Clears the sliders and flips (EndEdit does this when an edit is saved, cancelled or left).</summary>
+    private void ResetPixelChanges()
+    {
+        _adjustments = Adjustments.None;
+        _flipHorizontal = _flipVertical = false;
+        _previewBase = null;
+    }
+
+    /// <summary>
+    /// Shows the photo with the auto adjust, sliders and flips applied. Only the latest settings are drawn: while
+    /// one picture is being worked out, further changes wait and are drawn together after it.
+    /// </summary>
+    private async void RenderPreview()
+    {
+        if (_rendering)
+        {
+            _renderAgain = true;
+            return;
+        }
+        _rendering = true;
+        try
+        {
+            do
+            {
+                _renderAgain = false;
+                if (_viewerPixels is not { } pixels)
+                    return;
+                var before = EditBeforeButton.IsChecked == true;
+                var curve = ViewerAutoButton.IsChecked == true ? _autoCurve : null;
+                var adjustments = _adjustments;
+                var (flipH, flipV) = (_flipHorizontal, _flipVertical);
+                DecodedImage shown;
+                if (before || (curve is null && adjustments.IsNeutral && !flipH && !flipV))
+                    shown = pixels;
+                else
+                {
+                    var source = _previewBase ??= await Task.Run(() => Smaller(pixels));
+                    shown = await Task.Run(() => Edited(source, curve, adjustments, flipH, flipV));
+                }
+                if (!ReferenceEquals(pixels, _viewerPixels))
+                    return;
+                ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(shown);
+            }
+            while (_renderAgain);
+        }
+        finally
+        {
+            _rendering = false;
+        }
+    }
+
+    private static DecodedImage Smaller(DecodedImage image)
+    {
+        var scale = Math.Min(1.0, (double)PreviewSize / Math.Max(image.Width, image.Height));
+        if (scale >= 1)
+            return image;
+        var w = Math.Max(1, (int)Math.Round(image.Width * scale));
+        var h = Math.Max(1, (int)Math.Round(image.Height * scale));
+        return new DecodedImage(ImageMath.Resize(image.Pixels, image.Width, image.Height, w, h), w, h);
+    }
+
+    /// <summary>A copy of the picture with the edits applied, in the order Save applies them.</summary>
+    internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Adjustments adjustments, bool flipHorizontal, bool flipVertical)
+    {
+        var copy = (byte[])image.Pixels.Clone();
+        if (curve is not null)
+            ImageMath.ApplyCurve(copy, curve);
+        ImageAdjust.Apply(copy, image.Width, image.Height, adjustments);
+        ImageAdjust.Flip(copy, image.Width, image.Height, flipHorizontal, flipVertical);
+        return image with { Pixels = copy };
+    }
+}

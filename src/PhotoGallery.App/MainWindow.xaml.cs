@@ -473,6 +473,12 @@ public sealed partial class MainWindow : Window
 
         if (IsViewerOpen)
         {
+            if (e.Key == VirtualKey.E)
+            {
+                e.Handled = true;
+                ToggleViewerEdit();
+                return;
+            }
             if (ViewerItem is not { } item || IsEditing)
                 return;
             if (stars >= 0)
@@ -613,6 +619,7 @@ public sealed partial class MainWindow : Window
         (Tr("Edit and describe"),
         [
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
+            ("E", Tr("Show or hide the Edit pane in the viewer: quick fixes, crop, light and colour")),
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
             ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),
@@ -1301,6 +1308,7 @@ public sealed partial class MainWindow : Window
         UpdateUndoButtons();
 
         ShowVideoTools(item.IsVideo);
+        UpdateEditPane();
         if (item.IsVideo)
         {
             await PlayVideoAsync(item, version);
@@ -1340,6 +1348,7 @@ public sealed partial class MainWindow : Window
             {
                 ViewerProgress.IsActive = false;
                 OnViewerImageReady();
+                UpdateEditPane();
             }
         }
     }
@@ -1425,13 +1434,19 @@ public sealed partial class MainWindow : Window
             ViewModel.Warn(PixelTurner.AnimatedWebpHint);
             return;
         }
+        // Turning saves at once, which would drop the edit being previewed.
+        if (IsEditing)
+        {
+            ViewModel.Inform(Tr("Save or cancel the edit first, then rotate."));
+            return;
+        }
         await ViewModel.RotateAsync([_viewerItems[_viewerIndex]], clockwise);
         await ShowViewerImageAsync();
     }
 
     // ---- Editing in the viewer: crop and auto adjust, previewed until Save ----
 
-    private bool IsEditing => ViewerCropButton.IsChecked == true || ViewerAutoButton.IsChecked == true;
+    private bool IsEditing => ViewerCropButton.IsChecked == true || ViewerAutoButton.IsChecked == true || HasPixelChanges;
 
     private PhotoItemViewModel? ViewerItem => _viewerIndex < _viewerItems.Count ? _viewerItems[_viewerIndex] : null;
 
@@ -1459,21 +1474,15 @@ public sealed partial class MainWindow : Window
         UpdateEditBar();
         if (ViewerAutoButton.IsChecked == true)
         {
-            var preview = await Task.Run(() =>
-            {
-                _autoCurve = ImageMath.AutoAdjustCurve(pixels.Pixels);
-                var copy = (byte[])pixels.Pixels.Clone();
-                ImageMath.ApplyCurve(copy, _autoCurve);
-                return pixels with { Pixels = copy };
-            });
-            if (ViewerAutoButton.IsChecked == true && ReferenceEquals(pixels, _viewerPixels))
-                ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(preview);
+            var curve = await Task.Run(() => ImageMath.AutoAdjustCurve(pixels.Pixels));
+            if (ViewerAutoButton.IsChecked != true || !ReferenceEquals(pixels, _viewerPixels))
+                return;
+            _autoCurve = curve;
         }
         else
-        {
             _autoCurve = null;
-            ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(pixels);
-        }
+        // With the sliders, flips and the before/after button of the Edit pane (MainWindow.EditPane.cs).
+        RenderPreview();
     }
 
     private void CropRatio_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2017,6 +2026,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdateEditBar()
     {
+        SyncEditPane();
         ViewerEditBar.Visibility = IsEditing ? Visibility.Visible : Visibility.Collapsed;
         CropShapePanel.Visibility = ViewerCropButton.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (ViewerItem is not { } item)
@@ -2051,7 +2061,7 @@ public sealed partial class MainWindow : Window
 
     private void CancelEdit()
     {
-        var wasAdjusted = ViewerAutoButton.IsChecked == true;
+        var wasAdjusted = ViewerAutoButton.IsChecked == true || HasPixelChanges;
         EndEdit();
         if (wasAdjusted && _viewerPixels is { } pixels)
             _ = ShowPixelsAsync(pixels);
@@ -2065,6 +2075,7 @@ public sealed partial class MainWindow : Window
         ViewerAutoButton.IsChecked = false;
         ViewerCanvas.IsCropping = false;
         _autoCurve = null;
+        ResetPixelChanges();
         UpdateEditBar();
     }
 
@@ -2078,14 +2089,15 @@ public sealed partial class MainWindow : Window
         if (crop is { Width: > 0.999, Height: > 0.999 })
             crop = null;
         var curve = ViewerAutoButton.IsChecked == true ? _autoCurve : null;
-        if (crop is null && curve is null)
+        if (crop is null && curve is null && !HasPixelChanges)
         {
             CancelEdit();
             return;
         }
 
         ViewerProgress.IsActive = true;
-        var saved = await ViewModel.SaveEditAsync(item, crop, curve, asJpeg: SaveFormatCombo.SelectedIndex == 1);
+        var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical,
+                                                  asJpeg: SaveFormatCombo.SelectedIndex == 1);
         ViewerProgress.IsActive = false;
         if (saved)
             await ShowViewerImageAsync();
@@ -2124,7 +2136,8 @@ public sealed partial class MainWindow : Window
     // The viewer's keys (Esc, arrows) only act while the viewer is open.
     private void ViewerAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        if (!IsViewerOpen)
+        // On a slider of the Edit pane the arrows move the slider, not to the next photo (which would drop the edit).
+        if (!IsViewerOpen || (sender.Key is VirtualKey.Left or VirtualKey.Right && FocusManager.GetFocusedElement(Root.XamlRoot) is Slider))
             args.Handled = true;
     }
 }

@@ -1230,6 +1230,89 @@
             </StackPanel>
         </ScrollViewer>
 
+        <!-- The Edit pane (E-13): quick fixes, crop and the light and colour sliders for the photo in the viewer,
+             previewed until Save in the viewer's edit bar (MainWindow.EditPane.cs). -->
+        <ScrollViewer x:Name="EditPane" Grid.Row="3" Grid.Column="4" Padding="8,0,16,8" Visibility="Collapsed">
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="EditPaneHint" TextWrapping="Wrap" FontStyle="Italic" Visibility="Collapsed"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <StackPanel x:Name="EditTools" Spacing="12">
+                    <TextBlock Text="{local:Loc Text='Quick fixes'}" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                    <controls:WrapPanel Spacing="6">
+                        <ToggleButton x:Name="EditAutoButton" Click="EditAuto_Click"
+                                      ToolTipService.ToolTip="{local:Loc Text='Adjust contrast and brightness automatically (Ctrl+U)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE706;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Auto'}" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ToggleButton x:Name="EditEnhanceButton" Click="EditEnhance_Click"
+                                      ToolTipService.ToolTip="{local:Loc Text='Make dull colours livelier; skin tones are spared'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE790;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Enhance colours'}" />
+                            </StackPanel>
+                        </ToggleButton>
+                    </controls:WrapPanel>
+                    <controls:WrapPanel Spacing="6">
+                        <Button x:Name="EditRotateLeftButton" Click="ViewerRotateLeft_Click" AutomationProperties.Name="{local:Loc Text='Rotate left'}"
+                                ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
+                            <FontIcon Glyph="&#xE7AD;" FontSize="16" RenderTransformOrigin="0.5,0.5">
+                                <FontIcon.RenderTransform>
+                                    <ScaleTransform ScaleX="-1" />
+                                </FontIcon.RenderTransform>
+                            </FontIcon>
+                        </Button>
+                        <Button x:Name="EditRotateRightButton" Click="ViewerRotateRight_Click" AutomationProperties.Name="{local:Loc Text='Rotate right'}"
+                                ToolTipService.ToolTip="{local:Loc Text='Rotate right (Ctrl+.)'}">
+                            <FontIcon Glyph="&#xE7AD;" FontSize="16" />
+                        </Button>
+                        <ToggleButton x:Name="EditFlipHorizontalButton" Click="EditFlip_Click" AutomationProperties.Name="{local:Loc Text='Flip left to right'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Flip left to right, like a mirror'}">
+                            <FontIcon Glyph="&#xE8AB;" FontSize="16" />
+                        </ToggleButton>
+                        <ToggleButton x:Name="EditFlipVerticalButton" Click="EditFlip_Click" AutomationProperties.Name="{local:Loc Text='Flip upside down'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Flip upside down'}">
+                            <FontIcon Glyph="&#xE8AB;" FontSize="16" RenderTransformOrigin="0.5,0.5">
+                                <FontIcon.RenderTransform>
+                                    <RotateTransform Angle="90" />
+                                </FontIcon.RenderTransform>
+                            </FontIcon>
+                        </ToggleButton>
+                        <ToggleButton x:Name="EditCropButton" Click="EditCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop (R)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7A8;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Crop'}" />
+                            </StackPanel>
+                        </ToggleButton>
+                    </controls:WrapPanel>
+
+                    <TextBlock Text="{local:Loc Text='Light and shade'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <Slider x:Name="BrightnessSlider" Header="{local:Loc Text='Brightness'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                    <Slider x:Name="ContrastSlider" Header="{local:Loc Text='Contrast'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                    <Slider x:Name="HighlightsSlider" Header="{local:Loc Text='Highlights'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                    <Slider x:Name="ShadowsSlider" Header="{local:Loc Text='Shadows'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                    <TextBlock Text="{local:Loc Text='Colour'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <Slider x:Name="SaturationSlider" Header="{local:Loc Text='Saturation'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                    <Slider x:Name="WarmthSlider" Header="{local:Loc Text='Warmth'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+
+                    <controls:WrapPanel Spacing="6" Margin="0,8,0,0">
+                        <ToggleButton x:Name="EditBeforeButton" Click="EditBefore_Click"
+                                      ToolTipService.ToolTip="{local:Loc Text='Show the photo as it was before these changes'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE89A;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Before'}" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <Button x:Name="EditResetButton" Click="EditReset_Click" Content="{local:Loc Text='Reset all'}"
+                                ToolTipService.ToolTip="{local:Loc Text='Set every slider back and undo the quick fixes not yet saved'}" />
+                    </controls:WrapPanel>
+                    <TextBlock Text="{local:Loc Text='Double-click a slider to set it back. Nothing is written until you press Save below the photo; the original is kept in the hidden .originals folder.'}"
+                               TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
         <!-- The map, next to the grid like in Geosetter, in the info pane's place (it takes its column); opened
              with the Map button and resized with its splitter. In the Map workspace it spans the photo area too. -->
         <controls:PaneSplitter x:Name="MapSplitter" Grid.Row="3" Grid.Column="3" Visibility="Collapsed" />
@@ -1239,7 +1322,7 @@
              and a button that folds the pane to a strip of icons, like the left one (MainWindow.Frame.cs).
              It moves beside the viewer with the pane. -->
         <Grid x:Name="SidePaneHeader" Grid.Row="3" Grid.Column="4" Height="40" VerticalAlignment="Top" Padding="8,0,12,0" Visibility="Collapsed">
-            <Grid x:Name="SideSwitch" Width="74" Height="32" HorizontalAlignment="Left" VerticalAlignment="Center">
+            <Grid x:Name="SideSwitch" Width="108" Height="32" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Grid.Resources>
                     <!-- No hover or pressed fill of their own: the thumb shows which one is on. -->
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="Transparent" />
@@ -1288,6 +1371,22 @@
                             </FontIcon>
                         </Grid>
                     </Button>
+                    <Button x:Name="SideEditButton" Click="SideEdit_Click" Width="34" Height="26" Padding="0" CornerRadius="13"
+                            Background="Transparent" BorderThickness="0"
+                            AutomationProperties.Name="{local:Loc Text='Edit'}" ToolTipService.ToolTip="{local:Loc Text='Edit the photo: quick fixes, crop, light and colour (E in the viewer)'}">
+                        <Grid>
+                            <FontIcon x:Name="SideEditIconOff" Glyph="&#xE70F;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                <FontIcon.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.167" />
+                                </FontIcon.OpacityTransition>
+                            </FontIcon>
+                            <FontIcon x:Name="SideEditIconOn" Glyph="&#xE70F;" FontSize="14" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Opacity="0">
+                                <FontIcon.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.167" />
+                                </FontIcon.OpacityTransition>
+                            </FontIcon>
+                        </Grid>
+                    </Button>
                 </StackPanel>
             </Grid>
             <Button Style="{StaticResource NavRailButton}" HorizontalAlignment="Right" Click="FoldSidePane_Click"
@@ -1309,6 +1408,10 @@
             <Button x:Name="SideRailMapButton" Style="{StaticResource NavRailButton}" Click="SideRailMap_Click"
                     AutomationProperties.Name="{local:Loc Text='Map'}" ToolTipService.ToolTip="{local:Loc Text='Show where the photos were taken, and place the selected photos on the map (M)'}">
                 <FontIcon Glyph="&#xE800;" FontSize="16" />
+            </Button>
+            <Button x:Name="SideRailEditButton" Style="{StaticResource NavRailButton}" Click="SideRailEdit_Click"
+                    AutomationProperties.Name="{local:Loc Text='Edit'}" ToolTipService.ToolTip="{local:Loc Text='Edit the photo: quick fixes, crop, light and colour (E in the viewer)'}">
+                <FontIcon Glyph="&#xE70F;" FontSize="16" />
             </Button>
         </StackPanel>
 
