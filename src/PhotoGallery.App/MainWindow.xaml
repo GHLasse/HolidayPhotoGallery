@@ -1243,7 +1243,7 @@
                                       ToolTipService.ToolTip="{local:Loc Text='Adjust contrast and brightness automatically (Ctrl+U)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE706;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Auto'}" />
+                                <TextBlock Text="{local:Loc Text='Enhance light'}" />
                             </StackPanel>
                         </ToggleButton>
                         <ToggleButton x:Name="EditEnhanceButton" Click="EditEnhance_Click"
@@ -1287,14 +1287,22 @@
                         </ToggleButton>
                     </controls:WrapPanel>
 
-                    <TextBlock Text="{local:Loc Text='Light and shade'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
-                    <Slider x:Name="BrightnessSlider" Header="{local:Loc Text='Brightness'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                    <Slider x:Name="ContrastSlider" Header="{local:Loc Text='Contrast'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                    <Slider x:Name="HighlightsSlider" Header="{local:Loc Text='Highlights'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                    <Slider x:Name="ShadowsSlider" Header="{local:Loc Text='Shadows'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                    <TextBlock Text="{local:Loc Text='Colour'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
-                    <Slider x:Name="SaturationSlider" Header="{local:Loc Text='Saturation'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                    <Slider x:Name="WarmthSlider" Header="{local:Loc Text='Warmth'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                    <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06). -->
+                    <Expander x:Name="EditSlidersExpander" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,8,0,0">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="{local:Loc Text='Light and shade'}" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                            <Slider x:Name="BrightnessSlider" Header="{local:Loc Text='Brightness'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                            <Slider x:Name="ContrastSlider" Header="{local:Loc Text='Contrast'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                            <Slider x:Name="HighlightsSlider" Header="{local:Loc Text='Highlights'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                            <Slider x:Name="ShadowsSlider" Header="{local:Loc Text='Shadows'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                            <TextBlock Text="{local:Loc Text='Colour'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                            <Slider x:Name="SaturationSlider" Header="{local:Loc Text='Saturation'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                            <Slider x:Name="WarmthSlider" Header="{local:Loc Text='Warmth'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                            <TextBlock Text="{local:Loc Text='Double-click a slider to set it back.'}" TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Expander>
 
                     <controls:WrapPanel Spacing="6" Margin="0,8,0,0">
                         <ToggleButton x:Name="EditBeforeButton" Click="EditBefore_Click"
@@ -1307,7 +1315,7 @@
                         <Button x:Name="EditResetButton" Click="EditReset_Click" Content="{local:Loc Text='Reset all'}"
                                 ToolTipService.ToolTip="{local:Loc Text='Set every slider back and undo the quick fixes not yet saved'}" />
                     </controls:WrapPanel>
-                    <TextBlock Text="{local:Loc Text='Double-click a slider to set it back. Nothing is written until you press Save below the photo; the original is kept in the hidden .originals folder.'}"
+                    <TextBlock Text="{local:Loc Text='Nothing is written until you press Save below the photo; the original is kept in the hidden .originals folder.'}"
                                TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </StackPanel>
@@ -1478,7 +1486,7 @@
                     <ToggleButton x:Name="ViewerAutoButton" Click="ViewerAuto_Click" ToolTipService.ToolTip="{local:Loc Text='Adjust contrast and brightness automatically (Ctrl+U)'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE706;" FontSize="16" />
-                            <TextBlock Text="{local:Loc Text='Auto adjust'}" />
+                            <TextBlock Text="{local:Loc Text='Enhance light'}" />
                         </StackPanel>
                     </ToggleButton>
                     <Button x:Name="ViewerRepairButton" Click="ViewerRepair_Click"
