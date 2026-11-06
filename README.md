@@ -166,6 +166,7 @@ It builds on the work of others (Settings › Info lists the same):
 | [SigLIP 2](https://huggingface.co/google/siglip2-base-patch16-224) by Google ([ONNX version](https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX)) | Automatic tagging | Apache 2.0 |
 | [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) and [SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface) (OpenCV Zoo) | Finding and recognising faces | MIT, Apache 2.0 |
 | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) by Xintao Wang et al. (versions from [Qualcomm AI Hub](https://huggingface.co/qualcomm)) | AI upscaling in the repair wizard | BSD 3-Clause |
+| [LaMa](https://github.com/advimman/lama) by Roman Suvorov et al., Samsung AI Center ([version from Qualcomm AI Hub](https://huggingface.co/qualcomm/LaMa-Dilated)) | The magic eraser in the Edit pane | Apache 2.0 |
 | [Leaflet](https://leafletjs.com), [MapLibre GL JS](https://maplibre.org) | The map | BSD 2-Clause, BSD 3-Clause |
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | Map data, © OpenStreetMap contributors | ODbL |
 | [OpenFreeMap](https://openfreemap.org) | Map tiles | MIT, ODbL |

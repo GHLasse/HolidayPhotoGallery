@@ -66,6 +66,117 @@ public sealed partial class EditCanvas : UserControl
         set => FineGrid.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    // ---- Retouch brush (E-11) ----
+
+    private readonly List<Point> _stroke = [];
+    private bool _painting;
+
+    /// <summary>A brush stroke ended: the points as fractions (0-1) of the shown photo, and the brush radius as a fraction of its longer side.</summary>
+    public event EventHandler<PaintedStroke>? Painted;
+
+    /// <summary>Shows a round brush that paints strokes over the photo instead of moving the crop frame or panning.</summary>
+    public bool IsPainting
+    {
+        get => PaintLayer.Visibility == Visibility.Visible;
+        set
+        {
+            PaintLayer.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            if (!value)
+                ClearStroke();
+        }
+    }
+
+    /// <summary>The brush's width on screen, in pixels; zoomed in, it covers less of the photo.</summary>
+    public double BrushSize { get; set; } = 40;
+
+    /// <summary>Takes away the drawn stroke once it has been applied to the photo.</summary>
+    public void ClearStroke()
+    {
+        _stroke.Clear();
+        StrokeLine.Points.Clear();
+    }
+
+    // The brush in the photo's own (unzoomed) units.
+    private double BrushRadius => BrushSize / 2 / Math.Max(Zoom.ScaleX, 0.01);
+
+    private void PaintLayer_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(PaintLayer);
+        e.Handled = true;
+        if (!point.Properties.IsLeftButtonPressed)
+            return;
+        ClearStroke();
+        _painting = true;
+        PaintLayer.CapturePointer(e.Pointer);
+        StrokeLine.StrokeThickness = BrushRadius * 2;
+        AddToStroke(point.Position);
+    }
+
+    private void PaintLayer_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var p = e.GetCurrentPoint(PaintLayer).Position;
+        ShowBrush(p);
+        e.Handled = true;
+        // Points closer than a few screen pixels add nothing but work.
+        if (_painting && (_stroke.Count == 0 || Distance(_stroke[^1], p) * Zoom.ScaleX >= 3))
+            AddToStroke(p);
+    }
+
+    private void PaintLayer_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (!_painting)
+            return;
+        PaintLayer.ReleasePointerCapture(e.Pointer);
+        EndStroke();
+    }
+
+    private void PaintLayer_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (_painting)
+            EndStroke();
+    }
+
+    private void PaintLayer_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_painting)
+            BrushRing.Visibility = BrushRingShade.Visibility = Visibility.Collapsed;
+    }
+
+    private void AddToStroke(Point p)
+    {
+        var inside = new Point(Math.Clamp(p.X, 0, Frame.Width), Math.Clamp(p.Y, 0, Frame.Height));
+        _stroke.Add(inside);
+        StrokeLine.Points.Add(inside);
+        // One point alone draws nothing; a second one in the same place shows the dot.
+        if (StrokeLine.Points.Count == 1)
+            StrokeLine.Points.Add(inside);
+    }
+
+    private void EndStroke()
+    {
+        _painting = false;
+        if (_stroke.Count == 0 || Frame.Width <= 0 || Frame.Height <= 0)
+            return;
+        var points = _stroke.Select(p => (p.X / Frame.Width, p.Y / Frame.Height)).ToList();
+        Painted?.Invoke(this, new PaintedStroke(points, BrushRadius / Math.Max(Frame.Width, Frame.Height)));
+    }
+
+    private void ShowBrush(Point p)
+    {
+        var r = BrushRadius;
+        foreach (var (ring, grow) in new[] { (BrushRing, 0.0), (BrushRingShade, 1.0 / Math.Max(Zoom.ScaleX, 0.01)) })
+        {
+            ring.Width = ring.Height = (r + grow) * 2;
+            ring.StrokeThickness = 1 / Math.Max(Zoom.ScaleX, 0.01);
+            Canvas.SetLeft(ring, p.X - r - grow);
+            Canvas.SetTop(ring, p.Y - r - grow);
+            ring.Visibility = Visibility.Visible;
+        }
+    }
+
+    private static double Distance(Point a, Point b) => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+
     /// <summary>Raised the first time a photo is zoomed in past its fitted size, to load it sharper.</summary>
     public event EventHandler? ZoomedIn;
 
@@ -242,7 +353,8 @@ public sealed partial class EditCanvas : UserControl
 
     private void Host_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (IsCropping)
+        // Two quick dabs of the retouch brush are not a double-click to zoom.
+        if (IsCropping || IsPainting)
             return;
         if (Zoom.ScaleX > 1)
             ResetZoom();
@@ -260,6 +372,8 @@ public sealed partial class EditCanvas : UserControl
         Frame.Height = Math.Max(1, _pixelHeight * scale);
         Overlay.Width = Frame.Width;
         Overlay.Height = Frame.Height;
+        PaintLayer.Width = Frame.Width;
+        PaintLayer.Height = Frame.Height;
     }
 
     private void Draw()
@@ -384,3 +498,6 @@ public sealed partial class EditCanvas : UserControl
         _moveStart = null;
     }
 }
+
+/// <summary>A finished brush stroke on the shown photo (see <see cref="EditCanvas.Painted"/>).</summary>
+public sealed record PaintedStroke(IReadOnlyList<(double X, double Y)> Points, double Radius);

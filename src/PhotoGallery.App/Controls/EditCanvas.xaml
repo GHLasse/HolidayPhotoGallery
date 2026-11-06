@@ -34,6 +34,17 @@
                 <Rectangle x:Name="HandleBottomLeft" Width="14" Height="14" Fill="White" Stroke="#99000000" />
                 <Rectangle x:Name="HandleBottomRight" Width="14" Height="14" Fill="White" Stroke="#99000000" />
             </Canvas>
+            <!-- Retouching (E-11): the brush follows the pointer and a stroke shows where it went until it is applied.
+                 It lies over the crop frame, which takes the pointer again when no retouch tool is chosen. -->
+            <Canvas x:Name="PaintLayer" Visibility="Collapsed" Background="Transparent"
+                    PointerPressed="PaintLayer_PointerPressed" PointerMoved="PaintLayer_PointerMoved"
+                    PointerReleased="PaintLayer_PointerReleased" PointerCaptureLost="PaintLayer_PointerCaptureLost"
+                    PointerExited="PaintLayer_PointerExited">
+                <Polyline x:Name="StrokeLine" Stroke="#80FF4081" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round" IsHitTestVisible="False" />
+                <Ellipse x:Name="BrushRing" Stroke="White" IsHitTestVisible="False" Visibility="Collapsed" />
+                <Ellipse x:Name="BrushRingShade" Stroke="#99000000" IsHitTestVisible="False" Visibility="Collapsed" />
+            </Canvas>
         </Grid>
     </Grid>
 </UserControl>

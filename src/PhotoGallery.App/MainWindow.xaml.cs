@@ -478,6 +478,19 @@ public sealed partial class MainWindow : Window
                 ToggleViewerEdit();
                 return;
             }
+            if (e.Key == VirtualKey.H && _viewerPixels is not null)
+            {
+                e.Handled = true;
+                ToggleRetouchTool(IsDown(VirtualKey.Shift) ? RetouchTool.Erase : RetouchTool.Spot);
+                return;
+            }
+            // [ and ] make the retouch brush smaller and larger.
+            if (e.Key is (VirtualKey)219 or (VirtualKey)221 && ChosenRetouchTool is not null)
+            {
+                e.Handled = true;
+                ChangeBrushSize(larger: e.Key == (VirtualKey)221);
+                return;
+            }
             if (ViewerItem is not { } item || IsEditing)
                 return;
             if (stars >= 0)
@@ -619,6 +632,8 @@ public sealed partial class MainWindow : Window
         [
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
             ("E", Tr("Show or hide the Edit pane in the viewer: quick fixes, crop, light and colour")),
+            ("H", Tr("Remove spots in the viewer; Shift+H the magic eraser")),
+            ("[ ]", Tr("Make the retouch brush smaller or larger")),
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
             ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),
@@ -1461,7 +1476,12 @@ public sealed partial class MainWindow : Window
             return;
         }
         if (ViewerCropButton.IsChecked == true)
+        {
             ResetCropRatio();
+            // The crop frame takes the pointer again from the retouch brush.
+            RetouchSpotButton.IsChecked = RetouchEraseButton.IsChecked = false;
+            SyncRetouch();
+        }
         ViewerCanvas.Ratio = SelectedCropRatio();
         ViewerCanvas.IsCropping = ViewerCropButton.IsChecked == true;
         UpdateEditBar();
@@ -1734,7 +1754,7 @@ public sealed partial class MainWindow : Window
         {
             OnContent = Tr("On"),
             OffContent = Tr("Off"),
-            Header = Tr("Use only the processor for AI upscaling"),
+            Header = Tr("Use only the processor for AI upscaling and the magic eraser"),
             IsOn = ViewModel.UpscaleOnProcessorOnly,
             Margin = new Thickness(0, 12, 0, 0),
         };
@@ -2115,9 +2135,14 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (_retouching)
+        {
+            ViewModel.Inform(Tr("Wait a moment until the retouch is done, then save."));
+            return;
+        }
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
-                                                  ChosenLook, _lookStrength,
+                                                  ChosenLook, _lookStrength, _strokes.ToList(),
                                                   asJpeg: SaveFormatCombo.SelectedIndex == 1);
         ViewerProgress.IsActive = false;
         if (saved)

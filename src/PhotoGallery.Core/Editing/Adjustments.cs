@@ -242,6 +242,21 @@ public static class Straighten
     }
 
     /// <summary>
+    /// The inverse of <see cref="Apply"/> for one point: where a point on the straightened photo (fractions of its
+    /// width and height) lies on the photo before it was turned, as fractions of the photo's width and height.
+    /// </summary>
+    public static (double X, double Y) PointBack(double x, double y, int width, int height, double degrees)
+    {
+        if (Math.Abs(degrees) < 0.01)
+            return (x, y);
+        var (w, h) = Size(width, height, degrees);
+        var a = degrees * Math.PI / 180;
+        var (cos, sin) = (Math.Cos(a), Math.Sin(a));
+        double qx = (x - 0.5) * w, qy = (y - 0.5) * h;
+        return ((qx * cos + qy * sin) / width + 0.5, (-qx * sin + qy * cos) / height + 0.5);
+    }
+
+    /// <summary>
     /// Where a box on the upright photo (fractions of its width and height) lies on the straightened photo, so the
     /// people named in it move along; null when it was cut off.
     /// </summary>

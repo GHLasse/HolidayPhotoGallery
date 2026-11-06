@@ -1293,6 +1293,37 @@
                     <Slider x:Name="LookStrengthSlider" Header="{local:Loc Text='Strength of the look'}" Minimum="0" Maximum="100" StepFrequency="1"
                             Value="100" Visibility="Collapsed" ValueChanged="LookStrength_ValueChanged" />
 
+                    <!-- Retouch (E-11): spots are healed instantly, the magic eraser uses a local AI model (MainWindow.Retouch.cs). -->
+                    <TextBlock Text="{local:Loc Text='Retouch'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <controls:WrapPanel Spacing="6">
+                        <ToggleButton x:Name="RetouchSpotButton" Click="RetouchTool_Click"
+                                      ToolTipService.ToolTip="{local:Loc Text='Remove spots, dust and blemishes: click on one or brush over it (H)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7E6;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Remove spots'}" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ToggleButton x:Name="RetouchEraseButton" Click="RetouchTool_Click"
+                                      ToolTipService.ToolTip="{local:Loc Text='Paint over people or things that should go; the gap is filled with matching background (Shift+H)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE75C;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Magic eraser'}" />
+                            </StackPanel>
+                        </ToggleButton>
+                    </controls:WrapPanel>
+                    <StackPanel x:Name="RetouchOptions" Spacing="6" Visibility="Collapsed">
+                        <Slider x:Name="BrushSizeSlider" Header="{local:Loc Text='Brush size'}" Minimum="6" Maximum="200" StepFrequency="1"
+                                Value="40" ValueChanged="BrushSize_ValueChanged" />
+                        <TextBlock x:Name="RetouchHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <Button x:Name="RetouchUndoButton" Click="RetouchUndo_Click" Visibility="Collapsed"
+                            ToolTipService.ToolTip="{local:Loc Text='Undo the last retouch stroke'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE7A7;" FontSize="16" />
+                            <TextBlock x:Name="RetouchUndoText" />
+                        </StackPanel>
+                    </Button>
+
                     <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06). -->
                     <Expander x:Name="EditSlidersExpander" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False"
                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,8,0,0">

@@ -27,7 +27,8 @@ public sealed partial class MainWindow
     private bool _rendering, _renderAgain, _syncingEditPane;
 
     /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
-    private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01 || _lookKey is not null;
+    private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01 || _lookKey is not null
+                                    || _strokes.Count > 0;
 
     private Look? ChosenLook => Looks.Find(_lookKey);
 
@@ -38,6 +39,7 @@ public sealed partial class MainWindow
     private void SetUpEditPane()
     {
         BuildLookButtons();
+        SetUpRetouch();
         foreach (var slider in EditSliders().Append(StraightenSlider))
         {
             // handledEventsToo: the slider's thumb takes the pointer for itself.
@@ -258,6 +260,7 @@ public sealed partial class MainWindow
         _lookKey = null;
         _lookStrength = 100;
         _previewBase = null;
+        ResetRetouch();
     }
 
     /// <summary>
@@ -290,7 +293,8 @@ public sealed partial class MainWindow
                     shown = pixels;
                 else
                 {
-                    var source = _previewBase ??= await Task.Run(() => Smaller(pixels));
+                    // With the retouch strokes so far (MainWindow.Retouch.cs).
+                    var source = _retouched ?? (_previewBase ??= await Task.Run(() => Smaller(pixels)));
                     shown = await Task.Run(() => Edited(source, curve, look, strength, adjustments, flipH, flipV, angle));
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels))
