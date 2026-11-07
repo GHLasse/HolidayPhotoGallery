@@ -171,7 +171,7 @@ public sealed partial class MainViewModel
                     File.Delete(copy);
                     throw new IOException(Tr("The copy of {0} is not complete.", item.Name));
                 }
-                var info = new FileInfo(copy) { Attributes = System.IO.FileAttributes.Normal, LastWriteTime = item.Taken };
+                var info = new FileInfo(copy) { Attributes = System.IO.FileAttributes.Normal, LastWriteTime = item.Taken, CreationTime = item.Taken };
                 File.Move(info.FullName, target);
                 imported.Add(target);
                 if (delete)

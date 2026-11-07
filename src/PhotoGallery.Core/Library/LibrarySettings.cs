@@ -41,6 +41,13 @@ public sealed class LibrarySettings
     /// <summary>Editing or shifting the date taken also sets the file's other dates (see MetadataChanges.SyncOtherDates).</summary>
     public bool KeepDatesInSync { get; set; } = true;
 
+    /// <summary>
+    /// Every photo in the library has its dates brought in line with its date taken in the background
+    /// (Metadata.DateSync). Off until the user turns it on: it rewrites the details of many files at once, which
+    /// cloud folders such as OneDrive then upload again.
+    /// </summary>
+    public bool SyncDatesInBackground { get; set; }
+
     /// <summary>New photos are looked at for faces in the background, once the face models are downloaded.</summary>
     public bool FindPeopleAutomatically { get; set; } = true;
 

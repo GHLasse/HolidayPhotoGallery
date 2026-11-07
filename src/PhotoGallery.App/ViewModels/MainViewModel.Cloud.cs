@@ -248,9 +248,13 @@ public sealed partial class MainViewModel
         var done = 0;
         int uploaded = 0, already = 0, failed = 0;
         string? firstError = null;
-        UploadText = Tr("Uploading to {0}: 0 of {1}…", name, total);
+        var datesSynced = 0;
         try
         {
+            // The dates first ("Keep all dates in sync"), so the service sorts the photos by the date taken.
+            UploadText = Tr("Checking the dates before the upload…");
+            datesSynced = await SyncDatesBeforeSendingAsync(groups.SelectMany(g => g.Photos).Select(p => p.Path).ToList(), cancel.Token);
+            UploadText = Tr("Uploading to {0}: 0 of {1}…", name, total);
             using (cloud as IDisposable)
             {
                 foreach (var (album, list) in groups)
@@ -270,7 +274,9 @@ public sealed partial class MainViewModel
                     firstError ??= result.FirstError;
                 }
             }
-            Inform(Summary(name, uploaded, already, failed));
+            Inform(datesSynced > 0
+                ? Summary(name, uploaded, already, failed) + " " + Tr("Dates brought in line with the date taken in {0} first.", PhotoCount(datesSynced))
+                : Summary(name, uploaded, already, failed));
             if (firstError is not null)
                 Warn(Tr("Not uploaded: {0}", firstError));
         }

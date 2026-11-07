@@ -60,7 +60,11 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
                 return newPath;
             }
             EditHistory.BackUp(path);
+            // The edited file replaces the photo but is a new file: it keeps the photo's creation date (Windows).
+            var created = File.GetCreationTimeUtc(path);
             File.Move(temp, newPath, overwrite: true);
+            if (OperatingSystem.IsWindows())
+                File.SetCreationTimeUtc(newPath, created);
             if (newPath != path)
             {
                 File.Delete(path);

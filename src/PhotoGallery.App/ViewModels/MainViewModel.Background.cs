@@ -46,6 +46,7 @@ public sealed partial class MainViewModel
         _ = TagInBackgroundAsync();
         _ = CheckQualityInBackgroundAsync();
         _ = AddPlaceNamesInBackgroundAsync();
+        _ = SyncDatesInBackgroundAsync();
     }
 
     private CancellationTokenSource? _kickDelay;

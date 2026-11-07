@@ -30,6 +30,10 @@ public static class OutgoingCopies
             Delete(target);
             throw new IOException(Tr("The GPS position could not be taken out of {0}: {1}", Path.GetFileName(path), error));
         }
+        // A copy is a new file, created now; it keeps the photo's own times, so it sorts the same wherever it lands.
+        File.SetLastWriteTimeUtc(target, File.GetLastWriteTimeUtc(path));
+        if (OperatingSystem.IsWindows())
+            File.SetCreationTimeUtc(target, File.GetCreationTimeUtc(path));
         return target;
     }
 

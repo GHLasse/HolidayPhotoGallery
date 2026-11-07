@@ -40,6 +40,9 @@ public sealed record MetadataChanges
     /// </summary>
     public bool SyncOtherDates { get; init; }
 
+    /// <summary>The dates a date sync replaces, kept in the app's own XMP note (see <see cref="DateSync"/>).</summary>
+    public string? DatesBeforeSync { get; init; }
+
     /// <summary>EXIF orientation 1-8.</summary>
     public int? Orientation { get; init; }
 
@@ -67,7 +70,7 @@ public sealed record MetadataChanges
     /// <summary>The complete new list of people in the photo (faces on the stored pixels); other regions stay.</summary>
     public IReadOnlyList<PersonTag>? People { get; init; }
 
-    public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null &&
+    public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null && DatesBeforeSync is null &&
                            Orientation is null && Location is null && !RemoveLocation && Place is null && People is null &&
                            Camera is null && Copyright is null && Creator is null;
 }

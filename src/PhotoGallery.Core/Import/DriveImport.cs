@@ -110,6 +110,9 @@ public static class DriveImport
         File.Copy(source, temp, overwrite: true);
         File.SetAttributes(temp, File.GetAttributes(temp) & ~FileAttributes.ReadOnly);
         File.SetLastWriteTime(temp, File.GetLastWriteTime(source));
+        // The copy is a new file; it keeps the original's creation date too (Explorer's "Date created").
+        if (OperatingSystem.IsWindows())
+            File.SetCreationTime(temp, File.GetCreationTime(source));
         if (verify && !SameContent(source, temp))
         {
             File.Delete(temp);
