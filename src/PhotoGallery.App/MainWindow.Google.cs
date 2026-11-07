@@ -56,6 +56,51 @@ public sealed partial class MainWindow
 
     private async void UploadPhotosToGoogle_Click(object sender, RoutedEventArgs e) => await UploadPhotosAsync(CloudService.GooglePhotos);
 
+    /// <summary>
+    /// Asks before taking the photos out of Google Photos, and says plainly what the app can and can't do there:
+    /// Google gives apps no way to delete photos.
+    /// </summary>
+    private async void RemoveFromGoogle_Click(object sender, RoutedEventArgs e)
+    {
+        var photos = CommandTargets().Where(p => p.IsOnGoogle).ToList();
+        if (photos.Count == 0 || !await EnsureSignedInAsync(CloudService.GooglePhotos))
+            return;
+        var records = await ViewModel.GoogleUploadsAsync(photos);
+        if (records.Count == 0)
+            return;
+        var albums = records.Where(r => r.AlbumFolder is not null).Select(r => ViewModel.CurrentAlbumName(r.AlbumFolder!)).Distinct().ToList();
+        var count = MainViewModel.PhotoCount(records.Count);
+        var what = albums.Count switch
+        {
+            0 => Tr("This clears the Google Photos mark of {0} here.", count),
+            1 => Tr("This takes {0} out of the Google Photos album “{1}” and clears the Google Photos mark here.", count, albums[0]),
+            _ => Tr("This takes {0} out of their Google Photos albums and clears the Google Photos mark here.", count),
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = records.Count == 1 ? Tr("Remove from Google Photos") : Tr("Remove {0} photos from Google Photos", records.Count),
+            Content = new TextBlock
+            {
+                Text = what + "\n\n" + Tr("Google doesn’t let apps delete photos, so they stay in your Google Photos library. To delete them for good, open Google Photos and delete them there."),
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = Tr("Remove"),
+            SecondaryButtonText = Tr("Open in Google Photos"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        switch (await dialog.ShowThemedAsync())
+        {
+            case ContentDialogResult.Primary:
+                await ViewModel.RemoveFromGoogleAsync(records);
+                break;
+            case ContentDialogResult.Secondary:
+                await ViewModel.OpenInGooglePhotosAsync(records);
+                break;
+        }
+    }
+
     private void OpenAlbumInGoogle_Click(object sender, RoutedEventArgs e) => OpenInBrowser(TagOf<AlbumViewModel>(sender)?.Album.GoogleUrl);
 
     /// <summary>The Google Photos part of the Linked apps tab. Signing in takes effect at once, not on Save; closing the dialog cancels a sign-in.</summary>
@@ -157,7 +202,7 @@ public sealed partial class MainWindow
                     ShowStatus();
                 };
                 panel.Children.Add(signOut);
-                panel.Children.Add(Text(Tr("Right-click an album or photos and choose Upload to Google Photos. Uploaded photos and albums show the Google Photos mark, and the Cloud filter finds what isn't uploaded yet. Google keeps the uploaded photos if you sign out; to remove them, delete them in Google Photos."), secondary: true));
+                panel.Children.Add(Text(Tr("Right-click an album or photos and choose Upload to Google Photos. Uploaded photos and albums show the Google Photos mark, and the Cloud filter finds what isn't uploaded yet. Google keeps the uploaded photos if you sign out. Remove from Google Photos takes photos out of the app’s albums there; Google doesn’t let apps delete photos, so to delete them, do it in Google Photos."), secondary: true));
             }
             else if (MainViewModel.BuiltInGoogleClient is { } builtIn && ViewModel.OwnGoogleClient is null)
             {

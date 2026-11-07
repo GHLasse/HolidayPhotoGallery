@@ -80,16 +80,24 @@ public static class AlbumFile
     public static AlbumInfo? Read(string folder)
     {
         var path = PathIn(folder);
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            if (!File.Exists(path))
-                return null;
-            return JsonSerializer.Deserialize<AlbumInfo>(File.ReadAllText(path), JsonOptions) ?? new();
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
-        {
-            // A damaged or unreadable file still marks the folder as an album.
-            return new();
+            try
+            {
+                if (!File.Exists(path))
+                    return null;
+                return JsonSerializer.Deserialize<AlbumInfo>(File.ReadAllText(path), JsonOptions) ?? new();
+            }
+            catch (IOException) when (attempt < 3)
+            {
+                // Briefly held by a virus scanner or a sync app: reading it as empty would lose its cloud links.
+                Thread.Sleep(100);
+            }
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+            {
+                // A damaged or unreadable file still marks the folder as an album.
+                return new();
+            }
         }
     }
 
@@ -97,10 +105,13 @@ public static class AlbumFile
     public static void Write(string folder, AlbumInfo info)
     {
         var path = PathIn(folder);
-        // Windows refuses to overwrite a hidden file, so unhide it first.
+        // Windows refuses to overwrite a hidden (or read-only) file, so those marks come off first.
         if (File.Exists(path))
-            File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.Hidden);
-        File.WriteAllText(path, JsonSerializer.Serialize(info, JsonOptions));
+            File.SetAttributes(path, File.GetAttributes(path) & ~(FileAttributes.Hidden | FileAttributes.ReadOnly));
+        // Written next to it and swapped in, so a crash half way never leaves a cut-off file.
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(info, JsonOptions));
+        File.Move(temp, path, overwrite: true);
         File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden);
     }
 

@@ -138,6 +138,85 @@ public sealed class GooglePhotosClient : ICloudPhotos, IDisposable
         return ReadAlbum(doc.RootElement);
     }
 
+    public async Task<CloudAlbumLink?> FindOrCreateAlbumAsync(string name, IReadOnlySet<string> linkedElsewhere, CancellationToken cancellationToken)
+    {
+        // Google only lists the albums this app made, so a match is one an earlier upload left behind.
+        var title = Truncate(name, 500) ?? name;
+        var album = (await ListAlbumsAsync(cancellationToken).ConfigureAwait(false))
+                        .FirstOrDefault(a => a.Title == title && !linkedElsewhere.Contains(a.Id))
+                    ?? await CreateAlbumAsync(name, cancellationToken).ConfigureAwait(false);
+        return new CloudAlbumLink { AlbumId = album.Id, Url = album.ProductUrl, Title = name };
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> AlbumItemsAsync(CloudAlbumLink album, CancellationToken cancellationToken)
+    {
+        var byName = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        string? page = null;
+        do
+        {
+            // "./" so the colon isn't read as a URL scheme.
+            using var request = new HttpRequestMessage(HttpMethod.Post, "./mediaItems:search")
+            {
+                Content = JsonContent.Create(new { albumId = album.AlbumId, pageSize = 100, pageToken = page }, options: Json),
+            };
+            using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            if (doc.RootElement.TryGetProperty("mediaItems", out var list))
+            {
+                foreach (var item in list.EnumerateArray())
+                {
+                    if (!item.TryGetProperty("id", out var id) || !item.TryGetProperty("filename", out var file) || file.GetString() is not { } fileName)
+                        continue;
+                    // The same name twice can't be told apart: neither is used.
+                    byName[fileName] = byName.ContainsKey(fileName) ? null : id.GetString();
+                }
+            }
+            page = doc.RootElement.TryGetProperty("nextPageToken", out var next) ? next.GetString() : null;
+        }
+        while (!string.IsNullOrEmpty(page));
+        return byName.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Which of the photos (by id) are still in Google Photos, with their page there. Photos the user deleted in
+    /// Google Photos are left out. Only works for photos this app uploaded.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string?>> FindItemsAsync(IReadOnlyCollection<string> ids, CancellationToken cancellationToken = default)
+    {
+        var found = new Dictionary<string, string?>();
+        foreach (var chunk in ids.Distinct().Chunk(MaxBatch))
+        {
+            var query = string.Join("&", chunk.Select(id => "mediaItemIds=" + Uri.EscapeDataString(id)));
+            using var request = new HttpRequestMessage(HttpMethod.Get, "./mediaItems:batchGet?" + query);
+            using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            if (!doc.RootElement.TryGetProperty("mediaItemResults", out var list))
+                continue;
+            foreach (var r in list.EnumerateArray())
+            {
+                if (r.TryGetProperty("mediaItem", out var item) && item.TryGetProperty("id", out var id) && id.GetString() is { } itemId)
+                    found[itemId] = item.TryGetProperty("productUrl", out var url) ? url.GetString() : null;
+            }
+        }
+        return found;
+    }
+
+    /// <summary>
+    /// Takes photos out of an album. Google allows it only for albums and photos this app added; the photos stay
+    /// in the user's Google Photos library, as Google gives apps no way to delete photos.
+    /// </summary>
+    public async Task RemoveFromAlbumAsync(string albumId, IReadOnlyCollection<string> ids, CancellationToken cancellationToken = default)
+    {
+        foreach (var chunk in ids.Distinct().Chunk(MaxBatch))
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"albums/{Uri.EscapeDataString(albumId)}:batchRemoveMediaItems")
+            {
+                Content = JsonContent.Create(new { mediaItemIds = chunk }, options: Json),
+            };
+            using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>Renames an album; Google allows it for albums this app made, which are the only ones it uploads to.</summary>
     public async Task RenameAlbumAsync(CloudAlbumLink album, string oldName, string newName, CancellationToken cancellationToken)
     {
