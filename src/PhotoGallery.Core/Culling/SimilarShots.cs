@@ -119,6 +119,23 @@ public static class SimilarShots
         return found.Concat(made).OrderBy(g => g.Photos[0].DateTaken?.Local ?? DateTime.MaxValue).ToList();
     }
 
+    /// <summary>
+    /// After a photo of a stack was rated: the photo that should now be on top, or null to leave the top as it is.
+    /// The highest rated photo goes on top. When several share the highest rating, the top stays if it is one of
+    /// them, else the photo just rated goes on top if it is one of them, else the first of them. Without any
+    /// rating the top stays.
+    /// </summary>
+    public static T? TopByRating<T>(IReadOnlyList<T> stack, Func<T, int> rating, T top, T rated) where T : class
+    {
+        var highest = stack.Count == 0 ? 0 : stack.Max(rating);
+        if (highest <= 0)
+            return null;
+        var candidates = stack.Where(p => rating(p) == highest).ToList();
+        if (candidates.Contains(top))
+            return null;
+        return candidates.Contains(rated) ? rated : candidates[0];
+    }
+
     /// <summary>The photo the user chose as the group's cover, if any.</summary>
     public static IndexedPhoto? Cover(ShotGroup group, IReadOnlyDictionary<string, ShotMarkRow> marks) =>
         group.Photos.FirstOrDefault(p => marks.GetValueOrDefault(p.Path).Mark == ShotMark.Cover);

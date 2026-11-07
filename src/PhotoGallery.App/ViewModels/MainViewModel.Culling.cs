@@ -351,6 +351,20 @@ public sealed partial class MainViewModel
         return ChangeStacksAsync([.. others, (item, new ShotMarkRow(ShotMark.Cover, key))]);
     }
 
+    /// <summary>
+    /// After a photo of a stack was rated in Compare: the highest rated photo goes on top of the stack, kept the
+    /// same way as "Show on top of the stack". Gives the new top, or null when the top stayed.
+    /// </summary>
+    public async Task<PhotoItemViewModel?> TopStackByRatingAsync(PhotoItemViewModel rated)
+    {
+        if (StackOf(rated) is not { Count: > 1 } stack || stack.FirstOrDefault(i => i.IsBestShot) is not { } top)
+            return null;
+        if (SimilarShots.TopByRating(stack, i => i.Photo.Rating, top, rated) is not { } next)
+            return null;
+        await MakeStackCoverAsync(next);
+        return next;
+    }
+
     /// <summary>The sharpest goes on top of the photo's stack again (a stack the user made stays as it is).</summary>
     public Task ClearCoverAsync(PhotoItemViewModel item) =>
         ChangeStacksAsync([(item, ShotMarkOf(item).Stack is { } key ? new ShotMarkRow(ShotMark.Joined, key) : new ShotMarkRow(ShotMark.None))]);

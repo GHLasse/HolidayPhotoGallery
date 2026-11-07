@@ -88,6 +88,19 @@ public sealed partial class MainWindow
             ViewModel.Inform(Tr("That was the last group of similar shots."));
     }
 
+    // A rating in compare: written to the file, then the highest rated photo of the stack goes on top of it.
+    private async Task RateInCompareAsync(PhotoItemViewModel item, int stars)
+    {
+        await ViewModel.SetRatingAsync(item, stars);
+        if (await ViewModel.TopStackByRatingAsync(item) is not { } top)
+            return;
+        if (_shotGroups is { } groups && _shotGroupIndex < groups.Count && groups[_shotGroupIndex].Items.IndexOf(top) is >= 0 and var best)
+            groups[_shotGroupIndex] = (groups[_shotGroupIndex].Items, best);
+        if (ViewModel.Photos.Contains(top))
+            PhotoGrid.SelectedItem = top;
+        CompareLayer.RefreshTops();
+    }
+
     private void EndShotGroups()
     {
         _shotGroups = null;

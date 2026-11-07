@@ -56,7 +56,9 @@ public sealed partial class MainWindow : Window
         SetUpAutoSave();
         PrepareSuggestions(TagBox);
         ShowPhotoGroups();
-        CompareLayer.RatingChanged += ViewModel.SetRatingAsync;
+        CompareLayer.RatingChanged += RateInCompareAsync;
+        CompareLayer.EditRequested += EditFromCompare;
+        CompareLayer.IsStackTop = item => item.IsBestShot && ViewModel.StackOf(item) is { Count: > 1 };
         CompareLayer.FlagRequested += item => ViewModel.ToggleFlagAsync([item]);
         CompareLayer.RejectRequested += item => ViewModel.ToggleRejectAsync([item]);
         CompareLayer.CloseRequested += CloseCompare;
@@ -1217,6 +1219,20 @@ public sealed partial class MainWindow : Window
         OpenViewer(item, [item]);
     }
 
+    // The Edit button (or E) in compare: the photo opens with the Edit pane beside it; closing the viewer comes
+    // back to compare, which then shows the photo as saved.
+    private bool _editFromCompare;
+
+    private void EditFromCompare(PhotoItemViewModel item)
+    {
+        CompareLayer.Visibility = Visibility.Collapsed;
+        _viewerFromCompare = true;
+        _editFromCompare = true;
+        _viewerPane = SidePane.Edit;
+        _viewerFolded = false;
+        OpenViewer(item, [item]);
+    }
+
     // With one photo shown, Left and Right step through the grid, so photos can be rated one after another.
     private void CompareNavigate(int step)
     {
@@ -1297,6 +1313,9 @@ public sealed partial class MainWindow : Window
         {
             _viewerFromCompare = false;
             CompareLayer.Visibility = Visibility.Visible;
+            if (_editFromCompare)
+                CompareLayer.ReloadImages();
+            _editFromCompare = false;
             CompareLayer.FocusHighlighted();
         }
     }
