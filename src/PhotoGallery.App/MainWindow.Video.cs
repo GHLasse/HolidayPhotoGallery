@@ -57,7 +57,13 @@ public sealed partial class MainWindow
 
     private void ShowVideoTools(bool video)
     {
+        var before = RightSide();
         _viewerShowsVideo = video;
         FitViewerToolbar();
+        // Editing, a video shows its details instead; the next photo goes back to Edit.
+        if (IsViewerOpen && RightSide() != before)
+            ApplyChrome();
+        else
+            SyncSideSwitch();
     }
 }

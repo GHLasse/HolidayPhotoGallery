@@ -309,8 +309,11 @@ public sealed partial class MainWindow
             _ = SetViewerPaneAsync(SidePane.Info);
     }
 
-    private void ToggleViewerMap() =>
-        _ = SetViewerPaneAsync(!_viewerFolded && _viewerPane == SidePane.Map ? SidePane.Info : SidePane.Map);
+    private void ToggleViewerMap()
+    {
+        if (PaneUsable(SidePane.Map))
+            _ = SetViewerPaneAsync(!_viewerFolded && _viewerPane == SidePane.Map ? SidePane.Info : SidePane.Map);
+    }
 
     private async Task SetViewerPaneAsync(SidePane pane)
     {

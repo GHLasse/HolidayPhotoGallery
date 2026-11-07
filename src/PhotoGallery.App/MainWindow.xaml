@@ -1467,11 +1467,11 @@
 
         <!-- The folded right-hand pane: a strip of icons, each opens the pane again. -->
         <StackPanel x:Name="SideRail" Grid.Row="3" Grid.Column="4" Visibility="Collapsed" Spacing="2" Padding="8,2,8,8" HorizontalAlignment="Center">
-            <Button Style="{StaticResource NavRailButton}" Click="UnfoldSidePane_Click"
+            <Button x:Name="SideRailUnfoldButton" Style="{StaticResource NavRailButton}" Click="UnfoldSidePane_Click"
                     AutomationProperties.Name="{local:Loc Text='Unfold the pane'}" ToolTipService.ToolTip="{local:Loc Text='Unfold the pane'}">
                 <FontIcon Glyph="&#xE8A0;" FontSize="16" />
             </Button>
-            <Button Style="{StaticResource NavRailButton}" Click="SideRailInfo_Click"
+            <Button x:Name="SideRailInfoButton" Style="{StaticResource NavRailButton}" Click="SideRailInfo_Click"
                     AutomationProperties.Name="{local:Loc Text='Details'}" ToolTipService.ToolTip="{local:Loc Text='Show the details of the selected photos (I)'}">
                 <FontIcon Glyph="&#xE946;" FontSize="16" />
             </Button>
