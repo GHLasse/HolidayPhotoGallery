@@ -238,9 +238,7 @@ public sealed partial class MainWindow
         if (mapComes)
             SlideMapBeside(0, from: (float)width);
         SyncSideSwitch();
-        if (viewer)
-            BeginPhotoGlide(width, animate);
-        AnimateColumn(InfoColumn, width, animate, resized: viewer ? PhotoColumnResized : null, done: () =>
+        AnimateColumn(InfoColumn, width, animate, lifted: mapGoes ? () => LiftOut(MapView, left: false) : null, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
             var now = RightSide();

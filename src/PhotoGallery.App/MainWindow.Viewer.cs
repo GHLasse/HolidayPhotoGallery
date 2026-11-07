@@ -263,15 +263,35 @@ public sealed partial class MainWindow
     {
         if (!ReferenceEquals(ViewerItem, item))
             return;
+        if (StripCentreOffset() is { } offset && _stripScroller is { } scroller && Math.Abs(offset - scroller.HorizontalOffset) > 0.5)
+            scroller.ChangeView(offset, null, null, false);
+    }
+
+    // Where the strip would scroll to have the photo on show in the middle (null: it can't tell yet).
+    private double? StripCentreOffset()
+    {
         _stripScroller ??= Descendants(ViewerStrip).OfType<ScrollViewer>().FirstOrDefault();
-        if (_stripScroller is not { ViewportWidth: > 0 } scroller
+        if (ViewerItem is not { } item || _stripScroller is not { ViewportWidth: > 0 } scroller
             || ViewerStrip.ContainerFromItem(item) is not FrameworkElement { ActualWidth: > 0 } tile)
-            return;
+            return null;
         var left = tile.TransformToVisual(scroller).TransformPoint(new Point(0, 0)).X;
         var offset = scroller.HorizontalOffset + left + tile.ActualWidth / 2 - scroller.ViewportWidth / 2;
-        offset = Math.Clamp(offset, 0, scroller.ScrollableWidth);
-        if (Math.Abs(offset - scroller.HorizontalOffset) > 0.5)
-            scroller.ChangeView(offset, null, null, false);
+        return Math.Clamp(offset, 0, scroller.ScrollableWidth);
+    }
+
+    /// <summary>
+    /// Puts the photo on show in the middle of the strip straight away, for a pane that slides beside the viewer
+    /// (MainWindow.PhotoGlide.cs); returns how far the strip scrolls.
+    /// </summary>
+    private double CentreStripNow()
+    {
+        if (StripCentreOffset() is not { } offset || _stripScroller is not { } scroller)
+            return 0;
+        var shift = offset - scroller.HorizontalOffset;
+        if (Math.Abs(shift) <= 0.5)
+            return 0;
+        scroller.ChangeView(offset, null, null, true);
+        return shift;
     }
 
     // When the viewer opens or the window is resized, the photo on show goes back to the middle.
