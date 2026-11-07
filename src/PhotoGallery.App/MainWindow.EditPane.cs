@@ -41,6 +41,11 @@ public sealed partial class MainWindow
     private void SetUpEditPane()
     {
         BuildLookButtons();
+        LookPanel.SizeChanged += (_, e) =>
+        {
+            if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) > 1)
+                ArrangeLookButtons();
+        };
         SetUpRetouch();
         foreach (var slider in EditSliders().Append(StraightenSlider))
         {
@@ -183,6 +188,8 @@ public sealed partial class MainWindow
                      .Concat(Looks.All.Select(l => ((string?)l.Key, l.Name(), l.Tip()))))
         {
             var pinMark = new FontIcon { Glyph = "\uE718", FontSize = 10, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
+            var suggestMark = new FontIcon { Glyph = "\uE82F", FontSize = 10, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
+            ToolTipService.SetToolTip(suggestMark, Tr("Suggested for this photo"));
             var button = new ToggleButton
             {
                 Tag = key,
@@ -202,6 +209,7 @@ public sealed partial class MainWindow
                             Children =
                             {
                                 pinMark,
+                                suggestMark,
                                 new TextBlock { Text = name, FontSize = 11, MaxWidth = LookThumbWidth, TextTrimming = TextTrimming.CharacterEllipsis },
                             },
                         },
@@ -218,29 +226,60 @@ public sealed partial class MainWindow
             };
             if (key is not null)
                 button.ContextFlyout = LookMenu(key, Looks.Find(key) is { Beauty: true });
-            _lookButtons.Add((key, button, pinMark));
+            _lookButtons.Add((key, button, pinMark, suggestMark));
         }
         ArrangeLookButtons();
     }
 
-    private readonly List<(string? Key, ToggleButton Button, FontIcon PinMark)> _lookButtons = [];
+    private readonly List<(string? Key, ToggleButton Button, FontIcon PinMark, FontIcon SuggestMark)> _lookButtons = [];
+
+    // What the shown photo looks like, whether it shows faces and its tags, for the suggested looks (found once per photo).
+    private (LookSuggestions.Traits Traits, int Faces, IReadOnlyList<string> Tags)? _lookHints;
 
     private IEnumerable<ToggleButton> LookButtons() => _lookButtons.Select(b => b.Button);
 
-    // None, then the pinned looks in the order they were pinned, then the rest (under More looks once something is pinned).
+    // The first row: None, the pinned looks in the order they were pinned, and then looks suggested for this photo
+    // until the row is full (a light bulb marks them). All the other looks wait under More looks.
     private void ArrangeLookButtons()
     {
         LookPanel.Children.Clear();
         MoreLookPanel.Children.Clear();
         var pinned = ViewModel.PinnedLooks.Where(k => Looks.Find(k) is not null).ToList();
-        foreach (var (key, button, pinMark) in _lookButtons.OrderBy(b => b.Key is null ? -1 : pinned.IndexOf(b.Key) is var i and >= 0 ? i : int.MaxValue))
+        var suggested = LookSuggestions.Suggest(_lookHints?.Traits ?? LookSuggestions.Measure([], 0, 0), _lookHints?.Faces ?? 0,
+                                                _lookHints?.Tags ?? [], SuggestionSlots(1 + pinned.Count), except: pinned);
+        int Order(string? key) => key is null ? -2 : pinned.IndexOf(key) is var p and >= 0 ? p : suggested.ToList().IndexOf(key) is var s and >= 0 ? 1000 + s : int.MaxValue;
+        foreach (var (key, button, pinMark, suggestMark) in _lookButtons.OrderBy(b => Order(b.Key)))
         {
             var isPinned = key is not null && pinned.Contains(key);
+            var isSuggested = key is not null && suggested.Contains(key);
             pinMark.Visibility = isPinned ? Visibility.Visible : Visibility.Collapsed;
-            (key is null || isPinned || pinned.Count == 0 ? LookPanel : MoreLookPanel).Children.Add(button);
+            suggestMark.Visibility = isSuggested ? Visibility.Visible : Visibility.Collapsed;
+            (key is null || isPinned || isSuggested ? LookPanel : MoreLookPanel).Children.Add(button);
         }
-        MoreLooksExpander.Visibility = pinned.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        MoreLooksExpander.Visibility = MoreLookPanel.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         LookPinHint.Visibility = pinned.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // How many suggestions fill up the first row after `shown` buttons; when the row is already full, none.
+    private int SuggestionSlots(int shown)
+    {
+        var buttonWidth = _lookButtons.Count > 0 && _lookButtons[0].Button.ActualWidth > 0 ? _lookButtons[0].Button.ActualWidth : LookThumbWidth + 10;
+        var width = LookPanel.ActualWidth > 0 ? LookPanel.ActualWidth : 300;
+        var perRow = Math.Max(2, (int)((width + 6) / (buttonWidth + 6)));
+        return (perRow - shown % perRow) % perRow;
+    }
+
+    // Measures the shown photo (its small copy for the previews) and looks up its faces and tags, then suggests again.
+    private async Task FindLookHintsAsync(DecodedImage pixels, DecodedImage small)
+    {
+        if (ViewerItem is not { } item)
+            return;
+        var traits = await Task.Run(() => LookSuggestions.Measure(small.Pixels, small.Width, small.Height));
+        var faces = (await ViewModel.GetFacesAsync(item.Path)).Count(f => !f.Ignored && f.Box.Width >= 0.08);
+        if (!ReferenceEquals(pixels, _lookThumbsFor))
+            return;
+        _lookHints = (traits, faces, item.Photo.Tags.ToList());
+        ArrangeLookButtons();
     }
 
     // Right-click on a look: pin it to the top or unpin it, and on Beauty also what it does.
@@ -335,6 +374,7 @@ public sealed partial class MainWindow
             var h = Math.Max(1, (int)Math.Round(pixels.Height * Math.Min(1, scale)));
             return new DecodedImage(ImageMath.Resize(pixels.Pixels, pixels.Width, pixels.Height, w, h), w, h);
         });
+        await FindLookHintsAsync(pixels, small);
         foreach (var button in LookButtons())
         {
             if (!ReferenceEquals(pixels, _lookThumbsFor))

@@ -1292,7 +1292,7 @@
                     <controls:WrapPanel x:Name="LookPanel" Spacing="6" />
                     <TextBlock x:Name="LookPinHint" Text="{local:Loc Text='Right-click a look to pin it to the top.'}" TextWrapping="Wrap" FontSize="12"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <!-- Shown once a look is pinned (right-click): the looks not pinned wait here. -->
+                    <!-- The looks that are neither pinned (right-click) nor suggested for this photo wait here. -->
                     <Expander x:Name="MoreLooksExpander" Header="{local:Loc Text='More looks'}" IsExpanded="False" Visibility="Collapsed"
                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                         <controls:WrapPanel x:Name="MoreLookPanel" Spacing="6" />
