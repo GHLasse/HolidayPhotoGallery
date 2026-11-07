@@ -21,14 +21,30 @@ public sealed partial class MainWindow
     private bool _syncingWorkspace;
     private int _peoplePageVersion;
 
-    private void ModeBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    private async void ModeBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
         if (_syncingWorkspace)
             return;
         var item = sender.SelectedItem;
-        ShowWorkspace(item == MapTab ? Workspace.Map
+        var workspace = item == MapTab ? Workspace.Map
                       : item == PeopleTab ? Workspace.People
-                      : Workspace.Library);
+                      : Workspace.Library;
+        // The open photo would cover the Map or People page: it closes first, asking about an unsaved edit
+        // (Lasse 2026-11-07). Cancel stays with the photo and puts the tab back.
+        if (IsViewerOpen && workspace != _workspace && !await LeaveViewerAskingAsync())
+        {
+            _syncingWorkspace = true;
+            try
+            {
+                ModeBar.SelectedItem = _workspace switch { Workspace.Map => MapTab, Workspace.People => PeopleTab, _ => LibraryTab };
+            }
+            finally
+            {
+                _syncingWorkspace = false;
+            }
+            return;
+        }
+        ShowWorkspace(workspace);
     }
 
     private async void ShowWorkspace(Workspace workspace)
@@ -101,6 +117,8 @@ public sealed partial class MainWindow
     {
         var full = _workspace == Workspace.Map;
         var open = full || MapBeside;
+        // Where the map was, if it was showing: from there it slides into its new place (side pane <-> Map page).
+        var wasAt = IsMapOpen && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
         // Beside the grid the map sits in the info pane's column (ApplyChrome); in the Map workspace it
         // takes the photo area's place as well.
         Grid.SetColumn(MapView, full ? 2 : 4);
@@ -115,10 +133,35 @@ public sealed partial class MainWindow
         // The selection bar sits over the grid; in the Map workspace there is no grid to sit on.
         _selectionBarAllowed = !full && _workspace != Workspace.Albums;
         ShowSelectionBar(PhotoGrid.SelectedItems.Count > 0);
+        if (wasAt is { } from && IsMapOpen)
+            SlideMapFrom(from);
         if (!open)
             return;
         await MapView.StartAsync();
         RefreshMap(fit: true);
+    }
+
+    /// <summary>
+    /// The map glides from where it was to where it is now, so going from the map beside the photos to the Map page
+    /// (or back) reads as the pane opening up rather than a jump.
+    /// </summary>
+    private void SlideMapFrom(Windows.Foundation.Point from)
+    {
+        if (!s_animations)
+            return;
+        Root.UpdateLayout();
+        var to = MapView.TransformToVisual(Root).TransformPoint(default);
+        var dx = (float)(from.X - to.X);
+        var dy = (float)(from.Y - to.Y);
+        if (Math.Abs(dx) < 1 && Math.Abs(dy) < 1)
+            return;
+        MapView.TranslationTransition = null;
+        MapView.Translation = new System.Numerics.Vector3(dx, dy, 0);
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            MapView.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(250) };
+            MapView.Translation = System.Numerics.Vector3.Zero;
+        });
     }
 
     // ---- People workspace ----

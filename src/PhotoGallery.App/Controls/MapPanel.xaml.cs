@@ -265,6 +265,17 @@ public sealed partial class MapPanel : UserControl
         UpdateButtons();
     }
 
+    /// <summary>In the side pane the map runs to the pane's edges, without the card's border and round corners.</summary>
+    public bool EdgeToEdge
+    {
+        get => MapCard.BorderThickness.Left == 0;
+        set
+        {
+            MapCard.BorderThickness = new Thickness(value ? 0 : 1);
+            MapCard.CornerRadius = new CornerRadius(value ? 0 : 8);
+        }
+    }
+
     /// <summary>Whether the pin and the Assign and Remove buttons are offered; not while browsing the whole map.</summary>
     public bool CanPlacePhotos
     {

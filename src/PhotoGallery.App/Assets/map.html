@@ -27,6 +27,8 @@
   :root.dark .leaflet-control-attribution a { color: #9fc3ff; }
   /* The app's Assign bar floats over the bottom of the map: the credits, legend and messages sit above it. */
   .leaflet-bottom { bottom: var(--inset-bottom, 0px); }
+  /* Small credits on one line where they fit, so the legend above them never covers them. */
+  .leaflet-control-attribution { font-size: 10px; line-height: 1.4; }
   :root { --surface: #fff; --surface-hover: #f9f9f9; --surface-pressed: #f5f5f5; }
   .card { background: var(--surface); border: 1px solid var(--stroke); border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
   .ctl { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 32px; padding: 4px 11px;
@@ -54,7 +56,7 @@
   .leaflet-bar a, .leaflet-bar a.leaflet-disabled { background: var(--surface); }
   .leaflet-bar a:hover { background: var(--surface-hover); color: var(--text); }
   .leaflet-bar a.leaflet-disabled { color: var(--text-2); opacity: .5; }
-  #legend { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 24px); left: 10px; right: 10px; width: fit-content; padding: 4px 8px; font-size: 12px; color: var(--text); display: none; }
+  #legend { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 30px); left: 10px; right: 10px; width: fit-content; padding: 4px 8px; font-size: 12px; color: var(--text); display: none; }
   #legend svg { vertical-align: middle; margin-right: 6px; }
   #message { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 52px); left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
   /* The picture box has a fixed size, so the bubble is laid out right before the picture arrives; the close
@@ -199,6 +201,13 @@ function start() {
   // The app's controls float over the map (Map | Satellite and layers top right, the Assign bar at the bottom): zooming
   // to photos leaves room for them, and the legend and credits sit above the bar ({type:"insets"}).
   let insetBottom = 0;
+  // The legend sits just above the credits, however many lines they wrap to in a narrow pane.
+  function placeLegend() {
+    const credits = document.querySelector(".leaflet-control-attribution");
+    const legend = document.getElementById("legend");
+    legend.style.bottom = (insetBottom + (credits ? credits.offsetHeight : 16) + 8) + "px";
+  }
+  map.on("resize", placeLegend);
   const pad = () => ({ paddingTopLeft: [40, 100], paddingBottomRight: [40, 40 + insetBottom] });
   // Fluent's plus and minus on the zoom buttons, like the app's own zoom.
   map.zoomControl._zoomInButton.firstChild.textContent = "\uE710";
@@ -508,6 +517,7 @@ function start() {
       } else if (m.type === "insets") {
         insetBottom = m.bottom || 0;
         document.documentElement.style.setProperty("--inset-bottom", insetBottom + "px");
+        placeLegend();
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)
@@ -522,6 +532,7 @@ function start() {
         // A small legend says what the line is: a recorded track (solid) or the photos joined in order (dashed).
         const legend = document.getElementById("legend");
         legend.style.display = lines.length ? "block" : "none";
+        placeLegend();
         legend.querySelector("line").setAttribute("stroke-dasharray", m.route ? "6 6" : "");
         // The leg an estimate lies on comes with its own text: how far and how long apart its two ends are.
         document.getElementById("legendText").textContent = m.label ? m.label : m.route
