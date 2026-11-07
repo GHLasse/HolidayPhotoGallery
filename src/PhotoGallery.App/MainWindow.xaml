@@ -1615,7 +1615,8 @@
                               SelectionChanged="CropRatio_SelectionChanged" ToolTipService.ToolTip="{local:Loc Text='Shape of the crop'}" />
                     <ToggleButton x:Name="CropTurnButton" VerticalAlignment="Center" Click="CropTurn_Click"
                                   ToolTipService.ToolTip="{local:Loc Text='Turn the crop between landscape and portrait'}">
-                        <FontIcon Glyph="&#xE8AB;" FontSize="14" />
+                        <!-- Orientation, not the flip icon (E8AB) next to it in the Edit pane. -->
+                        <FontIcon Glyph="&#xE8B4;" FontSize="14" />
                     </ToggleButton>
                     <!-- Straighten (E-14): turns the photo by up to 45° each way; the photo shrinks so no corner is empty.
                          The fine grid shows while it is turned. Double-click sets it back. -->
