@@ -30,7 +30,7 @@ public sealed partial class MainWindow
 
     // The bits of the bars that sit against an edge and so move when the space changes.
     private FrameworkElement[] FollowingBars => IsViewerOpen
-        ? [ViewerTools, ViewerNextButton, ViewerEditBar, ViewerTitle]
+        ? [ViewerTools, ViewerNextButton, ViewerTitle]
         : [SortCombo, AlbumSortCombo, FilterBadges, HeaderTitle];
 
     /// <summary>Notes where everything beside the column is, just before it changes (AnimateColumn).</summary>

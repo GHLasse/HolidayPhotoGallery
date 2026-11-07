@@ -415,29 +415,33 @@ public sealed partial class MainWindow
         var shift = IsDown(VirtualKey.Shift);
         var viewer = IsViewerOpen;
         var photoTools = viewer && !IsEditing && !_viewerShowsVideo; // also when a narrow bar hides the buttons
+        var editTools = viewer && !_viewerShowsVideo && _viewerPixels is not null;
         Action? action = (ctrl, shift, e.Key) switch
         {
             (true, false, VirtualKey.C) => () => _ = CopyFilesAsync(),
             (true, false, VirtualKey.V) when !viewer => () => _ = PasteFilesAsync(),
             (true, false, VirtualKey.D) => () => _ = DuplicateAsync(),
+            // While editing, Ctrl+Z steps back through the changes not saved yet, as the Edit pane's Undo does.
+            (true, false, VirtualKey.Z) when viewer && HasEditSteps => () => UndoEditStep(),
             (true, false, VirtualKey.Z) when !viewer || !IsEditing => () => _ = UndoAsync(),
             (true, true, VirtualKey.D) => () => ShiftDates_Click(this, new RoutedEventArgs()),
             (true, false, VirtualKey.I) when !viewer => () => Import_Click(this, new RoutedEventArgs()),
             (true, false, VirtualKey.Number1 or VirtualKey.NumberPad1) when !viewer => () => ShowWorkspace(Workspace.Library),
             (true, false, VirtualKey.Number2 or VirtualKey.NumberPad2) when !viewer => () => ShowWorkspace(Workspace.Map),
             (true, false, VirtualKey.Number3 or VirtualKey.NumberPad3) when !viewer => () => ShowWorkspace(Workspace.People),
-            (true, false, VirtualKey.U) when photoTools => () =>
+            // The edit keys open the Edit pane and use the tool there (Lasse, 2026-11-07), also while editing.
+            (true, false, VirtualKey.U) when editTools => () =>
             {
-                ViewerAutoButton.IsChecked = true;
-                ViewerAuto_Click(this, new RoutedEventArgs());
+                ShowEditPane();
+                SetAutoLight(!_autoLight);
             },
             // In the grid Ctrl+, and Ctrl+. are keyboard accelerators (MainWindow.Frame.cs).
             (true, false, CommaKey) when photoTools => () => ViewerRotateLeft_Click(this, new RoutedEventArgs()),
             (true, false, PeriodKey) when photoTools => () => ViewerRotateRight_Click(this, new RoutedEventArgs()),
-            (false, false, VirtualKey.R) when photoTools => () =>
+            (false, false, VirtualKey.R) when editTools => () =>
             {
-                ViewerCropButton.IsChecked = true;
-                ViewerCrop_Click(this, new RoutedEventArgs());
+                ShowEditPane();
+                SetCropping(!_cropping);
             },
             (false, false, VirtualKey.Delete) when !viewer || !IsEditing => () => _ = RecycleSelectedAsync(),
             (false, false, VirtualKey.F5) when !viewer => () => Rescan_Click(this, new RoutedEventArgs()),
