@@ -927,10 +927,18 @@ public sealed partial class MainWindow
     {
         if (!s_animations)
             return;
-        element.ScaleTransition ??= new Vector3Transition { Duration = TimeSpan.FromMilliseconds(167) };
-        element.TranslationTransition ??= new Vector3Transition { Duration = TimeSpan.FromMilliseconds(167) };
-        element.CenterPoint = new Vector3((float)element.ActualWidth / 2, (float)element.ActualHeight / 2, 0);
-        element.Scale = up ? new Vector3(1.03f, 1.03f, 1) : Vector3.One;
-        element.Translation = up ? new Vector3(0, -2, 0) : Vector3.Zero;
+        try
+        {
+            element.ScaleTransition ??= new Vector3Transition { Duration = TimeSpan.FromMilliseconds(167) };
+            element.TranslationTransition ??= new Vector3Transition { Duration = TimeSpan.FromMilliseconds(167) };
+            element.CenterPoint = new Vector3((float)element.ActualWidth / 2, (float)element.ActualHeight / 2, 0);
+            element.Scale = up ? new Vector3(1.03f, 1.03f, 1) : Vector3.One;
+            element.Translation = up ? new Vector3(0, -2, 0) : Vector3.Zero;
+        }
+        catch (Exception e)
+        {
+            // WinUI refuses these while something else moves the tile (e.g. it glides with a pane): it just doesn't rise.
+            App.Trace($"tile lift skipped: {e.Message}");
+        }
     }
 }
