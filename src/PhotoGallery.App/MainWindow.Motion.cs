@@ -24,8 +24,10 @@ public sealed partial class MainWindow
     /// out before it closes.
     /// </summary>
     /// <param name="fromLeft">The pane sits at the left edge, so it slides in from the left.</param>
+    /// <param name="closeAfterMs">Closing, the column keeps its width this long, e.g. while the open photo glides to
+    /// where the pane leaves it (MainWindow.PhotoGlide.cs).</param>
     private void AnimateColumn(ColumnDefinition column, double to, bool animate, Action? done = null,
-                               bool fromLeft = false, params UIElement[] content)
+                               bool fromLeft = false, int closeAfterMs = 0, params UIElement[] content)
     {
         var version = _columnVersions[column] = _columnVersions.GetValueOrDefault(column) + 1;
         var from = column.Width.IsAbsolute ? column.Width.Value : column.ActualWidth;
@@ -42,16 +44,23 @@ public sealed partial class MainWindow
         var closing = to < 1;
         var offset = fromLeft ? -SlideOffset : SlideOffset;
         if (!closing)
-            column.Width = new GridLength(to);
-        var batch = Slide(shown, closing ? 0 : offset, closing ? offset : 0, closing ? 1 : 0, closing ? 0 : 1, closing ? 167 : SlideMs);
-        batch.Completed += (_, _) =>
         {
+            column.Width = new GridLength(to);
+            SettlePhotos();
+        }
+        const int slideOutMs = 167;
+        var batch = Slide(shown, closing ? 0 : offset, closing ? offset : 0, closing ? 1 : 0, closing ? 0 : 1, closing ? slideOutMs : SlideMs);
+        batch.Completed += async (_, _) =>
+        {
+            if (closing && closeAfterMs > slideOutMs)
+                await Task.Delay(closeAfterMs - slideOutMs);
             if (_columnVersions.GetValueOrDefault(column) != version)
                 return;
             App.Trace($"column slid to {to:0}");
             if (closing)
             {
                 column.Width = new GridLength(to);
+                SettlePhotos();
                 foreach (var element in shown)
                     ResetSlide(element);
             }
