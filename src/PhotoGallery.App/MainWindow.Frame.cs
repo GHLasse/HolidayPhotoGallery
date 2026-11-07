@@ -240,6 +240,13 @@ public sealed partial class MainWindow
             Grid.SetColumn(MapView, map ? 3 : 4);
             Grid.SetColumnSpan(MapView, map ? 2 : 1);
         }
+        else if (full && !_mapOnPage)
+        {
+            // On its way to the Map page: the pane's column closes at once below, which would squeeze the side map to
+            // nothing; it takes the page's place straight away and glides there from where it was (ApplyMapLayoutAsync).
+            Grid.SetColumn(MapView, 2);
+            Grid.SetColumnSpan(MapView, 3);
+        }
         MapView.TopInset = map && header ? SidePaneHeader.Height : 0;
         var overMap = map && header;
         SideSwitchCard.Visibility = overMap ? Visibility.Visible : Visibility.Collapsed;
