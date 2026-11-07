@@ -208,7 +208,10 @@ function imageryLayer(map) {
 function start() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem("view")); } catch (e) { }
-  const map = L.map("map", { zoomControl: true, worldCopyJump: true, preferCanvas: true })
+  // Quarter zoom steps when fitting, so a set of photos fills the view snugly; no grey above the North Pole or below
+  // the South Pole: the map never zooms out further than the world's height, nor pans past its top or bottom.
+  const map = L.map("map", { zoomControl: true, worldCopyJump: true, preferCanvas: true, zoomSnap: 0.25,
+                             maxBounds: [[-85.05, -1e5], [85.05, 1e5]], maxBoundsViscosity: 1 })
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
   // The app's controls float over the map (Map | Satellite and layers top right, the Assign bar at the bottom): zooming
   // to photos leaves room for them, and the legend and credits sit above the bar ({type:"insets"}).
@@ -220,6 +223,12 @@ function start() {
     legend.style.bottom = (insetBottom + (credits ? credits.offsetHeight : 16) + 8) + "px";
   }
   map.on("resize", placeLegend);
+  function fillHeight() {
+    const h = map.getSize().y;
+    if (h > 0) map.setMinZoom(Math.max(0, Math.ceil(Math.log2(h / 256) * 4) / 4));
+  }
+  fillHeight();
+  map.on("resize", fillHeight);
   // When the app grows or shrinks the map between the side pane and the Map page ({type:"anchor"} first), what is in
   // the bottom right corner (the part both places share) stays put instead of the centre, and the vector map is
   // drawn at its new size straight away rather than a frame later (an empty frame looked like a stutter).
