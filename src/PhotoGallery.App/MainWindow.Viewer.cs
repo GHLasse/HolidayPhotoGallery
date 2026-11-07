@@ -242,13 +242,42 @@ public sealed partial class MainWindow
             if (ViewerItem is { } item)
             {
                 item.IsViewerCurrent = true;
-                ViewerStrip.ScrollIntoView(item);
+                // A tile not built yet (far away) is brought in first; then the strip glides it to the middle.
+                if (ViewerStrip.ContainerFromItem(item) is null)
+                    ViewerStrip.ScrollIntoView(item);
+                DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => CenterStripOn(item));
             }
         }
         finally
         {
             _syncingStrip = false;
         }
+    }
+
+    private ScrollViewer? _stripScroller;
+
+    // Keeps the photo on show in the middle of the filmstrip, so the photos before and after it are both in view;
+    // at the start and end of the folder the strip simply stops (the scroll viewer clamps the offset).
+    private void CenterStripOn(PhotoItemViewModel item)
+    {
+        if (!ReferenceEquals(ViewerItem, item))
+            return;
+        _stripScroller ??= Descendants(ViewerStrip).OfType<ScrollViewer>().FirstOrDefault();
+        if (_stripScroller is not { ViewportWidth: > 0 } scroller
+            || ViewerStrip.ContainerFromItem(item) is not FrameworkElement { ActualWidth: > 0 } tile)
+            return;
+        var left = tile.TransformToVisual(scroller).TransformPoint(new Point(0, 0)).X;
+        var offset = scroller.HorizontalOffset + left + tile.ActualWidth / 2 - scroller.ViewportWidth / 2;
+        offset = Math.Clamp(offset, 0, scroller.ScrollableWidth);
+        if (Math.Abs(offset - scroller.HorizontalOffset) > 0.5)
+            scroller.ChangeView(offset, null, null, false);
+    }
+
+    // When the viewer opens or the window is resized, the photo on show goes back to the middle.
+    private void ViewerStrip_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (ViewerItem is { } item)
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => CenterStripOn(item));
     }
 
     private void ViewerStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
