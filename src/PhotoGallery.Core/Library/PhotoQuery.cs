@@ -22,6 +22,9 @@ public sealed record PhotoQuery
 
     public int MinRating { get; init; }
 
+    /// <summary>Only photos without stars (rating 0, or a negative rating some apps write for rejected).</summary>
+    public bool UnratedOnly { get; init; }
+
     public bool FlaggedOnly { get; init; }
 
     /// <summary>Only rejected photos, e.g. to check them before they go to the Recycle Bin.</summary>

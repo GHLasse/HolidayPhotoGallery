@@ -414,6 +414,7 @@ public sealed partial class MainWindow : Window
         ClearBrowseTrees(); // a month or place from the left pane is a filter too, and names the grid
         ViewModel.SearchText = "";
         ViewModel.MinRating = 0;
+        ViewModel.UnratedOnly = false;
         ViewModel.FlaggedOnly = false;
         ViewModel.RejectedOnly = false;
         ViewModel.MediaIndex = 0;

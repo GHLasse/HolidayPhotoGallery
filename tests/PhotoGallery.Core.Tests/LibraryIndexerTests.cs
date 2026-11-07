@@ -117,6 +117,7 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
         Assert.Equal(3, _index!.Search(new PhotoQuery()).Count);
         Assert.Equal([rome, beach], _index.Search(new PhotoQuery { Tags = ["italy"] }).Select(p => p.Path));
         Assert.Equal([rome], _index.Search(new PhotoQuery { MinRating = 4 }).Select(p => p.Path));
+        Assert.Equal([home], _index.Search(new PhotoQuery { UnratedOnly = true }).Select(p => p.Path));
         Assert.Equal([beach], _index.Search(new PhotoQuery { FlaggedOnly = true }).Select(p => p.Path));
         Assert.Equal([home], _index.Search(new PhotoQuery { RejectedOnly = true }).Select(p => p.Path));
         var dates = _index.GetDateCounts();

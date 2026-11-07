@@ -308,6 +308,9 @@ public sealed partial class MainWindow
         if (ViewModel.WithoutLocation)
             FilterBadges.Children.Add(Badge(Tr("No location"), false, outlined: false, Tr("Showing photos without a GPS position"),
                                             null, Tr("Stop filtering by no location"), () => ViewModel.WithoutLocation = false));
+        if (ViewModel.UnratedOnly)
+            FilterBadges.Children.Add(Badge(Tr("No rating"), false, outlined: false, Tr("Showing photos without stars"),
+                                            null, Tr("Stop filtering by no rating"), () => ViewModel.UnratedOnly = false));
         if (ViewModel.DamagedOnly)
             FilterBadges.Children.Add(Badge(Tr("Damaged files"), false, outlined: false, Tr("Showing photos whose file is damaged"),
                                             null, Tr("Stop filtering by damaged files"), () => ViewModel.DamagedOnly = false));
