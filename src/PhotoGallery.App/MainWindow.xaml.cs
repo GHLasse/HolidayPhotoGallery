@@ -107,6 +107,7 @@ public sealed partial class MainWindow : Window
             SavePlacement();
             ViewModel.SaveLastPlace(CurrentPlace());
             ViewModel.Dispose();
+            App.Ended();
         };
         AppWindow.Closing += AppWindow_Closing;
         ViewModel.Editor.PropertyChanged += (_, e) =>

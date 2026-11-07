@@ -105,6 +105,24 @@ public sealed partial class MainWindow
     /// <summary>Fades the viewer in, with the tile's thumbnail growing to where the photo will be.</summary>
     private void StartOpenMotion(PhotoItemViewModel item, Rect? tile)
     {
+        try
+        {
+            StartOpenMotionCore(item, tile);
+        }
+        catch (Exception e)
+        {
+            // An animation WinUI refuses must never stop the photo from opening: it just shows, without the motion.
+            App.Trace($"viewer open motion skipped: {e.Message}");
+            ++_flightVersion;
+            _flightDone = true;
+            ViewerFlyer.Visibility = Visibility.Collapsed;
+            ViewerFlyer.Source = null;
+            ViewerLayer.Opacity = ViewerCanvas.Opacity = 1;
+        }
+    }
+
+    private void StartOpenMotionCore(PhotoItemViewModel item, Rect? tile)
+    {
         var version = ++_flightVersion;
         _viewerClosing = false;
         _viewerImageReady = false;
@@ -182,16 +200,25 @@ public sealed partial class MainWindow
         if (ViewerFlyer.Visibility != Visibility.Visible)
             return;
         var version = _flightVersion;
-        var storyboard = new Storyboard();
-        AnimateDouble(storyboard, ViewerFlyer, "Opacity", 1, 0, 167);
-        storyboard.Completed += (_, _) =>
+        try
         {
-            if (version != _flightVersion)
-                return;
+            var storyboard = new Storyboard();
+            AnimateDouble(storyboard, ViewerFlyer, "Opacity", 1, 0, 167);
+            storyboard.Completed += (_, _) =>
+            {
+                if (version != _flightVersion)
+                    return;
+                ViewerFlyer.Visibility = Visibility.Collapsed;
+                ViewerFlyer.Source = null;
+            };
+            storyboard.Begin();
+        }
+        catch (Exception e)
+        {
+            App.Trace($"viewer reveal motion skipped: {e.Message}");
             ViewerFlyer.Visibility = Visibility.Collapsed;
             ViewerFlyer.Source = null;
-        };
-        storyboard.Begin();
+        }
     }
 
     /// <summary>Fades the viewer out, then takes it away; it no longer takes keys or clicks meanwhile.</summary>
@@ -210,18 +237,30 @@ public sealed partial class MainWindow
         }
         _viewerClosing = true;
         ViewerLayer.IsHitTestVisible = false;
-        var storyboard = new Storyboard();
-        AnimateDouble(storyboard, ViewerLayer, "Opacity", 1, 0, 167);
-        storyboard.Completed += (_, _) =>
+        void Gone()
         {
-            if (version != _flightVersion)
-                return;
             _viewerClosing = false;
             ViewerLayer.Visibility = Visibility.Collapsed;
             ViewerCanvas.Source = null; // kept while fading, so the photo goes with the viewer
             ViewerLayer.IsHitTestVisible = true;
-        };
-        storyboard.Begin();
+        }
+        try
+        {
+            var storyboard = new Storyboard();
+            AnimateDouble(storyboard, ViewerLayer, "Opacity", 1, 0, 167);
+            storyboard.Completed += (_, _) =>
+            {
+                if (version == _flightVersion)
+                    Gone();
+            };
+            storyboard.Begin();
+        }
+        catch (Exception e)
+        {
+            App.Trace($"viewer close motion skipped: {e.Message}");
+            ViewerLayer.Opacity = 1;
+            Gone();
+        }
     }
 
     // ---- Filmstrip ----
