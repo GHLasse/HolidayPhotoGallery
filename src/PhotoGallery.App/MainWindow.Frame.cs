@@ -195,7 +195,7 @@ public sealed partial class MainWindow
         // Beside the grid or the photo the map fills the pane right up to its edges (Lasse 2026-11-07): under the
         // splitter on the left and under the switch at the top, which floats over it on cards like the map's own controls.
         // (The Map page's map reaches the window's edges too.)
-        if (!full)
+        if (!full && !_mapShrinking)
         {
             Grid.SetColumn(MapView, map ? 3 : 4);
             Grid.SetColumnSpan(MapView, map ? 2 : 1);

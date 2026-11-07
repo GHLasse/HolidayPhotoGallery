@@ -119,11 +119,18 @@ public sealed partial class MainWindow
         var open = full || MapBeside;
         // Where the map was, if it was showing: from there it slides into its new place (side pane <-> Map page).
         var wasAt = IsMapOpen && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
+        // From the Map page back to the photos the big map stays put and draws in from the left onto the pane, uncovering
+        // the photos (Lasse 2026-11-07: a small map flying across from the left looked odd).
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MapView).Clip = null; // a shrink cut short
+        _mapShrinking = !full && MapBeside && wasAt is not null && Grid.GetColumn(MapView) == 2 && s_animations;
         // Beside the grid the map sits in the info pane's column (ApplyChrome); in the Map workspace it
         // takes the photo area's place as well.
-        Grid.SetColumn(MapView, full ? 2 : 4);
+        if (!_mapShrinking)
+        {
+            Grid.SetColumn(MapView, full ? 2 : 4);
+            Grid.SetColumnSpan(MapView, full ? 3 : 1);
+        }
         MapView.CanPlacePhotos = !full;
-        Grid.SetColumnSpan(MapView, full ? 3 : 1);
         if (full)
             PhotoArea.Visibility = Visibility.Collapsed;
         else if (_workspace != Workspace.People)
@@ -133,7 +140,9 @@ public sealed partial class MainWindow
         // The selection bar sits over the grid; in the Map workspace there is no grid to sit on.
         _selectionBarAllowed = !full && _workspace != Workspace.Albums;
         ShowSelectionBar(PhotoGrid.SelectedItems.Count > 0);
-        if (wasAt is { } from && IsMapOpen)
+        if (_mapShrinking)
+            ShrinkMapOntoPane();
+        else if (wasAt is { } from && IsMapOpen)
             SlideMapFrom(from);
         if (!open)
             return;
@@ -162,6 +171,45 @@ public sealed partial class MainWindow
             MapView.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(250) };
             MapView.Translation = System.Numerics.Vector3.Zero;
         });
+    }
+
+    // While the big map draws back onto the side pane it keeps the Map page's place (ApplyChrome leaves its column alone).
+    private bool _mapShrinking;
+
+    /// <summary>
+    /// The big map's left edge slides over to the side pane, uncovering the photos beneath; then the map takes the
+    /// pane's place for real and fits the selection there.
+    /// </summary>
+    private void ShrinkMapOntoPane()
+    {
+        Root.UpdateLayout();
+        var left = (float)(MapSplitter.TransformToVisual(Root).TransformPoint(default).X - MapView.TransformToVisual(Root).TransformPoint(default).X);
+        void Done()
+        {
+            if (!_mapShrinking)
+                return;
+            _mapShrinking = false;
+            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MapView).Clip = null;
+            ApplyChrome();
+            if (IsMapOpen)
+                RefreshMap(fit: true);
+        }
+        if (left < 1)
+        {
+            Done();
+            return;
+        }
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MapView);
+        var compositor = visual.Compositor;
+        var clip = compositor.CreateInsetClip();
+        visual.Clip = clip;
+        var slide = compositor.CreateScalarKeyFrameAnimation();
+        slide.InsertKeyFrame(1f, left, compositor.CreateCubicBezierEasingFunction(new(0.1f, 0.9f), new(0.2f, 1f)));
+        slide.Duration = TimeSpan.FromMilliseconds(250);
+        var batch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
+        clip.StartAnimation(nameof(clip.LeftInset), slide);
+        batch.End();
+        batch.Completed += (_, _) => DispatcherQueue.TryEnqueue(Done);
     }
 
     // ---- People workspace ----
