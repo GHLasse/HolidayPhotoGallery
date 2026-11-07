@@ -1394,12 +1394,20 @@ public sealed partial class MainWindow : Window
     }
 
     // Esc first leaves an edit, asking whether to save it, then the viewer.
-    private async void ViewerClose_Click(object sender, RoutedEventArgs e)
+    private async void ViewerClose_Click(object sender, RoutedEventArgs e) => await LeaveViewerAskingAsync();
+
+    /// <summary>
+    /// Closes the viewer; while editing it first asks whether to save. False when Cancel was picked (or the save
+    /// didn't happen), and the viewer stays open.
+    /// </summary>
+    private async Task<bool> LeaveViewerAskingAsync()
     {
+        if (!IsViewerOpen)
+            return true;
         if (!IsEditing)
         {
             CloseViewer();
-            return;
+            return true;
         }
         var dialog = new ContentDialog
         {
@@ -1414,13 +1422,17 @@ public sealed partial class MainWindow : Window
         switch (await dialog.ShowThemedAsync())
         {
             case ContentDialogResult.Primary:
-                ViewerSaveEdit_Click(sender, e);
-                break;
+                if (!await SaveViewerEditAsync())
+                    return false;
+                CloseViewer();
+                return true;
             case ContentDialogResult.Secondary:
                 // Discard leaves the viewer too, as the close button asked for (Lasse, 2026-11-06).
                 CancelEdit();
                 CloseViewer();
-                break;
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -2132,10 +2144,13 @@ public sealed partial class MainWindow : Window
         UpdateEditBar();
     }
 
-    private async void ViewerSaveEdit_Click(object sender, RoutedEventArgs e)
+    private async void ViewerSaveEdit_Click(object sender, RoutedEventArgs e) => await SaveViewerEditAsync();
+
+    /// <summary>Saves the edit on show; false when it wasn't saved (still retouching, or the save failed).</summary>
+    private async Task<bool> SaveViewerEditAsync()
     {
         if (ViewerItem is not { } item)
-            return;
+            return true;
 
         // A crop that still covers (nearly) the whole photo is no crop.
         Rect? crop = ViewerCropButton.IsChecked == true ? ViewerCanvas.Crop : null;
@@ -2145,13 +2160,13 @@ public sealed partial class MainWindow : Window
         if (crop is null && curve is null && !HasPixelChanges)
         {
             CancelEdit();
-            return;
+            return true;
         }
 
         if (_retouching)
         {
             ViewModel.Inform(Tr("Wait a moment until the retouch is done, then save."));
-            return;
+            return false;
         }
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
@@ -2161,6 +2176,7 @@ public sealed partial class MainWindow : Window
         ViewerProgress.IsActive = false;
         if (saved)
             await ShowViewerImageAsync();
+        return saved;
     }
 
     private async void ViewerUndo_Click(object sender, RoutedEventArgs e)
