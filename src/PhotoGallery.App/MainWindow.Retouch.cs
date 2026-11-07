@@ -17,7 +17,7 @@ public sealed partial class MainWindow
 {
     private readonly List<RetouchStroke> _strokes = [];
     private readonly Stack<(PixelRect Area, byte[] Before)> _retouchUndo = new();
-    private readonly Queue<RetouchStroke> _strokesWaiting = new();
+    private readonly Queue<(RetouchStroke Stroke, int Working)> _strokesWaiting = new();
     private DecodedImage? _retouched;     // the preview photo with the strokes so far
     private bool _retouching;
     private int _retouchGeneration;       // counts resets, so a stroke still being worked out is dropped after one
@@ -84,7 +84,10 @@ public sealed partial class MainWindow
     private void ViewerCanvas_Painted(object? sender, PaintedStroke stroke)
     {
         if (ChosenRetouchTool is not { } tool || _viewerPixels is not { } pixels)
+        {
+            ViewerCanvas.FinishWorking(stroke.Working);
             return;
+        }
         var angle = StraightenBeforeFlip;
         var points = stroke.Points.Select(p =>
         {
@@ -94,7 +97,7 @@ public sealed partial class MainWindow
         // The straightened photo is a little smaller, so the same brush covers a little less of the original.
         var (w, h) = Straighten.Size(pixels.Width, pixels.Height, angle);
         var radius = stroke.Radius * Math.Max(w, h) / Math.Max(pixels.Width, pixels.Height);
-        _strokesWaiting.Enqueue(new RetouchStroke(tool, points, radius));
+        _strokesWaiting.Enqueue((new RetouchStroke(tool, points, radius), stroke.Working));
         _ = RetouchWaitingStrokesAsync();
     }
 
@@ -109,15 +112,19 @@ public sealed partial class MainWindow
         try
         {
             var generation = _retouchGeneration;
-            while (_strokesWaiting.TryDequeue(out var stroke))
+            while (_strokesWaiting.TryDequeue(out var waiting))
             {
+                var (stroke, working) = waiting;
                 if (_viewerPixels is not { } pixels)
                     break;
                 var source = _retouched ?? (_previewBase ??= await Task.Run(() => Smaller(pixels)));
                 var picture = ReferenceEquals(source, _retouched) ? source : source with { Pixels = (byte[])source.Pixels.Clone() };
                 var area = Retouch.Affected(stroke, picture.Width, picture.Height);
                 if (area is not { } changed)
+                {
+                    ViewerCanvas.FinishWorking(working);
                     continue;
+                }
                 var before = ImageMath.Crop(picture.Pixels, picture.Width, picture.Height, changed);
                 try
                 {
@@ -127,6 +134,7 @@ public sealed partial class MainWindow
                 catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidOperationException)
                 {
                     ViewModel.ErrorMessage = Tr("The magic eraser could not run: {0}", ex.Message);
+                    ViewerCanvas.FinishWorking(working);
                     continue;
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels) || generation != _retouchGeneration)
@@ -137,13 +145,17 @@ public sealed partial class MainWindow
                 EditBeforeButton.IsChecked = false;
                 UpdateEditBar();
                 RenderPreview();
+                // The fill is shown: the stroke stops shimmering.
+                ViewerCanvas.FinishWorking(working);
             }
         }
         finally
         {
             _retouching = false;
             ViewerProgress.IsActive = false;
-            ViewerCanvas.ClearStroke();
+            // Strokes still waiting belonged to a photo that is no longer shown, or to a cancelled edit.
+            _strokesWaiting.Clear();
+            ViewerCanvas.ClearWorking();
             SyncRetouch();
         }
     }
@@ -173,6 +185,7 @@ public sealed partial class MainWindow
         _strokes.Clear();
         _retouchUndo.Clear();
         _strokesWaiting.Clear();
+        ViewerCanvas.ClearWorking();
         _retouched = null;
         RetouchSpotButton.IsChecked = RetouchEraseButton.IsChecked = false;
         SyncRetouch();

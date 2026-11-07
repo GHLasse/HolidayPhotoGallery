@@ -36,6 +36,8 @@
             </Canvas>
             <!-- Retouching (E-11): the brush follows the pointer and a stroke shows where it went until it is applied.
                  It lies over the crop frame, which takes the pointer again when no retouch tool is chosen. -->
+            <!-- Strokes the eraser is still working on shimmer here until their fill is shown. -->
+            <Canvas x:Name="WorkingLayer" IsHitTestVisible="False" />
             <Canvas x:Name="PaintLayer" Visibility="Collapsed" Background="Transparent"
                     PointerPressed="PaintLayer_PointerPressed" PointerMoved="PaintLayer_PointerMoved"
                     PointerReleased="PaintLayer_PointerReleased" PointerCaptureLost="PaintLayer_PointerCaptureLost"
