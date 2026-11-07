@@ -172,6 +172,8 @@ public sealed partial class MainWindow : Window
         ViewModel.HealthChanged += () => _ = ShowRepairAsync();
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
+        // The text box handles the press itself, so it is caught with handled events too.
+        DateBox.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(DateBox_PointerPressed), true);
         Root.CharacterReceived += Root_CharacterReceived;
         Root.ActualThemeChanged += Root_ActualThemeChanged;
         ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
@@ -451,6 +453,11 @@ public sealed partial class MainWindow : Window
 
     private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (_keyMarkedByDateBox)
+        {
+            _keyMarkedByDateBox = false;
+            return;
+        }
         if (e.Key == VirtualKey.F11)
         {
             e.Handled = true;
@@ -470,13 +477,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var key = (int)e.Key;
-        var stars = key switch
-        {
-            >= (int)VirtualKey.Number0 and <= (int)VirtualKey.Number5 => key - (int)VirtualKey.Number0,
-            >= (int)VirtualKey.NumberPad0 and <= (int)VirtualKey.NumberPad5 => key - (int)VirtualKey.NumberPad0,
-            _ => -1,
-        };
+        var stars = StarsFor(e.Key);
         if (IsDown(VirtualKey.Shift))
             stars = -1; // Shift+number types symbols such as "?" on some keyboards.
 

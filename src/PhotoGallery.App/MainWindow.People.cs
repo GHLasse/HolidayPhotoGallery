@@ -94,6 +94,7 @@ public sealed partial class MainWindow
                 _latestFaces[name] = await ViewModel.GetLatestFaceAsync(name);
             if (version != _peopleVersion)
                 return;
+            var focusWasHere = FocusIsIn(PeopleSection);
             PeopleList.Children.Clear();
             foreach (var (name, count) in counts)
             {
@@ -104,6 +105,8 @@ public sealed partial class MainWindow
             PeopleHint.Text = Tr("Adds the person to all {0} selected photos, without marking a face.", photos.Count);
             PeopleHint.Visibility = Visibility.Visible;
             PeopleSection.Visibility = Visibility.Visible;
+            if (focusWasHere)
+                FocusPhoto();
             return;
         }
 
@@ -129,6 +132,9 @@ public sealed partial class MainWindow
         if (version != _peopleVersion)
             return; // Another photo was selected meanwhile.
 
+        // Rebuilding the rows takes away the box or button that had the focus, and WinUI then hands it to the
+        // next control down: the Date taken box, where a rating key typed a digit into the date (Lasse, 2026-11-07).
+        var hadFocus = FocusIsIn(PeopleSection);
         PeopleList.Children.Clear();
         foreach (var face in faces)
             PeopleList.Children.Add(FaceRow(face, suggestions.GetValueOrDefault(face.Id)));
@@ -158,6 +164,8 @@ public sealed partial class MainWindow
             : looked && faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
         PeopleHint.Visibility = PeopleHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         PeopleSection.Visibility = Visibility.Visible;
+        if (hadFocus)
+            FocusPhoto();
     }
 
     private UIElement FaceRow(FoundFace face, NameSuggestion? suggestion)
@@ -182,7 +190,11 @@ public sealed partial class MainWindow
         }
         else
         {
-            content = NameBox(async name => await ViewModel.NameFacesAsync([face], name));
+            content = NameBox(async name =>
+            {
+                FocusPhoto();
+                await ViewModel.NameFacesAsync([face], name);
+            });
             action = IconButton("", Tr("Not someone to name: hide this face"), async () => await ViewModel.IgnoreFacesAsync([face]));
         }
         return Row(FacePicture(face.Thumbnail, FaceSize), content, action);
@@ -214,13 +226,16 @@ public sealed partial class MainWindow
 
     private static TextBlock Label(string text) => new() { Text = text, TextTrimming = TextTrimming.CharacterEllipsis };
 
-    private static Button IconButton(string glyph, string tooltip, Func<Task> click)
+    private Button IconButton(string glyph, string tooltip, Func<Task> click)
     {
         var button = new Button { Content = new FontIcon { Glyph = glyph, FontSize = 12 }, Padding = new Thickness(8, 6, 8, 6) };
         ToolTipService.SetToolTip(button, tooltip);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, tooltip);
         button.Click += async (_, _) =>
         {
+            // Hand the focus back to the photo first: disabling the focused button (and the rows being rebuilt
+            // after) would otherwise move it on to the Date taken box below.
+            FocusPhoto();
             button.IsEnabled = false;
             try
             {
@@ -268,6 +283,7 @@ public sealed partial class MainWindow
         box = NameBox(name =>
         {
             box!.Text = "";
+            FocusPhoto(); // so the next key rates the photo instead of typing into a box
             // Written in the background; the filter row shows how far it is.
             _ = ViewModel.AddPersonAsync(photos, name);
             return Task.CompletedTask;
