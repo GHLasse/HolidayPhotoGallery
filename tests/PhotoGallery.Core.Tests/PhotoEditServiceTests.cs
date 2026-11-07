@@ -72,6 +72,27 @@ public sealed class PhotoEditServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task Reverting_is_not_taken_for_a_change_made_on_another_pc()
+    {
+        var path = _temp.CopySample(".jpg");
+        await Metadata.WriteAsync(path, new MetadataChanges { Rating = 2 });
+        await Editor.SaveEditAsync(path, ".jpg", 100, 80, FreshImage(".jpg"));
+        await Metadata.WriteAsync(path, new MetadataChanges { Rating = 4 });
+
+        // The index has read the edited file, as the app's has.
+        var file = new FileInfo(path);
+        var basis = new IndexedPhoto { Path = path, Folder = _temp.Path, FileSize = file.Length, FileModifiedUtc = file.LastWriteTimeUtc, Rating = 4 };
+        var metadata = Metadata;
+        metadata.BasisFor = p => p == path ? basis : null;
+        var reported = new List<string>();
+        metadata.ChangedElsewhere += (_, clashes) => reported.Add(string.Join(",", clashes));
+        await new PhotoEditService(metadata).RevertAsync(path);
+
+        Assert.Empty(reported);
+        Assert.Equal(4, (await metadata.ReadAsync(path)).Rating);
+    }
+
+    [ExifToolFact]
     public async Task Saving_a_heic_as_jpeg_renames_it_and_revert_brings_the_heic_back()
     {
         var path = _temp.CopySample(".heic", "IMG_0001");
