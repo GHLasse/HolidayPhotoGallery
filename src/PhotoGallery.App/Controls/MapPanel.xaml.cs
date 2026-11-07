@@ -90,6 +90,9 @@ public sealed partial class MapPanel : UserControl
                 HostName, Path.Combine(AppContext.BaseDirectory, "Assets"), CoreWebView2HostResourceAccessKind.Allow);
             Web.CoreWebView2.Settings.AreDevToolsEnabled = false;
             Web.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            // The browser's own right-click menu ("Save image", "Download image" of a map tile…) only in the search box,
+            // for cut, copy and paste; elsewhere the map is the app's (Lasse 2026-11-07).
+            Web.CoreWebView2.ContextMenuRequested += (_, e) => e.Handled = !e.ContextMenuTarget.IsEditable;
             Web.WebMessageReceived += Web_WebMessageReceived;
             // The map’s labels follow the app’s language (see map.html). Strings.Language in full: a bare "Language"
             // here is the control’s own XAML language, which is Windows’ language.
