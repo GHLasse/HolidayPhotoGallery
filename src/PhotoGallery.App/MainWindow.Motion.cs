@@ -43,6 +43,13 @@ public sealed partial class MainWindow
             return;
         var version = _columnVersions[column] = _columnVersions.GetValueOrDefault(column) + 1;
         _columnTargets.Remove(column);
+        // A slide still running is cut short: whatever it lifted over the photos goes back in its column first.
+        foreach (var element in content)
+            if (element is FrameworkElement part && _lifted.ContainsKey(part))
+            {
+                ResetSlide(part);
+                SetDown(part);
+            }
         var from = column.Width.IsAbsolute ? column.Width.Value : column.ActualWidth;
         var shown = content.Where(c => c.Visibility == Visibility.Visible).ToList();
         if (!animate || !s_animations || Math.Abs(from - to) < 1 || shown.Count == 0)
@@ -63,7 +70,14 @@ public sealed partial class MainWindow
         var going = shown.Except(coming).ToList();
         _columnTargets[column] = to;
         // Where things are on screen now, before any of the chrome's changes are laid out.
-        CaptureFollowers();
+        try
+        {
+            CaptureFollowers();
+        }
+        catch (Exception e)
+        {
+            App.Trace($"followers not captured: {e.Message}");
+        }
         if (to < from)
         {
             foreach (var part in going.OfType<FrameworkElement>())
@@ -72,7 +86,14 @@ public sealed partial class MainWindow
         }
         column.Width = new GridLength(to);
         Root.UpdateLayout();
-        MorphFollowers();
+        try
+        {
+            MorphFollowers();
+        }
+        catch (Exception e)
+        {
+            App.Trace($"followers not moved: {e.Message}");
+        }
         var batch = to > from
             ? Slide(coming, side * (float)to, 0, 1, 1, MorphMs)
             : Slide(going, 0, side * (float)from, 1, 1, MorphMs);
@@ -110,6 +131,9 @@ public sealed partial class MainWindow
         var easing = MorphEasing(compositor);
         foreach (var element in elements)
         {
+            // An element that already moves through its own Translation can't be taken over (WinUI throws).
+            if (element.TranslationTransition is not null || element.ScaleTransition is not null)
+                continue;
             ElementCompositionPreview.SetIsTranslationEnabled(element, true);
             _slid.Add(element);
             var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -126,8 +150,15 @@ public sealed partial class MainWindow
                 move.DelayTime = fade.DelayTime = TimeSpan.FromMilliseconds(delayMs);
                 move.DelayBehavior = fade.DelayBehavior = Microsoft.UI.Composition.AnimationDelayBehavior.SetInitialValueBeforeDelay;
             }
-            visual.StartAnimation("Translation", move);
-            visual.StartAnimation("Opacity", fade);
+            try
+            {
+                visual.StartAnimation("Translation", move);
+                visual.StartAnimation("Opacity", fade);
+            }
+            catch (Exception e)
+            {
+                App.Trace($"slide skipped: {e.Message}");
+            }
         }
         batch.End();
         return batch;
