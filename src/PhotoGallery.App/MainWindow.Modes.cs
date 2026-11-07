@@ -122,7 +122,8 @@ public sealed partial class MainWindow
         // From the Map page back to the photos the big map stays put and draws in from the left onto the pane, uncovering
         // the photos (Lasse 2026-11-07: a small map flying across from the left looked odd).
         MapView.ClearClip(); // a shrink cut short
-        _mapShrinking = !full && MapBeside && wasAt is not null && Grid.GetColumn(MapView) == 2 && s_animations;
+        _mapShrinking = !full && MapBeside && wasAt is not null && _mapOnPage && s_animations;
+        _mapOnPage = full || _mapShrinking;
         // Beside the grid the map sits in the info pane's column (ApplyChrome); in the Map workspace it
         // takes the photo area's place as well.
         if (!_mapShrinking)
@@ -176,6 +177,10 @@ public sealed partial class MainWindow
     // While the big map draws back onto the side pane it keeps the Map page's place (ApplyChrome leaves its column alone).
     private bool _mapShrinking;
 
+    // The map sits in the Map page's place (columns 2 to 4). ShowWorkspace runs ApplyChrome before ApplyMapLayoutAsync,
+    // so ApplyChrome leaves the map there until ApplyMapLayoutAsync has decided whether it shrinks onto the pane.
+    private bool _mapOnPage;
+
     /// <summary>
     /// The big map's left edge slides over to the side pane, uncovering the photos beneath; then the map takes the
     /// pane's place for real and fits the selection there.
@@ -189,6 +194,7 @@ public sealed partial class MainWindow
             if (!_mapShrinking)
                 return;
             _mapShrinking = false;
+            _mapOnPage = false;
             MapView.ClearClip();
             ApplyChrome();
             if (IsMapOpen)
