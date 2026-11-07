@@ -192,8 +192,9 @@ public sealed partial class MainWindow
         SidePaneHeader.Visibility = header ? Visibility.Visible : Visibility.Collapsed;
         InfoPane.Margin = new Thickness(0, header ? SidePaneHeader.Height : 0, 0, 0);
         EditPane.Margin = InfoPane.Margin;
-        // Beside the grid or the photo, the same edges as the Details and Edit panes (their padding is 8, 0, 16, 8).
-        MapView.Margin = map ? new Thickness(8, SidePaneHeader.Height, 16, 8) : new Thickness(0, 0, 12, 12);
+        // Beside the grid or the photo the map fills the pane right up to its edges, under the switch (Lasse 2026-11-07).
+        MapView.Margin = map ? new Thickness(0, SidePaneHeader.Height, 0, 0) : new Thickness(0, 0, 12, 12);
+        MapView.EdgeToEdge = map;
         // Under the viewer the whole-library map would lie over the pane beside it, so it waits till the viewer closes.
         MapView.Visibility = map || (full && !viewer) ? Visibility.Visible : Visibility.Collapsed;
         SyncSideSwitch();
