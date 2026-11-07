@@ -146,6 +146,13 @@ public static class Retouch
         if (ring.Count == 0)
             return null;
 
+        // How grainy the spot's surroundings are (see Grain); the patch copied into the spot should be as grainy.
+        var holeSamples = samples.Where(i => mask[i] != 0).ToList();
+        double ringGrain = 0;
+        foreach (var i in ring)
+            ringGrain += Grain(bgra, width, height, i);
+        ringGrain = Math.Sqrt(ringGrain / ring.Count);
+
         var reach = Math.Max(4, size * 4);
         var minimum = size * 0.9;
         var coarse = Math.Max(1, size / 5);
@@ -201,9 +208,33 @@ public static class Retouch
                 var texture = squares[c] / ring.Count - mean * mean;
                 total += texture + 0.2 * mean * mean;
             }
+            // A smooth patch differs from grainy surroundings less than a grainy patch that is a little off, so on
+            // its own the difference would pick smooth patches and leave a blurry blob. A patch whose grain (where it
+            // is copied into the spot) is weaker or stronger than the surroundings' is therefore marked down.
+            if (holeSamples.Count > 0)
+            {
+                double grain = 0;
+                foreach (var i in holeSamples)
+                    grain += Grain(bgra, width, height, i + shift);
+                total += 6 * Square(Math.Sqrt(grain / holeSamples.Count) - ringGrain);
+            }
             return total * (1 + 0.1 * distance / size);
         }
     }
+
+    private static double Square(double x) => x * x;
+
+    // How much a pixel's brightness differs from the average of its four neighbours, squared: large on grain, pores
+    // and fine detail, small on smooth or blurry parts and on gentle gradients.
+    private static double Grain(byte[] bgra, int width, int height, int i)
+    {
+        var (x, y) = (i % width, i / width);
+        var around = (Brightness(bgra, y * width + Math.Max(0, x - 1)) + Brightness(bgra, y * width + Math.Min(width - 1, x + 1)) +
+                      Brightness(bgra, Math.Max(0, y - 1) * width + x) + Brightness(bgra, Math.Min(height - 1, y + 1) * width + x)) / 4;
+        return Square(Brightness(bgra, i) - around);
+    }
+
+    private static double Brightness(byte[] bgra, int i) => 0.114 * bgra[i * 4] + 0.587 * bgra[i * 4 + 1] + 0.299 * bgra[i * 4 + 2];
 
     // The source's texture plus a smooth correction that is zero inside nothing but meets the difference between the
     // target and the source at the spot's edge (Laplace's equation, solved by over-relaxation), so no seam shows.

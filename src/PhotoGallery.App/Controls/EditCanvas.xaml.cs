@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 
@@ -82,7 +83,10 @@ public sealed partial class EditCanvas : UserControl
         {
             PaintLayer.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
             if (!value)
+            {
                 ClearStroke();
+                ClearWorking();
+            }
         }
     }
 
@@ -159,7 +163,105 @@ public sealed partial class EditCanvas : UserControl
         if (_stroke.Count == 0 || Frame.Width <= 0 || Frame.Height <= 0)
             return;
         var points = _stroke.Select(p => (p.X / Frame.Width, p.Y / Frame.Height)).ToList();
-        Painted?.Invoke(this, new PaintedStroke(points, BrushRadius / Math.Max(Frame.Width, Frame.Height)));
+        var id = ShowWorking();
+        Painted?.Invoke(this, new PaintedStroke(points, BrushRadius / Math.Max(Frame.Width, Frame.Height), id));
+    }
+
+    // ---- Strokes being worked on: they shimmer (a light sweeping along them and a gentle pulse) until applied ----
+
+    private readonly Dictionary<int, Polyline> _working = [];
+    private int _nextWorking;
+    private Storyboard? _shimmer;
+    private LinearGradientBrush? _shimmerBrush;
+
+    // The finished stroke moves to the working layer, so a new stroke can be painted while it waits.
+    private int ShowWorking()
+    {
+        var line = new Polyline
+        {
+            Stroke = ShimmerBrush(),
+            StrokeThickness = StrokeLine.StrokeThickness,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+            IsHitTestVisible = false,
+        };
+        foreach (var p in StrokeLine.Points)
+            line.Points.Add(p);
+        var id = ++_nextWorking;
+        _working[id] = line;
+        WorkingLayer.Children.Add(line);
+        ClearStroke();
+        StartShimmer();
+        return id;
+    }
+
+    /// <summary>Takes away the shimmer of a stroke once its result is shown (or it was given up).</summary>
+    public void FinishWorking(int id)
+    {
+        if (!_working.Remove(id, out var line))
+            return;
+        WorkingLayer.Children.Remove(line);
+        if (_working.Count == 0)
+            _shimmer?.Stop();
+    }
+
+    /// <summary>Takes away every shimmering stroke.</summary>
+    public void ClearWorking()
+    {
+        _working.Clear();
+        WorkingLayer.Children.Clear();
+        _shimmer?.Stop();
+    }
+
+    // The stroke's pink with a bright band that sweeps across it.
+    private LinearGradientBrush ShimmerBrush()
+    {
+        if (_shimmerBrush is not null)
+            return _shimmerBrush;
+        var pink = Windows.UI.Color.FromArgb(0x90, 0xFF, 0x40, 0x81);
+        var light = Windows.UI.Color.FromArgb(0xE0, 0xFF, 0xF0, 0xF6);
+        _shimmerBrush = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(1, 0.4),
+            RelativeTransform = new TranslateTransform(),
+        };
+        foreach (var (offset, colour) in new[] { (0.0, pink), (0.38, pink), (0.5, light), (0.62, pink), (1.0, pink) })
+            _shimmerBrush.GradientStops.Add(new GradientStop { Offset = offset, Color = colour });
+        return _shimmerBrush;
+    }
+
+    private void StartShimmer()
+    {
+        if (_shimmer is null)
+        {
+            var sweep = new DoubleAnimation
+            {
+                From = -1,
+                To = 1,
+                Duration = TimeSpan.FromSeconds(1.2),
+                RepeatBehavior = RepeatBehavior.Forever,
+                EnableDependentAnimation = true,
+            };
+            Storyboard.SetTarget(sweep, ShimmerBrush().RelativeTransform);
+            Storyboard.SetTargetProperty(sweep, "X");
+            var pulse = new DoubleAnimation
+            {
+                From = 1,
+                To = 0.55,
+                Duration = TimeSpan.FromSeconds(0.6),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            };
+            Storyboard.SetTarget(pulse, WorkingLayer);
+            Storyboard.SetTargetProperty(pulse, "Opacity");
+            _shimmer = new Storyboard();
+            _shimmer.Children.Add(sweep);
+            _shimmer.Children.Add(pulse);
+        }
+        _shimmer.Begin();
     }
 
     private void ShowBrush(Point p)
@@ -374,6 +476,8 @@ public sealed partial class EditCanvas : UserControl
         Overlay.Height = Frame.Height;
         PaintLayer.Width = Frame.Width;
         PaintLayer.Height = Frame.Height;
+        WorkingLayer.Width = Frame.Width;
+        WorkingLayer.Height = Frame.Height;
     }
 
     private void Draw()
@@ -500,4 +604,5 @@ public sealed partial class EditCanvas : UserControl
 }
 
 /// <summary>A finished brush stroke on the shown photo (see <see cref="EditCanvas.Painted"/>).</summary>
-public sealed record PaintedStroke(IReadOnlyList<(double X, double Y)> Points, double Radius);
+/// <param name="Working">Its shimmer on the canvas, to end with <see cref="EditCanvas.FinishWorking"/>.</param>
+public sealed record PaintedStroke(IReadOnlyList<(double X, double Y)> Points, double Radius, int Working);
