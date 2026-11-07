@@ -292,6 +292,7 @@ public sealed partial class MainWindow
 
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        _lastKeyWasTab = e.Key == VirtualKey.Tab;
         if (CompareLayer.Visibility == Visibility.Visible)
         {
             CompareLayer.PreviewKey(e, WasdArrow(e.Key));

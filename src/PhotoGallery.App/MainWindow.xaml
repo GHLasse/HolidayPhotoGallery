@@ -1200,7 +1200,8 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBox PlaceholderText="2024-07-01 14:30:00" MinWidth="0"
+                            <TextBox x:Name="DateBox" PlaceholderText="2024-07-01 14:30:00" MinWidth="0"
+                                     GotFocus="DateBox_GotFocus" LostFocus="DateBox_LostFocus" PreviewKeyDown="DateBox_PreviewKeyDown"
                                      AutomationProperties.Name="{local:Loc Text='Date taken'}"
                                      Text="{x:Bind ViewModel.Editor.DateText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <!-- Filled from code: binding both the list and the index let x:Bind set the index first, which crashed at startup. -->
