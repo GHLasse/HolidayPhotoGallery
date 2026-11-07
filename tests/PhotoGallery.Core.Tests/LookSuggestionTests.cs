@@ -71,4 +71,65 @@ public sealed class LookSuggestionTests
         Assert.Empty(LookSuggestions.Suggest(traits, 0, [], 0));
         Assert.Equal(Looks.All.Count, LookSuggestions.Suggest(traits, 0, [], 99).Count);
     }
+
+    // Lasse's old Citroën in a grey Amsterdam street: dull colours, nothing in the pixels says "old".
+    private static LookSuggestions.Traits GreyStreet => new(0.55, 0.6, 0.25, 0.5, 0.05, 0.1, 0.02);
+
+    [Fact]
+    public void An_old_car_the_model_recognises_gets_vintage_and_sepia()
+    {
+        var scenes = new Dictionary<string, double> { ["vintage"] = 0.45, ["sepia"] = 0.25 };
+        var suggested = LookSuggestions.Suggest(GreyStreet, faces: 0, tags: [], count: 4, scenes: scenes);
+        Assert.Equal("vintage", suggested[0]);
+        Assert.Contains("sepia", suggested.Take(3));
+        Assert.DoesNotContain("vintage", LookSuggestions.Suggest(GreyStreet, faces: 0, tags: [], count: 4));
+    }
+
+    [Fact]
+    public void An_oldtimer_tag_gets_vintage_and_sepia()
+    {
+        var suggested = LookSuggestions.Suggest(GreyStreet, faces: 0, tags: ["Oldtimer"], count: 4);
+        Assert.Contains("vintage", suggested);
+        Assert.Contains("sepia", suggested);
+    }
+
+    [Fact]
+    public void Scene_shares_add_up_per_look_and_leave_out_everyday_scenes()
+    {
+        // Picture and prompt vectors of length 2: the picture matches the first prompt (an old car) only.
+        var vectors = LookSuggestions.Scenes.Select((_, i) => i == 0 ? new[] { 1f, 0f } : new[] { 0f, 1f }).ToList();
+        var shares = LookSuggestions.SceneShares([1f, 0f], vectors);
+        Assert.True(shares["vintage"] > 0.9, $"vintage {shares["vintage"]:P0}");
+        Assert.True(shares.Values.Sum() <= 1.0001);
+        Assert.DoesNotContain(shares.Keys, k => Looks.Find(k) is null);
+    }
+
+    // Photos from Wikimedia Commons that CI puts in look-scenes next to the tagging model (see build.yml).
+    [TagModelFact]
+    public void The_model_sees_which_looks_suit_real_photos()
+    {
+        var folder = Path.Combine(TagModelFactAttribute.Folder!, "look-scenes");
+        using var tagger = Tagging.ImageTagger.Load(TagModelFactAttribute.Folder!);
+        var prompts = tagger.EmbedTexts(LookSuggestions.Scenes.Select(s => s.Prompt).ToList());
+        IReadOnlyList<string> Suggested(string file)
+        {
+            var image = TestImages.Decode(Path.Combine(folder, file))!.Value;
+            var shares = LookSuggestions.SceneShares(tagger.EmbedImage(image.Pixels, image.Width, image.Height), prompts);
+            var suggested = LookSuggestions.Suggest(LookSuggestions.Measure(image.Pixels, image.Width, image.Height), 0, [], 6, scenes: shares);
+            Console.WriteLine($"LOOKSCENE {file}: {string.Join(", ", shares.OrderByDescending(s => s.Value).Take(3).Select(s => $"{s.Key} {s.Value:P0}"))} -> {string.Join(" ", suggested)}");
+            return suggested;
+        }
+
+        foreach (var car in new[] { "old-car-citroen-ds.jpg", "old-car-rusty.jpg" })
+        {
+            var suggested = Suggested(car);
+            Assert.Equal("vintage", suggested[0]);
+            Assert.Contains("sepia", suggested);
+        }
+        Assert.Equal("vivid", Suggested("food-cake.jpg")[0]);
+        Assert.Equal("cool", Suggested("snow-mountain-lake.jpg")[0]);
+        var street = Suggested("modern-street.jpg");
+        Assert.DoesNotContain("vintage", street);
+        Assert.DoesNotContain("sepia", street);
+    }
 }

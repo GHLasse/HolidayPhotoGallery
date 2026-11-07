@@ -220,8 +220,11 @@ public sealed partial class MainWindow
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
             button.Click += (_, _) =>
             {
-                ChangeEdit(() => _lookKey = key);
-                if (Looks.Find(key) is { Beauty: true })
+                // Clicking the chosen look again takes it off, as None does.
+                var chosen = key is not null && key == _lookKey ? null : key;
+                ChangeEdit(() => _lookKey = chosen);
+                SyncEditPane();
+                if (Looks.Find(chosen) is { Beauty: true })
                     _ = FindBeautyFacesAsync();
             };
             if (key is not null)
@@ -234,7 +237,7 @@ public sealed partial class MainWindow
     private readonly List<(string? Key, ToggleButton Button, FontIcon PinMark, FontIcon SuggestMark)> _lookButtons = [];
 
     // What the shown photo looks like, whether it shows faces and its tags, for the suggested looks (found once per photo).
-    private (LookSuggestions.Traits Traits, int Faces, IReadOnlyList<string> Tags)? _lookHints;
+    private (LookSuggestions.Traits Traits, int Faces, IReadOnlyList<string> Tags, IReadOnlyDictionary<string, double>? Scenes)? _lookHints;
 
     private IEnumerable<ToggleButton> LookButtons() => _lookButtons.Select(b => b.Button);
 
@@ -246,7 +249,8 @@ public sealed partial class MainWindow
         MoreLookPanel.Children.Clear();
         var pinned = ViewModel.PinnedLooks.Where(k => Looks.Find(k) is not null).ToList();
         var suggested = LookSuggestions.Suggest(_lookHints?.Traits ?? LookSuggestions.Measure([], 0, 0), _lookHints?.Faces ?? 0,
-                                                _lookHints?.Tags ?? [], SuggestionSlots(1 + pinned.Count), except: pinned);
+                                                _lookHints?.Tags ?? [], SuggestionSlots(1 + pinned.Count), except: pinned,
+                                                scenes: _lookHints?.Scenes);
         int Order(string? key) => key is null ? -2 : pinned.IndexOf(key) is var p and >= 0 ? p : suggested.ToList().IndexOf(key) is var s and >= 0 ? 1000 + s : int.MaxValue;
         foreach (var (key, button, pinMark, suggestMark) in _lookButtons.OrderBy(b => Order(b.Key)))
         {
@@ -278,8 +282,21 @@ public sealed partial class MainWindow
         var faces = (await ViewModel.GetFacesAsync(item.Path)).Count(f => !f.Ignored && f.Box.Width >= 0.08);
         if (!ReferenceEquals(pixels, _lookThumbsFor))
             return;
-        _lookHints = (traits, faces, item.Photo.Tags.ToList());
+        _lookHints = (traits, faces, item.Photo.Tags.ToList(), null);
         ArrangeLookButtons();
+
+        // What the photo shows (with the tagging model) can take a few seconds the first time, so the previews don't
+        // wait for it; the row is sorted again once it is known.
+        _ = AddLookScenesAsync(pixels, item);
+    }
+
+    private async Task AddLookScenesAsync(DecodedImage pixels, ViewModels.PhotoItemViewModel item)
+    {
+        if (await ViewModel.LookScenesAsync(item) is { } scenes && ReferenceEquals(pixels, _lookThumbsFor) && _lookHints is { } hints)
+        {
+            _lookHints = hints with { Scenes = scenes };
+            ArrangeLookButtons();
+        }
     }
 
     // Right-click on a look: pin it to the top or unpin it, and on Beauty also what it does.
