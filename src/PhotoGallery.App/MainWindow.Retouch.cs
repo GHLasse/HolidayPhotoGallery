@@ -74,7 +74,7 @@ public sealed partial class MainWindow
             RetouchTool.Spot => Tr("Click on a spot or brush over it; a brush a little larger than the spot works best. Zoom in with the mouse wheel for small spots."),
             RetouchTool.Erase => Tr("Paint over what should go, with a little to spare around it. Large areas may look smudged; several smaller strokes often work better."),
             _ => "",
-        } + " " + Tr("[ and ] change the brush size.");
+        } + " " + Tr("[ and ] change the brush size.") + " " + Tr("When zoomed in, drag with the right mouse button or hold Space to move the photo.");
         RetouchUndoButton.Visibility = _strokes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         RetouchUndoButton.IsEnabled = !_retouching;
         RetouchUndoText.Text = Tr("Undo stroke ({0})", _strokes.Count);

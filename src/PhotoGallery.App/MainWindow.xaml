@@ -1366,7 +1366,7 @@
                         <Button x:Name="EditResetButton" Click="EditReset_Click" Content="{local:Loc Text='Reset all'}"
                                 ToolTipService.ToolTip="{local:Loc Text='Set every slider back and undo the quick fixes not yet saved'}" />
                     </controls:WrapPanel>
-                    <TextBlock Text="{local:Loc Text='Nothing is written until you press Save below the photo; the original is kept in the hidden .originals folder.'}"
+                    <TextBlock Text="{local:Loc Text='Nothing is written until you press Save below the photo.'}"
                                TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </StackPanel>
@@ -1564,7 +1564,7 @@
                     </Button>
                     <Button x:Name="ViewerFavourite1Button" Tag="0" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
                     <Button x:Name="ViewerFavourite2Button" Tag="1" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
-                    <Button x:Name="ViewerOpenWithButton" Click="ViewerOpenWith_Click" ToolTipService.ToolTip="{local:Loc Text='Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Back to original still works.'}">
+                    <Button x:Name="ViewerOpenWithButton" Click="ViewerOpenWith_Click" ToolTipService.ToolTip="{local:Loc Text='Open this photo in another app, e.g. to edit it there.'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE7AC;" FontSize="16" />
                             <TextBlock Text="{local:Loc Text='Open with…'}" />
@@ -1643,7 +1643,7 @@
                     <ComboBoxItem Content="{local:Loc Text='Save as JPEG'}" />
                 </ComboBox>
                 <Button Grid.Column="3" Style="{ThemeResource AccentButtonStyle}" Content="{local:Loc Text='Save'}" Click="ViewerSaveEdit_Click"
-                        ToolTipService.ToolTip="{local:Loc Text='Write the edit into the photo; the original is kept in the hidden .originals folder'}" />
+                        ToolTipService.ToolTip="{local:Loc Text='Write the edit into the photo'}" />
                 <Button Grid.Column="4" Content="{local:Loc Text='Cancel'}" Click="ViewerCancelEdit_Click" />
             </Grid>
             <!-- The filmstrip: the photos around this one; a click shows it. -->

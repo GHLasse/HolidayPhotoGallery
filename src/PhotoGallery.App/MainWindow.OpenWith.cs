@@ -132,7 +132,7 @@ public sealed partial class MainWindow
                 continue;
             }
             var app = apps[i];
-            ToolTipService.SetToolTip(viewer[i], Tr("Open the selected photos in {0}. A copy is kept in .originals first, so Back to original still works.", app.Name));
+            ToolTipService.SetToolTip(viewer[i], Tr("Open the selected photos in {0}.", app.Name));
             viewer[i].Visibility = Visibility.Visible;
 
             var icon = await AppIconAsync(app.Path);

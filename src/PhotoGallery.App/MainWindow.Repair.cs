@@ -210,7 +210,7 @@ public sealed partial class MainWindow
         if (showFine)
             choosePage.Children.Add(fine);
         // Renaming and taking off the mark happen at once, with no result to look at first.
-        var saveNote = Hint(Tr("You see the result before anything is saved. The damaged file is kept in the hidden .originals folder."));
+        var saveNote = Hint(Tr("You see the result before anything is saved."));
         choosePage.Children.Add(saveNote);
         ShowAi();
 

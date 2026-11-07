@@ -256,7 +256,7 @@ public sealed partial class MainViewModel
             {
                 await Task.Run(() => FileMend.Mend(path));
                 await AfterFileReplacedAsync(item, path, path);
-                Inform(Tr("Mended {0}. The file as it was is in the hidden .originals folder.", item.FileName));
+                Inform(Tr("Mended {0}.", item.FileName));
                 return true;
             }
             // A JPEG stays a JPEG; formats the app can't write are saved as JPEG.
@@ -268,7 +268,7 @@ public sealed partial class MainViewModel
                                                            target => ImageEncoder.EncodeAsync(image, target), repaired.Kept,
                                                            metadataFrom: repaired.MetadataFrom);
             await AfterFileReplacedAsync(item, path, newPath);
-            Inform(Tr("Repaired {0}. The damaged file is in the hidden .originals folder.", item.FileName));
+            Inform(Tr("Repaired {0}.", item.FileName));
             return true;
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.COMException)

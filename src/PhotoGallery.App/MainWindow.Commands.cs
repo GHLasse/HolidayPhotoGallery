@@ -134,7 +134,7 @@ public sealed partial class MainWindow
             new() { Label = Tr("Share…"), Also = Tr("send email"), Glyph = "\uE72D", Group = CommandGroup.Send, Enabled = Any,
                     Tip = Tr("Send the photos with another app or to a nearby PC, as Share does in File Explorer"), Run = () => Do(Share_Click) },
             new() { Label = Tr("Open with…"), Glyph = "\uE7AC", Group = CommandGroup.Send, Enabled = One,
-                    Tip = Tr("Open this photo in another app, e.g. to edit it there. A copy is kept in .originals first, so Back to original still works."),
+                    Tip = Tr("Open this photo in another app, e.g. to edit it there."),
                     Run = () => Do(IsViewerOpen ? (RoutedEventHandler)ViewerOpenWith_Click : OpenWith_Click) },
 
             // Organise
@@ -242,7 +242,7 @@ public sealed partial class MainWindow
                 IsEnabled = targets.Count > 0,
                 Icon = i < _favouriteIcons.Count && _favouriteIcons[i] is { } source ? new ImageIcon { Source = source } : (IconElement)new FontIcon { Glyph = "\uE70F" },
             };
-            ToolTipService.SetToolTip(item, Tr("Open the selected photos in {0}. A copy is kept in .originals first, so Back to original still works.", apps[i].Name));
+            ToolTipService.SetToolTip(item, Tr("Open the selected photos in {0}.", apps[i].Name));
             item.Click += viewer ? (RoutedEventHandler)ViewerFavouriteApp_Click : FavouriteApp_Click;
             items.Add(item);
         }

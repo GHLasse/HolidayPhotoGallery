@@ -1809,7 +1809,7 @@ public sealed partial class MainWindow : Window
                 backUp,
                 new TextBlock
                 {
-                    Text = Tr("Like the app's own edits, the copy goes into a hidden .originals folder next to the photo, so Undo and Back to original still work after editing it elsewhere."),
+                    Text = Tr("Undo and Back to original still work after editing a photo in these apps."),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 processorOnly,
@@ -2107,7 +2107,7 @@ public sealed partial class MainWindow : Window
             SaveFormatCombo.SelectedIndex = 1;
         ViewerEditHint.Text = ViewerCropButton.IsChecked == true
             ? Tr("Drag the frame to move it and its corners to resize it.")
-            : Tr("Showing the adjusted photo. Save keeps the original in a hidden .originals folder.");
+            : Tr("Showing the adjusted photo.");
     }
 
     private void UpdateUndoButtons()

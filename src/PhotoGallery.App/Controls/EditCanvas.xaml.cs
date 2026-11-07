@@ -37,6 +37,7 @@ public sealed partial class EditCanvas : UserControl
     public EditCanvas()
     {
         InitializeComponent();
+        PaintLayer.RightTapped += (_, e) => e.Handled = true;
         const int lines = 8;
         for (var i = 0; i < lines; i++)
         {
@@ -104,11 +105,26 @@ public sealed partial class EditCanvas : UserControl
     // The brush in the photo's own (unzoomed) units.
     private double BrushRadius => BrushSize / 2 / Math.Max(Zoom.ScaleX, 0.01);
 
+    // While the brush is out, the photo is moved by dragging with the right or middle button, or with Space held
+    // down (as in most photo editors); painting near the edge of the view moves it along too.
+    private static bool SpaceHeld =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Space)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
     private void PaintLayer_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(PaintLayer);
         e.Handled = true;
-        if (!point.Properties.IsLeftButtonPressed)
+        var buttons = point.Properties;
+        if (Zoom.ScaleX > 1 && (buttons.IsRightButtonPressed || buttons.IsMiddleButtonPressed || (buttons.IsLeftButtonPressed && SpaceHeld)))
+        {
+            _panStart = e.GetCurrentPoint(Host).Position;
+            _panFrom = new Point(Zoom.TranslateX, Zoom.TranslateY);
+            PaintLayer.CapturePointer(e.Pointer);
+            BrushRing.Visibility = BrushRingShade.Visibility = Visibility.Collapsed;
+            return;
+        }
+        if (!buttons.IsLeftButtonPressed)
             return;
         ClearStroke();
         _painting = true;
@@ -120,9 +136,19 @@ public sealed partial class EditCanvas : UserControl
 
     private void PaintLayer_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        e.Handled = true;
+        if (_panStart is { } start)
+        {
+            var at = e.GetCurrentPoint(Host).Position;
+            Zoom.TranslateX = _panFrom.X + at.X - start.X;
+            Zoom.TranslateY = _panFrom.Y + at.Y - start.Y;
+            KeepInside();
+            return;
+        }
+        if (_painting)
+            PanTowardsEdge(e.GetCurrentPoint(Host).Position);
         var p = e.GetCurrentPoint(PaintLayer).Position;
         ShowBrush(p);
-        e.Handled = true;
         // Points closer than a few screen pixels add nothing but work.
         if (_painting && (_stroke.Count == 0 || Distance(_stroke[^1], p) * Zoom.ScaleX >= 3))
             AddToStroke(p);
@@ -131,14 +157,36 @@ public sealed partial class EditCanvas : UserControl
     private void PaintLayer_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
         e.Handled = true;
+        if (_panStart is not null)
+        {
+            EndPan();
+            PaintLayer.ReleasePointerCapture(e.Pointer);
+            return;
+        }
         if (!_painting)
             return;
         PaintLayer.ReleasePointerCapture(e.Pointer);
         EndStroke();
     }
 
+    // Painting close to the edge of the view, zoomed in, moves the photo along so the part beyond comes into view.
+    private void PanTowardsEdge(Point at)
+    {
+        if (Zoom.ScaleX <= 1)
+            return;
+        const double margin = 32, step = 14;
+        double dx = at.X < margin ? step : at.X > Host.ActualWidth - margin ? -step : 0;
+        double dy = at.Y < margin ? step : at.Y > Host.ActualHeight - margin ? -step : 0;
+        if (dx == 0 && dy == 0)
+            return;
+        Zoom.TranslateX += dx;
+        Zoom.TranslateY += dy;
+        KeepInside();
+    }
+
     private void PaintLayer_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
+        EndPan();
         if (_painting)
             EndStroke();
     }
