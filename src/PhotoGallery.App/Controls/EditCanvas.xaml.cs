@@ -360,6 +360,12 @@ public sealed partial class EditCanvas : UserControl
         ResetCrop();
     }
 
+    /// <summary>The photo's width over its height, as it is fitted into the space.</summary>
+    public double PhotoAspect => (double)_pixelWidth / _pixelHeight;
+
+    /// <summary>Zoomed in past the fitted size.</summary>
+    public bool IsZoomed => Zoom.ScaleX > 1.001;
+
     public bool IsCropping
     {
         get => Overlay.Visibility == Visibility.Visible;

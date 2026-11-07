@@ -210,7 +210,8 @@ public sealed partial class MainWindow
         SyncSideSwitch();
         var width = map || info || edit ? Math.Min(ViewModel.InfoPaneWidth, Math.Max(260, (PhotoArea.ActualWidth + InfoColumn.ActualWidth) * 0.7))
                   : sideRail ? RailWidth : 0;
-        AnimateColumn(InfoColumn, width, animate, done: () =>
+        var hold = viewer ? PreparePhotoGlide(width, animate) : 0;
+        AnimateColumn(InfoColumn, width, animate, closeAfterMs: hold, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
             if (RightSide() != RightPane.Info)
