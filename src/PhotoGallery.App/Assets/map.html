@@ -21,6 +21,12 @@
   /* Dark mode (the app sends it with its colours): the controls dark like the app's, the map itself unchanged. */
   :root.dark { --stroke: rgba(255,255,255,.07); --stroke-bottom: rgba(255,255,255,.05); --text: #fff; --text-2: #c5c5c5;
                --surface: #2c2c2c; --surface-hover: #333; --surface-pressed: #282828; }
+  :root.dark .plain { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+  :root.dark .leaflet-container { background: #1b2029; }
+  :root.dark .leaflet-control-attribution { background: rgba(27,32,41,.8); color: #aab; }
+  :root.dark .leaflet-control-attribution a { color: #9fc3ff; }
+  /* The app's Assign bar floats over the bottom of the map: the credits, legend and messages sit above it. */
+  .leaflet-bottom { bottom: var(--inset-bottom, 0px); }
   :root { --surface: #fff; --surface-hover: #f9f9f9; --surface-pressed: #f5f5f5; }
   .card { background: var(--surface); border: 1px solid var(--stroke); border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
   .ctl { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 32px; padding: 4px 11px;
@@ -48,9 +54,9 @@
   .leaflet-bar a, .leaflet-bar a.leaflet-disabled { background: var(--surface); }
   .leaflet-bar a:hover { background: var(--surface-hover); color: var(--text); }
   .leaflet-bar a.leaflet-disabled { color: var(--text-2); opacity: .5; }
-  #legend { position: absolute; z-index: 1000; bottom: 24px; left: 10px; right: 10px; width: fit-content; padding: 4px 8px; font-size: 12px; color: var(--text); display: none; }
+  #legend { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 24px); left: 10px; right: 10px; width: fit-content; padding: 4px 8px; font-size: 12px; color: var(--text); display: none; }
   #legend svg { vertical-align: middle; margin-right: 6px; }
-  #message { position: absolute; z-index: 1000; bottom: 52px; left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
+  #message { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 52px); left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
   /* The picture box has a fixed size, so the bubble is laid out right before the picture arrives; the close
      button sits above it (it covered the picture, which stuck out on the right). */
   .leaflet-popup-content:has(.preview) { margin: 26px 12px 10px; }
@@ -85,7 +91,8 @@
 //                 switch in the app's language; "of" is like "{0} of {1}")
 //                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
 //                 (also trackLine, routeLine: the legend under a drawn line; a track message's label replaces it)
-//                 {type:"style", accent, onAccent, dark} (the app's accent colour and the text on it, "#rrggbb")
+//                 {type:"style", accent, onAccent, dark} (dark: the night map and dark controls)
+//                 {type:"insets", bottom} (pixels of the map's bottom the app's floating bar covers) (the app's accent colour and the text on it, "#rrggbb")
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
@@ -116,7 +123,7 @@ function addBaseMap(map, osm) {
   const base = { gl: null, plain: null, ready: [] };
   const plain = () => {
     base.gl = null;
-    base.plain = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm }).addTo(map);
+    base.plain = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm, className: "plain" }).addTo(map);
     base.ready.forEach(f => f());
   };
   if (!L.maplibreGL || !window.maplibregl) { plain(); return base; }
@@ -189,6 +196,10 @@ function start() {
   try { saved = JSON.parse(localStorage.getItem("view")); } catch (e) { }
   const map = L.map("map", { zoomControl: true, worldCopyJump: true, preferCanvas: true })
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
+  // The app's controls float over the map (Map | Satellite and layers top right, the Assign bar at the bottom): zooming
+  // to photos leaves room for them, and the legend and credits sit above the bar ({type:"insets"}).
+  let insetBottom = 0;
+  const pad = () => ({ paddingTopLeft: [40, 100], paddingBottomRight: [40, 40 + insetBottom] });
   // Fluent's plus and minus on the zoom buttons, like the app's own zoom.
   map.zoomControl._zoomInButton.firstChild.textContent = "\uE710";
   map.zoomControl._zoomOutButton.firstChild.textContent = "\uE738";
@@ -223,6 +234,41 @@ function start() {
   }
   base.ready.push(showLayers);
   showLayers();
+
+  // A night map in dark mode, like a navigation app: the street map's own colours swapped for dark ones (the plain
+  // fallback map is inverted instead). Satellite pictures stay as they are. The day colours are kept to go back.
+  let dark = false;
+  const day = {};
+  const night = { background: "#1b2029", land: "#222833", water: "#0e2436", park: "#1d2e24", building: "#2a303a",
+                  road: "#363e4b", major: "#4a5568", boundary: "#6b7686", text: "#d5dae2", halo: "#10141a" };
+  function paintNight() {
+    const gl = base.gl;
+    if (!gl) return;
+    for (const l of gl.getStyle().layers) {
+      const id = l.id;
+      const set = (prop, value) => {
+        const key = id + "|" + prop;
+        if (!(key in day)) {
+          if (!dark) return;
+          day[key] = gl.getPaintProperty(id, prop);
+        }
+        try { gl.setPaintProperty(id, prop, dark ? value : day[key]); } catch (e) { }
+      };
+      if (l.type === "background") set("background-color", night.background);
+      else if (l.type === "fill")
+        set("fill-color", /water|ocean|lake|river/.test(id) ? night.water
+                        : /park|wood|forest|grass|green|landcover|scrub|wetland|farmland/.test(id) ? night.park
+                        : /building/.test(id) ? night.building : night.land);
+      else if (l.type === "fill-extrusion") set("fill-extrusion-color", night.building);
+      else if (l.type === "line")
+        set("line-color", /water|river|stream|canal|waterway/.test(id) ? night.water
+                        : /boundary|admin/.test(id) ? night.boundary
+                        : /motorway|trunk|primary/.test(id) ? night.major : night.road);
+      else if (l.type === "raster") set("raster-brightness-max", 0.35);
+      else if (l.type === "symbol") { set("text-color", night.text); set("text-halo-color", night.halo); }
+    }
+  }
+  base.ready.push(paintNight);
   map.on("moveend", () => {
     const c = map.getCenter();
     try { localStorage.setItem("view", JSON.stringify({ lat: c.lat, lon: c.lng, zoom: map.getZoom() })); } catch (e) { }
@@ -334,7 +380,7 @@ function start() {
   function fitSelection() {
     const points = [...selected].filter(p => markers.has(p)).map(p => markers.get(p).getLatLng());
     if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 14));
-    else if (points.length > 1) map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
+    else if (points.length > 1) map.fitBounds(L.latLngBounds(points), { ...pad(), maxZoom: 16 });
   }
 
   // The picture of a photo clicked on the whole-library map, in a bubble above its dot, with Show in library
@@ -427,7 +473,7 @@ function start() {
         }
         restyle();
         if (m.fitAll && markers.size)
-          map.fitBounds(L.latLngBounds([...markers.values()].map(x => x.getLatLng())), { padding: [40, 40], maxZoom: 12 });
+          map.fitBounds(L.latLngBounds([...markers.values()].map(x => x.getLatLng())), { ...pad(), maxZoom: 12 });
       } else if (m.type === "selection") {
         selected = new Set(m.paths);
         restyle();
@@ -458,12 +504,16 @@ function start() {
         document.documentElement.style.setProperty("--accent", m.accent);
         document.documentElement.style.setProperty("--on-accent", m.onAccent);
         document.documentElement.classList.toggle("dark", !!m.dark);
+        if (dark !== !!m.dark) { dark = !!m.dark; paintNight(); }
+      } else if (m.type === "insets") {
+        insetBottom = m.bottom || 0;
+        document.documentElement.style.setProperty("--inset-bottom", insetBottom + "px");
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)
           L.circleMarker([p.lat, p.lon], { ...estimated, bubblingMouseEvents: false }).bindTooltip(textNode(p.name)).addTo(estimateLayer);
         if (m.points.length > 1)
-          map.fitBounds(L.latLngBounds(m.points.map(p => [p.lat, p.lon])), { padding: [40, 40], maxZoom: 14 });
+          map.fitBounds(L.latLngBounds(m.points.map(p => [p.lat, p.lon])), { ...pad(), maxZoom: 14 });
         else if (m.points.length === 1 && !map.getBounds().contains([m.points[0].lat, m.points[0].lon]))
           map.panTo([m.points[0].lat, m.points[0].lon]);
       } else if (m.type === "track") {
@@ -480,10 +530,10 @@ function start() {
         if (lines.length) {
           // One line per track, so a phone's and a watch's track of the same time aren't joined.
           const line = L.polyline(lines, {
-            renderer: trackRenderer, interactive: false, color: "#7a3fd1", weight: m.label ? 4 : 3, opacity: m.label ? 0.85 : 0.55,
+            renderer: trackRenderer, interactive: false, color: dark ? "#b49af5" : "#7a3fd1", weight: m.label ? 4 : 3, opacity: m.label ? 0.85 : 0.55,
             dashArray: m.route ? "6 6" : null, lineCap: "round", lineJoin: "round",
           }).addTo(trackLayer);
-          if (m.fit) map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 15 });
+          if (m.fit) map.fitBounds(line.getBounds(), { ...pad(), maxZoom: 15 });
         }
       } else if (m.type === "find") {
         findPlace(m.q);
