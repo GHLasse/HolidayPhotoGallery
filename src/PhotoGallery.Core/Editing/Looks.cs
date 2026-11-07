@@ -121,13 +121,13 @@ public static class Looks
         },
         new()
         {
-            Key = "bw", Name = () => Tr("Black and white"),
+            Key = "bw", Name = () => Tr("B&W"),
             Tip = () => Tr("Neutral black and white. Best for portraits, street photos and when colours distract."),
             Grey = 1,
         },
         new()
         {
-            Key = "bw-contrast", Name = () => Tr("Black and white, strong"),
+            Key = "bw-contrast", Name = () => Tr("Noir"),
             Tip = () => Tr("Black and white with deep blacks and bright whites. Best for architecture, drama and strong shapes."),
             Grey = 1, Sliders = new Adjustments { Contrast = 50, Shadows = -15 },
         },

@@ -8,9 +8,9 @@ using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
-// The Edit pane (E-13) beside the viewer: quick fixes, crop and the light and colour sliders (E-8). Like crop and
-// auto adjust, every change is only a preview until Save in the viewer's edit bar, which writes the full-size photo
-// and keeps the original in .originals (E-4). Beside the grid, choosing Edit opens the selected photo.
+// The Edit pane (E-13) beside the viewer: quick fixes, crop and turn, looks, retouch and the light and colour sliders
+// (E-8). Every change is only a preview until Save in the pane's footer (MainWindow.EditSteps.cs), which writes the
+// full-size photo and keeps the original (E-4). Beside the grid, choosing Edit opens the selected photo.
 public sealed partial class MainWindow
 {
     // The preview is worked out on a copy at most this many pixels across, so the sliders follow the mouse.
@@ -52,6 +52,10 @@ public sealed partial class MainWindow
             // handledEventsToo: the slider's thumb takes the pointer for itself.
             slider.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler((s, _) => ((Slider)s).Value = 0), true);
         }
+        foreach (var slider in EditSliders())
+            ToolTipService.SetToolTip(slider, Tr("Double-click to set it back."));
+        MoreLooksExpander.Expanding += (_, _) => DispatcherQueue.TryEnqueue(UpdateMoreLooksHeader);
+        MoreLooksExpander.Collapsed += (_, _) => UpdateMoreLooksHeader();
     }
 
     private Slider[] EditSliders() =>
@@ -95,6 +99,8 @@ public sealed partial class MainWindow
         EditPaneHint.Text = why ?? "";
         EditPaneHint.Visibility = why is null ? Visibility.Collapsed : Visibility.Visible;
         EditTools.Visibility = why is null ? Visibility.Visible : Visibility.Collapsed;
+        // Nothing to save on a photo that can't be edited here.
+        EditFooter.Visibility = EditTools.Visibility;
 
         if (why is null && RightSide() == RightPane.Edit && _viewerPixels is { } pixels && !ReferenceEquals(pixels, _lookThumbsFor))
             _ = MakeLookThumbnailsAsync(pixels);
@@ -108,8 +114,8 @@ public sealed partial class MainWindow
     private void SyncEditPane()
     {
         _syncingEditPane = true;
-        EditAutoButton.IsChecked = ViewerAutoButton.IsChecked == true;
-        EditCropButton.IsChecked = ViewerCropButton.IsChecked == true;
+        EditAutoButton.IsChecked = _autoLight;
+        EditCropButton.IsChecked = _cropping;
         EditEnhanceButton.IsChecked = _adjustments.Vibrance != 0;
         EditFlipHorizontalButton.IsChecked = _flipHorizontal;
         EditFlipVerticalButton.IsChecked = _flipVertical;
@@ -124,35 +130,60 @@ public sealed partial class MainWindow
             button.IsChecked = (string?)button.Tag == _lookKey;
         LookStrengthSlider.Value = _lookStrength;
         LookStrengthSlider.Visibility = _lookKey is null ? Visibility.Collapsed : Visibility.Visible;
-        StraightenValue.Text = $"{_straighten:0.0}°";
-        ViewerCanvas.ShowGrid = ViewerCropButton.IsChecked == true && Math.Abs(_straighten) >= 0.01;
+        foreach (var (slider, value) in SliderValues())
+            ShowSliderValue(value, (int)slider.Value);
+        ShowSliderValue(StraightenValue, _straighten == 0 ? 0 : 1, $"{_straighten:0.0}°");
+        ViewerCanvas.ShowGrid = _cropping && Math.Abs(_straighten) >= 0.01;
         if (!IsEditing)
             EditBeforeButton.IsChecked = false;
         EditBeforeButton.IsEnabled = EditResetButton.IsEnabled = IsEditing;
+        UpdateMoreLooksHeader();
         _syncingEditPane = false;
     }
 
-    private void EditAuto_Click(object sender, RoutedEventArgs e)
+    private (Slider Slider, TextBlock Value)[] SliderValues() =>
+    [
+        (BrightnessSlider, BrightnessValue), (ContrastSlider, ContrastValue), (HighlightsSlider, HighlightsValue),
+        (ShadowsSlider, ShadowsValue), (SaturationSlider, SaturationValue), (WarmthSlider, WarmthValue),
+    ];
+
+    // A slider's value beside its name; once it is moved, in the palette colour, so the changed ones stand out.
+    private static void ShowSliderValue(TextBlock label, int value, string? text = null)
     {
-        ViewerAutoButton.IsChecked = EditAutoButton.IsChecked == true;
-        ViewerAuto_Click(sender, e);
+        label.Text = text ?? (value > 0 ? $"+{value}" : value < 0 ? $"\u2212{-value}" : "0");
+        label.Foreground = ThemeBrush(value != 0 ? "AccentTextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
     }
 
-    private void EditCrop_Click(object sender, RoutedEventArgs e)
+    // "More looks" says how many wait inside, and names the chosen look while it is folded away in there.
+    private void UpdateMoreLooksHeader()
     {
-        ViewerCropButton.IsChecked = EditCropButton.IsChecked == true;
-        ViewerCrop_Click(sender, e);
+        var count = MoreLookPanel.Children.Count;
+        var chosenInside = MoreLookPanel.Children.OfType<ToggleButton>().FirstOrDefault(b => b.IsChecked == true);
+        MoreLooksExpander.Header = chosenInside is not null && !MoreLooksExpander.IsExpanded
+            ? Tr("More looks · {0}", Looks.Find((string?)chosenInside.Tag)?.Name() ?? "")
+            : Tr("More looks ({0})", count);
+    }
+
+    private void EditAuto_Click(object sender, RoutedEventArgs e) => SetAutoLight(EditAutoButton.IsChecked == true);
+
+    private void EditCrop_Click(object sender, RoutedEventArgs e) => SetCropping(EditCropButton.IsChecked == true);
+
+    /// <summary>Opens the Edit pane beside the viewer for an edit key (R, Ctrl+U, H), unless it is open already.</summary>
+    private void ShowEditPane()
+    {
+        if (RightSide() != RightPane.Edit && PaneUsable(SidePane.Edit))
+            _ = SetViewerPaneAsync(SidePane.Edit);
     }
 
     private void EditEnhance_Click(object sender, RoutedEventArgs e) =>
-        ChangeEdit(() => _adjustments = _adjustments with { Vibrance = EditEnhanceButton.IsChecked == true ? Adjustments.EnhanceColours : 0 });
+        ChangeEdit("enhance", () => _adjustments = _adjustments with { Vibrance = EditEnhanceButton.IsChecked == true ? Adjustments.EnhanceColours : 0 });
 
     private void EditFlip_Click(object sender, RoutedEventArgs e) =>
-        ChangeEdit(() =>
+        ChangeEdit("flip", () =>
         {
             _flipHorizontal = EditFlipHorizontalButton.IsChecked == true;
             _flipVertical = EditFlipVerticalButton.IsChecked == true;
-            if (ViewerCropButton.IsChecked == true)
+            if (_cropping)
                 ViewerCanvas.Ratio = SelectedCropRatio(); // a fresh frame on the flipped photo
         });
 
@@ -160,7 +191,7 @@ public sealed partial class MainWindow
     {
         if (_syncingEditPane || BrightnessSlider is null || WarmthSlider is null)
             return;
-        ChangeEdit(() => _adjustments = _adjustments with
+        ChangeEdit(((FrameworkElement)sender).Name, () => _adjustments = _adjustments with
         {
             Brightness = (int)BrightnessSlider.Value,
             Contrast = (int)ContrastSlider.Value,
@@ -175,7 +206,7 @@ public sealed partial class MainWindow
     {
         if (_syncingEditPane || StraightenValue is null)
             return;
-        ChangeEdit(() => _straighten = Math.Round(StraightenSlider.Value, 1));
+        ChangeEdit("straighten", () => _straighten = Math.Round(StraightenSlider.Value, 1));
     }
 
     // ---- Looks (E-9) ----
@@ -222,7 +253,8 @@ public sealed partial class MainWindow
             {
                 // Clicking the chosen look again takes it off, as None does.
                 var chosen = key is not null && key == _lookKey ? null : key;
-                ChangeEdit(() => _lookKey = chosen);
+                if (chosen != _lookKey)
+                    ChangeEdit("look", () => _lookKey = chosen, coalesce: false);
                 SyncEditPane();
                 if (Looks.Find(chosen) is { Beauty: true })
                     _ = FindBeautyFacesAsync();
@@ -261,6 +293,7 @@ public sealed partial class MainWindow
             (key is null || isPinned || isSuggested ? LookPanel : MoreLookPanel).Children.Add(button);
         }
         MoreLooksExpander.Visibility = MoreLookPanel.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateMoreLooksHeader();
         LookPinHint.Visibility = pinned.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -407,23 +440,36 @@ public sealed partial class MainWindow
     {
         if (_syncingEditPane || LookStrengthSlider is null)
             return;
-        ChangeEdit(() => _lookStrength = (int)LookStrengthSlider.Value);
+        ChangeEdit("look strength", () => _lookStrength = (int)LookStrengthSlider.Value);
     }
 
     private void EditBefore_Click(object sender, RoutedEventArgs e) => RenderPreview();
 
+    // Reset drops the changes not saved; it is a step itself, so Undo brings them all back.
     private void EditReset_Click(object sender, RoutedEventArgs e)
     {
+        if (!IsEditing)
+            return;
         var shown = _viewerPixels;
+        var steps = _editSteps.ToList();
+        var reset = new EditStep("reset", CaptureEdit(), CaptureRetouch());
         EndEdit();
+        _editSteps.AddRange(steps);
+        _editSteps.Add(reset);
+        UpdateEditFooter();
         if (shown is not null)
             _ = ShowPixelsAsync(shown);
     }
 
-    private void ChangeEdit(Action change)
+    /// <summary>
+    /// Makes a change to the edit and shows it. <paramref name="step"/> names what changed for Undo: changes of the same
+    /// kind in a quick row (a slider being dragged) are one step, unless <paramref name="coalesce"/> is false.
+    /// </summary>
+    private void ChangeEdit(string step, Action change, bool coalesce = true)
     {
         if (_viewerPixels is null || _syncingEditPane)
             return;
+        RecordEditStep(step, coalesce);
         change();
         EditBeforeButton.IsChecked = false; // a change is to be seen
         UpdateEditBar();
@@ -462,7 +508,7 @@ public sealed partial class MainWindow
                 if (_viewerPixels is not { } pixels)
                     return;
                 var before = EditBeforeButton.IsChecked == true;
-                var curve = ViewerAutoButton.IsChecked == true ? _autoCurve : null;
+                var curve = _autoLight ? _autoCurve : null;
                 var adjustments = _adjustments;
                 var (flipH, flipV) = (_flipHorizontal, _flipVertical);
                 var angle = StraightenBeforeFlip;

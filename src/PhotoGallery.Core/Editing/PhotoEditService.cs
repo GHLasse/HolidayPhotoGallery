@@ -25,17 +25,21 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// <paramref name="beforeCrop"/> moves a person's box on the upright photo before the crop, for a photo that
     /// was straightened (<see cref="Straighten.Box"/>); null drops the person.
     /// </summary>
+    /// With <paramref name="asCopy"/> the photo is left as it is and the edit goes into a new file next to it
+    /// (<see cref="EditedCopyPath"/>), whose path is returned.
     public async Task<string> SaveEditAsync(string path, string extension, int width, int height,
                                             Func<string, Task> writeImage, FaceBox? crop = null, int turn = 1,
                                             string? metadataFrom = null, CancellationToken cancellationToken = default,
-                                            Func<FaceBox, FaceBox?>? beforeCrop = null)
+                                            Func<FaceBox, FaceBox?>? beforeCrop = null, bool asCopy = false)
     {
-        if (File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
+        if (!asCopy && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
 
-        var newPath = string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase)
-            ? path
-            : Path.ChangeExtension(path, extension);
+        var newPath = asCopy
+            ? EditedCopyPath(path, extension)
+            : string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase)
+                ? path
+                : Path.ChangeExtension(path, extension);
         if (newPath != path && File.Exists(newPath))
             throw new IOException(Tr("Could not save as {0}: a photo with that name already exists.", Path.GetFileName(newPath)));
 
@@ -50,6 +54,11 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
             if (Library.FileCheck.Check(temp) != Library.FileHealth.Whole)
                 throw new IOException(Tr("The edited file of {0} came out damaged, so the photo was left as it was. Is the disk full or failing?", Path.GetFileName(path)));
 
+            if (asCopy)
+            {
+                File.Move(temp, newPath, overwrite: false);
+                return newPath;
+            }
             EditHistory.BackUp(path);
             File.Move(temp, newPath, overwrite: true);
             if (newPath != path)
@@ -63,6 +72,22 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         {
             if (File.Exists(temp))
                 File.Delete(temp);
+        }
+    }
+
+    /// <summary>
+    /// Where an edit saved as a copy goes: next to the photo as "name (edited).ext", then "name (edited 2).ext" and
+    /// so on, so no file is ever overwritten. <paramref name="extension"/> is the format of the copy.
+    /// </summary>
+    public static string EditedCopyPath(string path, string extension)
+    {
+        var folder = Path.GetDirectoryName(path) ?? "";
+        var name = Path.GetFileNameWithoutExtension(path);
+        for (var n = 1; ; n++)
+        {
+            var candidate = Path.Combine(folder, n == 1 ? $"{name} (edited){extension}" : $"{name} (edited {n}){extension}");
+            if (!File.Exists(candidate))
+                return candidate;
         }
     }
 

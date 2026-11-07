@@ -72,6 +72,26 @@ public sealed class PhotoEditServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task Saving_as_a_copy_leaves_the_photo_alone_and_never_overwrites()
+    {
+        var path = _temp.CopySample(".jpg");
+        await Metadata.WriteAsync(path, new MetadataChanges { Tags = ["Strand"], Rating = 4 });
+        var original = await File.ReadAllBytesAsync(path);
+
+        var first = await Editor.SaveEditAsync(path, ".jpg", 100, 80, FreshImage(".jpg"), asCopy: true);
+        var second = await Editor.SaveEditAsync(path, ".jpg", 100, 80, FreshImage(".jpg"), asCopy: true);
+
+        var name = Path.GetFileNameWithoutExtension(path);
+        Assert.Equal(name + " (edited).jpg", Path.GetFileName(first));
+        Assert.Equal(name + " (edited 2).jpg", Path.GetFileName(second));
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        Assert.Equal(0, EditHistory.EditCount(path));
+        var copy = await Metadata.ReadAsync(first);
+        Assert.Equal(["Strand"], copy.Tags);
+        Assert.Equal(4, copy.Rating);
+    }
+
+    [ExifToolFact]
     public async Task Reverting_is_not_taken_for_a_change_made_on_another_pc()
     {
         var path = _temp.CopySample(".jpg");

@@ -32,14 +32,14 @@ public sealed partial class MainWindow
     // picture changes: edits keep working on the screen-size pixels, and an edit being previewed is left alone.
     private async Task ShowSharperPhotoAsync()
     {
-        if (_viewerIndex < 0 || _viewerIndex >= _viewerItems.Count || ViewerEditBar.Visibility == Visibility.Visible)
+        if (_viewerIndex < 0 || _viewerIndex >= _viewerItems.Count || IsEditing)
             return;
         var version = _viewerLoadVersion;
         try
         {
             var pixels = await ImageLoader.DecodePixelsAsync(_viewerItems[_viewerIndex].Path, 6000);
             var source = await ImageLoader.ToImageSourceAsync(pixels);
-            if (version == _viewerLoadVersion && ViewerEditBar.Visibility != Visibility.Visible)
+            if (version == _viewerLoadVersion && !IsEditing)
                 ViewerCanvas.Source = source;
         }
         catch (Exception)
@@ -76,8 +76,7 @@ public sealed partial class MainWindow
     private void SetViewerControlsOpacity(double opacity)
     {
         ViewerTopBar.Opacity = ViewerPreviousButton.Opacity = ViewerNextButton.Opacity = opacity;
-        // While editing, the edit bar stands in the filmstrip's place.
-        ViewerStrip.Opacity = IsEditing ? 0 : opacity;
+        ViewerStrip.Opacity = opacity;
     }
 
     /// <summary>Where the tile's thumbnail is on screen, relative to the window's content.</summary>
@@ -305,8 +304,7 @@ public sealed partial class MainWindow
     {
         if (_syncingStrip || ViewerStrip.SelectedIndex < 0 || ViewerStrip.SelectedIndex == _viewerIndex)
             return;
-        _viewerIndex = ViewerStrip.SelectedIndex;
-        _ = ShowViewerImageAsync();
+        _ = GoToViewerPhotoAsync(ViewerStrip.SelectedIndex);
     }
 
     // ---- Details or map beside the viewer ----

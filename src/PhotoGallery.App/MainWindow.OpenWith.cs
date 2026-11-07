@@ -21,9 +21,16 @@ public sealed partial class MainWindow
 
     private async void ViewerOpenWith_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewerItem is { } photo && !IsEditing)
+        if (await FinishEditForOtherAppAsync() && ViewerItem is { } photo)
             await OpenWithAsync(photo);
     }
+
+    /// <summary>
+    /// Before the photo on show goes to another app: an edit not saved yet is saved first, after asking, so the other
+    /// app gets what is on screen (Lasse, 2026-11-07). False when Cancel was picked; the photo then stays here.
+    /// </summary>
+    private Task<bool> FinishEditForOtherAppAsync() =>
+        FinishEditAskingAsync(Tr("Save and open"), Tr("Open without the changes"));
 
     private void ShowInFolderMenu_Click(object sender, RoutedEventArgs e)
     {
@@ -69,7 +76,7 @@ public sealed partial class MainWindow
 
     private async void ViewerFavouriteApp_Click(object sender, RoutedEventArgs e)
     {
-        if (FavouriteFor(sender) is { } app && ViewerItem is { } photo && !IsEditing)
+        if (FavouriteFor(sender) is { } app && await FinishEditForOtherAppAsync() && ViewerItem is { } photo)
             await EditInAsync(app, [photo]);
     }
 
@@ -122,31 +129,35 @@ public sealed partial class MainWindow
     private async Task ShowFavouriteAppsAsync()
     {
         var apps = ViewModel.FavouriteApps;
-        Button[] viewer = [ViewerFavourite1Button, ViewerFavourite2Button];
+        // The viewer's top bar and the Edit pane's "Edit in another app" both have them (Lasse, 2026-11-07).
+        Button[][] slots = [[ViewerFavourite1Button, EditFavourite1Button], [ViewerFavourite2Button, EditFavourite2Button]];
         _favouriteIcons.Clear();
-        for (var i = 0; i < viewer.Length; i++)
+        for (var i = 0; i < slots.Length; i++)
         {
             if (i >= apps.Count)
             {
-                viewer[i].Visibility = Visibility.Collapsed;
+                foreach (var button in slots[i])
+                    button.Visibility = Visibility.Collapsed;
                 continue;
             }
             var app = apps[i];
-            ToolTipService.SetToolTip(viewer[i], Tr("Open the selected photos in {0}.", app.Name));
-            viewer[i].Visibility = Visibility.Visible;
-
             var icon = await AppIconAsync(app.Path);
             _favouriteIcons.Add(icon);
-            viewer[i].Content = new StackPanel
+            foreach (var button in slots[i])
             {
-                Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal,
-                Spacing = 6,
-                Children =
+                ToolTipService.SetToolTip(button, Tr("Open the selected photos in {0}.", app.Name));
+                button.Visibility = Visibility.Visible;
+                button.Content = new StackPanel
                 {
-                    icon is null ? new FontIcon { Glyph = "\uE70F", FontSize = 16 } : new Image { Source = icon, Width = 16, Height = 16 },
-                    new TextBlock { Text = app.Name },
-                },
-            };
+                    Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal,
+                    Spacing = 6,
+                    Children =
+                    {
+                        icon is null ? new FontIcon { Glyph = "\uE70F", FontSize = 16 } : new Image { Source = icon, Width = 16, Height = 16 },
+                        new TextBlock { Text = app.Name },
+                    },
+                };
+            }
         }
         FitViewerToolbar(); // the app names may not fit beside the other labels
     }
