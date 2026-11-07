@@ -283,6 +283,35 @@ public sealed partial class MapPanel : UserControl
         }
     }
 
+    // The clip lives on the inner grid's visual: taking the control's own visual would stop the window sliding it
+    // with Translation (WinUI forbids TranslationTransition on an element whose visual is in use).
+    private Microsoft.UI.Composition.InsetClip? _clip;
+
+    /// <summary>Cuts the map off from the left until <paramref name="left"/> pixels are hidden, then calls <paramref name="done"/>.</summary>
+    public void ClipLeftTo(float left, TimeSpan duration, Action done)
+    {
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(Surface);
+        var compositor = visual.Compositor;
+        _clip = compositor.CreateInsetClip();
+        visual.Clip = _clip;
+        var slide = compositor.CreateScalarKeyFrameAnimation();
+        slide.InsertKeyFrame(1f, left, compositor.CreateCubicBezierEasingFunction(new(0.1f, 0.9f), new(0.2f, 1f)));
+        slide.Duration = duration;
+        var batch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
+        _clip.StartAnimation(nameof(_clip.LeftInset), slide);
+        batch.End();
+        batch.Completed += (_, _) => done();
+    }
+
+    /// <summary>Shows the whole map again after <see cref="ClipLeftTo"/>.</summary>
+    public void ClearClip()
+    {
+        if (_clip is null)
+            return;
+        _clip = null;
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(Surface).Clip = null;
+    }
+
     private double _topInset;
 
     /// <summary>How much of the map's top the side pane's switch covers: the map's own controls start below it.</summary>
