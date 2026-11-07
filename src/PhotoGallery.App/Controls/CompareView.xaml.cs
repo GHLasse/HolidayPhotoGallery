@@ -41,6 +41,7 @@ public sealed partial class CompareView : UserControl
         {
             (VirtualKey.Escape, VirtualKeyModifiers.None), (VirtualKey.G, VirtualKeyModifiers.None),
             (VirtualKey.P, VirtualKeyModifiers.None), (VirtualKey.X, VirtualKeyModifiers.None),
+            (VirtualKey.E, VirtualKeyModifiers.None),
             (VirtualKey.Tab, VirtualKeyModifiers.None), (VirtualKey.Tab, VirtualKeyModifiers.Shift),
             (VirtualKey.Left, VirtualKeyModifiers.None), (VirtualKey.Right, VirtualKeyModifiers.None),
             (VirtualKey.Up, VirtualKeyModifiers.None), (VirtualKey.Down, VirtualKeyModifiers.None),
@@ -74,6 +75,7 @@ public sealed partial class CompareView : UserControl
     private bool HandlesKey(VirtualKey key) => key switch
     {
         VirtualKey.Escape or VirtualKey.G or VirtualKey.P or VirtualKey.X or VirtualKey.Tab => true,
+        VirtualKey.E => _panes.Count > 0 && !_panes[_activeIndex].Item.IsVideo,
         VirtualKey.Left or VirtualKey.Right => true,
         VirtualKey.Up or VirtualKey.Down => _panes.Count == 4,
         VirtualKey.PageUp or VirtualKey.PageDown => _inGroups,
@@ -102,6 +104,12 @@ public sealed partial class CompareView : UserControl
 
     /// <summary>A photo was double-clicked, to see it on its own in the viewer.</summary>
     public event Action<PhotoItemViewModel>? OpenRequested;
+
+    /// <summary>The Edit button or E: open the photo in the viewer with the Edit pane beside it.</summary>
+    public event Action<PhotoItemViewModel>? EditRequested;
+
+    /// <summary>Whether the photo is on top of its stack of similar shots, for the mark beside its name.</summary>
+    public Func<PhotoItemViewModel, bool>? IsStackTop { get; set; }
 
     public IReadOnlyList<PhotoItemViewModel> Photos => _panes.Select(p => p.Item).ToList();
 
@@ -164,8 +172,8 @@ public sealed partial class CompareView : UserControl
         }
 
         HintText.Text = items.Count == 1
-            ? Tr("Keys 1–5 rate this photo, 0 clears the rating. Left and Right go to the previous or next photo. Ctrl + mouse wheel zooms.")
-            : Tr("Click a photo to highlight it. Keys 1–5 rate it, 0 clears the rating, Tab moves to the next photo. Ctrl + mouse wheel zooms.");
+            ? Tr("Keys 1–5 rate this photo, 0 clears the rating, E edits it. Left and Right go to the previous or next photo. Ctrl + mouse wheel zooms.")
+            : Tr("Click a photo to highlight it. Keys 1–5 rate it, 0 clears the rating, E edits it, Tab moves to the next photo. Ctrl + mouse wheel zooms.");
         _activeIndex = Math.Clamp(highlight, 0, Math.Max(0, items.Count - 1));
         SetActive(_activeIndex, FocusState.Programmatic);
         _ = LoadImagesAsync();
@@ -234,9 +242,26 @@ public sealed partial class CompareView : UserControl
             Spacing = 4,
             Children = { new FontIcon { Glyph = "\uE7BA", FontSize = 12, Foreground = ThemeBrush("TextFillColorSecondaryBrush", Colors.Gray) }, hintText, ignore },
         };
-        var nameAndHint = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { name, hint } };
+        // On top of its stack: the photo the grid shows for the stack (it moves to the highest rated one).
+        var top = new FontIcon { Glyph = "\uE8A9", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+        ToolTipService.SetToolTip(top, Tr("On top of the stack"));
+        var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { top, name } };
+        var nameAndHint = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { nameRow, hint } };
+        var edit = new Button
+        {
+            Content = new FontIcon { Glyph = "\uE70F", FontSize = 14 },
+            Padding = new Thickness(6),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            IsTabStop = false, // the rating keys stay with the photo
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = item.IsVideo ? Visibility.Collapsed : Visibility.Visible,
+        };
+        ToolTipService.SetToolTip(edit, Tr("Edit this photo (E)"));
+        edit.Click += (_, _) => EditRequested?.Invoke(item);
         var footer = new Grid { ColumnSpacing = 8, Padding = new Thickness(8, 4, 8, 4) };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.Children.Add(nameAndHint);
@@ -244,6 +269,8 @@ public sealed partial class CompareView : UserControl
         footer.Children.Add(flag);
         Grid.SetColumn(rating, 2);
         footer.Children.Add(rating);
+        Grid.SetColumn(edit, 3);
+        footer.Children.Add(edit);
 
         var body = new Grid();
         body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -272,8 +299,9 @@ public sealed partial class CompareView : UserControl
             VerticalContentAlignment = VerticalAlignment.Stretch,
         };
 
-        var pane = new Pane(item, host, root, scroller, image, rating, status, flag) { Hint = hint, HintText = hintText };
+        var pane = new Pane(item, host, root, scroller, image, rating, status, flag) { Hint = hint, HintText = hintText, Top = top };
         ShowHint(pane);
+        ShowTop(pane);
         ignore.Click += async (_, _) =>
         {
             if (IgnoreHintRequested is { } handler)
@@ -292,12 +320,24 @@ public sealed partial class CompareView : UserControl
         host.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => SetActive(index, FocusState.Pointer)), handledEventsToo: true);
         host.ContextRequested += (_, e) =>
         {
-            if (MenuItemsFor?.Invoke(item) is not { Count: > 0 } items)
+            var menu = new MenuFlyout();
+            if (!item.IsVideo)
+            {
+                var editItem = new MenuFlyoutItem { Text = Tr("Edit"), Icon = new FontIcon { Glyph = "\uE70F" } };
+                editItem.KeyboardAcceleratorTextOverride = "E";
+                editItem.Click += (_, _) => EditRequested?.Invoke(item);
+                menu.Items.Add(editItem);
+            }
+            if (MenuItemsFor?.Invoke(item) is { Count: > 0 } items)
+            {
+                if (menu.Items.Count > 0)
+                    menu.Items.Add(new MenuFlyoutSeparator());
+                foreach (var menuItem in items)
+                    menu.Items.Add(menuItem);
+            }
+            if (menu.Items.Count == 0)
                 return;
             e.Handled = true;
-            var menu = new MenuFlyout();
-            foreach (var menuItem in items)
-                menu.Items.Add(menuItem);
             if (e.TryGetPosition(host, out var point))
                 menu.ShowAt(host, point);
             else
@@ -352,6 +392,9 @@ public sealed partial class CompareView : UserControl
         scroller.AddHandler(PointerReleasedEvent, new PointerEventHandler(End), handledEventsToo: true);
         scroller.PointerCaptureLost += (_, _) => start = null;
     }
+
+    /// <summary>Decodes the photos again, e.g. after one was edited in the viewer.</summary>
+    public void ReloadImages() => _ = LoadImagesAsync();
 
     private async Task LoadImagesAsync()
     {
@@ -430,6 +473,19 @@ public sealed partial class CompareView : UserControl
         ShowHint(pane);
     }
 
+    /// <summary>Shows again which photo is on top of its stack, e.g. after a rating moved the top.</summary>
+    public void RefreshTops()
+    {
+        foreach (var pane in _panes)
+            ShowTop(pane);
+    }
+
+    private void ShowTop(Pane pane)
+    {
+        if (pane.Top is { } top)
+            top.Visibility = IsStackTop?.Invoke(pane.Item) == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     /// <summary>Shows each photo's hint again, e.g. once the hints are loaded.</summary>
     public void RefreshHints()
     {
@@ -493,6 +549,9 @@ public sealed partial class CompareView : UserControl
                 ShowMark(rejected.Flag, rejected.Item);
                 ShowHint(rejected);
                 return;
+            case VirtualKey.E:
+                EditRequested?.Invoke(_panes[_activeIndex].Item);
+                return;
             case VirtualKey.PageUp or VirtualKey.PageDown:
                 GroupStepRequested?.Invoke(key == VirtualKey.PageUp ? -1 : 1);
                 return;
@@ -546,5 +605,6 @@ public sealed partial class CompareView : UserControl
         public bool SettingRating { get; set; }
         public StackPanel? Hint { get; init; }
         public TextBlock? HintText { get; init; }
+        public FontIcon? Top { get; init; }
     }
 }

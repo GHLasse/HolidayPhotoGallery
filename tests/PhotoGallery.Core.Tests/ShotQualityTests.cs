@@ -157,6 +157,24 @@ public sealed class ShotQualityTests : IDisposable
     }
 
     [Fact]
+    public void The_highest_rated_photo_goes_on_top_of_its_stack()
+    {
+        var t = new DateTime(2026, 5, 1, 12, 0, 0);
+        IndexedPhoto[] Stack(params int[] ratings) => ratings.Select((r, i) => Photo($"{i}.jpg", t.AddSeconds(i), rating: r)).ToArray();
+        static int Rating(IndexedPhoto p) => p.Rating;
+
+        var unrated = Stack(0, 0, 0);
+        Assert.Null(SimilarShots.TopByRating(unrated, Rating, unrated[0], unrated[1]));        // no ratings: top stays
+        var one = Stack(0, 4, 0);
+        Assert.Equal(one[1], SimilarShots.TopByRating(one, Rating, one[0], one[1]));           // rated higher: on top
+        Assert.Null(SimilarShots.TopByRating(one, Rating, one[1], one[1]));                    // already on top
+        var tie = Stack(3, 3, 1);
+        Assert.Null(SimilarShots.TopByRating(tie, Rating, tie[0], tie[1]));                    // tie with the top: top stays
+        Assert.Equal(tie[1], SimilarShots.TopByRating(tie, Rating, tie[2], tie[1]));           // tie: the one just rated
+        Assert.Equal(tie[0], SimilarShots.TopByRating(tie, Rating, tie[2], tie[2]));           // top rated down: first of the best
+    }
+
+    [Fact]
     public void Alike_uses_vectors_first_then_fingerprints()
     {
         float[] a = [1, 0, 0], b = [0.95f, 0.1f, 0], c = [0, 1, 0];
