@@ -1650,7 +1650,7 @@
             <ListView x:Name="ViewerStrip" Grid.Row="3" Height="76" Padding="12,0,12,8" SelectionMode="Single"
                       ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
                       ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                      SelectionChanged="ViewerStrip_SelectionChanged" ContainerContentChanging="PhotoGrid_ContainerContentChanging">
+                      SelectionChanged="ViewerStrip_SelectionChanged" SizeChanged="ViewerStrip_SizeChanged" ContainerContentChanging="PhotoGrid_ContainerContentChanging">
                 <ListView.OpacityTransition>
                     <ScalarTransition Duration="0:0:0.25" />
                 </ListView.OpacityTransition>
