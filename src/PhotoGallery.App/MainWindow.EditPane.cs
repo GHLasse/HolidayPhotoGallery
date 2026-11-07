@@ -78,7 +78,7 @@ public sealed partial class MainWindow
             _viewerFolded = true;
             ApplyChrome();
         }
-        else
+        else if (PaneUsable(SidePane.Edit))
             _ = SetViewerPaneAsync(SidePane.Edit);
     }
 

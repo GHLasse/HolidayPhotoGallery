@@ -121,17 +121,39 @@ public sealed partial class MainWindow
     private RightPane RightSide()
     {
         if (IsViewerOpen)
-            return _viewerFolded ? RightPane.Rail : ViewerMapBeside ? RightPane.Map : _viewerPane == SidePane.Edit ? RightPane.Edit : RightPane.Info;
+            return _viewerFolded ? RightPane.Rail : ShownPane(_viewerPane) switch
+            {
+                SidePane.Map => RightPane.Map,
+                SidePane.Edit => RightPane.Edit,
+                _ => RightPane.Info,
+            };
         if (_panesHidden || _chromeHidden || _workspace is not (Workspace.Library or Workspace.Map))
             return RightPane.None;
         if (_workspace == Workspace.Map)
-            return _infoForced == true ? RightPane.Info : RightPane.None;
+            return _infoForced == true && PaneUsable(SidePane.Info) ? RightPane.Info : RightPane.None;
         if (_sideFolded)
             return RightPane.Rail;
         if (_sidePane == SidePane.Map)
             return RightPane.Map;
-        return _infoForced ?? PhotoGrid.SelectedItems.Count > 0 ? RightPane.Info : RightPane.Rail;
+        // With nothing selected there are no details to show (Lasse 2026-11-07), so the pane folds to its strip.
+        return PaneUsable(SidePane.Info) ? RightPane.Info : RightPane.Rail;
     }
+
+    /// <summary>
+    /// Whether the pane can show anything useful now (Lasse 2026-11-07: only offer what can be chosen). Beside the
+    /// grid the details and Edit need a selected photo; beside the viewer there is always a photo, but a video
+    /// can't be edited, and on the Map page the map is already there.
+    /// </summary>
+    private bool PaneUsable(SidePane pane) => pane switch
+    {
+        SidePane.Info => IsViewerOpen || PhotoGrid.SelectedItems.Count > 0,
+        SidePane.Map => !(IsViewerOpen && _workspace == Workspace.Map),
+        _ => IsViewerOpen ? !_viewerShowsVideo : PhotoGrid.SelectedItems.OfType<PhotoItemViewModel>().FirstOrDefault() is { IsVideo: false },
+    };
+
+    // The pane the viewer shows: its choice, or the details while that choice can't be used (a video while editing,
+    // the map on the Map page). The choice is kept, so the next photo opens in Edit again.
+    private SidePane ShownPane(SidePane chosen) => PaneUsable(chosen) ? chosen : SidePane.Info;
 
     private bool MapBeside => _workspace == Workspace.Library && _sidePane == SidePane.Map && !_sideFolded;
 
@@ -555,6 +577,8 @@ public sealed partial class MainWindow
             else
                 ApplyChrome();
         }
+        else
+            SyncSideSwitch(); // a video selected instead of a photo can't be edited
         SelectionCountText.Text = Tr("{0} selected", count);
         _ = ShowRepairAsync();
         ShowSelectionBar(has);
@@ -767,7 +791,7 @@ public sealed partial class MainWindow
             _infoForced = null;
             ApplyChrome();
         }
-        else
+        else if (PaneUsable(SidePane.Info))
             _ = SetSidePaneAsync(SidePane.Info);
     }
 
@@ -836,18 +860,40 @@ public sealed partial class MainWindow
     }
 
     // The thumb slides under the chosen icon, which turns the colour of text on the accent.
+    // Only the panes that can be used now have an icon, on the switch and on the folded strip; the switch
+    // narrows to them.
     private void SyncSideSwitch()
     {
-        var pane = IsViewerOpen ? _viewerPane : _sidePane;
-        SideSwitchThumb.Translation = new System.Numerics.Vector3((float)SideMapButton.Width * (int)pane, 0, 0);
+        var pane = IsViewerOpen ? ShownPane(_viewerPane) : _sidePane;
+        var buttons = new (SidePane Pane, FrameworkElement Switch, FrameworkElement Rail)[]
+        {
+            (SidePane.Info, SideInfoButton, SideRailInfoButton),
+            (SidePane.Map, SideMapButton, SideRailMapButton),
+            (SidePane.Edit, SideEditButton, SideRailEditButton),
+        };
+        var slot = 0;
+        var thumbSlot = -1;
+        foreach (var (each, onSwitch, onRail) in buttons)
+        {
+            var usable = PaneUsable(each);
+            onSwitch.Visibility = onRail.Visibility = usable ? Visibility.Visible : Visibility.Collapsed;
+            if (!usable)
+                continue;
+            if (each == pane)
+                thumbSlot = slot;
+            slot++;
+        }
+        SideSwitch.Width = SideMapButton.Width * slot + 6;
+        SideSwitchThumb.Visibility = thumbSlot < 0 ? Visibility.Collapsed : Visibility.Visible;
+        SideSwitchThumb.Translation = new System.Numerics.Vector3((float)SideMapButton.Width * Math.Max(thumbSlot, 0), 0, 0);
+        // Unfolding beside the grid brings back the pane last chosen, so it shows only while that one can be used.
+        SideRailUnfoldButton.Visibility = IsViewerOpen || PaneUsable(_sidePane) ? Visibility.Visible : Visibility.Collapsed;
         SideInfoIconOn.Opacity = pane == SidePane.Info ? 1 : 0;
         SideInfoIconOff.Opacity = pane == SidePane.Info ? 0 : 1;
         SideMapIconOn.Opacity = pane == SidePane.Map ? 1 : 0;
         SideMapIconOff.Opacity = pane == SidePane.Map ? 0 : 1;
         SideEditIconOn.Opacity = pane == SidePane.Edit ? 1 : 0;
         SideEditIconOff.Opacity = pane == SidePane.Edit ? 0 : 1;
-        // Beside the viewer over the whole-library map, the map is already there.
-        SideMapButton.IsEnabled = SideRailMapButton.IsEnabled = !(IsViewerOpen && _workspace == Workspace.Map);
     }
 
     // ---- Motion ----
