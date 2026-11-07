@@ -173,6 +173,21 @@ jobs:
           }
           $cats = Join-Path $dir 'cats.jpg'
           if (-not (Test-Path $cats)) { curl.exe -sSfL --retry 3 -o $cats http://images.cocodataset.org/val2017/000000039769.jpg }
+          # Photos from Wikimedia Commons for the suggested looks, as on Linux.
+          $scenes = Join-Path $dir 'look-scenes'
+          New-Item -ItemType Directory -Force $scenes | Out-Null
+          $commons = 'https://upload.wikimedia.org/wikipedia/commons/thumb'
+          $photos = @{
+            'old-car-citroen-ds.jpg' = '8/84/1973_Citroen_DS23_Safari_%288408039598%29.jpg/960px-1973_Citroen_DS23_Safari_%288408039598%29.jpg'
+            'old-car-rusty.jpg' = '2/2b/Rusty_Vintage_Car_%282536702090%29.jpg/960px-Rusty_Vintage_Car_%282536702090%29.jpg'
+            'food-cake.jpg' = 'e/ef/Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg/960px-Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg'
+            'snow-mountain-lake.jpg' = '2/23/Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg/960px-Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg'
+            'modern-street.jpg' = 'b/ba/PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg/960px-PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg'
+          }
+          foreach ($name in $photos.Keys) {
+            $target = Join-Path $scenes $name
+            if (-not (Test-Path $target)) { curl.exe -sSfL --retry 3 -A 'HolidayPhotoGallery-CI/1.0 (https://github.com/GHLasse/HolidayPhotoGallery)' -o $target "$commons/$($photos[$name])" }
+          }
           Get-ChildItem $dir
           "PHOTOGALLERY_TAG_MODEL=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Cache face models
