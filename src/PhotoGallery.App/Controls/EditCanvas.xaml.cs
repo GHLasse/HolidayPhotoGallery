@@ -98,6 +98,7 @@ public sealed partial class EditCanvas : UserControl
     {
         _stroke.Clear();
         StrokeLine.Points.Clear();
+        StrokeEdge.Points.Clear();
     }
 
     // The brush in the photo's own (unzoomed) units.
@@ -113,6 +114,7 @@ public sealed partial class EditCanvas : UserControl
         _painting = true;
         PaintLayer.CapturePointer(e.Pointer);
         StrokeLine.StrokeThickness = BrushRadius * 2;
+        StrokeEdge.StrokeThickness = BrushRadius * 2 + 3 / Math.Max(Zoom.ScaleX, 0.01);
         AddToStroke(point.Position);
     }
 
@@ -152,9 +154,13 @@ public sealed partial class EditCanvas : UserControl
         var inside = new Point(Math.Clamp(p.X, 0, Frame.Width), Math.Clamp(p.Y, 0, Frame.Height));
         _stroke.Add(inside);
         StrokeLine.Points.Add(inside);
+        StrokeEdge.Points.Add(inside);
         // One point alone draws nothing; a second one in the same place shows the dot.
         if (StrokeLine.Points.Count == 1)
+        {
             StrokeLine.Points.Add(inside);
+            StrokeEdge.Points.Add(inside);
+        }
     }
 
     private void EndStroke()
@@ -169,7 +175,7 @@ public sealed partial class EditCanvas : UserControl
 
     // ---- Strokes being worked on: they shimmer (a light sweeping along them and a gentle pulse) until applied ----
 
-    private readonly Dictionary<int, Polyline> _working = [];
+    private readonly Dictionary<int, UIElement> _working = [];
     private int _nextWorking;
     private Storyboard? _shimmer;
     private LinearGradientBrush? _shimmerBrush;
@@ -177,23 +183,31 @@ public sealed partial class EditCanvas : UserControl
     // The finished stroke moves to the working layer, so a new stroke can be painted while it waits.
     private int ShowWorking()
     {
+        var edge = CopyOf(StrokeEdge, StrokeEdge.Stroke);
+        var line = CopyOf(StrokeLine, ShimmerBrush());
+        var both = new Canvas { IsHitTestVisible = false, Children = { edge, line } };
+        var id = ++_nextWorking;
+        _working[id] = both;
+        WorkingLayer.Children.Add(both);
+        ClearStroke();
+        StartShimmer();
+        return id;
+    }
+
+    private static Polyline CopyOf(Polyline from, Brush stroke)
+    {
         var line = new Polyline
         {
-            Stroke = ShimmerBrush(),
-            StrokeThickness = StrokeLine.StrokeThickness,
+            Stroke = stroke,
+            StrokeThickness = from.StrokeThickness,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             StrokeLineJoin = PenLineJoin.Round,
             IsHitTestVisible = false,
         };
-        foreach (var p in StrokeLine.Points)
+        foreach (var p in from.Points)
             line.Points.Add(p);
-        var id = ++_nextWorking;
-        _working[id] = line;
-        WorkingLayer.Children.Add(line);
-        ClearStroke();
-        StartShimmer();
-        return id;
+        return line;
     }
 
     /// <summary>Takes away the shimmer of a stroke once its result is shown (or it was given up).</summary>
@@ -214,20 +228,20 @@ public sealed partial class EditCanvas : UserControl
         _shimmer?.Stop();
     }
 
-    // The stroke's pink with a bright band that sweeps across it.
+    // The stroke's see-through white with a brighter band that sweeps across it.
     private LinearGradientBrush ShimmerBrush()
     {
         if (_shimmerBrush is not null)
             return _shimmerBrush;
-        var pink = Windows.UI.Color.FromArgb(0x90, 0xFF, 0x40, 0x81);
-        var light = Windows.UI.Color.FromArgb(0xE0, 0xFF, 0xF0, 0xF6);
+        var pale = Windows.UI.Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF);
+        var light = Windows.UI.Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF);
         _shimmerBrush = new LinearGradientBrush
         {
             StartPoint = new Point(0, 0),
             EndPoint = new Point(1, 0.4),
             RelativeTransform = new TranslateTransform(),
         };
-        foreach (var (offset, colour) in new[] { (0.0, pink), (0.38, pink), (0.5, light), (0.62, pink), (1.0, pink) })
+        foreach (var (offset, colour) in new[] { (0.0, pale), (0.38, pale), (0.5, light), (0.62, pale), (1.0, pale) })
             _shimmerBrush.GradientStops.Add(new GradientStop { Offset = offset, Color = colour });
         return _shimmerBrush;
     }

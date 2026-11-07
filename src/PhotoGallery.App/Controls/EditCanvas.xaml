@@ -42,7 +42,10 @@
                     PointerPressed="PaintLayer_PointerPressed" PointerMoved="PaintLayer_PointerMoved"
                     PointerReleased="PaintLayer_PointerReleased" PointerCaptureLost="PaintLayer_PointerCaptureLost"
                     PointerExited="PaintLayer_PointerExited">
-                <Polyline x:Name="StrokeLine" Stroke="#80FF4081" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                <!-- A light, see-through stroke with a dark edge, so it shows on red, dark and bright parts alike. -->
+                <Polyline x:Name="StrokeEdge" Stroke="#B3000000" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round" IsHitTestVisible="False" />
+                <Polyline x:Name="StrokeLine" Stroke="#80FFFFFF" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                           StrokeLineJoin="Round" IsHitTestVisible="False" />
                 <Ellipse x:Name="BrushRing" Stroke="White" IsHitTestVisible="False" Visibility="Collapsed" />
                 <Ellipse x:Name="BrushRingShade" Stroke="#99000000" IsHitTestVisible="False" Visibility="Collapsed" />
