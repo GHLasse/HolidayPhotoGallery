@@ -192,9 +192,19 @@ public sealed partial class MainWindow
         SidePaneHeader.Visibility = header ? Visibility.Visible : Visibility.Collapsed;
         InfoPane.Margin = new Thickness(0, header ? SidePaneHeader.Height : 0, 0, 0);
         EditPane.Margin = InfoPane.Margin;
-        // Beside the grid or the photo the map fills the pane right up to its edges, under the switch (Lasse 2026-11-07).
-        MapView.Margin = map ? new Thickness(0, SidePaneHeader.Height, 0, 0) : new Thickness(0, 0, 12, 12);
-        MapView.EdgeToEdge = map;
+        // Beside the grid or the photo the map fills the pane right up to its edges (Lasse 2026-11-07): under the
+        // splitter on the left and under the switch at the top, which floats over it on cards like the map's own controls.
+        // (The Map page's map reaches the window's edges too.)
+        if (!full && !_mapShrinking)
+        {
+            Grid.SetColumn(MapView, map ? 3 : 4);
+            Grid.SetColumnSpan(MapView, map ? 2 : 1);
+        }
+        MapView.TopInset = map && header ? SidePaneHeader.Height : 0;
+        var overMap = map && header;
+        SideSwitchCard.Visibility = overMap ? Visibility.Visible : Visibility.Collapsed;
+        FoldCard.Visibility = SideSwitchCard.Visibility;
+        FoldSideButton.CornerRadius = new CornerRadius(overMap ? 18 : 4);
         // Under the viewer the whole-library map would lie over the pane beside it, so it waits till the viewer closes.
         MapView.Visibility = map || (full && !viewer) ? Visibility.Visible : Visibility.Collapsed;
         SyncSideSwitch();

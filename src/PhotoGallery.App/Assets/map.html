@@ -27,6 +27,8 @@
   :root.dark .leaflet-control-attribution a { color: #9fc3ff; }
   /* The app's Assign bar floats over the bottom of the map: the credits, legend and messages sit above it. */
   .leaflet-bottom { bottom: var(--inset-bottom, 0px); }
+  /* Beside the photos the side pane's switch floats over the top of the map: zoom and search start below it. */
+  .leaflet-top { top: var(--inset-top, 0px); }
   /* Small credits on one line where they fit, so the legend above them never covers them. */
   .leaflet-control-attribution { font-size: 10px; line-height: 1.4; }
   :root { --surface: #fff; --surface-hover: #f9f9f9; --surface-pressed: #f5f5f5; }
@@ -38,7 +40,7 @@
   .ctl:active { background: var(--surface-pressed); color: var(--text-2); }
   .icon { font-family: var(--icons); font-size: 16px; line-height: 1; font-style: normal; }
   /* The search box is the app's own (WinUI AutoSuggestBox): one box, the magnifier inside it on the right. */
-  #search { position: absolute; z-index: 1000; top: 10px; left: 56px; right: 10px; max-width: 360px; display: flex;
+  #search { position: absolute; z-index: 1000; top: calc(var(--inset-top, 0px) + 10px); left: 56px; right: 10px; max-width: 360px; display: flex;
             border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
   #search input { flex: 1; min-width: 0; height: 36px; padding: 0 40px 1px 11px; box-sizing: border-box; border: 1px solid var(--stroke);
                   border-bottom: 1px solid #868686; border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; outline: none; }
@@ -89,16 +91,16 @@
 //                 {type:"pin", lat, lon} (lat null removes the pin), {type:"placing", on},
 //                 {type:"find", q} (search for a place and go to the first found), {type:"goto", index} (another one found)
 //                 {type:"preview", path, src} (the picture of the photo clicked on the whole-library map)
-//                 {type:"texts", open, show, of, estimate, map, satellite, labels} (the bubble's buttons and the map/satellite
+//                 {type:"texts", open, show, of, map, satellite, labels} (the bubble's buttons and the map/satellite
 //                 switch in the app's language; "of" is like "{0} of {1}")
 //                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
 //                 (also trackLine, routeLine: the legend under a drawn line; a track message's label replaces it)
 //                 {type:"style", accent, onAccent, dark} (dark: the night map and dark controls)
-//                 {type:"insets", bottom} (pixels of the map's bottom the app's floating bar covers) (the app's accent colour and the text on it, "#rrggbb")
+//                 {type:"insets", top, bottom} (pixels of the map's top and bottom the app's floating controls cover)
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
-//                 {type:"estimate"} (the pin's right-click menu: estimate from the photos before and after)
+//                 {type:"pinmenu", x, y} (right-click on the pin: the app shows its menu at that point of the map)
 //                 {type:"layers", mode, labels, tracks, canLabel} (what the map shows, at the start and after each change;
 //                 the app's Map options menu sets them with the same message, canLabel left out)
 //   (a track message from the app: {type:"track", lines:[[[lat,lon],...],...], route, fit, label})
@@ -200,7 +202,7 @@ function start() {
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
   // The app's controls float over the map (Map | Satellite and layers top right, the Assign bar at the bottom): zooming
   // to photos leaves room for them, and the legend and credits sit above the bar ({type:"insets"}).
-  let insetBottom = 0;
+  let insetBottom = 0, insetTop = 0;
   // The legend sits just above the credits, however many lines they wrap to in a narrow pane.
   function placeLegend() {
     const credits = document.querySelector(".leaflet-control-attribution");
@@ -208,7 +210,7 @@ function start() {
     legend.style.bottom = (insetBottom + (credits ? credits.offsetHeight : 16) + 8) + "px";
   }
   map.on("resize", placeLegend);
-  const pad = () => ({ paddingTopLeft: [40, 100], paddingBottomRight: [40, 40 + insetBottom] });
+  const pad = () => ({ paddingTopLeft: [40, 100 + insetTop], paddingBottomRight: [40, 40 + insetBottom] });
   // Fluent's plus and minus on the zoom buttons, like the app's own zoom.
   map.zoomControl._zoomInButton.firstChild.textContent = "\uE710";
   map.zoomControl._zoomOutButton.firstChild.textContent = "\uE738";
@@ -325,13 +327,10 @@ function start() {
     if (!pin) {
       pin = L.marker([lat, lon], { draggable: true, autoPan: true, icon: pinIcon, title: texts.drag || "Drag to move. Assign it to the selected photos with the button below the map." }).addTo(map);
       pin.on("dragend", () => { const p = pin.getLatLng(); send({ type: "pin", lat: p.lat, lon: p.lng }); });
-      // Right-click: estimate from the photos before and after instead (G-3).
-      pin.on("contextmenu", () => {
-        const b = document.createElement("button");
-        b.className = "ctl";
-        b.textContent = texts.estimate || "Estimate from photos before and after";
-        b.addEventListener("click", () => { map.closePopup(); send({ type: "estimate" }); });
-        L.popup({ offset: [0, -30] }).setLatLng(pin.getLatLng()).setContent(b).openOn(map);
+      // Right-click: the app shows its own menu there (Assign, Estimate from photos before and after, Remove location).
+      pin.on("contextmenu", e => {
+        if (e.originalEvent) L.DomEvent.stop(e.originalEvent);
+        send({ type: "pinmenu", x: e.containerPoint.x, y: e.containerPoint.y });
       });
     } else {
       pin.setLatLng([lat, lon]);
@@ -517,6 +516,8 @@ function start() {
       } else if (m.type === "insets") {
         insetBottom = m.bottom || 0;
         document.documentElement.style.setProperty("--inset-bottom", insetBottom + "px");
+        insetTop = m.top || 0;
+        document.documentElement.style.setProperty("--inset-top", insetTop + "px");
         placeLegend();
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();

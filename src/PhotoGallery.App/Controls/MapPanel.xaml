@@ -21,9 +21,8 @@
         <!-- An accent swatch the map page is coloured from ({type:"style"}); it follows the palette and light/dark. -->
         <Border x:Name="AccentProbe" Width="0" Height="0" Background="{ThemeResource AccentFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-        <Border x:Name="MapCard" CornerRadius="8" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-            <WebView2 x:Name="Web" />
-        </Border>
+        <!-- Edge to edge, beside the photos and on the Map page alike: no border, no rounded corners. -->
+        <WebView2 x:Name="Web" />
 
         <!-- Top right, under the map's search box: Map | Satellite and the layers button. -->
         <StackPanel x:Name="TopControls" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Top"
