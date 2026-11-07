@@ -9,7 +9,7 @@
          as a pill like the Details | Map | Edit switch, a layers button for Labels and Tracks, and one bar at the bottom
          with the pin and Assign; Estimate again and Remove location, both rare, sit in its … menu. WinUI draws its own
          controls over the WebView2. -->
-    <Grid>
+    <Grid x:Name="Surface">
         <Grid.Resources>
             <!-- Floating over the map: solid enough to read on any map, with a soft shadow. -->
             <Style x:Key="FloatingCard" TargetType="Border">
