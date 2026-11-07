@@ -61,7 +61,7 @@ public sealed class BeautyTests
         var before = (byte[])pixels.Clone();
         Beauty.Apply(pixels, W, H, [face], 100, BeautyParts.SmoothSkin);
         // A cheek.
-        Assert.True(Spread(pixels, 160, 225, 12) < Spread(before, 160, 225, 12) * 0.6,
+        Assert.True(Spread(pixels, 160, 225, 12) < Spread(before, 160, 225, 12) * 0.75,
                     $"skin noise {Spread(before, 160, 225, 12):0.0} → {Spread(pixels, 160, 225, 12):0.0}");
         Assert.Equal(before.AsSpan(0, W * 4 * 40).ToArray(), pixels.AsSpan(0, W * 4 * 40).ToArray());
         // The eyes stay dark and crisp.
@@ -84,17 +84,33 @@ public sealed class BeautyTests
     }
 
     [Fact]
-    public void Eyes_get_brighter_but_the_pupil_stays_dark()
+    public void The_whites_of_the_eyes_get_whiter_but_not_the_skin_around_them_or_the_pupil()
     {
+        // Skin-coloured face with eyes: a greyish-white eye opening with a dark pupil in the middle.
         var pixels = new byte[W * H * 4];
-        Array.Fill(pixels, (byte)150);
+        for (var i = 0; i < W * H; i++)
+            (pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2], pixels[i * 4 + 3]) = (140, 165, 215, 255);
         var face = BeautyFace.FromBox(new FaceBox(0.3, 0.25, 0.4, 0.5));
+        foreach (var (fx, fy) in face.Points.Take(2))
+        {
+            var (ex, ey) = (fx * W, fy * H);
+            for (var y = (int)ey - 3; y <= (int)ey + 3; y++)
+            {
+                for (var x = (int)ex - 9; x <= (int)ex + 9; x++)
+                {
+                    var o = (y * W + x) * 4;
+                    var pupil = Math.Abs(x - ex) < 2.5;
+                    (pixels[o], pixels[o + 1], pixels[o + 2]) = pupil ? ((byte)15, (byte)15, (byte)15) : ((byte)195, (byte)198, (byte)200);
+                }
+            }
+        }
         var eye = (X: face.Points[0].X * W, Y: face.Points[0].Y * H);
-        var o = ((int)eye.Y * W + (int)eye.X) * 4;
-        pixels[o] = pixels[o + 1] = pixels[o + 2] = 10;
+        var white = At(pixels, eye.X + 6, eye.Y);
+        var skinAbove = At(pixels, eye.X, eye.Y - 8);
         Beauty.Apply(pixels, W, H, [face], 100, BeautyParts.BrightenEyes);
-        Assert.True(At(pixels, eye.X + 3, eye.Y).G > 160);
-        Assert.True(pixels[o + 1] < 20);
+        Assert.True(At(pixels, eye.X + 6, eye.Y).G > white.G + 3, $"the white {white} → {At(pixels, eye.X + 6, eye.Y)}");
+        Assert.Equal(skinAbove, At(pixels, eye.X, eye.Y - 8));
+        Assert.True(At(pixels, eye.X, eye.Y).G < 25);
     }
 
     [Fact]

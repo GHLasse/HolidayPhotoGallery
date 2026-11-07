@@ -78,6 +78,9 @@ public static class Beauty
         var mouth = Mid(leftMouth, rightMouth);
         var mouthWidth = Math.Max(4, Distance(leftMouth, rightMouth));
         var eyeRadius = eyeGap * 0.24;
+        // The eye opening: wider than tall, so the skin around it (and glasses' frames) is left alone.
+        var eyeWidth = eyeGap * 0.22;
+        var eyeHeight = eyeGap * 0.1;
 
         var w = right - left + 1;
         var h = bottom - top + 1;
@@ -85,7 +88,8 @@ public static class Beauty
         for (var y = 0; y < h; y++)
             Buffer.BlockCopy(bgra, ((top + y) * width + left) * 4, original, y * w * 4, w * 4);
 
-        var smoothRadius = Math.Max(1.0, faceWidth / 40);
+        // About the size of pores and fine blemishes; more would blur the face's shape.
+        var smoothRadius = Math.Max(1.0, faceWidth / 70);
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
@@ -108,10 +112,10 @@ public static class Beauty
                     if (amount > 0.01)
                     {
                         var (sb, sg, sr) = SurfaceBlur(original, w, h, x, y, smoothRadius);
-                        // A quarter of the fine texture stays, so skin still looks like skin.
-                        b += (sb - b) * amount * 0.75;
-                        g += (sg - g) * amount * 0.75;
-                        r += (sr - r) * amount * 0.75;
+                        // Part of the fine texture stays, so skin still looks like skin.
+                        b += (sb - b) * amount * 0.6;
+                        g += (sg - g) * amount * 0.6;
+                        r += (sr - r) * amount * 0.6;
                     }
                 }
                 if (parts.HasFlag(BeautyParts.SoftenEyeShadows))
@@ -119,18 +123,29 @@ public static class Beauty
                     // Just below each eye, darker skin is lifted towards the cheeks' brightness.
                     var under = Math.Max(Near(px - leftEye.X, (py - leftEye.Y - eyeGap * 0.28) * 2.2, (0, 0), eyeGap * 0.3),
                                          Near(px - rightEye.X, (py - rightEye.Y - eyeGap * 0.28) * 2.2, (0, 0), eyeGap * 0.3));
-                    var lift = Math.Max(0, skinY - yy) * 0.6 * s * under * skin;
+                    var lift = Math.Max(0, skinY - yy) * 0.4 * s * under * skin;
                     b += lift;
                     g += lift;
                     r += lift;
                 }
                 if (parts.HasFlag(BeautyParts.BrightenEyes) && nearEye > 0)
                 {
-                    // Whites and iris a little lighter and clearer; the pupil stays dark.
-                    var amount = 0.22 * s * nearEye * Falloff(1 - yy / 70, 0.0, 1.0);
-                    b += (255 - b) * amount;
-                    g += (255 - g) * amount;
-                    r += (255 - r) * amount;
+                    // Only inside the eye opening and only what is not skin: the whites (light and greyish) get a
+                    // little whiter, the iris (mid tones) a little lighter; the pupil, lashes and glasses' frames
+                    // (dark) stay as they are.
+                    var inEye = Math.Max(Opening(px, py, leftEye, eyeWidth, eyeHeight), Opening(px, py, rightEye, eyeWidth, eyeHeight));
+                    if (inEye > 0)
+                    {
+                        var max = Math.Max(r, Math.Max(g, b));
+                        var min = Math.Min(r, Math.Min(g, b));
+                        var grey = Falloff((max - min) / 60, 0.5, 1.0);
+                        var white = Falloff(1 - (yy - 110) / 60, 0.0, 1.0) * grey;
+                        var iris = Falloff(Math.Abs(yy - 80) / 45, 0.4, 1.0);
+                        var amount = s * inEye * (1 - skin) * (0.18 * white + 0.08 * iris);
+                        b += (255 - b) * amount;
+                        g += (255 - g) * amount;
+                        r += (255 - r) * amount;
+                    }
                 }
                 if (parts.HasFlag(BeautyParts.WhitenTeeth) && nearMouth > 0)
                 {
@@ -228,6 +243,10 @@ public static class Beauty
         var t = (distance - full) / (none - full);
         return 1 - t * t * (3 - 2 * t);
     }
+
+    // 1 in the middle of an eye opening, fading to 0 at its edge (an ellipse of these half-widths).
+    private static double Opening(double x, double y, (double X, double Y) eye, double halfWidth, double halfHeight) =>
+        Falloff(Math.Sqrt(Sq((x - eye.X) / halfWidth) + Sq((y - eye.Y) / halfHeight)), 0.6, 1.0);
 
     // 1 at the point, fading to 0 at `radius`.
     private static double Near(double x, double y, (double X, double Y) at, double radius) =>
