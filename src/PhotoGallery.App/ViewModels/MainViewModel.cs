@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using System.Globalization;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.Core;
+using PhotoGallery.Core.Appearance;
 using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Faces;
@@ -312,6 +313,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (place == _settings.LastPlace)
             return;
         _settings.LastPlace = place;
+        _settings.Save(SettingsPath);
+    }
+
+    /// <summary>The main window's size, position and maximized state as it last closed (null on a first start).</summary>
+    public WindowPlacement? WindowPlacement => _settings.Window;
+
+    /// <summary>Remembers the main window's size, position and maximized state; saved as it closes.</summary>
+    public void SaveWindowPlacement(WindowPlacement placement)
+    {
+        var old = _settings.Window;
+        if (old is not null && old.X == placement.X && old.Y == placement.Y && old.Width == placement.Width
+            && old.Height == placement.Height && old.Scale == placement.Scale && old.Maximized == placement.Maximized)
+            return;
+        _settings.Window = placement;
         _settings.Save(SettingsPath);
     }
 

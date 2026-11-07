@@ -106,7 +106,9 @@ public partial class App : Application
             var culture = Strings.WithNamesOf(System.Globalization.CultureInfo.CurrentCulture, language);
             System.Globalization.CultureInfo.CurrentCulture = culture;
             System.Globalization.CultureInfo.DefaultThreadCurrentCulture = culture;
-            _window = new MainWindow();
+            var window = new MainWindow();
+            window.MaximizeIfRemembered();
+            _window = window;
             _window.Activate();
         }
         catch (Exception ex)
