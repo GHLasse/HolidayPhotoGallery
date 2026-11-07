@@ -203,6 +203,11 @@ public sealed partial class MainWindow
     /// </summary>
     private void ShrinkMapOntoPane((Windows.Foundation.Point?, Windows.Foundation.Point?) controlsWere)
     {
+        // The pane's width depends on the photos' width, which was nothing while the Map page hid them: lay out once with
+        // the photos back, so the edge slides to the pane's real width and nothing is resized again afterwards
+        // (Lasse 2026-11-07: the map shrank a little too far, then the pane widened).
+        Root.UpdateLayout();
+        ApplyChrome(animate: false);
         // The big map keeps the Map page's place and reaches up over the filter bar, where its top was, so nothing jumps;
         // its left and top edges then slide to where the pane's map begins.
         Grid.SetRow(MapView, 1);
