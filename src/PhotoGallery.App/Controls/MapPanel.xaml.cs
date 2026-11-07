@@ -31,9 +31,9 @@ public sealed partial class MapPanel : UserControl
     public MapPanel()
     {
         InitializeComponent();
-        EstimateIcon.Data = AppIcons.Geometry(AppIcons.EstimatePlace);
+        EstimateItem.Icon = new PathIcon { Data = AppIcons.Geometry(AppIcons.EstimatePlace) };
         AssignIcon.Data = AppIcons.Geometry(AppIcons.AssignPlace);
-        RemoveIcon.Data = AppIcons.Geometry(AppIcons.RemovePlace);
+        RemoveItem.Icon = new PathIcon { Data = AppIcons.Geometry(AppIcons.RemovePlace) };
         // A new palette or light/dark re-reads the theme brushes; the map's controls follow.
         ActualThemeChanged += (_, _) => SendStyle();
     }
@@ -179,17 +179,35 @@ public sealed partial class MapPanel : UserControl
     public event Action? TracksToggled;
 
     // The Map options menu: the page keeps the choices (and remembers them) and tells back what it shows.
-    private void MapMode_Click(object sender, RoutedEventArgs e) =>
-        Post(new JsonObject { ["type"] = "layers", ["mode"] = SatelliteItem.IsChecked ? "satellite" : "map" });
+    private void MapMode_Click(object sender, RoutedEventArgs e)
+    {
+        _satellite = sender == SatelliteButton;
+        ShowMode();
+        Post(new JsonObject { ["type"] = "layers", ["mode"] = _satellite ? "satellite" : "map" });
+    }
+
+    private bool _satellite;
+
+    private void ModeButton_SizeChanged(object sender, SizeChangedEventArgs e) => ShowMode();
+
+    /// <summary>Slides the pill's thumb under Map or Satellite, as the Details | Map | Edit switch does.</summary>
+    private void ShowMode()
+    {
+        var on = _satellite ? SatelliteButton : StreetMapButton;
+        ModeThumb.Width = on.ActualWidth;
+        ModeThumb.Translation = new System.Numerics.Vector3(_satellite ? (float)StreetMapButton.ActualWidth : 0, 0, 0);
+        // Two texts each, faded: the one on the accent thumb and the plain one keep their theme colours.
+        StreetMapTextOn.Opacity = SatelliteTextOff.Opacity = _satellite ? 0 : 1;
+        StreetMapTextOff.Opacity = SatelliteTextOn.Opacity = _satellite ? 1 : 0;
+    }
 
     private void MapLayer_Click(object sender, RoutedEventArgs e) =>
         Post(new JsonObject { ["type"] = "layers", ["labels"] = LabelsItem.IsChecked, ["tracks"] = TracksItem.IsChecked });
 
     private void ShowLayers(JsonNode message)
     {
-        var satellite = message["mode"]?.GetValue<string>() == "satellite";
-        SatelliteItem.IsChecked = satellite;
-        StreetMapItem.IsChecked = !satellite;
+        _satellite = message["mode"]?.GetValue<string>() == "satellite";
+        ShowMode();
         LabelsItem.IsChecked = message["labels"]?.GetValue<bool>() != false;
         // Without the vector map (no WebGL, or offline) the plain map has its names baked in.
         LabelsItem.IsEnabled = message["canLabel"]?.GetValue<bool>() == true;
@@ -254,38 +272,20 @@ public sealed partial class MapPanel : UserControl
         set
         {
             AssignRow.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
-            PinText.Visibility = AssignRow.Visibility;
+            // Over the whole library the page has no search box of its own (the app's is used), so the pill moves up.
+            TopControls.Margin = new Thickness(0, value ? 56 : 10, 10, 0);
+            SendInsets();
             Post(new JsonObject { ["type"] = "placing", ["on"] = value });
             if (!value)
                 SetPin(null, tellMap: false);
         }
     }
 
-    private void AssignRow_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (e.NewSize.Width != e.PreviousSize.Width)
-            FitButtons();
-    }
+    private void AssignRow_SizeChanged(object sender, SizeChangedEventArgs e) => SendInsets();
 
-    /// <summary>
-    /// Keeps the buttons on one line: when they don't fit, Estimate and then Remove location show only their icons
-    /// (their tooltips still say what they do). Wrapping put Remove location below the window (Lasse, 2026-10-31).
-    /// </summary>
-    private void FitButtons()
-    {
-        var width = AssignRow.ActualWidth;
-        if (width <= 0)
-            return;
-        foreach (var label in new[] { EstimateLabel, RemoveLabel })
-            label.Visibility = Visibility.Visible;
-        foreach (var label in new[] { EstimateLabel, RemoveLabel })
-        {
-            AssignRow.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-            if (AssignRow.DesiredSize.Width <= width)
-                break;
-            label.Visibility = Visibility.Collapsed;
-        }
-    }
+    /// <summary>Tells the page how much of the map's bottom the floating bar covers, to lift its legend and credits.</summary>
+    private void SendInsets() =>
+        Post(new JsonObject { ["type"] = "insets", ["bottom"] = AssignRow.Visibility == Visibility.Visible ? Math.Round(AssignRow.ActualHeight + 10) : 0 });
 
     private void UpdateButtons()
     {
@@ -302,9 +302,8 @@ public sealed partial class MapPanel : UserControl
             AssignButton.IsEnabled = true;
             AssignText.Text = Tr("Assign estimates to {0:N0} photos", each.Count);
         }
-        EstimateButton.IsEnabled = _selection.Any(p => p.Photo.Location is null && p.Photo.DateTaken is not null) && Estimator is not null;
-        RemoveButton.IsEnabled = _selection.Any(p => p.Photo.Location is not null);
-        FitButtons(); // the Assign text changes with the selection
+        EstimateItem.IsEnabled = _selection.Any(p => p.Photo.Location is null && p.Photo.DateTaken is not null) && Estimator is not null;
+        RemoveItem.IsEnabled = _selection.Any(p => p.Photo.Location is not null);
     }
 
     private void Post(JsonObject message)
