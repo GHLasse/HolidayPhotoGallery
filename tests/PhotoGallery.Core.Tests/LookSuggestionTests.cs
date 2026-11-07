@@ -78,7 +78,7 @@ public sealed class LookSuggestionTests
     [Fact]
     public void An_old_car_the_model_recognises_gets_vintage_and_sepia()
     {
-        var scenes = new Dictionary<string, double> { ["vintage"] = 0.45, ["sepia"] = 0.25 };
+        var scenes = new Dictionary<string, double> { ["vintage"] = 0.55, ["sepia"] = 0.4 };
         var suggested = LookSuggestions.Suggest(GreyStreet, faces: 0, tags: [], count: 4, scenes: scenes);
         Assert.Equal("vintage", suggested[0]);
         Assert.Contains("sepia", suggested.Take(3));
@@ -126,10 +126,16 @@ public sealed class LookSuggestionTests
             Assert.Equal("vintage", suggested[0]);
             Assert.Contains("sepia", suggested);
         }
+        foreach (var old in new[] { "typewriter.jpg", "vespa.jpg" })
+            Assert.Equal("vintage", Suggested(old)[0]);
+        Assert.Equal("sepia", Suggested("castle.jpg")[0]);
         Assert.Equal("vivid", Suggested("food-cake.jpg")[0]);
         Assert.Equal("cool", Suggested("snow-mountain-lake.jpg")[0]);
-        var street = Suggested("modern-street.jpg");
-        Assert.DoesNotContain("vintage", street);
-        Assert.DoesNotContain("sepia", street);
+        foreach (var modern in new[] { "modern-street.jpg", "hiking-trail.jpg", "sports-motorbike.jpg" })
+        {
+            var suggested = Suggested(modern);
+            Assert.DoesNotContain("vintage", suggested.Take(3));
+            Assert.DoesNotContain("sepia", suggested.Take(3));
+        }
     }
 }

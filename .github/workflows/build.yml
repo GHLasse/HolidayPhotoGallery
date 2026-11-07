@@ -87,6 +87,11 @@ jobs:
           food-cake.jpg e/ef/Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg/960px-Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg
           snow-mountain-lake.jpg 2/23/Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg/960px-Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg
           modern-street.jpg b/ba/PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg/960px-PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg
+          typewriter.jpg 1/17/Olympia_Simplex.jpg/960px-Olympia_Simplex.jpg
+          vespa.jpg 5/57/Vespa_a_Todi.JPG/960px-Vespa_a_Todi.JPG
+          castle.jpg 5/56/Leeds_Castle%2C_Kent%2C_England_3_-_May_09.jpg/960px-Leeds_Castle%2C_Kent%2C_England_3_-_May_09.jpg
+          hiking-trail.jpg 3/3d/Hiking_trail_to_Biskupsk%C3%A1_kupa%2C_Czechia.jpg/960px-Hiking_trail_to_Biskupsk%C3%A1_kupa%2C_Czechia.jpg
+          sports-motorbike.jpg 4/4a/Maikel_Melero_-_Exhibici%C3%B3n_Freestyle_GP_Cami%C3%B3n_de_Espa%C3%B1a_2013_-_01.jpg/960px-Maikel_Melero_-_Exhibici%C3%B3n_Freestyle_GP_Cami%C3%B3n_de_Espa%C3%B1a_2013_-_01.jpg
           EOF
           ls -l "$dir"
           # The same revision and hashes as TagModel.cs.
@@ -183,6 +188,11 @@ jobs:
             'food-cake.jpg' = 'e/ef/Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg/960px-Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg'
             'snow-mountain-lake.jpg' = '2/23/Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg/960px-Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg'
             'modern-street.jpg' = 'b/ba/PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg/960px-PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg'
+            'typewriter.jpg' = '1/17/Olympia_Simplex.jpg/960px-Olympia_Simplex.jpg'
+            'vespa.jpg' = '5/57/Vespa_a_Todi.JPG/960px-Vespa_a_Todi.JPG'
+            'castle.jpg' = '5/56/Leeds_Castle%2C_Kent%2C_England_3_-_May_09.jpg/960px-Leeds_Castle%2C_Kent%2C_England_3_-_May_09.jpg'
+            'hiking-trail.jpg' = '3/3d/Hiking_trail_to_Biskupsk%C3%A1_kupa%2C_Czechia.jpg/960px-Hiking_trail_to_Biskupsk%C3%A1_kupa%2C_Czechia.jpg'
+            'sports-motorbike.jpg' = '4/4a/Maikel_Melero_-_Exhibici%C3%B3n_Freestyle_GP_Cami%C3%B3n_de_Espa%C3%B1a_2013_-_01.jpg/960px-Maikel_Melero_-_Exhibici%C3%B3n_Freestyle_GP_Cami%C3%B3n_de_Espa%C3%B1a_2013_-_01.jpg'
           }
           foreach ($name in $photos.Keys) {
             $target = Join-Path $scenes $name
