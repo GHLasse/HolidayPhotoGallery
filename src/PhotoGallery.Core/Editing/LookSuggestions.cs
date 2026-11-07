@@ -75,11 +75,32 @@ public static class LookSuggestions
         ("vintage", "this is a photo of a classic car from the 1960s."),
         ("vintage", "this is a photo of old rusty things."),
         ("vintage", "this is a photo of an antique shop."),
-        ("vintage", "this is an old faded photograph."),
+        ("vintage", "this is a photo of an old film camera."),
+        ("vintage", "this is a photo of an old typewriter."),
+        ("vintage", "this is a photo of vinyl records."),
+        ("vintage", "this is a photo of a jukebox."),
+        ("vintage", "this is a photo of an old radio."),
+        ("vintage", "this is a photo of an old rotary telephone."),
+        ("vintage", "this is a photo of a Vespa scooter."),
+        ("vintage", "this is a photo of a classic motorbike from the 1950s."),
+        ("vintage", "this is a photo of a vintage Volkswagen bus."),
+        ("vintage", "this is a photo of an old bicycle."),
+        ("vintage", "this is a photo of a retro diner."),
+        ("vintage", "this is a photo of an old shop front with a painted sign."),
+        ("vintage", "this is a photo of a fairground carousel."),
+        ("vintage", "this is a photo of a 1970s interior."),
+        ("vintage", "this is a photo of colourful beach huts."),
+        ("vintage", "this is a photo of striped deck chairs on a beach."),
         ("sepia", "this is a photo of an oldtimer."),
         ("sepia", "this is a photo of a historic old town."),
         ("sepia", "this is a photo of an old steam train."),
         ("sepia", "this is a photo of antique furniture."),
+        ("sepia", "this is a photo of a medieval castle."),
+        ("sepia", "this is a photo of ancient ruins."),
+        ("sepia", "this is a photo of an old church."),
+        ("sepia", "this is a photo of a cobblestone lane."),
+        ("sepia", "this is a photo of a museum exhibit."),
+        ("sepia", "this is a photo of an old wooden sailing ship."),
         ("bw-contrast", "this is a photo of dramatic architecture with strong lines."),
         ("bw", "this is a photo of an old man with a wrinkled face."),
         ("golden", "this is a photo of a sunset."),
@@ -93,14 +114,28 @@ public static class LookSuggestions
         ("vivid-warm", "this is a photo of a busy street market."),
         ("warm", "this is a photo of a cosy room in candlelight."),
         ("soft-haze", "this is a photo of a foggy morning."),
-        ("beauty", "this is a close-up portrait photo of a person."),
+        ("beauty", "this is a photo of a close-up portrait of a person."),
         (null, "this is a photo of a modern car."),
         (null, "this is a photo of a modern city street."),
         (null, "this is a photo of a modern building."),
         (null, "this is a photo of people on holiday."),
         (null, "this is a photo of a room."),
         (null, "this is a photo of an animal."),
+        (null, "this is a close-up photo of a dog or a cat."),
+        (null, "this is a photo of a forest path."),
+        (null, "this is a photo of a hiking trail."),
+        (null, "this is a photo of a park or a garden."),
+        (null, "this is a photo of a family picnic."),
+        (null, "this is a photo of a modern kitchen."),
+        (null, "this is a photo of a laptop or a smartphone."),
+        (null, "this is a photo of a modern motorbike."),
+        (null, "this is a photo of a sports motorbike."),
+        (null, "this is a photo of a modern train or tram."),
+        (null, "this is a photo of a shopping centre."),
+        (null, "this is a photo of a beach with hotels."),
+        (null, "this is a photo of a modern living room."),
         (null, "this is a screenshot or a document."),
+        ("vintage", "this is an old faded photograph."),
     ];
 
     /// <summary>
@@ -195,9 +230,18 @@ public static class LookSuggestions
         }
 
         // What the photo shows counts most: a scene the model is sure of brings its look to the front.
+        // A scene the model is only half sure of counts little, so that a near miss (a modern motorbike taken for
+        // a classic one) doesn't push a look to the front.
         if (scenes is not null)
-            foreach (var (key, share) in scenes)
-                Add(key, 8 * Math.Min(1, share));
+        {
+            double Points(string key) => 8 * Math.Clamp((scenes.GetValueOrDefault(key) - 0.2) / 0.8, 0, 1);
+            foreach (var key in scenes.Keys)
+                Add(key, Points(key));
+            // Vintage and Sepia both suit old things, so each brings the other along a little.
+            var vintage = Points("vintage");
+            Add("vintage", 0.4 * Points("sepia"));
+            Add("sepia", 0.4 * vintage);
+        }
 
         var skip = except?.ToHashSet() ?? [];
         return Looks.All.Select(l => l.Key)
