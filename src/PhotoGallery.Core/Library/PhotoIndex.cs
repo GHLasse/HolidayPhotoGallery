@@ -448,6 +448,9 @@ public sealed partial class PhotoIndex : IDisposable
                 cmd.Parameters.AddWithValue("$minRating", query.MinRating);
             }
 
+            if (query.UnratedOnly)
+                where.Add("p.rating <= 0");
+
             if (query.FlaggedOnly)
                 where.Add("p.flagged = 1");
 

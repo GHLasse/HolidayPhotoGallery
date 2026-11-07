@@ -32,6 +32,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string _searchText = "";
     private string? _sort;
     private int _minRating;
+    private bool _unratedOnly;
     private bool _flaggedOnly;
     private MediaKind _media;
     private bool _withoutTags;
@@ -357,14 +358,57 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Index into the rating filter list: 0 = any, 1-5 = at least that many stars.</summary>
+    /// <summary>At least this many stars; 0 = any rating.</summary>
     public int MinRating
     {
         get => _minRating;
         set
         {
-            if (SetProperty(ref _minRating, Math.Max(0, value)))
-                _ = SearchAsync();
+            if (!SetProperty(ref _minRating, Math.Clamp(value, 0, 5)))
+                return;
+            if (_minRating > 0 && _unratedOnly)
+            {
+                _unratedOnly = false; // "no stars" and "at least N stars" can't both hold
+                OnPropertyChanged(nameof(UnratedOnly));
+            }
+            OnPropertyChanged(nameof(RatingFilterIndex));
+            _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Shows only photos without stars; set from the rating filter or from "Still to do".</summary>
+    public bool UnratedOnly
+    {
+        get => _unratedOnly;
+        set
+        {
+            if (!SetProperty(ref _unratedOnly, value))
+                return;
+            if (value && _minRating > 0)
+            {
+                _minRating = 0;
+                OnPropertyChanged(nameof(MinRating));
+            }
+            OnPropertyChanged(nameof(RatingFilterIndex));
+            _ = SearchAsync();
+        }
+    }
+
+    /// <summary>Index into the rating filter list: 0 = any, 1 = no rating, 2-6 = at least 1-5 stars.</summary>
+    public int RatingFilterIndex
+    {
+        get => _unratedOnly ? 1 : _minRating == 0 ? 0 : _minRating + 1;
+        set
+        {
+            if (value < 0 || value == RatingFilterIndex)
+                return;
+            if (value == 1)
+                UnratedOnly = true;
+            else
+            {
+                UnratedOnly = false;
+                MinRating = value == 0 ? 0 : value - 1;
+            }
         }
     }
 
@@ -459,7 +503,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>How many filters "Clear filters" would reset: the search text, each tag and person, and every other filter set.</summary>
     public int ActiveFilterCount =>
         (string.IsNullOrWhiteSpace(SearchText) ? 0 : 1) + SelectedTags.Count + SelectedPeople.Count +
-        (MinRating > 0 ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) + (_media == MediaKind.All ? 0 : 1) +
+        (MinRating > 0 || UnratedOnly ? 1 : 0) + (FlaggedOnly ? 1 : 0) + (RejectedOnly ? 1 : 0) + (_selectedCamera is null ? 0 : 1) + (_media == MediaKind.All ? 0 : 1) +
         (TakenFrom is null ? 0 : 1) + (TakenTo is null ? 0 : 1) +
         (WithoutTags ? 1 : 0) + (WithoutPeople ? 1 : 0) + (WithoutLocation ? 1 : 0) + (WithoutDate ? 1 : 0) + (DamagedOnly ? 1 : 0) + (QualityHintsOnly ? 1 : 0) + (SelectedPlace is null ? 0 : 1) +
         (OnGoogleOnly || NotOnGoogleOnly ? 1 : 0) + (OnOneDriveOnly || NotOnOneDriveOnly ? 1 : 0) + (_similarTo is null ? 0 : 1);
@@ -620,6 +664,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Tags = SelectedTags,
             People = SelectedPeople,
             MinRating = MinRating,
+            UnratedOnly = UnratedOnly,
             FlaggedOnly = FlaggedOnly,
             RejectedOnly = RejectedOnly,
             Media = _media,

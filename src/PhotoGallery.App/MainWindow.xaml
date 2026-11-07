@@ -259,9 +259,10 @@
                     </ComboBox>
                     <ComboBox x:Name="RatingFilter" VerticalAlignment="Center" MinWidth="120"
                               PlaceholderText="{local:Loc Text='Rating'}"
-                              SelectedIndex="{x:Bind ViewModel.MinRating, Mode=TwoWay}"
+                              SelectedIndex="{x:Bind ViewModel.RatingFilterIndex, Mode=TwoWay}"
                               ToolTipService.ToolTip="{local:Loc Text='Minimum rating'}">
                         <ComboBoxItem Content="{local:Loc Text='Any rating'}" />
+                        <ComboBoxItem Content="{local:Loc Text='No rating'}" />
                         <ComboBoxItem Content="{local:Loc Text='★ and up'}" />
                         <ComboBoxItem Content="{local:Loc Text='★★ and up'}" />
                         <ComboBoxItem Content="{local:Loc Text='★★★ and up'}" />
@@ -316,8 +317,8 @@
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>
-                    <!-- Photos that still need work: no own tags, nobody named, no GPS position. -->
-                    <DropDownButton x:Name="MissingFilter" VerticalAlignment="Center" ToolTipService.ToolTip="{local:Loc Text='Find photos that still need tags, people or a place on the map'}">
+                    <!-- Photos that still need work: no own tags, nobody named, no GPS position, no stars. -->
+                    <DropDownButton x:Name="MissingFilter" VerticalAlignment="Center" ToolTipService.ToolTip="{local:Loc Text='Find photos that still need tags, people, a place on the map or a rating'}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE9D5;" FontSize="14" />
                             <TextBlock Text="{local:Loc Text='Still to do'}" />
@@ -327,6 +328,7 @@
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No tags of your own'}" IsChecked="{x:Bind ViewModel.WithoutTags, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No people named'}" IsChecked="{x:Bind ViewModel.WithoutPeople, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='No location'}" IsChecked="{x:Bind ViewModel.WithoutLocation, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="{local:Loc Text='No rating'}" IsChecked="{x:Bind ViewModel.UnratedOnly, Mode=TwoWay}" />
                                 <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='Damaged files'}" IsChecked="{x:Bind ViewModel.DamagedOnly, Mode=TwoWay}" />
                                 <ToggleMenuFlyoutItem Text="{local:Loc Text='Possibly weak shots'}" IsChecked="{x:Bind ViewModel.QualityHintsOnly, Mode=TwoWay}"
