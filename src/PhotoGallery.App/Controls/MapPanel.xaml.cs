@@ -265,17 +265,6 @@ public sealed partial class MapPanel : UserControl
         UpdateButtons();
     }
 
-    /// <summary>In the side pane the map runs to the pane's edges, without the card's border and round corners.</summary>
-    public bool EdgeToEdge
-    {
-        get => MapCard.BorderThickness.Left == 0;
-        set
-        {
-            MapCard.BorderThickness = new Thickness(value ? 0 : 1);
-            MapCard.CornerRadius = new CornerRadius(value ? 0 : 8);
-        }
-    }
-
     /// <summary>Whether the pin and the Assign and Remove buttons are offered; not while browsing the whole map.</summary>
     public bool CanPlacePhotos
     {
@@ -283,8 +272,7 @@ public sealed partial class MapPanel : UserControl
         set
         {
             AssignRow.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
-            // Over the whole library the page has no search box of its own (the app's is used), so the pill moves up.
-            TopControls.Margin = new Thickness(0, value ? 56 : 10, 10, 0);
+            PlaceTopControls();
             SendInsets();
             Post(new JsonObject { ["type"] = "placing", ["on"] = value });
             if (!value)
@@ -292,11 +280,72 @@ public sealed partial class MapPanel : UserControl
         }
     }
 
+    private double _topInset;
+
+    /// <summary>How much of the map's top the side pane's switch covers: the map's own controls start below it.</summary>
+    public double TopInset
+    {
+        get => _topInset;
+        set
+        {
+            if (_topInset == value)
+                return;
+            _topInset = value;
+            PlaceTopControls();
+            SendInsets();
+        }
+    }
+
+    // Over the whole library the page has no search box of its own (the app's is used), so the pill moves up.
+    private void PlaceTopControls() =>
+        TopControls.Margin = new Thickness(0, _topInset + (CanPlacePhotos ? 56 : 10), 10, 0);
+
     private void AssignRow_SizeChanged(object sender, SizeChangedEventArgs e) => SendInsets();
 
-    /// <summary>Tells the page how much of the map's bottom the floating bar covers, to lift its legend and credits.</summary>
+    /// <summary>Tells the page how much of the map's top and bottom the floating controls cover, to keep its own clear of them.</summary>
     private void SendInsets() =>
-        Post(new JsonObject { ["type"] = "insets", ["bottom"] = AssignRow.Visibility == Visibility.Visible ? Math.Round(AssignRow.ActualHeight + 10) : 0 });
+        Post(new JsonObject
+        {
+            ["type"] = "insets",
+            ["top"] = Math.Round(_topInset),
+            ["bottom"] = AssignRow.Visibility == Visibility.Visible ? Math.Round(AssignRow.ActualHeight + 10) : 0,
+        });
+
+    /// <summary>
+    /// Right-click on the pin: the same actions as the bar below, in the app's own menu at the pointer.
+    /// </summary>
+    private void ShowPinMenu(double x, double y)
+    {
+        if (!CanPlacePhotos)
+            return;
+        var menu = new MenuFlyout();
+        var assign = new MenuFlyoutItem
+        {
+            Text = AssignText.Text,
+            Icon = new PathIcon { Data = AppIcons.Geometry(AppIcons.AssignPlace) },
+            IsEnabled = AssignButton.IsEnabled,
+        };
+        assign.Click += Assign_Click;
+        var estimate = new MenuFlyoutItem
+        {
+            Text = Tr("Estimate from photos before and after"),
+            Icon = new PathIcon { Data = AppIcons.Geometry(AppIcons.EstimatePlace) },
+            IsEnabled = EstimateItem.IsEnabled,
+        };
+        estimate.Click += Estimate_Click;
+        var remove = new MenuFlyoutItem
+        {
+            Text = Tr("Remove location"),
+            Icon = new PathIcon { Data = AppIcons.Geometry(AppIcons.RemovePlace) },
+            IsEnabled = RemoveItem.IsEnabled,
+        };
+        remove.Click += Remove_Click;
+        menu.Items.Add(assign);
+        menu.Items.Add(estimate);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(remove);
+        menu.ShowAt(Web, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = new Windows.Foundation.Point(x, y) });
+    }
 
     private void UpdateButtons()
     {
@@ -353,7 +402,6 @@ public sealed partial class MapPanel : UserControl
                     ["open"] = Tr("Open"),
                     ["show"] = Tr("Show in library"),
                     ["of"] = Tr("{0} of {1}"),
-                    ["estimate"] = Tr("Estimate from photos before and after"),
                     ["find"] = Tr("Find"),
                     ["placeholder"] = Tr("Find a place, e.g. Tortuguero"),
                     ["searching"] = Tr("Searching…"),
@@ -380,8 +428,8 @@ public sealed partial class MapPanel : UserControl
             case "layers":
                 ShowLayers(message);
                 break;
-            case "estimate":
-                _ = EstimateAsync(auto: false);
+            case "pinmenu":
+                ShowPinMenu(message["x"]?.GetValue<double>() ?? 0, message["y"]?.GetValue<double>() ?? 0);
                 break;
             case "select":
                 var path = message["path"]!.GetValue<string>();

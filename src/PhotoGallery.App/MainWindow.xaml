@@ -1367,8 +1367,9 @@
 
         <!-- The map, next to the grid like in Geosetter, in the info pane's place (it takes its column); opened
              with the Map button and resized with its splitter. In the Map workspace it spans the photo area too. -->
+        <controls:MapPanel x:Name="MapView" Grid.Row="3" Grid.Column="4" Visibility="Collapsed" />
+        <!-- After the map, so it lies over it: beside the photos the map reaches under the splitter to the grid's edge. -->
         <controls:PaneSplitter x:Name="MapSplitter" Grid.Row="3" Grid.Column="3" Visibility="Collapsed" />
-        <controls:MapPanel x:Name="MapView" Grid.Row="3" Grid.Column="4" Margin="0,0,12,12" Visibility="Collapsed" />
 
         <!-- Above the right-hand pane: a switch whose blue thumb slides between the details (I) and the map (M),
              and a button that folds the pane to a strip of icons, like the left one (MainWindow.Frame.cs).
@@ -1383,6 +1384,9 @@
                     <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
                     <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                 </Grid.Resources>
+                <!-- Over the map (which reaches up under the switch) it floats on a card like the map's own controls. -->
+                <Border x:Name="SideSwitchCard" CornerRadius="16" BorderThickness="1" Visibility="Collapsed"
+                        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" />
                 <Border CornerRadius="16" BorderThickness="1" BorderBrush="{ThemeResource ToggleSwitchStrokeOff}" Background="{ThemeResource ToggleSwitchFillOff}" />
                 <Border x:Name="SideSwitchThumb" Width="34" Height="26" Margin="3,0,0,0" CornerRadius="13" HorizontalAlignment="Left"
                         Background="{ThemeResource ToggleSwitchFillOn}">
@@ -1441,10 +1445,14 @@
                     </Button>
                 </StackPanel>
             </Grid>
-            <Button Style="{StaticResource NavRailButton}" HorizontalAlignment="Right" Click="FoldSidePane_Click"
-                    AutomationProperties.Name="{local:Loc Text='Fold the pane'}" ToolTipService.ToolTip="{local:Loc Text='Fold the pane'}">
-                <FontIcon Glyph="&#xE89F;" FontSize="16" />
-            </Button>
+            <Grid HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Border x:Name="FoldCard" Width="36" Height="36" CornerRadius="18" BorderThickness="1" Visibility="Collapsed"
+                        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" />
+                <Button x:Name="FoldSideButton" Style="{StaticResource NavRailButton}" Click="FoldSidePane_Click"
+                        AutomationProperties.Name="{local:Loc Text='Fold the pane'}" ToolTipService.ToolTip="{local:Loc Text='Fold the pane'}">
+                    <FontIcon Glyph="&#xE89F;" FontSize="16" />
+                </Button>
+            </Grid>
         </Grid>
 
         <!-- The folded right-hand pane: a strip of icons, each opens the pane again. -->
