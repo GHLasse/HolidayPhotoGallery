@@ -122,6 +122,7 @@ public sealed partial class MainWindow
         // Where the map was, if it was showing: from there it slides into its new place (side pane <-> Map page).
         // Only a map that was on screen moves; one coming back (e.g. People, then Library) just appears in its place.
         var wasAt = (mapWasOpen ?? IsMapOpen) && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
+        var controlsWere = wasAt is null ? default : MapView.CaptureControls();
         // From the Map page back to the photos the big map stays put and draws in from the left onto the pane, uncovering
         // the photos (Lasse 2026-11-07: a small map flying across from the left looked odd).
         MapView.ClearClip(); // a shrink cut short
@@ -145,41 +146,46 @@ public sealed partial class MainWindow
         _selectionBarAllowed = !full && _workspace != Workspace.Albums;
         ShowSelectionBar(PhotoGrid.SelectedItems.Count > 0);
         if (_mapShrinking)
-            ShrinkMapOntoPane();
+            ShrinkMapOntoPane(controlsWere);
         else if (wasAt is { } from && IsMapOpen)
-            SlideMapFrom(from);
+            SlideMapFrom(from, controlsWere);
         if (!open)
             return;
         await MapView.StartAsync();
-        RefreshMap(fit: true);
+        // While shrinking, the selection is fitted once the map has its new size (ShrinkMapOntoPane).
+        RefreshMap(fit: !_mapShrinking);
     }
 
     /// <summary>
     /// The map glides from where it was to where it is now, so going from the map beside the photos to the Map page
     /// reads as the pane opening up rather than a jump.
     /// </summary>
-    private void SlideMapFrom(Windows.Foundation.Point from)
+    private void SlideMapFrom(Windows.Foundation.Point from, (Windows.Foundation.Point?, Windows.Foundation.Point?) controlsWere)
     {
         if (!s_animations)
             return;
+        // The page keeps the corner both places share (bottom right) still while the map takes its new size.
+        MapView.AnchorNextResize();
         Root.UpdateLayout();
         var to = MapView.TransformToVisual(Root).TransformPoint(default);
         var dx = (float)(from.X - to.X);
         var dy = (float)(from.Y - to.Y);
         if (Math.Abs(dx) < 1 && Math.Abs(dy) < 1)
             return;
-        // Onto the Map page the map stays where it is on the right and its left edge sweeps open over the photos, the
-        // reverse of ShrinkMapOntoPane; its controls glide to their new places.
-        if (dx > 0 && Math.Abs(dy) < 1)
+        // Onto the Map page the map keeps its bottom right corner and its left and top edges sweep open over the photos
+        // and the filter bar, the reverse of ShrinkMapOntoPane; its controls glide to their new places.
+        if (dx > 0 && dy >= 0)
         {
-            MapView.ClipLeft(dx, 0, () => DispatcherQueue.TryEnqueue(() => MapView.ClearClip()));
+            MapView.ClipInsets(dx, dy, 0, 0, () => DispatcherQueue.TryEnqueue(() => MapView.ClearClip()));
+            Root.UpdateLayout();
+            MapView.MorphControlsFrom(controlsWere);
             return;
         }
         MapView.TranslationTransition = null;
         MapView.Translation = new System.Numerics.Vector3(dx, dy, 0);
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
-            MapView.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(250) };
+            MapView.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(PhotoGallery.App.Controls.MapPanel.MorphMs) };
             MapView.Translation = System.Numerics.Vector3.Zero;
         });
     }
@@ -195,25 +201,38 @@ public sealed partial class MainWindow
     /// The big map's left edge slides over to the side pane, uncovering the photos beneath; then the map takes the
     /// pane's place for real and fits the selection there.
     /// </summary>
-    private void ShrinkMapOntoPane()
+    private void ShrinkMapOntoPane((Windows.Foundation.Point?, Windows.Foundation.Point?) controlsWere)
     {
+        // The big map keeps the Map page's place and reaches up over the filter bar, where its top was, so nothing jumps;
+        // its left and top edges then slide to where the pane's map begins.
+        Grid.SetRow(MapView, 1);
+        Grid.SetRowSpan(MapView, 3);
         Root.UpdateLayout();
-        var left = (float)(MapSplitter.TransformToVisual(Root).TransformPoint(default).X - MapView.TransformToVisual(Root).TransformPoint(default).X);
+        var pane = MapSplitter.TransformToVisual(Root).TransformPoint(default);
+        var map = MapView.TransformToVisual(Root).TransformPoint(default);
+        var left = (float)Math.Max(0, pane.X - map.X);
+        var top = (float)Math.Max(0, pane.Y - map.Y);
         void Done()
         {
             if (!_mapShrinking)
                 return;
             _mapShrinking = false;
             _mapOnPage = false;
+            // The page keeps the bottom right corner (all that is still showing) where it is as the map takes the pane's size.
+            MapView.AnchorNextResize();
             MapView.ClearClip();
             ApplyChrome();
             if (IsMapOpen)
                 RefreshMap(fit: true);
         }
-        if (left < 1)
+        if (left < 1 && top < 1)
+        {
             Done();
-        else
-            MapView.ClipLeft(0, left, () => DispatcherQueue.TryEnqueue(Done));
+            return;
+        }
+        MapView.ClipInsets(0, 0, left, top, () => DispatcherQueue.TryEnqueue(Done));
+        Root.UpdateLayout();
+        MapView.MorphControlsFrom(controlsWere);
     }
 
     // ---- People workspace ----

@@ -274,11 +274,7 @@ public sealed partial class MapPanel : UserControl
         get => AssignRow.Visibility == Visibility.Visible;
         set
         {
-            var appears = value && AssignRow.Visibility != Visibility.Visible;
             AssignRow.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
-            // The bar rises into place from the map's bottom edge.
-            if (appears && IsLoaded)
-                Morph(AssignRow, 0, 80);
             PlaceTopControls();
             SendInsets(animate: IsLoaded);
             Post(new JsonObject { ["type"] = "placing", ["on"] = value });
@@ -288,36 +284,48 @@ public sealed partial class MapPanel : UserControl
     }
 
     private static readonly bool s_animations = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-    private const int MorphMs = 250;
+    // One length and one curve for every part of a move (the map's edge, the app's controls, the page's controls), easing in
+    // and out, so nothing races ahead or lands with a jolt (Lasse 2026-11-07: "smooth all the way").
+    public const int MorphMs = 300;
 
     // The clip lives on the inner grid's visual: taking the control's own visual would stop the window sliding it
     // with Translation (WinUI forbids TranslationTransition on an element whose visual is in use).
     private Microsoft.UI.Composition.InsetClip? _clip;
-    private double _leftInset;
+    private double _leftInset, _clipTop;
 
     /// <summary>
-    /// Hides the map's left <paramref name="from"/> pixels and slides that edge to <paramref name="to"/>, then calls
-    /// <paramref name="done"/>. The page's own controls on the left (zoom, search, legend) ride along with the edge.
+    /// Hides the map's left and top edges from (<paramref name="fromLeft"/>, <paramref name="fromTop"/>) pixels and slides
+    /// them to (<paramref name="toLeft"/>, <paramref name="toTop"/>), then calls <paramref name="done"/>. The page's own
+    /// controls (zoom, search, legend) ride along with the edges; the app's controls are placed for the end.
     /// </summary>
-    public void ClipLeft(float from, float to, Action done)
+    public void ClipInsets(float fromLeft, float fromTop, float toLeft, float toTop, Action done)
     {
         var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(Surface);
         var compositor = visual.Compositor;
-        _clip = compositor.CreateInsetClip(from, 0, 0, 0);
+        _clip = compositor.CreateInsetClip(fromLeft, fromTop, 0, 0);
         visual.Clip = _clip;
-        if (from > 0)
+        if (fromLeft > 0 || fromTop > 0)
         {
-            _leftInset = from;
+            _leftInset = fromLeft;
+            _clipTop = fromTop;
             SendInsets();
         }
-        _leftInset = to;
+        _leftInset = toLeft;
+        _clipTop = toTop;
+        PlaceTopControls();
         SendInsets(animate: true);
-        var slide = compositor.CreateScalarKeyFrameAnimation();
-        slide.InsertKeyFrame(0f, from);
-        slide.InsertKeyFrame(1f, to, compositor.CreateCubicBezierEasingFunction(new(0.1f, 0.9f), new(0.2f, 1f)));
-        slide.Duration = TimeSpan.FromMilliseconds(MorphMs);
+        var easing = compositor.CreateCubicBezierEasingFunction(new(0.4f, 0f), new(0.2f, 1f));
+        Microsoft.UI.Composition.ScalarKeyFrameAnimation Slide(float from, float to)
+        {
+            var slide = compositor.CreateScalarKeyFrameAnimation();
+            slide.InsertKeyFrame(0f, from);
+            slide.InsertKeyFrame(1f, to, easing);
+            slide.Duration = TimeSpan.FromMilliseconds(MorphMs);
+            return slide;
+        }
         var batch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
-        _clip.StartAnimation(nameof(_clip.LeftInset), slide);
+        _clip.StartAnimation(nameof(_clip.LeftInset), Slide(fromLeft, toLeft));
+        _clip.StartAnimation(nameof(_clip.TopInset), Slide(fromTop, toTop));
         batch.End();
         var mine = _clip;
         batch.Completed += (_, _) =>
@@ -327,7 +335,7 @@ public sealed partial class MapPanel : UserControl
         };
     }
 
-    /// <summary>Shows the whole map again after <see cref="ClipLeft"/>.</summary>
+    /// <summary>Shows the whole map again after <see cref="ClipInsets"/>.</summary>
     public void ClearClip()
     {
         if (_clip is null)
@@ -335,10 +343,37 @@ public sealed partial class MapPanel : UserControl
         _clip = null;
         Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(Surface).Clip = null;
         _leftInset = 0;
+        _clipTop = 0;
+        PlaceTopControls();
         SendInsets();
     }
 
-    // Like PowerPoint's Morph (Lasse 2026-11-07): a control whose place changes glides from the old place to the new.
+    /// <summary>The next time the map changes size, the page keeps what is in its bottom right corner where it is.</summary>
+    public void AnchorNextResize() => Post(new JsonObject { ["type"] = "anchor" });
+
+    /// <summary>Where the app's floating controls are on screen now (null: hidden), for <see cref="MorphControlsFrom"/>.</summary>
+    public (Windows.Foundation.Point? Top, Windows.Foundation.Point? Assign) CaptureControls()
+    {
+        static Windows.Foundation.Point? At(FrameworkElement e) =>
+            e.Visibility == Visibility.Visible && e.ActualWidth > 0 ? e.TransformToVisual(null).TransformPoint(default) : null;
+        return (At(TopControls), At(AssignRow));
+    }
+
+    /// <summary>
+    /// Like PowerPoint's Morph (Lasse 2026-11-07): the controls glide from where they were (laid out anew by the caller)
+    /// to where they are now; the Assign bar, if it just appeared, rises from the map's bottom edge.
+    /// </summary>
+    public void MorphControlsFrom((Windows.Foundation.Point? Top, Windows.Foundation.Point? Assign) was)
+    {
+        var now = CaptureControls();
+        if (was.Top is { } t0 && now.Top is { } t1)
+            Morph(TopControls, (float)(t0.X - t1.X), (float)(t0.Y - t1.Y));
+        if (was.Assign is { } a0 && now.Assign is { } a1)
+            Morph(AssignRow, (float)(a0.X - a1.X), (float)(a0.Y - a1.Y));
+        else if (was.Assign is null && now.Assign is not null)
+            Morph(AssignRow, 0, (float)AssignRow.ActualHeight + 20);
+    }
+
     private static void Morph(UIElement element, float dx, float dy)
     {
         if (!s_animations || (Math.Abs(dx) < 1 && Math.Abs(dy) < 1))
@@ -369,14 +404,9 @@ public sealed partial class MapPanel : UserControl
     }
 
     // Over the whole library the page has no search box of its own (the app's is used), so the pill moves up.
-    private void PlaceTopControls()
-    {
-        var top = _topInset + (CanPlacePhotos ? 56 : 10);
-        var was = TopControls.Margin.Top;
-        TopControls.Margin = new Thickness(0, top, 10, 0);
-        if (IsLoaded)
-            Morph(TopControls, 0, (float)(was - top));
-    }
+    // While the map's top edge is clipped away (growing or shrinking) the controls sit below where that edge ends up.
+    private void PlaceTopControls() =>
+        TopControls.Margin = new Thickness(0, _topInset + _clipTop + (CanPlacePhotos ? 56 : 10), 10, 0);
 
     private void AssignRow_SizeChanged(object sender, SizeChangedEventArgs e) => SendInsets();
 
@@ -385,7 +415,7 @@ public sealed partial class MapPanel : UserControl
         Post(new JsonObject
         {
             ["type"] = "insets",
-            ["top"] = Math.Round(_topInset),
+            ["top"] = Math.Round(_topInset + _clipTop),
             ["left"] = Math.Round(_leftInset),
             ["bottom"] = AssignRow.Visibility == Visibility.Visible ? Math.Round(AssignRow.ActualHeight + 10) : 0,
             ["animate"] = animate && s_animations,

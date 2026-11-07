@@ -34,8 +34,9 @@
   @property --inset-bottom { syntax: "<length>"; inherits: true; initial-value: 0px; }
   .leaflet-top { top: var(--inset-top, 0px); }
   .leaflet-left { left: var(--inset-left, 0px); }
-  :root.morph { transition: --inset-top .25s, --inset-left .25s, --inset-bottom .25s; transition-timing-function: cubic-bezier(.1,.9,.2,1); }
-  :root.morph #legend { transition: bottom .25s cubic-bezier(.1,.9,.2,1); }
+  /* The same length and curve as the app's own moves (MapPanel.MorphMs), easing in and out. */
+  :root.morph { transition: --inset-top .3s, --inset-left .3s, --inset-bottom .3s; transition-timing-function: cubic-bezier(.4,0,.2,1); }
+  :root.morph #legend { transition: bottom .3s cubic-bezier(.4,0,.2,1); }
   /* Small credits on one line where they fit, so the legend above them never covers them. */
   .leaflet-control-attribution { font-size: 10px; line-height: 1.4; }
   :root { --surface: #fff; --surface-hover: #f9f9f9; --surface-pressed: #f5f5f5; }
@@ -105,6 +106,7 @@
 //                 {type:"style", accent, onAccent, dark} (dark: the night map and dark controls)
 //                 {type:"insets", top, left, bottom, animate} (pixels of the map the app's floating controls or its clip cover;
 //                 animate: glide there)
+//                 {type:"anchor"} (the next resize keeps the bottom right corner still; a fit soon after only if needed)
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
@@ -132,7 +134,7 @@ if (!window.L) {
 // The street map. Returns {gl, plain, ready}: the MapLibre map once its style has loaded (null with the plain
 // OpenStreetMap map instead), the plain map's layer, and a list of functions to run when either is in place.
 function addBaseMap(map, osm) {
-  const base = { gl: null, plain: null, ready: [] };
+  const base = { gl: null, layer: null, plain: null, ready: [] };
   const plain = () => {
     base.gl = null;
     base.plain = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: osm, className: "plain" }).addTo(map);
@@ -140,7 +142,7 @@ function addBaseMap(map, osm) {
   };
   if (!L.maplibreGL || !window.maplibregl) { plain(); return base; }
   try {
-    const layer = L.maplibreGL({
+    const layer = base.layer = L.maplibreGL({
       style: "https://tiles.openfreemap.org/styles/liberty",
       attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> ' + osm,
     }).addTo(map);
@@ -218,6 +220,19 @@ function start() {
     legend.style.bottom = (insetBottom + (credits ? credits.offsetHeight : 16) + 8) + "px";
   }
   map.on("resize", placeLegend);
+  // When the app grows or shrinks the map between the side pane and the Map page ({type:"anchor"} first), what is in
+  // the bottom right corner (the part both places share) stays put instead of the centre, and the vector map is
+  // drawn at its new size straight away rather than a frame later (an empty frame looked like a stutter).
+  let anchorNext = false, gentleUntil = 0;
+  map.on("resize", e => {
+    if (anchorNext && Date.now() < gentleUntil) {
+      anchorNext = false;
+      map.panBy([(e.oldSize.x - e.newSize.x) / 2, (e.oldSize.y - e.newSize.y) / 2], { animate: false });
+    }
+    if (base.layer && base.gl) {
+      try { base.layer._update(); base.gl.redraw(); } catch (err) { }
+    }
+  });
   const pad = () => ({ paddingTopLeft: [40, 100 + insetTop], paddingBottomRight: [40, 40 + insetBottom] });
   // Fluent's plus and minus on the zoom buttons, like the app's own zoom.
   map.zoomControl._zoomInButton.firstChild.textContent = "\uE710";
@@ -395,6 +410,8 @@ function start() {
 
   function fitSelection() {
     const points = [...selected].filter(p => markers.has(p)).map(p => markers.get(p).getLatLng());
+    // Right after such a move the map only moves again if the selected photos are out of sight.
+    if (Date.now() < gentleUntil && points.length && points.every(p => map.getBounds().pad(-0.05).contains(p))) return;
     if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 14));
     else if (points.length > 1) map.fitBounds(L.latLngBounds(points), { ...pad(), maxZoom: 16 });
   }
@@ -521,6 +538,9 @@ function start() {
         document.documentElement.style.setProperty("--on-accent", m.onAccent);
         document.documentElement.classList.toggle("dark", !!m.dark);
         if (dark !== !!m.dark) { dark = !!m.dark; paintNight(); }
+      } else if (m.type === "anchor") {
+        anchorNext = true;
+        gentleUntil = Date.now() + 1500;
       } else if (m.type === "insets") {
         // animate: the controls glide to their new places with the app's own (its Morph); otherwise they jump.
         const root = document.documentElement;
@@ -533,7 +553,7 @@ function start() {
         root.style.setProperty("--inset-top", insetTop + "px");
         root.style.setProperty("--inset-left", (m.left || 0) + "px");
         placeLegend();
-        if (m.animate) morphTimer = setTimeout(() => root.classList.remove("morph"), 300);
+        if (m.animate) morphTimer = setTimeout(() => root.classList.remove("morph"), 350);
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)
