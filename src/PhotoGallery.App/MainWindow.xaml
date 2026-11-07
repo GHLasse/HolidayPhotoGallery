@@ -1075,6 +1075,13 @@
                     <controls:WrapPanel x:Name="PeopleCards" />
                 </StackPanel>
             </ScrollViewer>
+            <!-- While the library is still loading, instead of an empty page (U-9). -->
+            <StackPanel x:Name="PeopleLoading" Grid.Row="1" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsHitTestVisible="False" Visibility="Collapsed">
+                <ProgressRing x:Name="PeopleLoadingRing" IsActive="False" Width="20" Height="20" />
+                <TextBlock Text="{local:Loc Text='Loading the people…'}" VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
         </Grid>
 
         <controls:PaneSplitter x:Name="InfoSplitter" Grid.Row="3" Grid.Column="3" />
