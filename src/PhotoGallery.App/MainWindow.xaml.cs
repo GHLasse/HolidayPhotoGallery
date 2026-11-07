@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
     private bool _selectingFromMap;
     private DecodedImage? _viewerPixels;
     private byte[]? _autoCurve;
+    private bool _cropping, _autoLight; // the crop frame and Enhance light, previewed until Save (Edit pane)
 
     public MainWindow()
     {
@@ -1132,11 +1133,8 @@ public sealed partial class MainWindow : Window
         // Beside the viewer, a marker shows its photo there.
         if (IsViewerOpen)
         {
-            if (!IsEditing && _viewerItems.IndexOf(item) is >= 0 and var index && index != _viewerIndex)
-            {
-                _viewerIndex = index;
-                _ = ShowViewerImageAsync();
-            }
+            if (_viewerItems.IndexOf(item) is >= 0 and var index && index != _viewerIndex)
+                _ = GoToViewerPhotoAsync(index);
             return;
         }
         _selectingFromMap = true;
@@ -1420,66 +1418,72 @@ public sealed partial class MainWindow : Window
     {
         if (!IsViewerOpen)
             return true;
+        // Discard leaves the viewer too, as the close button asked for (Lasse, 2026-11-06).
+        if (!await FinishEditAskingAsync())
+            return false;
+        CloseViewer();
+        return true;
+    }
+
+    /// <summary>
+    /// Before leaving an edit (another photo, closing, another app): asks whether to save it, as changes are never
+    /// dropped without asking (Lasse, 2026-11-07). True when it was saved or discarded, or there was none; false
+    /// when Cancel was picked or the save didn't happen, and the edit stays.
+    /// </summary>
+    private async Task<bool> FinishEditAskingAsync(string? saveText = null, string? discardText = null)
+    {
         if (!IsEditing)
-        {
-            CloseViewer();
             return true;
-        }
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
             Title = Tr("Save the edit?"),
             Content = Tr("The photo is changed only when you save."),
-            PrimaryButtonText = Tr("Save"),
-            SecondaryButtonText = Tr("Discard"),
+            PrimaryButtonText = saveText ?? Tr("Save"),
+            SecondaryButtonText = discardText ?? Tr("Discard"),
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
         switch (await dialog.ShowThemedAsync())
         {
             case ContentDialogResult.Primary:
-                if (!await SaveViewerEditAsync())
-                    return false;
-                CloseViewer();
-                return true;
+                return await SaveViewerEditAsync();
             case ContentDialogResult.Secondary:
-                // Discard leaves the viewer too, as the close button asked for (Lasse, 2026-11-06).
                 CancelEdit();
-                CloseViewer();
                 return true;
             default:
                 return false;
         }
     }
 
-    private void ViewerPrevious_Click(object sender, RoutedEventArgs e)
+    /// <summary>Shows another photo in the viewer; an edit of the one on show is saved or discarded first, after asking.</summary>
+    private async Task GoToViewerPhotoAsync(int index)
     {
-        if (_viewerIndex > 0)
+        if (index < 0 || index >= _viewerItems.Count || index == _viewerIndex)
+            return;
+        if (!await FinishEditAskingAsync())
         {
-            _viewerIndex--;
-            _ = ShowViewerImageAsync();
+            // The filmstrip goes back to the photo still being edited.
+            _syncingStrip = true;
+            ViewerStrip.SelectedIndex = _viewerIndex;
+            _syncingStrip = false;
+            return;
         }
+        _viewerIndex = index;
+        await ShowViewerImageAsync();
     }
+
+    private void ViewerPrevious_Click(object sender, RoutedEventArgs e) => _ = GoToViewerPhotoAsync(_viewerIndex - 1);
 
     // With auto-advance on (Settings › Gallery), a rating, flag or reject moves on to the next photo.
     private void AfterMarkInViewer()
     {
         UpdateViewerTitle();
         if (ViewModel.AutoAdvance && _viewerIndex < _viewerItems.Count - 1)
-        {
-            _viewerIndex++;
-            _ = ShowViewerImageAsync();
-        }
+            _ = GoToViewerPhotoAsync(_viewerIndex + 1);
     }
 
-    private void ViewerNext_Click(object sender, RoutedEventArgs e)
-    {
-        if (_viewerIndex < _viewerItems.Count - 1)
-        {
-            _viewerIndex++;
-            _ = ShowViewerImageAsync();
-        }
-    }
+    private void ViewerNext_Click(object sender, RoutedEventArgs e) => _ = GoToViewerPhotoAsync(_viewerIndex + 1);
 
     private async void ViewerRotateLeft_Click(object sender, RoutedEventArgs e) => await RotateInViewerAsync(clockwise: false);
 
@@ -1506,41 +1510,53 @@ public sealed partial class MainWindow : Window
 
     // ---- Editing in the viewer: crop and auto adjust, previewed until Save ----
 
-    private bool IsEditing => ViewerCropButton.IsChecked == true || ViewerAutoButton.IsChecked == true || HasPixelChanges;
+    private bool IsEditing => _cropping || _autoLight || HasPixelChanges;
 
     private PhotoItemViewModel? ViewerItem => _viewerIndex < _viewerItems.Count ? _viewerItems[_viewerIndex] : null;
 
-    private void ViewerCrop_Click(object sender, RoutedEventArgs e)
+    /// <summary>Starts or ends cropping (the Edit pane's Crop and straighten button, or R).</summary>
+    private void SetCropping(bool on)
     {
         if (_viewerPixels is null)
+            on = false;
+        if (on == _cropping)
         {
-            ViewerCropButton.IsChecked = false;
+            UpdateEditBar();
             return;
         }
-        if (ViewerCropButton.IsChecked == true)
+        RecordEditStep("crop", coalesce: false);
+        if (on)
+            ResetCropRatio(); // before cropping starts, so the new shape is no step of its own
+        _cropping = on;
+        if (_cropping)
         {
-            ResetCropRatio();
             // The crop frame takes the pointer again from the retouch brush.
             RetouchSpotButton.IsChecked = RetouchEraseButton.IsChecked = false;
             SyncRetouch();
         }
         ViewerCanvas.Ratio = SelectedCropRatio();
-        ViewerCanvas.IsCropping = ViewerCropButton.IsChecked == true;
+        ViewerCanvas.IsCropping = _cropping;
         UpdateEditBar();
     }
 
-    private async void ViewerAuto_Click(object sender, RoutedEventArgs e)
+    /// <summary>Turns Enhance light (the automatic contrast and brightness, Ctrl+U) on or off.</summary>
+    private async void SetAutoLight(bool on)
     {
-        if (_viewerPixels is not { } pixels)
+        if (_viewerPixels is null)
+            on = false;
+        if (on == _autoLight)
         {
-            ViewerAutoButton.IsChecked = false;
+            UpdateEditBar();
             return;
         }
+        RecordEditStep("auto", coalesce: false);
+        _autoLight = on;
+        EditBeforeButton.IsChecked = false;
         UpdateEditBar();
-        if (ViewerAutoButton.IsChecked == true)
+        if (_autoLight && _viewerPixels is { } shown)
         {
-            var curve = await Task.Run(() => ImageMath.AutoAdjustCurve(pixels.Pixels));
-            if (ViewerAutoButton.IsChecked != true || !ReferenceEquals(pixels, _viewerPixels))
+            var curve = await Task.Run(() => ImageMath.AutoAdjustCurve(shown.Pixels));
+            if (!_autoLight || !ReferenceEquals(shown, _viewerPixels))
                 return;
             _autoCurve = curve;
         }
@@ -1552,14 +1568,22 @@ public sealed partial class MainWindow : Window
 
     private void CropRatio_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ViewerCanvas is not null && ViewerCropButton.IsChecked == true)
+        if (ViewerCanvas is not null && _cropping && !_restoringEditStep)
+        {
+            RecordEditStep("crop shape", coalesce: false, cropShapeBefore: (_cropRatioShown, CropTurnButton.IsChecked == true));
             ViewerCanvas.Ratio = SelectedCropRatio();
+        }
+        _cropRatioShown = CropRatioCombo.SelectedIndex;
+        UpdateEditFooter();
     }
 
     private void CropTurn_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewerCropButton.IsChecked == true)
-            ViewerCanvas.Ratio = SelectedCropRatio();
+        if (!_cropping)
+            return;
+        RecordEditStep("crop shape", coalesce: false, cropShapeBefore: (CropRatioCombo.SelectedIndex, CropTurnButton.IsChecked != true));
+        ViewerCanvas.Ratio = SelectedCropRatio();
+        UpdateEditFooter();
     }
 
     private double SelectedCropRatio() =>
@@ -2105,32 +2129,20 @@ public sealed partial class MainWindow : Window
             await UpdateAsync(updateTo);
     }
 
+    /// <summary>Brings the Edit pane, its crop controls and its footer up to date with the edit being previewed.</summary>
     private void UpdateEditBar()
     {
         SyncEditPane();
-        ViewerEditBar.Visibility = IsEditing ? Visibility.Visible : Visibility.Collapsed;
-        // The bar takes the filmstrip's place, so the photo keeps its size and place while it is edited.
-        ViewerStrip.Opacity = IsEditing ? 0 : 1;
-        ViewerStrip.IsHitTestVisible = !IsEditing;
-        CropShapePanel.Visibility = ViewerCropButton.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        if (ViewerItem is not { } item)
-            return;
-
-        // WebP and GIF can be read but not written by Windows, so those are saved as JPEG.
-        var canKeepFormat = ImageEncoder.CanEncode(Path.GetExtension(item.Path));
-        SaveFormatCombo.IsEnabled = canKeepFormat;
-        if (!canKeepFormat)
-            SaveFormatCombo.SelectedIndex = 1;
-        ViewerEditHint.Text = ViewerCropButton.IsChecked == true
-            ? Tr("Drag the frame to move it and its corners to resize it.")
-            : Tr("Showing the adjusted photo.");
+        CropShapePanel.Visibility = _cropping ? Visibility.Visible : Visibility.Collapsed;
+        UpdateEditFooter();
     }
 
     private void UpdateUndoButtons()
     {
         var edits = ViewerItem is { } item ? EditHistory.EditCount(item.Path) : 0;
-        ViewerUndoButton.IsEnabled = edits > 0;
-        ViewerRevertButton.IsEnabled = edits > 0;
+        SavedEditsPanel.Visibility = edits > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SavedEditsText.Text = edits == 1 ? Tr("Saved with 1 edit.") : Tr("Saved with {0} edits.", edits);
+        UpdateEditFooter();
 
         // An animated WebP can't be turned. Faded rather than disabled, so the tooltip still says why (as Busy.Gate does).
         var animated = ViewerItem is { } shown && PhotoGallery.Core.SupportedFormats.IsAnimatedWebp(shown.Path);
@@ -2141,11 +2153,9 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ViewerCancelEdit_Click(object sender, RoutedEventArgs e) => CancelEdit();
-
     private void CancelEdit()
     {
-        var wasAdjusted = ViewerAutoButton.IsChecked == true || HasPixelChanges;
+        var wasAdjusted = _autoLight || HasPixelChanges;
         EndEdit();
         if (wasAdjusted && _viewerPixels is { } pixels)
             _ = ShowPixelsAsync(pixels);
@@ -2155,27 +2165,37 @@ public sealed partial class MainWindow : Window
 
     private void EndEdit()
     {
-        ViewerCropButton.IsChecked = false;
-        ViewerAutoButton.IsChecked = false;
+        _cropping = false;
+        _autoLight = false;
         ViewerCanvas.IsCropping = false;
         _autoCurve = null;
         ResetPixelChanges();
+        _editSteps.Clear();
         UpdateEditBar();
     }
 
     private async void ViewerSaveEdit_Click(object sender, RoutedEventArgs e) => await SaveViewerEditAsync();
 
-    /// <summary>Saves the edit on show; false when it wasn't saved (still retouching, or the save failed).</summary>
-    private async Task<bool> SaveViewerEditAsync()
+    private async void SaveAsJpeg_Click(object sender, RoutedEventArgs e) => await SaveViewerEditAsync(asJpeg: true);
+
+    private async void SaveCopy_Click(object sender, RoutedEventArgs e) => await SaveViewerEditAsync(asCopy: true);
+
+    private async void SaveJpegCopy_Click(object sender, RoutedEventArgs e) => await SaveViewerEditAsync(asJpeg: true, asCopy: true);
+
+    /// <summary>
+    /// Saves the edit on show, over the photo or (<paramref name="asCopy"/>) as a new file next to it; false when it
+    /// wasn't saved (still retouching, or the save failed).
+    /// </summary>
+    private async Task<bool> SaveViewerEditAsync(bool asJpeg = false, bool asCopy = false)
     {
         if (ViewerItem is not { } item)
             return true;
 
         // A crop that still covers (nearly) the whole photo is no crop.
-        Rect? crop = ViewerCropButton.IsChecked == true ? ViewerCanvas.Crop : null;
+        Rect? crop = _cropping ? ViewerCanvas.Crop : null;
         if (crop is { Width: > 0.999, Height: > 0.999 })
             crop = null;
-        var curve = ViewerAutoButton.IsChecked == true ? _autoCurve : null;
+        var curve = _autoLight ? _autoCurve : null;
         if (crop is null && curve is null && !HasPixelChanges)
         {
             CancelEdit();
@@ -2191,10 +2211,15 @@ public sealed partial class MainWindow : Window
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
                                                   ChosenLook, _lookStrength, _strokes.ToList(),
                                                   ChosenLook is { Beauty: true } ? _beautyFaces ?? [] : [], ViewModel.BeautyParts,
-                                                  asJpeg: SaveFormatCombo.SelectedIndex == 1);
+                                                  asJpeg: asJpeg, asCopy: asCopy);
         ViewerProgress.IsActive = false;
         if (saved)
+        {
+            // A copy leaves this photo as it was: the edit ends and the photo shows unchanged.
+            if (asCopy)
+                CancelEdit();
             await ShowViewerImageAsync();
+        }
         return saved;
     }
 

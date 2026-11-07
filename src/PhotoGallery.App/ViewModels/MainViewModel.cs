@@ -1483,7 +1483,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public async Task<bool> SaveEditAsync(PhotoItemViewModel item, Windows.Foundation.Rect? crop, byte[]? curve,
                                           Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten,
                                           Look? look, int lookStrength, IReadOnlyList<RetouchStroke> strokes,
-                                          IReadOnlyList<BeautyFace> faces, BeautyParts beautyParts, bool asJpeg)
+                                          IReadOnlyList<BeautyFace> faces, BeautyParts beautyParts, bool asJpeg,
+                                          bool asCopy = false)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1548,7 +1549,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                                            target => ImageEncoder.EncodeAsync(image, target), kept,
                                                            ImageAdjust.FlipOrientation(flipHorizontal, flipVertical),
                                                            beforeCrop: Math.Abs(straighten) < 0.01 ? null
-                                                               : box => Straighten.Box(box, fullWidth, fullHeight, straighten));
+                                                               : box => Straighten.Box(box, fullWidth, fullHeight, straighten),
+                                                           asCopy: asCopy);
+            if (asCopy)
+            {
+                // The photo stays as it was; the copy joins the library next to it (E-5).
+                await _indexer.RefreshFileAsync(newPath);
+                await AfterTransferAsync();
+                foreach (var notice in Notices.Except(noticesBefore).Where(n => n.Severity == NoticeSeverity.Info).ToList())
+                    Notices.Remove(notice);
+                Inform(Tr("Saved the edit as a copy: {0}.", Path.GetFileName(newPath)));
+                return true;
+            }
             await AfterFileReplacedAsync(item, path, newPath);
             foreach (var notice in Notices.Except(noticesBefore).Where(n => n.Severity == NoticeSeverity.Info).ToList())
                 Notices.Remove(notice);

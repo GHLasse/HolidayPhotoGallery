@@ -1240,9 +1240,15 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- The Edit pane (E-13): quick fixes, crop and the light and colour sliders for the photo in the viewer,
-             previewed until Save in the viewer's edit bar (MainWindow.EditPane.cs). -->
-        <ScrollViewer x:Name="EditPane" Grid.Row="3" Grid.Column="4" Padding="8,0,16,8" Visibility="Collapsed">
+        <!-- The Edit pane (E-13): quick fixes, crop, looks, retouch and the light and colour sliders for the photo in the
+             viewer, previewed until Save in the pane's footer (MainWindow.EditPane.cs). The footer stays put while the tools
+             scroll, so Save, Undo and Before are always at hand (Lasse, 2026-11-07). -->
+        <Grid x:Name="EditPane" Grid.Row="3" Grid.Column="4" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <ScrollViewer x:Name="EditScroll" Padding="8,0,16,8">
             <StackPanel Spacing="12">
                 <TextBlock x:Name="EditPaneHint" TextWrapping="Wrap" FontStyle="Italic" Visibility="Collapsed"
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
@@ -1264,7 +1270,16 @@
                             </StackPanel>
                         </ToggleButton>
                     </controls:WrapPanel>
+
+                    <!-- Crop, rotate and flip: turning the photo, apart from the quick fixes. -->
+                    <TextBlock Text="{local:Loc Text='Crop and turn'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
                     <controls:WrapPanel Spacing="6">
+                        <ToggleButton x:Name="EditCropButton" Click="EditCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop and straighten (R)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7A8;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" />
+                            </StackPanel>
+                        </ToggleButton>
                         <Button x:Name="EditRotateLeftButton" Click="ViewerRotateLeft_Click" AutomationProperties.Name="{local:Loc Text='Rotate left'}"
                                 ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
                             <FontIcon Glyph="&#xE7AD;" FontSize="16" RenderTransformOrigin="0.5,0.5">
@@ -1289,13 +1304,43 @@
                                 </FontIcon.RenderTransform>
                             </FontIcon>
                         </ToggleButton>
-                        <ToggleButton x:Name="EditCropButton" Click="EditCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop and straighten (R)'}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE7A8;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" />
-                            </StackPanel>
-                        </ToggleButton>
                     </controls:WrapPanel>
+                    <!-- The crop's own controls open here while cropping, so nothing appears under the photo. Filled from
+                         code (CropRatios), starting with the shape chosen in Settings. -->
+                    <Border x:Name="CropShapePanel" Visibility="Collapsed" Padding="10" CornerRadius="6"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="CropRatioCombo" HorizontalAlignment="Stretch" SelectionChanged="CropRatio_SelectionChanged"
+                                          AutomationProperties.Name="{local:Loc Text='Shape of the crop'}"
+                                          ToolTipService.ToolTip="{local:Loc Text='Shape of the crop'}" />
+                                <ToggleButton x:Name="CropTurnButton" Grid.Column="1" Click="CropTurn_Click"
+                                              AutomationProperties.Name="{local:Loc Text='Turn the crop between landscape and portrait'}"
+                                              ToolTipService.ToolTip="{local:Loc Text='Turn the crop between landscape and portrait'}">
+                                    <!-- Orientation, not the flip icon (E8AB) next to it. -->
+                                    <FontIcon Glyph="&#xE8B4;" FontSize="14" />
+                                </ToggleButton>
+                            </Grid>
+                            <!-- Straighten (E-14): turns the photo by up to 45° each way; the photo shrinks so no corner is empty.
+                                 The fine grid shows while it is turned. Double-click sets it back. -->
+                            <Slider x:Name="StraightenSlider" Minimum="-45" Maximum="45" StepFrequency="0.1" ValueChanged="Straighten_ValueChanged"
+                                    AutomationProperties.Name="{local:Loc Text='Straighten'}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Turn the photo to level a tilted horizon. Double-click to set it back.'}">
+                                <Slider.Header>
+                                    <Grid>
+                                        <TextBlock Text="{local:Loc Text='Straighten'}" />
+                                        <TextBlock x:Name="StraightenValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </Grid>
+                                </Slider.Header>
+                            </Slider>
+                            <TextBlock Text="{local:Loc Text='Drag the frame to move it and its corners to resize it.'}" TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
 
                     <!-- One-click looks (E-9), each a small preview of the photo; filled from code (MainWindow.EditPane.cs). -->
                     <TextBlock Text="{local:Loc Text='Looks'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
@@ -1333,32 +1378,110 @@
                                 Value="40" ValueChanged="BrushSize_ValueChanged" />
                         <TextBlock x:Name="RetouchHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <Button x:Name="RetouchUndoButton" Click="RetouchUndo_Click" Visibility="Collapsed"
-                            ToolTipService.ToolTip="{local:Loc Text='Undo the last retouch stroke'}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE7A7;" FontSize="16" />
-                            <TextBlock x:Name="RetouchUndoText" />
-                        </StackPanel>
-                    </Button>
 
-                    <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06). -->
+                    <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06).
+                         Each shows its value beside its name, in the palette colour once it is moved. -->
                     <Expander x:Name="EditSlidersExpander" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False"
                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,8,0,0">
-                        <StackPanel Spacing="12">
+                        <StackPanel Spacing="4">
                             <TextBlock Text="{local:Loc Text='Light and shade'}" Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                            <Slider x:Name="BrightnessSlider" Header="{local:Loc Text='Brightness'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                            <Slider x:Name="ContrastSlider" Header="{local:Loc Text='Contrast'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                            <Slider x:Name="HighlightsSlider" Header="{local:Loc Text='Highlights'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                            <Slider x:Name="ShadowsSlider" Header="{local:Loc Text='Shadows'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
+                                <Slider x:Name="BrightnessSlider" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged"
+                                        AutomationProperties.Name="{local:Loc Text='Brightness'}">
+                                    <Slider.Header>
+                                        <Grid>
+                                            <TextBlock Text="{local:Loc Text='Brightness'}" />
+                                            <TextBlock x:Name="BrightnessValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </Slider.Header>
+                                </Slider>
+                                <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged"
+                                        AutomationProperties.Name="{local:Loc Text='Contrast'}">
+                                    <Slider.Header>
+                                        <Grid>
+                                            <TextBlock Text="{local:Loc Text='Contrast'}" />
+                                            <TextBlock x:Name="ContrastValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </Slider.Header>
+                                </Slider>
+                                <Slider x:Name="HighlightsSlider" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged"
+                                        AutomationProperties.Name="{local:Loc Text='Highlights'}">
+                                    <Slider.Header>
+                                        <Grid>
+                                            <TextBlock Text="{local:Loc Text='Highlights'}" />
+                                            <TextBlock x:Name="HighlightsValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </Slider.Header>
+                                </Slider>
+                                <Slider x:Name="ShadowsSlider" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged"
+                                        AutomationProperties.Name="{local:Loc Text='Shadows'}">
+                                    <Slider.Header>
+                                        <Grid>
+                                            <TextBlock Text="{local:Loc Text='Shadows'}" />
+                                            <TextBlock x:Name="ShadowsValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </Slider.Header>
+                                </Slider>
                             <TextBlock Text="{local:Loc Text='Colour'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
-                            <Slider x:Name="SaturationSlider" Header="{local:Loc Text='Saturation'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                            <Slider x:Name="WarmthSlider" Header="{local:Loc Text='Warmth'}" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged" />
-                            <TextBlock Text="{local:Loc Text='Double-click a slider to set it back.'}" TextWrapping="Wrap" FontSize="12"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <Slider x:Name="SaturationSlider" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged"
+                                        AutomationProperties.Name="{local:Loc Text='Saturation'}">
+                                    <Slider.Header>
+                                        <Grid>
+                                            <TextBlock Text="{local:Loc Text='Saturation'}" />
+                                            <TextBlock x:Name="SaturationValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </Slider.Header>
+                                </Slider>
+                                <Slider x:Name="WarmthSlider" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged"
+                                        AutomationProperties.Name="{local:Loc Text='Warmth'}">
+                                    <Slider.Header>
+                                        <Grid>
+                                            <TextBlock Text="{local:Loc Text='Warmth'}" />
+                                            <TextBlock x:Name="WarmthValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </Slider.Header>
+                                </Slider>
                         </StackPanel>
                     </Expander>
 
-                    <controls:WrapPanel Spacing="6" Margin="0,8,0,0">
+                    <!-- Bigger edits in a real editor: the favourite apps (Settings › Editing) and Windows' Open with. They are in the
+                         viewer's top bar too, for quick access (Lasse, 2026-11-07: ask again later whether to keep both). -->
+                    <TextBlock Text="{local:Loc Text='Edit in another app'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <controls:WrapPanel Spacing="6">
+                        <Button x:Name="EditFavourite1Button" Tag="0" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
+                        <Button x:Name="EditFavourite2Button" Tag="1" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
+                        <Button x:Name="EditOpenWithButton" Click="ViewerOpenWith_Click" ToolTipService.ToolTip="{local:Loc Text='Open this photo in another app, e.g. to edit it there.'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7AC;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Open with…'}" />
+                            </StackPanel>
+                        </Button>
+                    </controls:WrapPanel>
+
+                    <!-- Only for a photo saved with edits before: going all the way back (Undo last save is in the footer). -->
+                    <StackPanel x:Name="SavedEditsPanel" Orientation="Horizontal" Spacing="4" Visibility="Collapsed">
+                        <TextBlock x:Name="SavedEditsText" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <HyperlinkButton Click="ViewerRevert_Click" Padding="4,2" FontSize="12"
+                                         ToolTipService.ToolTip="{local:Loc Text='Go back to the original photo, before any edits'}">
+                            <TextBlock Text="{local:Loc Text='Back to original'}" />
+                        </HyperlinkButton>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+            </ScrollViewer>
+
+            <!-- The footer: always there for an editable photo, so nothing jumps when the first change is made. Undo steps back
+                 one change at a time (then takes back the last save), Before shows the photo without the changes, Reset drops
+                 them (Undo brings them back), and Save is the one filled button; its arrow saves as JPEG or as a copy (E-5). -->
+            <Border x:Name="EditFooter" Grid.Row="1" Padding="8,10,16,10" BorderThickness="0,1,0,0"
+                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button x:Name="EditUndoButton" Click="EditUndo_Click" IsEnabled="False">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7A7;" FontSize="16" />
+                                <TextBlock x:Name="EditUndoText" Text="{local:Loc Text='Undo'}" />
+                            </StackPanel>
+                        </Button>
                         <ToggleButton x:Name="EditBeforeButton" Click="EditBefore_Click"
                                       ToolTipService.ToolTip="{local:Loc Text='Show the photo as it was before these changes'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -1366,14 +1489,38 @@
                                 <TextBlock Text="{local:Loc Text='Before'}" />
                             </StackPanel>
                         </ToggleButton>
-                        <Button x:Name="EditResetButton" Click="EditReset_Click" Content="{local:Loc Text='Reset all'}"
-                                ToolTipService.ToolTip="{local:Loc Text='Set every slider back and undo the quick fixes not yet saved'}" />
-                    </controls:WrapPanel>
-                    <TextBlock Text="{local:Loc Text='Nothing is written until you press Save below the photo.'}"
-                               TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Button x:Name="EditResetButton" Click="EditReset_Click" Content="{local:Loc Text='Reset'}"
+                                ToolTipService.ToolTip="{local:Loc Text='Drop all changes not saved yet; Undo brings them back'}" />
+                    </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="EditStatusText" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1">
+                            <Button x:Name="EditSaveButton" Style="{ThemeResource AccentButtonStyle}" CornerRadius="4,0,0,4" MinWidth="72"
+                                    Click="ViewerSaveEdit_Click" IsEnabled="False">
+                                <TextBlock x:Name="EditSaveText" Text="{local:Loc Text='Save'}" />
+                            </Button>
+                            <Button x:Name="EditSaveMoreButton" Style="{ThemeResource AccentButtonStyle}" CornerRadius="0,4,4,0" Padding="8,5" IsEnabled="False"
+                                    AutomationProperties.Name="{local:Loc Text='More ways to save'}"
+                                    ToolTipService.ToolTip="{local:Loc Text='More ways to save'}">
+                                <FontIcon Glyph="&#xE70D;" FontSize="12" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="TopEdgeAlignedRight">
+                                        <MenuFlyoutItem x:Name="SaveAsJpegItem" Text="{local:Loc Text='Save as JPEG'}" Click="SaveAsJpeg_Click" />
+                                        <MenuFlyoutItem x:Name="SaveCopyItem" Text="{local:Loc Text='Save as a copy'}" Click="SaveCopy_Click" />
+                                        <MenuFlyoutItem x:Name="SaveJpegCopyItem" Text="{local:Loc Text='Save as a JPEG copy'}" Click="SaveJpegCopy_Click" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+            </Border>
+        </Grid>
 
         <!-- The map, next to the grid like in Geosetter, in the info pane's place (it takes its column); opened
              with the Map button and resized with its splitter. In the Map workspace it spans the photo area too. -->
@@ -1539,32 +1686,12 @@
                         <FontIcon Glyph="&#xE7AD;" />
                     </Button>
                     <AppBarSeparator x:Name="ViewerEditSeparator" />
-                    <ToggleButton x:Name="ViewerCropButton" Click="ViewerCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop (R)'}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE7A8;" FontSize="16" />
-                            <TextBlock Text="{local:Loc Text='Crop'}" />
-                        </StackPanel>
-                    </ToggleButton>
-                    <ToggleButton x:Name="ViewerAutoButton" Click="ViewerAuto_Click" ToolTipService.ToolTip="{local:Loc Text='Adjust contrast and brightness automatically (Ctrl+U)'}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE706;" FontSize="16" />
-                            <TextBlock Text="{local:Loc Text='Enhance light'}" />
-                        </StackPanel>
-                    </ToggleButton>
                     <Button x:Name="ViewerRepairButton" Click="ViewerRepair_Click"
                             AutomationProperties.Name="{local:Loc Text='Repair…'}"
                             ToolTipService.ToolTip="{local:Loc Text='Repair damaged file'}">
                         <FontIcon Glyph="&#xE90F;" FontSize="16" />
                     </Button>
-                    <Button x:Name="ViewerUndoButton" Click="ViewerUndo_Click" IsEnabled="False" ToolTipService.ToolTip="{local:Loc Text='Undo the last saved edit of this photo'}">
-                        <FontIcon Glyph="&#xE7A7;" />
-                    </Button>
-                    <Button x:Name="ViewerRevertButton" Click="ViewerRevert_Click" IsEnabled="False" ToolTipService.ToolTip="{local:Loc Text='Go back to the original photo, before any edits'}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE81C;" FontSize="16" />
-                            <TextBlock Text="{local:Loc Text='Back to original'}" />
-                        </StackPanel>
-                    </Button>
+                    <!-- Crop, Enhance light, Undo and Back to original are in the Edit pane (Lasse, 2026-11-07). -->
                     <Button x:Name="ViewerFavourite1Button" Tag="0" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
                     <Button x:Name="ViewerFavourite2Button" Tag="1" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
                     <Button x:Name="ViewerOpenWithButton" Click="ViewerOpenWith_Click" ToolTipService.ToolTip="{local:Loc Text='Open this photo in another app, e.g. to edit it there.'}">
@@ -1609,46 +1736,6 @@
                     <KeyboardAccelerator Key="Right" Invoked="ViewerAccelerator_Invoked" />
                 </Button.KeyboardAccelerators>
             </Button>
-            <!-- Shown while a crop or auto adjust is being previewed; nothing is written before Save. It stands in the
-                 filmstrip's place (the strip hides meanwhile), so the photo neither moves nor shrinks when editing starts,
-                 and it always sits at the bottom. -->
-            <Grid x:Name="ViewerEditBar" Grid.Row="3" Canvas.ZIndex="1" MinHeight="76" Padding="12,8" ColumnSpacing="8" Visibility="Collapsed"
-                  Background="{ThemeResource LayerFillColorDefaultBrush}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <!-- Filled from code (CropRatios), starting with the shape chosen in Settings. -->
-                <StackPanel x:Name="CropShapePanel" Orientation="Horizontal" Spacing="4">
-                    <ComboBox x:Name="CropRatioCombo" VerticalAlignment="Center" MinWidth="130" MaxWidth="320"
-                              SelectionChanged="CropRatio_SelectionChanged" ToolTipService.ToolTip="{local:Loc Text='Shape of the crop'}" />
-                    <ToggleButton x:Name="CropTurnButton" VerticalAlignment="Center" Click="CropTurn_Click"
-                                  ToolTipService.ToolTip="{local:Loc Text='Turn the crop between landscape and portrait'}">
-                        <!-- Orientation, not the flip icon (E8AB) next to it in the Edit pane. -->
-                        <FontIcon Glyph="&#xE8B4;" FontSize="14" />
-                    </ToggleButton>
-                    <!-- Straighten (E-14): turns the photo by up to 45° each way; the photo shrinks so no corner is empty.
-                         The fine grid shows while it is turned. Double-click sets it back. -->
-                    <TextBlock Text="{local:Loc Text='Straighten'}" VerticalAlignment="Center" Margin="8,0,0,0" />
-                    <Slider x:Name="StraightenSlider" Width="180" VerticalAlignment="Center" Minimum="-45" Maximum="45" StepFrequency="0.1"
-                            ValueChanged="Straighten_ValueChanged"
-                            ToolTipService.ToolTip="{local:Loc Text='Turn the photo to level a tilted horizon. Double-click to set it back.'}" />
-                    <TextBlock x:Name="StraightenValue" VerticalAlignment="Center" MinWidth="44" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-                <TextBlock x:Name="ViewerEditHint" Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <ComboBox x:Name="SaveFormatCombo" Grid.Column="2" VerticalAlignment="Center" MinWidth="150" SelectedIndex="0"
-                          ToolTipService.ToolTip="{local:Loc Text='Save in the photo’s own format, or as JPEG for sharing'}">
-                    <ComboBoxItem Content="{local:Loc Text='Original format'}" />
-                    <ComboBoxItem Content="{local:Loc Text='Save as JPEG'}" />
-                </ComboBox>
-                <Button Grid.Column="3" Style="{ThemeResource AccentButtonStyle}" Content="{local:Loc Text='Save'}" Click="ViewerSaveEdit_Click"
-                        ToolTipService.ToolTip="{local:Loc Text='Write the edit into the photo'}" />
-                <Button Grid.Column="4" Content="{local:Loc Text='Cancel'}" Click="ViewerCancelEdit_Click" />
-            </Grid>
             <!-- The filmstrip: the photos around this one; a click shows it. -->
             <ListView x:Name="ViewerStrip" Grid.Row="3" Height="76" Padding="12,0,12,8" SelectionMode="Single"
                       ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"

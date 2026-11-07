@@ -75,9 +75,7 @@ public sealed partial class MainWindow
             RetouchTool.Erase => Tr("Paint over what should go, with a little to spare around it. Large areas may look smudged; several smaller strokes often work better."),
             _ => "",
         } + " " + Tr("[ and ] change the brush size.") + " " + Tr("When zoomed in, drag with the right mouse button or hold Space to move the photo.");
-        RetouchUndoButton.Visibility = _strokes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        RetouchUndoButton.IsEnabled = !_retouching;
-        RetouchUndoText.Text = Tr("Undo stroke ({0})", _strokes.Count);
+        UpdateEditFooter(); // Undo waits while a stroke is worked out
     }
 
     // A stroke on the shown photo, which may be straightened and flipped: found on the photo as it was.
@@ -142,6 +140,7 @@ public sealed partial class MainWindow
                 _retouched = picture;
                 _strokes.Add(stroke);
                 _retouchUndo.Push((changed, before));
+                _editSteps.Add(new EditStep("stroke", null, null)); // each stroke is one step for Undo
                 EditBeforeButton.IsChecked = false;
                 UpdateEditBar();
                 RenderPreview();
@@ -160,7 +159,8 @@ public sealed partial class MainWindow
         }
     }
 
-    private void RetouchUndo_Click(object sender, RoutedEventArgs e)
+    /// <summary>Takes back the last retouch stroke (the Edit pane's Undo, when the stroke was the last change).</summary>
+    private void UndoLastStroke()
     {
         if (_retouching || _retouched is not { } picture || !_retouchUndo.TryPop(out var step))
             return;
@@ -173,10 +173,24 @@ public sealed partial class MainWindow
         _strokes.RemoveAt(_strokes.Count - 1);
         if (_strokes.Count == 0)
             _retouched = null;
-        UpdateEditBar();
-        RenderPreview();
         SyncRetouch();
     }
+
+    /// <summary>The strokes so far, so Reset can be undone.</summary>
+    private RetouchState CaptureRetouch() => new([.. _strokes], [.. _retouchUndo.Reverse()], _retouched);
+
+    private void RestoreRetouch(RetouchState state)
+    {
+        _strokes.Clear();
+        _strokes.AddRange(state.Strokes);
+        _retouchUndo.Clear();
+        foreach (var undo in state.Undo)
+            _retouchUndo.Push(undo);
+        _retouched = state.Retouched;
+        SyncRetouch();
+    }
+
+    private sealed record RetouchState(List<RetouchStroke> Strokes, List<(PixelRect Area, byte[] Before)> Undo, DecodedImage? Retouched);
 
     /// <summary>Forgets the strokes and puts the tools away (ResetPixelChanges does this when an edit ends).</summary>
     private void ResetRetouch()
