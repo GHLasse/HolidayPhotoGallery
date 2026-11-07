@@ -221,6 +221,9 @@ public sealed partial class MainWindow
 
     // ---- Filmstrip ----
 
+    // The tile marked as the one on show: a ring in the accent colour, the others fade back.
+    private PhotoItemViewModel? _stripCurrent;
+
     private void SyncViewerStrip()
     {
         _syncingStrip = true;
@@ -229,8 +232,14 @@ public sealed partial class MainWindow
             if (!ReferenceEquals(ViewerStrip.ItemsSource, _viewerItems))
                 ViewerStrip.ItemsSource = _viewerItems;
             ViewerStrip.SelectedIndex = _viewerIndex;
+            if (_stripCurrent is { } previous && !ReferenceEquals(previous, ViewerItem))
+                previous.IsViewerCurrent = false;
+            _stripCurrent = ViewerItem;
             if (ViewerItem is { } item)
+            {
+                item.IsViewerCurrent = true;
                 ViewerStrip.ScrollIntoView(item);
+            }
         }
         finally
         {

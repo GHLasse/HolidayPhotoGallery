@@ -36,6 +36,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 OnPropertyChanged(nameof(IsFlagged));
                 OnPropertyChanged(nameof(RejectVisibility));
                 OnPropertyChanged(nameof(ThumbnailOpacity));
+                OnPropertyChanged(nameof(StripTileOpacity));
                 OnPropertyChanged(nameof(Tooltip));
                 OnPropertyChanged(nameof(DurationText));
                 NotifyQualityHints();
@@ -227,6 +228,27 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
 
     /// <summary>Rejected photos are dimmed in the grid, like in Lightroom.</summary>
     public double ThumbnailOpacity => Photo.Rejected ? 0.4 : 1;
+
+    private bool _isViewerCurrent;
+
+    /// <summary>True for the photo the viewer shows; its filmstrip tile gets a ring and the others fade back.</summary>
+    public bool IsViewerCurrent
+    {
+        get => _isViewerCurrent;
+        set
+        {
+            if (SetProperty(ref _isViewerCurrent, value))
+            {
+                OnPropertyChanged(nameof(StripRingOpacity));
+                OnPropertyChanged(nameof(StripTileOpacity));
+            }
+        }
+    }
+
+    public double StripRingOpacity => IsViewerCurrent ? 1 : 0;
+
+    // Rejected photos stay fainter, as in the grid.
+    public double StripTileOpacity => (IsViewerCurrent ? 1 : 0.5) * ThumbnailOpacity;
 
     public string Tooltip
     {
