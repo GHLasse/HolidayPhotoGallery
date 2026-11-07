@@ -1069,7 +1069,7 @@
                     <ComboBoxItem Content="{local:Loc Text='By name'}" />
                 </ComboBox>
             </controls:WrapPanel>
-            <ScrollViewer Grid.Row="1">
+            <ScrollViewer x:Name="PeopleScroll" Grid.Row="1">
                 <StackPanel Spacing="12" Padding="0,0,8,16">
                     <TextBlock x:Name="PeopleEmptyHint" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed"
                                Text="{local:Loc Text='Nobody is named yet. Find the people in your photos, then name the faces found.'}" />
