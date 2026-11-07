@@ -97,6 +97,9 @@ public sealed class LibrarySettings
     /// <summary>Width of the map beside the grid (the Map button in the Library), as last dragged.</summary>
     public double MapPaneWidth { get; set; } = 520;
 
+    /// <summary>The main window's size, position and maximized state as it closed; null until it first closes.</summary>
+    public Appearance.WindowPlacement? Window { get; set; }
+
     /// <summary>True when the folder pane was folded into its strip of icons.</summary>
     public bool NavPaneFolded { get; set; }
 

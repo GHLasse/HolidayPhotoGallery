@@ -42,7 +42,7 @@ public sealed partial class MainWindow : Window
         if (Strings.RightToLeft)
             Root.FlowDirection = FlowDirection.RightToLeft;
         SystemBackdrop = new MicaBackdrop();
-        AppWindow.Resize(new SizeInt32(1500, 950));
+        RestorePlacement();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         SetUpFrame();
         BuildSelectionBar();
@@ -104,6 +104,7 @@ public sealed partial class MainWindow : Window
                 App.Trace("The app had not ended 10 s after its window closed; ending it.");
                 System.Diagnostics.Process.GetCurrentProcess().Kill();
             }) { IsBackground = true, Name = "exit watchdog" }.Start();
+            SavePlacement();
             ViewModel.SaveLastPlace(CurrentPlace());
             ViewModel.Dispose();
         };
