@@ -200,6 +200,17 @@ public sealed partial class MainWindow
             ["CheckBoxCheckGlyphForegroundChecked"] = Solid(s.TextOnFill),
             ["CheckBoxCheckGlyphForegroundCheckedPointerOver"] = Solid(s.TextOnFill),
             ["CheckBoxCheckGlyphForegroundCheckedPressed"] = Solid(s.TextOnFill),
+            // Buttons that stay pressed (Crop, the Edit pane's toggles, the chosen look): a light tint of the palette
+            // with its accent text, so they show what is on without outshining Save, the one filled button.
+            ["ToggleButtonBackgroundChecked"] = Solid(s.Fill, 0.3),
+            ["ToggleButtonBackgroundCheckedPointerOver"] = Solid(s.Fill, 0.4),
+            ["ToggleButtonBackgroundCheckedPressed"] = Solid(s.Fill, 0.5),
+            ["ToggleButtonForegroundChecked"] = Solid(s.Text),
+            ["ToggleButtonForegroundCheckedPointerOver"] = Solid(s.Text),
+            ["ToggleButtonForegroundCheckedPressed"] = Solid(s.Text, 0.8),
+            ["ToggleButtonBorderBrushChecked"] = Solid(s.Fill, 0.8),
+            ["ToggleButtonBorderBrushCheckedPointerOver"] = Solid(s.Fill, 0.9),
+            ["ToggleButtonBorderBrushCheckedPressed"] = Solid(s.Fill),
             // The stars of the rating in the details pane and in Compare.
             ["RatingControlSelectedForeground"] = Solid(s.Fill),
             ["RatingControlPointerOverSelectedForeground"] = Solid(s.Fill, 0.9),
