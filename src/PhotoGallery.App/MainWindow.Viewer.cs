@@ -2,6 +2,7 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using PhotoGallery.App.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -402,10 +403,12 @@ public sealed partial class MainWindow
             Grid.SetRow(pane, beside ? 1 : 3);
             Grid.SetRowSpan(pane, beside ? 3 : 1);
         }
-        // No background of its own: it shows the window's, like the normal pane. A looked-up brush came out
-        // light in dark mode (white text on a light pane).
+        // No colour of its own: it shows the window's, like the normal pane. A looked-up brush came out
+        // light in dark mode (white text on a light pane). Transparent rather than none, so the mouse wheel
+        // still scrolls the Info pane over the gaps between its controls.
         InfoPane.Background = null;
         EditPane.Background = null;
+        WheelChain.KeepHitTestable(InfoPane);
     }
 
     // ---- Lights out ----

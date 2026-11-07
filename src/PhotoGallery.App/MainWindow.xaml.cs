@@ -122,6 +122,9 @@ public sealed partial class MainWindow : Window
         };
         SyncTimeZoneCombo();
         TimeZoneTyping.Attach(TimeZoneCombo);
+        // The wheel scrolls the side panes and the People page wherever the pointer is (gaps, text boxes, combo boxes).
+        foreach (var scroller in new[] { InfoPane, EditScroll, PeopleScroll })
+            WheelChain.Attach(scroller);
         PeopleSortCombo.SelectedIndex = ViewModel.PeopleSortIndex;
         FillAlbumSortCombo();
         foreach (var (_, label) in PhotoSort.All)
