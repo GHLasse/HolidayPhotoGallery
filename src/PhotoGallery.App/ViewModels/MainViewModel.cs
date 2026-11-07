@@ -1434,6 +1434,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if ((asJpeg && !isJpeg) || !ImageEncoder.CanEncode(extension))
             extension = ".jpg";
 
+        // The banners shown while saving (the info pane's edits written first) give way to the one for the edit.
+        var noticesBefore = Notices.ToList();
         await WaitForSavesAsync(); // the info pane's edits are in the files first
 
         IsBusy = true;
@@ -1488,9 +1490,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                                            beforeCrop: Math.Abs(straighten) < 0.01 ? null
                                                                : box => Straighten.Box(box, fullWidth, fullHeight, straighten));
             await AfterFileReplacedAsync(item, path, newPath);
-            Inform(newPath == path
-                ? Tr("Saved the edit of {0}. The original is in the hidden .originals folder.", item.FileName)
-                : Tr("Saved the edit as {0}. The original is in the hidden .originals folder.", Path.GetFileName(newPath)));
+            foreach (var notice in Notices.Except(noticesBefore).Where(n => n.Severity == NoticeSeverity.Info).ToList())
+                Notices.Remove(notice);
+            // One banner, and its Undo takes the edit back.
+            Inform(newPath == path ? Tr("Saved the edit of {0}.", item.FileName) : Tr("Saved the edit as {0}.", Path.GetFileName(newPath)),
+                   () => UndoEditAsync(item));
             return true;
         }
         catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.COMException

@@ -38,8 +38,8 @@ public sealed class LookSuggestionTests
     {
         var traits = LookSuggestions.Measure(Picture(80, 60, (240, 140, 40), (120, 50, 20)), 80, 60);
         var suggested = LookSuggestions.Suggest(traits, faces: 0, tags: ["Sonnenuntergang"], count: 3);
-        Assert.Contains("golden", suggested);
-        Assert.Contains("vivid-warm", suggested);
+        Assert.Equal("golden", suggested[0]);
+        Assert.Contains("warm", suggested);
         Assert.DoesNotContain("cool", suggested);
     }
 
@@ -96,8 +96,9 @@ public sealed class LookSuggestionTests
     [Fact]
     public void Scene_shares_add_up_per_look_and_leave_out_everyday_scenes()
     {
-        // Picture and prompt vectors of length 2: the picture matches the first prompt (an old car) only.
-        var vectors = LookSuggestions.Scenes.Select((_, i) => i == 0 ? new[] { 1f, 0f } : new[] { 0f, 1f }).ToList();
+        // Picture and prompt vectors of length 2: the picture matches the first Vintage prompt (an old car) only.
+        var first = LookSuggestions.Scenes.ToList().FindIndex(s => s.Look == "vintage");
+        var vectors = LookSuggestions.Scenes.Select((_, i) => i == first ? new[] { 1f, 0f } : new[] { 0f, 1f }).ToList();
         var shares = LookSuggestions.SceneShares([1f, 0f], vectors);
         Assert.True(shares["vintage"] > 0.9, $"vintage {shares["vintage"]:P0}");
         Assert.True(shares.Values.Sum() <= 1.0001);
