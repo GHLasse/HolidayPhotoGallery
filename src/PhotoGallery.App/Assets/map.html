@@ -27,8 +27,15 @@
   :root.dark .leaflet-control-attribution a { color: #9fc3ff; }
   /* The app's Assign bar floats over the bottom of the map: the credits, legend and messages sit above it. */
   .leaflet-bottom { bottom: var(--inset-bottom, 0px); }
-  /* Beside the photos the side pane's switch floats over the top of the map: zoom and search start below it. */
+  /* Beside the photos the side pane's switch floats over the top of the map: zoom and search start below it.
+     --inset-left: how much of the map's left the app hides while the map grows or shrinks between the pane and the Map page. */
+  @property --inset-top { syntax: "<length>"; inherits: true; initial-value: 0px; }
+  @property --inset-left { syntax: "<length>"; inherits: true; initial-value: 0px; }
+  @property --inset-bottom { syntax: "<length>"; inherits: true; initial-value: 0px; }
   .leaflet-top { top: var(--inset-top, 0px); }
+  .leaflet-left { left: var(--inset-left, 0px); }
+  :root.morph { transition: --inset-top .25s, --inset-left .25s, --inset-bottom .25s; transition-timing-function: cubic-bezier(.1,.9,.2,1); }
+  :root.morph #legend { transition: bottom .25s cubic-bezier(.1,.9,.2,1); }
   /* Small credits on one line where they fit, so the legend above them never covers them. */
   .leaflet-control-attribution { font-size: 10px; line-height: 1.4; }
   :root { --surface: #fff; --surface-hover: #f9f9f9; --surface-pressed: #f5f5f5; }
@@ -40,7 +47,7 @@
   .ctl:active { background: var(--surface-pressed); color: var(--text-2); }
   .icon { font-family: var(--icons); font-size: 16px; line-height: 1; font-style: normal; }
   /* The search box is the app's own (WinUI AutoSuggestBox): one box, the magnifier inside it on the right. */
-  #search { position: absolute; z-index: 1000; top: calc(var(--inset-top, 0px) + 10px); left: 56px; right: 10px; max-width: 360px; display: flex;
+  #search { position: absolute; z-index: 1000; top: calc(var(--inset-top, 0px) + 10px); left: calc(var(--inset-left, 0px) + 56px); right: 10px; max-width: 360px; display: flex;
             border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.16); }
   #search input { flex: 1; min-width: 0; height: 36px; padding: 0 40px 1px 11px; box-sizing: border-box; border: 1px solid var(--stroke);
                   border-bottom: 1px solid #868686; border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; outline: none; }
@@ -58,9 +65,9 @@
   .leaflet-bar a, .leaflet-bar a.leaflet-disabled { background: var(--surface); }
   .leaflet-bar a:hover { background: var(--surface-hover); color: var(--text); }
   .leaflet-bar a.leaflet-disabled { color: var(--text-2); opacity: .5; }
-  #legend { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 30px); left: 10px; right: 10px; width: fit-content; padding: 4px 8px; font-size: 12px; color: var(--text); display: none; }
+  #legend { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 30px); left: calc(var(--inset-left, 0px) + 10px); right: 10px; width: fit-content; padding: 4px 8px; font-size: 12px; color: var(--text); display: none; }
   #legend svg { vertical-align: middle; margin-right: 6px; }
-  #message { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 52px); left: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
+  #message { position: absolute; z-index: 1000; bottom: calc(var(--inset-bottom, 0px) + 52px); left: calc(var(--inset-left, 0px) + 10px); padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,.9); font-size: 13px; display: none; }
   /* The picture box has a fixed size, so the bubble is laid out right before the picture arrives; the close
      button sits above it (it covered the picture, which stuck out on the right). */
   .leaflet-popup-content:has(.preview) { margin: 26px 12px 10px; }
@@ -96,7 +103,8 @@
 //                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
 //                 (also trackLine, routeLine: the legend under a drawn line; a track message's label replaces it)
 //                 {type:"style", accent, onAccent, dark} (dark: the night map and dark controls)
-//                 {type:"insets", top, bottom} (pixels of the map's top and bottom the app's floating controls cover)
+//                 {type:"insets", top, left, bottom, animate} (pixels of the map the app's floating controls or its clip cover;
+//                 animate: glide there)
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
@@ -202,7 +210,7 @@ function start() {
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
   // The app's controls float over the map (Map | Satellite and layers top right, the Assign bar at the bottom): zooming
   // to photos leaves room for them, and the legend and credits sit above the bar ({type:"insets"}).
-  let insetBottom = 0, insetTop = 0;
+  let insetBottom = 0, insetTop = 0, morphTimer = 0;
   // The legend sits just above the credits, however many lines they wrap to in a narrow pane.
   function placeLegend() {
     const credits = document.querySelector(".leaflet-control-attribution");
@@ -514,11 +522,18 @@ function start() {
         document.documentElement.classList.toggle("dark", !!m.dark);
         if (dark !== !!m.dark) { dark = !!m.dark; paintNight(); }
       } else if (m.type === "insets") {
+        // animate: the controls glide to their new places with the app's own (its Morph); otherwise they jump.
+        const root = document.documentElement;
+        clearTimeout(morphTimer);
+        root.classList.toggle("morph", !!m.animate);
+        if (!m.animate) void root.offsetWidth;
         insetBottom = m.bottom || 0;
-        document.documentElement.style.setProperty("--inset-bottom", insetBottom + "px");
+        root.style.setProperty("--inset-bottom", insetBottom + "px");
         insetTop = m.top || 0;
-        document.documentElement.style.setProperty("--inset-top", insetTop + "px");
+        root.style.setProperty("--inset-top", insetTop + "px");
+        root.style.setProperty("--inset-left", (m.left || 0) + "px");
         placeLegend();
+        if (m.animate) morphTimer = setTimeout(() => root.classList.remove("morph"), 300);
       } else if (m.type === "estimates") {
         estimateLayer.clearLayers();
         for (const p of m.points)
