@@ -3,7 +3,9 @@ namespace PhotoGallery.Core.Editing;
 /// <summary>
 /// Picks the looks that suit a photo best, matching what each look's tip says it is best for. It goes by what the
 /// photo itself looks like (dark or bright, flat or contrasty, colourful or dull, warm or cool, much sky, water or
-/// greenery), by whether it shows faces, and by its tags. It runs no AI model, so it is instant.
+/// greenery), by whether it shows faces, and by its tags. When the tagging model is installed it also goes by
+/// what the photo shows (an old car, a historic street, a sunset), through the picture vector the model makes
+/// for searching in your own words; see <see cref="Scenes"/>.
 /// </summary>
 public static class LookSuggestions
 {
@@ -63,12 +65,66 @@ public static class LookSuggestions
     }
 
     /// <summary>
+    /// Scenes the tagging model can recognise and the look that suits each; the scenes without a look stand for
+    /// everyday photos, so that an ordinary photo doesn't push any look. Written in English, which the model reads
+    /// best, whatever the app's language.
+    /// </summary>
+    public static readonly IReadOnlyList<(string? Look, string Prompt)> Scenes =
+    [
+        ("vintage", "this is a photo of an old vintage car."),
+        ("vintage", "this is a photo of a classic car from the 1960s."),
+        ("vintage", "this is a photo of old rusty things."),
+        ("vintage", "this is a photo of an antique shop."),
+        ("vintage", "this is an old faded photograph."),
+        ("sepia", "this is a photo of an oldtimer."),
+        ("sepia", "this is a photo of a historic old town."),
+        ("sepia", "this is a photo of an old steam train."),
+        ("sepia", "this is a photo of antique furniture."),
+        ("bw-contrast", "this is a photo of dramatic architecture with strong lines."),
+        ("bw", "this is a photo of an old man with a wrinkled face."),
+        ("golden", "this is a photo of a sunset."),
+        ("golden", "this is a photo of a sunrise."),
+        ("fresh", "this is a photo of green nature under a blue sky."),
+        ("fresh", "this is a photo of a beach with turquoise water."),
+        ("cool", "this is a photo of snow and ice."),
+        ("cool", "this is a photo of a mountain lake."),
+        ("vivid", "this is a photo of colourful flowers."),
+        ("vivid", "this is a photo of a plate of food."),
+        ("vivid-warm", "this is a photo of a busy street market."),
+        ("warm", "this is a photo of a cosy room in candlelight."),
+        ("soft-haze", "this is a photo of a foggy morning."),
+        ("beauty", "this is a close-up portrait photo of a person."),
+        (null, "this is a photo of a modern car."),
+        (null, "this is a photo of a modern city street."),
+        (null, "this is a photo of a modern building."),
+        (null, "this is a photo of people on holiday."),
+        (null, "this is a photo of a room."),
+        (null, "this is a photo of an animal."),
+        (null, "this is a screenshot or a document."),
+    ];
+
+    /// <summary>
+    /// How strongly the photo shows the scenes of each look, from 0 to 1 (the shares of all looks sum to at most 1),
+    /// given its picture vector and the vectors of <see cref="Scenes"/>' prompts, in the same order.
+    /// </summary>
+    public static IReadOnlyDictionary<string, double> SceneShares(float[] picture, IReadOnlyList<float[]> sceneVectors)
+    {
+        var shares = new Dictionary<string, double>();
+        var scores = Tagging.ImageTagger.Scores(picture, sceneVectors);
+        for (var i = 0; i < scores.Length && i < Scenes.Count; i++)
+            if (Scenes[i].Look is { } look)
+                shares[look] = shares.GetValueOrDefault(look) + scores[i];
+        return shares;
+    }
+
+    /// <summary>
     /// The keys of the <paramref name="count"/> looks that suit the photo best, best first, leaving out
     /// <paramref name="except"/> (the pinned looks, already shown).
     /// </summary>
     /// <param name="faces">How many faces large enough to matter the photo shows.</param>
+    /// <param name="scenes">What the photo shows, from <see cref="SceneShares"/>, or null without the tagging model.</param>
     public static IReadOnlyList<string> Suggest(Traits photo, int faces, IEnumerable<string> tags, int count,
-                                                IEnumerable<string>? except = null)
+                                                IEnumerable<string>? except = null, IReadOnlyDictionary<string, double>? scenes = null)
     {
         if (count <= 0)
             return [];
@@ -132,6 +188,16 @@ public static class LookSuggestions
             Add("bw-contrast", 1.5);
         if (Tagged("indoor", "indoors", "innen", "interior", "minimal"))
             Add("soft-haze", 1);
+        if (Tagged("vintage", "oldtimer", "antique", "antik", "antiguo", "retro", "nostalgia", "nostalgie", "nostalgía", "historic", "historisch", "histórico", "classic"))
+        {
+            Add("vintage", 3);
+            Add("sepia", 2.5);
+        }
+
+        // What the photo shows counts most: a scene the model is sure of brings its look to the front.
+        if (scenes is not null)
+            foreach (var (key, share) in scenes)
+                Add(key, 8 * Math.Min(1, share));
 
         var skip = except?.ToHashSet() ?? [];
         return Looks.All.Select(l => l.Key)

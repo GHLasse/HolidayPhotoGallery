@@ -76,6 +76,19 @@ jobs:
             [ -f "$dir/$(basename $f)" ] || curl -sSfL --retry 3 -o "$dir/$(basename $f)" "$base/$f"
           done
           [ -f "$dir/cats.jpg" ] || curl -sSfL --retry 3 -o "$dir/cats.jpg" http://images.cocodataset.org/val2017/000000039769.jpg
+          # TEMPORARY probe: a few Commons photos per scene, to tune the suggested looks.
+          mkdir -p "$dir/look-scenes"
+          for q in "Citroen DS old car" "rusty vintage car" "oldtimer street" "steam locomotive" "sunset beach" "Tesla Model 3" "Amsterdam canal street" "plate of food" "snow mountain" "portrait woman" "modern city street"; do
+            slug=$(echo "$q" | tr ' ' '-' | tr 'A-Z' 'a-z')
+            curl -sSL --retry 3 -G -A "HolidayPhotoGallery-CI/1.0 (https://github.com/GHLasse/HolidayPhotoGallery)" https://commons.wikimedia.org/w/api.php \
+              --data-urlencode action=query --data-urlencode format=json --data-urlencode generator=search --data-urlencode gsrnamespace=6 \
+              --data-urlencode "gsrsearch=$q filetype:bitmap" --data-urlencode gsrlimit=3 --data-urlencode prop=imageinfo \
+              --data-urlencode iiprop=url --data-urlencode iiurlwidth=512 \
+              | jq -r '.query.pages[] | "\(.index) \(.imageinfo[0].thumburl) \(.title)"' | sort -n | while read -r n url title; do
+                echo "$slug-$n: $title $url"
+                curl -sSfL --retry 3 -A "HolidayPhotoGallery-CI/1.0 (https://github.com/GHLasse/HolidayPhotoGallery)" -o "$dir/look-scenes/$slug-$n.jpg" "$url" || true
+              done || true
+          done
           ls -l "$dir"
           # The same revision and hashes as TagModel.cs.
           printf '%s  %s\n' \

@@ -1,5 +1,6 @@
 using PhotoGallery.App.Imaging;
 using PhotoGallery.Core;
+using PhotoGallery.Core.Editing;
 using PhotoGallery.Core.ExifTool;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
@@ -321,6 +322,34 @@ public sealed partial class MainViewModel
         {
             App.Trace($"Search in your own words failed: {ex.Message}");
             return (found, null);
+        }
+    }
+
+    private float[][]? _lookSceneVectors;
+
+    /// <summary>
+    /// What the photo shows, for suggesting looks (an old car suits Vintage), from its picture vector; null without
+    /// the tagging model or when the photo can't be looked at.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, double>?> LookScenesAsync(PhotoItemViewModel item)
+    {
+        if (!IsTagModelInstalled)
+            return null;
+        try
+        {
+            var picture = await PictureVectorAsync(item.Path, item.IsVideo);
+            if (_lookSceneVectors is null)
+            {
+                var tagger = await LoadTaggerAsync();
+                _lookSceneVectors = await Task.Run(() => tagger.EmbedTexts(LookSuggestions.Scenes.Select(s => s.Prompt).ToList()));
+            }
+            return LookSuggestions.SceneShares(picture, _lookSceneVectors);
+        }
+        catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidDataException or
+                                   UnauthorizedAccessException or System.Runtime.InteropServices.COMException or ArgumentException)
+        {
+            App.Trace($"Looking at {item.Path} for looks failed: {ex.Message}");
+            return null;
         }
     }
 
