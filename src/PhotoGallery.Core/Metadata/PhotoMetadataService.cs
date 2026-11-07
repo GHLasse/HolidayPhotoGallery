@@ -428,6 +428,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-ExifIFD:OffsetTimeOriginal={offset ?? ""}");
             args.Add($"-XMP-exif:DateTimeOriginal={exif}{offset}");
             args.Add($"-XMP-photoshop:DateCreated={exif}{offset}");
+            // IPTC's own "date created" is the date taken too; Lightroom, Photo Mechanic and news archives read it.
+            if (hasIptc)
+            {
+                args.Add($"-IPTC:DateCreated={date.Local.ToString("yyyy:MM:dd", CultureInfo.InvariantCulture)}");
+                args.Add($"-IPTC:TimeCreated={date.Local.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}{offset}");
+            }
             if (changes.SyncOtherDates)
             {
                 args.Add($"-ExifIFD:CreateDate={exif}");
@@ -442,6 +448,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                     args.Add($"-FileCreateDate={exif}{offset}");
             }
         }
+
+        if (changes.DatesBeforeSync is { Length: > 0 } before)
+            args.Add($"-{AppNamespace.DatesBeforeSyncField}={before}");
 
         if (changes.ShiftCreateDateBy is { } shift && shift != TimeSpan.Zero && !changes.SyncOtherDates)
         {
@@ -731,7 +740,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         return model.StartsWith(brand, StringComparison.OrdinalIgnoreCase) ? model : $"{make} {model}";
     }
 
-    private static DateTaken? ParseDateTaken(JsonElement item)
+    internal static DateTaken? ParseDateTaken(JsonElement item)
     {
         DateTaken? xmp = DateTaken.TryParse(GetString(item, "XMP-exif:DateTimeOriginal"), out var x) ? x : null;
 
@@ -763,7 +772,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         return null;
     }
 
-    private static string? GetString(JsonElement item, string key)
+    internal static string? GetString(JsonElement item, string key)
     {
         if (!item.TryGetProperty(key, out var value))
             return null;
@@ -811,5 +820,5 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    private static string KeyOf(string path) => path.Replace('\\', '/');
+    internal static string KeyOf(string path) => path.Replace('\\', '/');
 }

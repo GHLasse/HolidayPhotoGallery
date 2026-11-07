@@ -22,11 +22,14 @@ public sealed partial class MainViewModel
     private static string OutgoingFolder => OutgoingCopies.DefaultFolder(DataFolder);
 
     /// <summary>
-    /// The files to share: the photos themselves, or copies without the GPS position when Settings says so.
+    /// The files to share: the photos themselves, or copies without the GPS position when Settings says so. Their
+    /// dates are brought in line with the date taken first ("Keep all dates in sync").
     /// Copies of the share before are deleted first. Null (with a message) when the copies can't be made.
     /// </summary>
     public async Task<IReadOnlyList<string>?> FilesToShareAsync(IReadOnlyList<string> paths)
     {
+        // The dates first, so the photos (and the copies made of them) sort right wherever they land.
+        await SyncDatesBeforeSendingAsync(paths);
         if (!_settings.SendWithoutGps)
             return paths;
         if (_exifTool is null)

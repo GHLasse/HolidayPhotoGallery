@@ -1,13 +1,16 @@
 namespace PhotoGallery.Core.ExifTool;
 
 /// <summary>
-/// The app's own XMP fields, which other programs ignore: today the list of tags that came from
-/// auto-tagging. ExifTool learns them from a small config file, passed when it starts.
+/// The app's own XMP fields, which other programs ignore: the list of tags that came from
+/// auto-tagging and the dates a date sync replaced. ExifTool learns them from a small config file, passed when it starts.
 /// </summary>
 public static class AppNamespace
 {
     /// <summary>The tags auto-tagging added, as ExifTool names the field.</summary>
     public const string AutoTagsField = "XMP-hpg:AutoTags";
+
+    /// <summary>The dates a date sync replaced, kept so nothing is lost (see Metadata.DateSync).</summary>
+    public const string DatesBeforeSyncField = "XMP-hpg:DatesBeforeSync";
 
     private const string Config = """
         # Holiday Photo Gallery's own XMP fields.
@@ -21,6 +24,7 @@ public static class AppNamespace
             NAMESPACE => { 'hpg' => 'https://github.com/GHLasse/HolidayPhotoGallery/ns/1.0/' },
             WRITABLE => 'string',
             AutoTags => { List => 'Bag' },
+            DatesBeforeSync => { },
         );
         1;
         """;

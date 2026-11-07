@@ -179,6 +179,11 @@ public sealed partial class PhotoIndex : IDisposable
             CREATE TABLE IF NOT EXISTS auto_tag_queue (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE
             );
+            -- Photos the background date sync has looked at, for the file as it was then.
+            CREATE TABLE IF NOT EXISTS date_checks (
+                photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+                file_mtime INTEGER NOT NULL
+            );
             PRAGMA user_version = {SchemaVersion};
             """);
         // The brightest part of a photo, kept for the "too dark" hint since 2026-11.

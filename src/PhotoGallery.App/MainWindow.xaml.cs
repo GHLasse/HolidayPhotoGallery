@@ -2079,8 +2079,9 @@ public sealed partial class MainWindow : Window
 
         if (chosenLanguage() is { } uiLanguage)
             ViewModel.SaveUiLanguage(uiLanguage);
-        var (keepDatesInSync, placeLanguage, addPlaceNames) = chosenDatesAndPlaces();
+        var (keepDatesInSync, syncDatesInBackground, placeLanguage, addPlaceNames) = chosenDatesAndPlaces();
         ViewModel.SaveDatesAndPlaces(keepDatesInSync, placeLanguage);
+        ViewModel.SaveSyncDatesInBackground(syncDatesInBackground);
         ViewModel.SaveAddPlaceNamesAutomatically(addPlaceNames);
         SaveTrackSettings(chosenTracks());
 

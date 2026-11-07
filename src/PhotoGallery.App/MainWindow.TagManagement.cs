@@ -247,7 +247,7 @@ public sealed partial class MainWindow
     }
 
     /// <summary>Settings › Dates and places. Returns the page, and reads back what was chosen when Save is clicked.</summary>
-    private FrameworkElement DatesAndPlacesPage(out Func<(bool KeepDatesInSync, string PlaceLanguage, bool AddPlaceNames)> chosen)
+    private FrameworkElement DatesAndPlacesPage(out Func<(bool KeepDatesInSync, bool SyncDatesInBackground, string PlaceLanguage, bool AddPlaceNames)> chosen)
     {
         var sync = new ToggleSwitch
         {
@@ -256,6 +256,13 @@ public sealed partial class MainWindow
             OffContent = Tr("Off"),
             Header = Tr("Keep all dates in sync"),
             IsOn = ViewModel.KeepDatesInSync,
+        };
+        var syncAll = new ToggleSwitch
+        {
+            OnContent = Tr("On"),
+            OffContent = Tr("Off"),
+            Header = Tr("Bring the dates of all photos in line in the background"),
+            IsOn = ViewModel.SyncDatesInBackground,
         };
         var language = new ComboBox { Header = Tr("Language of place names"), MinWidth = 260 };
         foreach (var (_, name) in ViewModels.MainViewModel.PlaceLanguages)
@@ -268,7 +275,7 @@ public sealed partial class MainWindow
             Header = Tr("Add place names to photos with a GPS position by themselves"),
             IsOn = ViewModel.AddPlaceNamesAutomatically,
         };
-        chosen = () => (sync.IsOn, ViewModels.MainViewModel.PlaceLanguages[Math.Max(0, language.SelectedIndex)].Key, addPlaces.IsOn);
+        chosen = () => (sync.IsOn, syncAll.IsOn, ViewModels.MainViewModel.PlaceLanguages[Math.Max(0, language.SelectedIndex)].Key, addPlaces.IsOn);
 
         TextBlock Note(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
         return new StackPanel
@@ -280,6 +287,11 @@ public sealed partial class MainWindow
                 sync,
                 Note(Tr("A photo holds several dates: when it was taken, when it was digitized, when it was last changed, and the file's own dates that Explorer shows. ") +
                      Tr("When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes.")),
+                Note(Tr("It also brings them in line before photos are shared or uploaded, so Google Photos, Apple Photos, OneDrive and Explorer sort them by the date taken, whichever date they look at.")),
+                syncAll,
+                ProgressText(() => ViewModel.DateSyncProgressText()),
+                Note(Tr("Goes through the whole library quietly and sets every date of a photo to its date taken. The dates it replaces are kept in the photo, so none is lost. ") +
+                     Tr("Photos without a date taken, videos and read-only photos are left as they are. Many files change at once, so cloud folders such as OneDrive upload them again.")),
                 language,
                 Note(Tr("For “Add place names”: the country, region, city and district are written in this language. ") +
                      Tr("Local uses the names as people there write them. Photos that already have place names keep them until you add them again.")),
