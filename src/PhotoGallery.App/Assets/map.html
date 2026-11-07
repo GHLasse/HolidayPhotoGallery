@@ -297,12 +297,19 @@ function start() {
         }
         try { gl.setPaintProperty(id, prop, dark ? value : day[key]); } catch (e) { }
       };
-      if (l.type === "background") set("background-color", night.background);
-      else if (l.type === "fill")
-        set("fill-color", /water|ocean|lake|river/.test(id) ? night.water
-                        : /park|wood|forest|grass|green|landcover|scrub|wetland|farmland/.test(id) ? night.park
-                        : /building/.test(id) ? night.building : night.land);
-      else if (l.type === "fill-extrusion") set("fill-extrusion-color", night.building);
+      // A patterned fill (wetland, marsh, ...) draws a light picture over its colour, so dark mode drops the
+      // picture and keeps the dark colour underneath.
+      const unpattern = prop => { if ((id + "|" + prop) in day || gl.getPaintProperty(id, prop)) set(prop, null); };
+      if (l.type === "background") { set("background-color", night.background); unpattern("background-pattern"); }
+      else if (l.type === "fill") {
+        const colour = /water|ocean|lake|river/.test(id) ? night.water
+                     : /park|wood|forest|grass|green|landcover|scrub|wetland|marsh|swamp|bog|farmland/.test(id) ? night.park
+                     : /building/.test(id) ? night.building : night.land;
+        set("fill-color", colour);
+        unpattern("fill-pattern");
+        if ((id + "|fill-outline-color") in day || gl.getPaintProperty(id, "fill-outline-color")) set("fill-outline-color", colour);
+      }
+      else if (l.type === "fill-extrusion") { set("fill-extrusion-color", night.building); unpattern("fill-extrusion-pattern"); }
       else if (l.type === "line")
         set("line-color", /water|river|stream|canal|waterway/.test(id) ? night.water
                         : /boundary|admin/.test(id) ? night.boundary
