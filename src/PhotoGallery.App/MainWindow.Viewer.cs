@@ -73,8 +73,12 @@ public sealed partial class MainWindow
         _viewerIdleTimer?.Start();
     }
 
-    private void SetViewerControlsOpacity(double opacity) =>
-        ViewerTopBar.Opacity = ViewerPreviousButton.Opacity = ViewerNextButton.Opacity = ViewerStrip.Opacity = opacity;
+    private void SetViewerControlsOpacity(double opacity)
+    {
+        ViewerTopBar.Opacity = ViewerPreviousButton.Opacity = ViewerNextButton.Opacity = opacity;
+        // While editing, the edit bar stands in the filmstrip's place.
+        ViewerStrip.Opacity = IsEditing ? 0 : opacity;
+    }
 
     /// <summary>Where the tile's thumbnail is on screen, relative to the window's content.</summary>
     private Rect? TileImageBounds(PhotoItemViewModel item)

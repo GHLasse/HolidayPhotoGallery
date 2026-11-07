@@ -1599,8 +1599,10 @@
                     <KeyboardAccelerator Key="Right" Invoked="ViewerAccelerator_Invoked" />
                 </Button.KeyboardAccelerators>
             </Button>
-            <!-- Shown while a crop or auto adjust is being previewed; nothing is written before Save. -->
-            <Grid x:Name="ViewerEditBar" Grid.Row="2" Padding="12,8" ColumnSpacing="8" Visibility="Collapsed"
+            <!-- Shown while a crop or auto adjust is being previewed; nothing is written before Save. It stands in the
+                 filmstrip's place (the strip hides meanwhile), so the photo neither moves nor shrinks when editing starts,
+                 and it always sits at the bottom. -->
+            <Grid x:Name="ViewerEditBar" Grid.Row="3" Canvas.ZIndex="1" MinHeight="76" Padding="12,8" ColumnSpacing="8" Visibility="Collapsed"
                   Background="{ThemeResource LayerFillColorDefaultBrush}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -1626,7 +1628,7 @@
                             ToolTipService.ToolTip="{local:Loc Text='Turn the photo to level a tilted horizon. Double-click to set it back.'}" />
                     <TextBlock x:Name="StraightenValue" VerticalAlignment="Center" MinWidth="44" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
-                <TextBlock x:Name="ViewerEditHint" Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap"
+                <TextBlock x:Name="ViewerEditHint" Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <ComboBox x:Name="SaveFormatCombo" Grid.Column="2" VerticalAlignment="Center" MinWidth="150" SelectedIndex="0"
                           ToolTipService.ToolTip="{local:Loc Text='Save in the photo’s own format, or as JPEG for sharing'}">
