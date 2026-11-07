@@ -290,7 +290,7 @@ public sealed partial class MainWindow
         _ = AddLookScenesAsync(pixels, item);
     }
 
-    private async Task AddLookScenesAsync(DecodedImage pixels, PhotoItemViewModel item)
+    private async Task AddLookScenesAsync(DecodedImage pixels, ViewModels.PhotoItemViewModel item)
     {
         if (await ViewModel.LookScenesAsync(item) is { } scenes && ReferenceEquals(pixels, _lookThumbsFor) && _lookHints is { } hints)
         {
