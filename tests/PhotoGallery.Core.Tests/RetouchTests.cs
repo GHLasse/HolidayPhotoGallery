@@ -205,6 +205,43 @@ public sealed class RetouchTests
     }
 
     [Fact]
+    public void Healing_on_a_textured_wall_takes_texture_and_not_a_smooth_patch_nearby()
+    {
+        // A rough wall (strong grain) with a smooth pipe of the same average colour just beside the spot: a smooth
+        // patch differs least from any grain, but would leave a blurry blob.
+        const int w = 240, h = 200, cx = 100, cy = 100, r = 10;
+        var random = new Random(4);
+        var clean = new byte[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var o = (y * w + x) * 4;
+                var v = x is >= 125 and < 150 ? 140 : 140 + random.Next(-30, 31);
+                clean[o] = clean[o + 1] = clean[o + 2] = (byte)v;
+                clean[o + 3] = 255;
+            }
+        }
+        var spotted = (byte[])clean.Clone();
+        Spot(spotted, w, cx, cy, r);
+        var stroke = new RetouchStroke(RetouchTool.Spot, [((cx + 0.5) / w, (cy + 0.5) / h)], (r + 1.5) / w);
+        Retouch.Apply(spotted, w, h, [stroke], erase: null);
+
+        double Spread(byte[] p, int x0, int y0, int size)
+        {
+            var values = new List<double>();
+            for (var y = y0; y < y0 + size; y++)
+                for (var x = x0; x < x0 + size; x++)
+                    values.Add(p[(y * w + x) * 4 + 1]);
+            var mean = values.Average();
+            return Math.Sqrt(values.Average(v => (v - mean) * (v - mean)));
+        }
+        var healed = Spread(spotted, cx - 6, cy - 6, 12);
+        var wall = Spread(clean, 40, 40, 12);
+        Assert.True(healed > wall * 0.6, $"the healed spot should be as rough as the wall: {healed:0.0} vs {wall:0.0}");
+    }
+
+    [Fact]
     public void A_soft_fill_gets_the_grain_of_its_surroundings()
     {
         const int w = 200, h = 200;
