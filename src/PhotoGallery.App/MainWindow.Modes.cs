@@ -153,7 +153,7 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// The map glides from where it was to where it is now, so going from the map beside the photos to the Map page
-    /// (or back) reads as the pane opening up rather than a jump.
+    /// reads as the pane opening up rather than a jump.
     /// </summary>
     private void SlideMapFrom(Windows.Foundation.Point from)
     {
@@ -165,6 +165,13 @@ public sealed partial class MainWindow
         var dy = (float)(from.Y - to.Y);
         if (Math.Abs(dx) < 1 && Math.Abs(dy) < 1)
             return;
+        // Onto the Map page the map stays where it is on the right and its left edge sweeps open over the photos, the
+        // reverse of ShrinkMapOntoPane; its controls glide to their new places.
+        if (dx > 0 && Math.Abs(dy) < 1)
+        {
+            MapView.ClipLeft(dx, 0, () => DispatcherQueue.TryEnqueue(() => MapView.ClearClip()));
+            return;
+        }
         MapView.TranslationTransition = null;
         MapView.Translation = new System.Numerics.Vector3(dx, dy, 0);
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -203,7 +210,7 @@ public sealed partial class MainWindow
         if (left < 1)
             Done();
         else
-            MapView.ClipLeftTo(left, TimeSpan.FromMilliseconds(250), () => DispatcherQueue.TryEnqueue(Done));
+            MapView.ClipLeft(0, left, () => DispatcherQueue.TryEnqueue(Done));
     }
 
     // ---- People workspace ----
