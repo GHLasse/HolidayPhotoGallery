@@ -2093,6 +2093,9 @@ public sealed partial class MainWindow : Window
     {
         SyncEditPane();
         ViewerEditBar.Visibility = IsEditing ? Visibility.Visible : Visibility.Collapsed;
+        // The bar takes the filmstrip's place, so the photo keeps its size and place while it is edited.
+        ViewerStrip.Opacity = IsEditing ? 0 : 1;
+        ViewerStrip.IsHitTestVisible = !IsEditing;
         CropShapePanel.Visibility = ViewerCropButton.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (ViewerItem is not { } item)
             return;
