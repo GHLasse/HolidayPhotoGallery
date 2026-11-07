@@ -109,18 +109,27 @@ public sealed class LookSuggestionTests
     public void The_model_sees_which_looks_suit_real_photos()
     {
         var folder = Path.Combine(TagModelFactAttribute.Folder!, "look-scenes");
-        if (!Directory.Exists(folder))
-            return;
         using var tagger = Tagging.ImageTagger.Load(TagModelFactAttribute.Folder!);
         var prompts = tagger.EmbedTexts(LookSuggestions.Scenes.Select(s => s.Prompt).ToList());
-        foreach (var file in Directory.GetFiles(folder).Order())
+        IReadOnlyList<string> Suggested(string file)
         {
-            if (TestImages.Decode(file) is not { } image)
-                continue;
+            var image = TestImages.Decode(Path.Combine(folder, file))!.Value;
             var shares = LookSuggestions.SceneShares(tagger.EmbedImage(image.Pixels, image.Width, image.Height), prompts);
-            var traits = LookSuggestions.Measure(image.Pixels, image.Width, image.Height);
-            var suggested = LookSuggestions.Suggest(traits, 0, [], 6, scenes: shares);
-            Console.WriteLine($"LOOKSCENE {Path.GetFileName(file)}: {string.Join(", ", shares.OrderByDescending(s => s.Value).Take(4).Select(s => $"{s.Key} {s.Value:P0}"))} -> {string.Join(" ", suggested)}");
+            var suggested = LookSuggestions.Suggest(LookSuggestions.Measure(image.Pixels, image.Width, image.Height), 0, [], 6, scenes: shares);
+            Console.WriteLine($"LOOKSCENE {file}: {string.Join(", ", shares.OrderByDescending(s => s.Value).Take(3).Select(s => $"{s.Key} {s.Value:P0}"))} -> {string.Join(" ", suggested)}");
+            return suggested;
         }
+
+        foreach (var car in new[] { "old-car-citroen-ds.jpg", "old-car-rusty.jpg" })
+        {
+            var suggested = Suggested(car);
+            Assert.Equal("vintage", suggested[0]);
+            Assert.Contains("sepia", suggested);
+        }
+        Assert.Equal("vivid", Suggested("food-cake.jpg")[0]);
+        Assert.Equal("cool", Suggested("snow-mountain-lake.jpg")[0]);
+        var street = Suggested("modern-street.jpg");
+        Assert.DoesNotContain("vintage", street);
+        Assert.DoesNotContain("sepia", street);
     }
 }

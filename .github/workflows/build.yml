@@ -76,19 +76,18 @@ jobs:
             [ -f "$dir/$(basename $f)" ] || curl -sSfL --retry 3 -o "$dir/$(basename $f)" "$base/$f"
           done
           [ -f "$dir/cats.jpg" ] || curl -sSfL --retry 3 -o "$dir/cats.jpg" http://images.cocodataset.org/val2017/000000039769.jpg
-          # TEMPORARY probe: a few Commons photos per scene, to tune the suggested looks.
+          # Photos from Wikimedia Commons for the suggested looks (LookSuggestionTests).
           mkdir -p "$dir/look-scenes"
-          for q in "Citroen DS old car" "rusty vintage car" "oldtimer street" "steam locomotive" "sunset beach" "Tesla Model 3" "Amsterdam canal street" "plate of food" "snow mountain" "portrait woman" "modern city street"; do
-            slug=$(echo "$q" | tr ' ' '-' | tr 'A-Z' 'a-z')
-            curl -sSL --retry 3 -G -A "HolidayPhotoGallery-CI/1.0 (https://github.com/GHLasse/HolidayPhotoGallery)" https://commons.wikimedia.org/w/api.php \
-              --data-urlencode action=query --data-urlencode format=json --data-urlencode generator=search --data-urlencode gsrnamespace=6 \
-              --data-urlencode "gsrsearch=$q filetype:bitmap" --data-urlencode gsrlimit=3 --data-urlencode prop=imageinfo \
-              --data-urlencode iiprop=url --data-urlencode iiurlwidth=512 \
-              | jq -r '.query.pages[] | "\(.index) \(.imageinfo[0].thumburl) \(.title)"' | sort -n | while read -r n url title; do
-                echo "$slug-$n: $title $url"
-                curl -sSfL --retry 3 -A "HolidayPhotoGallery-CI/1.0 (https://github.com/GHLasse/HolidayPhotoGallery)" -o "$dir/look-scenes/$slug-$n.jpg" "$url" || true
-              done || true
-          done
+          commons=https://upload.wikimedia.org/wikipedia/commons/thumb
+          while read -r name path; do
+            [ -f "$dir/look-scenes/$name" ] || curl -sSfL --retry 3 -A "HolidayPhotoGallery-CI/1.0 (https://github.com/GHLasse/HolidayPhotoGallery)" -o "$dir/look-scenes/$name" "$commons/$path"
+          done <<'EOF'
+          old-car-citroen-ds.jpg 8/84/1973_Citroen_DS23_Safari_%288408039598%29.jpg/960px-1973_Citroen_DS23_Safari_%288408039598%29.jpg
+          old-car-rusty.jpg 2/2b/Rusty_Vintage_Car_%282536702090%29.jpg/960px-Rusty_Vintage_Car_%282536702090%29.jpg
+          food-cake.jpg e/ef/Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg/960px-Piece_of_chocolate_cake_on_a_white_plate_decorated_with_chocolate_sauce.jpg
+          snow-mountain-lake.jpg 2/23/Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg/960px-Mountain_lake%2C_Mylgval_mountain_cirque%2C_Western_Caucasus.jpg
+          modern-street.jpg b/ba/PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg/960px-PITAM_modern_jeepneys_in_Colon_Street_%282025-05-17%29.jpg
+          EOF
           ls -l "$dir"
           # The same revision and hashes as TagModel.cs.
           printf '%s  %s\n' \
