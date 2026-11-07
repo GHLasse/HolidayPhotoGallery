@@ -835,6 +835,13 @@ public sealed partial class MainWindow
 
     private void ShowRightPane(SidePane pane)
     {
+        // A click that lands just as the selection empties, before the switch has caught up (the pane waits for
+        // a possible double-click), does nothing rather than open an empty pane.
+        if (!PaneUsable(pane))
+        {
+            SyncSideSwitch();
+            return;
+        }
         if (pane == SidePane.Edit && !IsViewerOpen)
         {
             EditSelectedPhoto();
