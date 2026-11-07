@@ -312,6 +312,12 @@ public sealed partial class MainWindow : Window
         LeavePeopleWorkspace();
         ViewModel.IsAlbumView = false;
         ViewModel.SelectedFolder = null;
+        // On the Map page it always zooms to every photo, even when nothing else changed (Lasse 2026-11-07).
+        if (_workspace == Workspace.Map)
+        {
+            _mapFitAllNext = true;
+            RefreshMap(fit: true);
+        }
     }
 
     // A year, month, country or city is a place to browse, like a folder: picking one replaces the others.
@@ -1055,7 +1061,11 @@ public sealed partial class MainWindow : Window
             if (version != _mapVersion)
                 return;
             _mapPhotos = all;
-            MapView.ShowPhotos(all, fitAll: fit && SelectedPhotos.Count == 0);
+            var fitAll = _mapFitAllNext || (fit && SelectedPhotos.Count == 0);
+            if (_mapFitAllNext)
+                fit = false; // all the photos, not the selected ones
+            _mapFitAllNext = false;
+            MapView.ShowPhotos(all, fitAll: fitAll);
         }
         else
         {
@@ -1064,6 +1074,9 @@ public sealed partial class MainWindow : Window
         MapView.ShowSelection(SelectedPhotos, fit);
         _ = ShowTrackLineAsync();
     }
+
+    // All Photos on the Map page: the next refresh zooms to every photo, whatever is selected.
+    private bool _mapFitAllNext;
 
     // The photos on the whole-library map, for opening one from its bubble.
     private List<IndexedPhoto> _mapPhotos = [];
