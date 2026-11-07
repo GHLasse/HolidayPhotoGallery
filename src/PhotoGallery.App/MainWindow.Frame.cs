@@ -249,9 +249,7 @@ public sealed partial class MainWindow
         if (_mapBesideSlid && !mapGoes)
         {
             // A slide that was turned round: back in place.
-            _mapBesideSlid = false;
-            MapView.TranslationTransition = null;
-            MapView.Translation = System.Numerics.Vector3.Zero;
+            PutMapBesideBack();
         }
         if (mapGoes)
             SlideMapBeside((float)MapView.ActualWidth);

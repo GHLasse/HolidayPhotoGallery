@@ -2,6 +2,7 @@ using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Windows.Foundation;
 
 namespace PhotoGallery.App;
@@ -123,45 +124,98 @@ public sealed partial class MainWindow
 
     // ---- Moving things on the GPU ----
 
+    // Elements moved through their visual rather than their own Translation and Scale. An element that has a
+    // RenderTransform (the grid's and the strip's tiles do) can't use those (WinUI throws "Calling TranslationTransition
+    // API is not allowed on this object at this time"), and once its visual has been taken over it must stay that way.
+    private static readonly HashSet<UIElement> s_byVisual = [];
+
+    private static bool ByVisual(UIElement element) =>
+        s_byVisual.Contains(element) || element.RenderTransform is not null
+        || element is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem or ListViewBaseHeaderItem;
+
     /// <summary>
     /// Shows the element <paramref name="move"/> pixels away and <paramref name="scale"/> times its size (from its top
-    /// left corner), and glides it back to its place. Its own Translation and Scale are animated, not its visual: some of
-    /// these elements fade with an OpacityTransition, and WinUI allows one or the other.
+    /// left corner), and glides it back to its place. Tiles go through their visual; the rest through their own
+    /// Translation and Scale, as some of them fade with an OpacityTransition and WinUI allows one or the other. If WinUI
+    /// refuses either, the element simply stays where it now is.
     /// </summary>
     private static void Glide(UIElement element, Vector3 move, Vector3 scale)
     {
         if (Math.Abs(move.X) < 0.5 && Math.Abs(move.Y) < 0.5 && Math.Abs(scale.X - 1) < 0.005 && Math.Abs(scale.Y - 1) < 0.005)
             return;
-        var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
-        var easing = MorphEasing(compositor);
-        element.TranslationTransition = null;
-        element.ScaleTransition = null;
-        element.CenterPoint = Vector3.Zero;
-        element.Translation = Vector3.Zero;
-        element.Scale = Vector3.One;
-        var moving = compositor.CreateVector3KeyFrameAnimation();
-        moving.Target = "Translation";
-        moving.InsertKeyFrame(0, move);
-        moving.InsertKeyFrame(1, Vector3.Zero, easing);
-        moving.Duration = TimeSpan.FromMilliseconds(MorphMs);
-        element.StartAnimation(moving);
-        var scaling = compositor.CreateVector3KeyFrameAnimation();
-        scaling.Target = "Scale";
-        scaling.InsertKeyFrame(0, scale);
-        scaling.InsertKeyFrame(1, Vector3.One, easing);
-        scaling.Duration = TimeSpan.FromMilliseconds(MorphMs);
-        element.StartAnimation(scaling);
+        try
+        {
+            var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
+            var easing = MorphEasing(compositor);
+            var moving = compositor.CreateVector3KeyFrameAnimation();
+            moving.InsertKeyFrame(0, move);
+            moving.InsertKeyFrame(1, Vector3.Zero, easing);
+            moving.Duration = TimeSpan.FromMilliseconds(MorphMs);
+            var scaling = compositor.CreateVector3KeyFrameAnimation();
+            scaling.InsertKeyFrame(0, scale);
+            scaling.InsertKeyFrame(1, Vector3.One, easing);
+            scaling.Duration = TimeSpan.FromMilliseconds(MorphMs);
+            if (ByVisual(element))
+            {
+                s_byVisual.Add(element);
+                ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+                var visual = ElementCompositionPreview.GetElementVisual(element);
+                visual.CenterPoint = Vector3.Zero;
+                visual.StartAnimation("Translation", moving);
+                visual.StartAnimation("Scale", scaling);
+                return;
+            }
+            element.TranslationTransition = null;
+            element.ScaleTransition = null;
+            element.CenterPoint = Vector3.Zero;
+            element.Translation = Vector3.Zero;
+            element.Scale = Vector3.One;
+            moving.Target = "Translation";
+            scaling.Target = "Scale";
+            element.StartAnimation(moving);
+            element.StartAnimation(scaling);
+        }
+        catch (Exception e)
+        {
+            App.Trace($"glide skipped: {e.Message}");
+        }
     }
 
     private void FadeIn(UIElement element)
     {
-        element.OpacityTransition = null;
-        element.Opacity = 0;
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        try
         {
-            element.OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(MorphMs) };
+            if (ByVisual(element))
+            {
+                s_byVisual.Add(element);
+                var visual = ElementCompositionPreview.GetElementVisual(element);
+                var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+                fade.InsertKeyFrame(0, 0);
+                fade.InsertKeyFrame(1, 1, MorphEasing(visual.Compositor));
+                fade.Duration = TimeSpan.FromMilliseconds(MorphMs);
+                visual.StartAnimation("Opacity", fade);
+                return;
+            }
+            element.OpacityTransition = null;
+            element.Opacity = 0;
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                try
+                {
+                    element.OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(MorphMs) };
+                }
+                catch (Exception e)
+                {
+                    App.Trace($"fade skipped: {e.Message}");
+                }
+                element.Opacity = 1;
+            });
+        }
+        catch (Exception e)
+        {
+            App.Trace($"fade skipped: {e.Message}");
             element.Opacity = 1;
-        });
+        }
     }
 
     // ---- The open photo ----
@@ -184,6 +238,20 @@ public sealed partial class MainWindow
                      Move: new Vector3((float)(at.X + at.Width / 2) - centre.X, (float)(at.Y + at.Height / 2) - centre.Y, 0));
         if (Math.Abs(scale - 1) < 0.002 && start.Move.LengthSquared() < 0.25f)
             return;
+        try
+        {
+            StartPhotoGlide(origin, centre, start.Scale, start.Move);
+        }
+        catch (Exception e)
+        {
+            App.Trace($"photo glide skipped: {e.Message}");
+            _glideScale = _glideMove = null;
+        }
+    }
+
+    private void StartPhotoGlide(Rect origin, Vector2 centre, Vector3 startScale, Vector3 startMove)
+    {
+        var start = (Scale: startScale, Move: startMove);
         var compositor = Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread();
         var easing = MorphEasing(compositor);
         ViewerCanvas.ScaleTransition = null;
@@ -208,13 +276,22 @@ public sealed partial class MainWindow
     /// <summary>The photo back where it is laid out, at once.</summary>
     private void DropPhotoGlide()
     {
-        if (_glideScale is { } scale)
-            ViewerCanvas.StopAnimation(scale);
-        if (_glideMove is { } move)
-            ViewerCanvas.StopAnimation(move);
+        if (_glideScale is null && _glideMove is null)
+            return;
+        try
+        {
+            if (_glideScale is { } scale)
+                ViewerCanvas.StopAnimation(scale);
+            if (_glideMove is { } move)
+                ViewerCanvas.StopAnimation(move);
+            ViewerCanvas.Scale = Vector3.One;
+            ViewerCanvas.Translation = Vector3.Zero;
+        }
+        catch (Exception e)
+        {
+            App.Trace($"photo glide drop: {e.Message}");
+        }
         _glideScale = _glideMove = null;
-        ViewerCanvas.Scale = Vector3.One;
-        ViewerCanvas.Translation = Vector3.Zero;
     }
 
     private Rect CanvasOnScreen() => ViewerCanvas.TransformToVisual(Root).TransformBounds(
@@ -287,25 +364,53 @@ public sealed partial class MainWindow
     private void SlideMapBeside(float to, float? from = null)
     {
         _mapBesideSlid = true;
-        if (from is { } start)
+        try
         {
-            MapView.TranslationTransition = null;
-            MapView.Translation = new Vector3(start, 0, 0);
+            if (from is { } start)
+            {
+                MapView.TranslationTransition = null;
+                MapView.Translation = new Vector3(start, 0, 0);
+            }
+        }
+        catch (Exception e)
+        {
+            App.Trace($"map slide skipped: {e.Message}");
+            return;
         }
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
-            MapView.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(MorphMs) };
-            MapView.Translation = new Vector3(to, 0, 0);
+            try
+            {
+                MapView.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(MorphMs) };
+                MapView.Translation = new Vector3(to, 0, 0);
+            }
+            catch (Exception e)
+            {
+                App.Trace($"map slide skipped: {e.Message}");
+            }
         });
+    }
+
+    /// <summary>The map beside the photos back in its place, at once (a slide turned round or done).</summary>
+    private void PutMapBesideBack()
+    {
+        _mapBesideSlid = false;
+        SetDown(MapView);
+        try
+        {
+            MapView.TranslationTransition = null;
+            MapView.Translation = Vector3.Zero;
+        }
+        catch (Exception e)
+        {
+            App.Trace($"map put back: {e.Message}");
+        }
     }
 
     /// <summary>The map has slid out with its pane: it goes, back in its place for next time.</summary>
     private void PutMapBesideAway()
     {
-        _mapBesideSlid = false;
-        SetDown(MapView);
-        MapView.TranslationTransition = null;
-        MapView.Translation = Vector3.Zero;
+        PutMapBesideBack();
         if (_workspace == Workspace.Map || _mapOnPage)
             return;
         MapView.Visibility = Visibility.Collapsed;
