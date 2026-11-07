@@ -24,17 +24,18 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// Opens, closes, folds or unfolds a pane's column. Changing the width makes the grid lay out its photos again,
-    /// which is far too slow to do every frame (it looked like 10 frames a second), so the width changes once and the
-    /// pane's content slides its whole width on the GPU instead, in the same time and curve as the map's morph:
-    /// a pane that comes slides in from the window's edge after the column has widened; one that goes slides out to the
-    /// edge before the column narrows. What takes its place (the strip of icons) fades in once it has gone.
+    /// which is far too slow to do every frame (it looked like 10 frames a second), so the width changes once, straight
+    /// away, and the rest happens on the GPU in the same time and curve as the map's morph: what lies beside the column
+    /// glides from where it was to its new place (MainWindow.PhotoGlide.cs); a pane that comes slides in from the window's
+    /// edge; one that goes keeps its width, lies over the photos and slides out to the edge. What takes its place (the
+    /// strip of icons) fades in once it has gone.
     /// </summary>
     /// <param name="fromLeft">The pane sits at the left edge, so it slides in from the left.</param>
     /// <param name="incoming">What the column shows once it has its new width; the rest of <paramref name="content"/>
     /// that is showing now goes.</param>
-    /// <param name="resized">Called straight after the column has its new width (MainWindow.PhotoGlide.cs).</param>
+    /// <param name="lifted">Called with each part that goes, once it lies over the photos (e.g. to lift the map with it).</param>
     private void AnimateColumn(ColumnDefinition column, double to, bool animate, Action? done = null,
-                               bool fromLeft = false, Action? resized = null, UIElement[]? incoming = null,
+                               bool fromLeft = false, UIElement[]? incoming = null, Action? lifted = null,
                                params UIElement[] content)
     {
         // Asked again while already on its way there (the chrome is applied often): let it carry on.
@@ -47,9 +48,12 @@ public sealed partial class MainWindow
         if (!animate || !s_animations || Math.Abs(from - to) < 1 || shown.Count == 0)
         {
             column.Width = new GridLength(to);
-            resized?.Invoke();
             foreach (var element in content)
+            {
                 ResetSlide(element);
+                if (element is FrameworkElement part)
+                    SetDown(part);
+            }
             done?.Invoke();
             return;
         }
@@ -58,35 +62,35 @@ public sealed partial class MainWindow
         var coming = shown.Where(c => incoming?.Contains(c) ?? to > from).ToList();
         var going = shown.Except(coming).ToList();
         _columnTargets[column] = to;
-        Microsoft.UI.Composition.CompositionScopedBatch batch;
-        if (to > from)
+        // Where things are on screen now, before any of the chrome's changes are laid out.
+        CaptureFollowers();
+        if (to < from)
         {
-            column.Width = new GridLength(to);
-            resized?.Invoke();
-            SettlePhotos();
-            batch = Slide(coming, side * (float)to, 0, 1, 1, MorphMs);
+            foreach (var part in going.OfType<FrameworkElement>())
+                LiftOut(part, fromLeft);
+            lifted?.Invoke();
         }
-        else
-        {
-            batch = Slide(going, 0, side * (float)from, 1, 1, MorphMs);
-            if (coming.Count > 0)
-                Slide(coming, 0, 0, 0, 1, FadeInMs, delayMs: MorphMs);
-        }
+        column.Width = new GridLength(to);
+        Root.UpdateLayout();
+        MorphFollowers();
+        var batch = to > from
+            ? Slide(coming, side * (float)to, 0, 1, 1, MorphMs)
+            : Slide(going, 0, side * (float)from, 1, 1, MorphMs);
+        if (to < from && coming.Count > 0)
+            Slide(coming, 0, 0, 0, 1, FadeInMs, delayMs: MorphMs);
         batch.Completed += (_, _) =>
         {
             if (_columnVersions.GetValueOrDefault(column) != version)
                 return;
             _columnTargets.Remove(column);
             App.Trace($"column slid to {to:0}");
-            if (to < from)
-            {
-                column.Width = new GridLength(to);
-                resized?.Invoke();
-                SettlePhotos();
-                foreach (var element in going)
-                    ResetSlide(element);
-            }
             done?.Invoke();
+            foreach (var element in going)
+            {
+                ResetSlide(element);
+                if (element is FrameworkElement part)
+                    SetDown(part);
+            }
         };
     }
 
