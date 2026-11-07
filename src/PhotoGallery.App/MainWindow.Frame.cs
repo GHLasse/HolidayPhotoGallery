@@ -161,11 +161,16 @@ public sealed partial class MainWindow
             SettingsButton.Width = nav ? double.NaN : 36;
         }
         var navGoes = !nav && !rail;
-        if (!navGoes)
+        // Folding, the pane slides out first and the strip comes after it (AnimateColumn).
+        var navFolds = rail && NavPane.Visibility == Visibility.Visible && animate && s_animations;
+        if (navFolds)
+            NavRail.Visibility = Visibility.Visible;
+        else if (!navGoes)
             ShowNav();
         NavSplitter.Visibility = nav ? Visibility.Visible : Visibility.Collapsed;
         AnimateColumn(NavColumn, nav ? ViewModel.NavPaneWidth : rail ? RailWidth : 0, animate, fromLeft: true,
-                      done: navGoes ? () => { if (_panesHidden || _chromeHidden) ShowNav(); } : null,
+                      done: navGoes || navFolds ? () => { if (_panesHidden || _chromeHidden || _navFolded) ShowNav(); } : null,
+                      incoming: nav ? [NavPane, SettingsButton] : rail ? [NavRail, SettingsButton] : [],
                       content: [NavPane, NavRail, SettingsButton]);
 
         // The map beside the photos and the details share the right-hand column: one or the other, or the strip.
@@ -178,24 +183,37 @@ public sealed partial class MainWindow
         PlaceInfoBesideViewer(viewer && side != RightPane.None);
         InfoSplitter.Visibility = info || edit ? Visibility.Visible : Visibility.Collapsed;
         MapSplitter.Visibility = map ? Visibility.Visible : Visibility.Collapsed;
+        var width = map || info || edit ? Math.Min(ViewModel.InfoPaneWidth, Math.Max(260, (PhotoArea.ActualWidth + InfoColumn.ActualWidth) * 0.7))
+                  : sideRail ? RailWidth : 0;
+        // Folding or closing, the pane and its switch slide out first and go once they have (AnimateColumn's done).
+        var rightWas = InfoColumn.Width.IsAbsolute ? InfoColumn.Width.Value : InfoColumn.ActualWidth;
+        var rightShrinks = animate && s_animations && width < rightWas - 1;
         if (info)
             InfoPane.Visibility = Visibility.Visible;
-        else if (map || sideRail || edit)
+        else if (map || edit || (sideRail && !rightShrinks))
             InfoPane.Visibility = Visibility.Collapsed;
         if (edit)
             EditPane.Visibility = Visibility.Visible;
-        else if (info || map || sideRail)
+        else if (info || map || (sideRail && !rightShrinks))
             EditPane.Visibility = Visibility.Collapsed;
         SideRail.Visibility = sideRail ? Visibility.Visible : Visibility.Collapsed;
         // The switch sits above the pane; over the whole-library map there is nothing to switch to.
         var header = (info || map || edit) && (viewer || !full);
-        SidePaneHeader.Visibility = header ? Visibility.Visible : Visibility.Collapsed;
-        InfoPane.Margin = new Thickness(0, header ? SidePaneHeader.Height : 0, 0, 0);
-        EditPane.Margin = InfoPane.Margin;
+        // The switch goes with the pane.
+        if (header || !rightShrinks)
+        {
+            SidePaneHeader.Visibility = header ? Visibility.Visible : Visibility.Collapsed;
+            InfoPane.Margin = new Thickness(0, header ? SidePaneHeader.Height : 0, 0, 0);
+            EditPane.Margin = InfoPane.Margin;
+        }
         // Beside the grid or the photo the map fills the pane right up to its edges (Lasse 2026-11-07): under the
         // splitter on the left and under the switch at the top, which floats over it on cards like the map's own controls.
         // (The Map page's map reaches the window's edges too.)
-        if (!full && !_mapOnPage)
+        // The map beside the photos slides in and out with its pane, like the details do.
+        var mapBesideMoves = !full && !_mapOnPage && !_mapShrinking && animate && s_animations;
+        var mapGoes = mapBesideMoves && rightShrinks && !map && MapView.Visibility == Visibility.Visible;
+        var mapComes = mapBesideMoves && map && MapView.Visibility != Visibility.Visible && width > rightWas + 1;
+        if (!full && !_mapOnPage && !mapGoes)
         {
             Grid.SetColumn(MapView, map ? 3 : 4);
             Grid.SetColumnSpan(MapView, map ? 2 : 1);
@@ -206,19 +224,37 @@ public sealed partial class MainWindow
         FoldCard.Visibility = SideSwitchCard.Visibility;
         FoldSideButton.CornerRadius = new CornerRadius(overMap ? 18 : 4);
         // Under the viewer the whole-library map would lie over the pane beside it, so it waits till the viewer closes.
-        MapView.Visibility = map || (full && !viewer) ? Visibility.Visible : Visibility.Collapsed;
+        if (_mapBesideSlid && !mapGoes)
+        {
+            // A slide that was turned round: back in place.
+            _mapBesideSlid = false;
+            MapView.TranslationTransition = null;
+            MapView.Translation = System.Numerics.Vector3.Zero;
+        }
+        if (mapGoes)
+            SlideMapBeside((float)MapView.ActualWidth);
+        else
+            MapView.Visibility = map || (full && !viewer) ? Visibility.Visible : Visibility.Collapsed;
+        if (mapComes)
+            SlideMapBeside(0, from: (float)width);
         SyncSideSwitch();
-        var width = map || info || edit ? Math.Min(ViewModel.InfoPaneWidth, Math.Max(260, (PhotoArea.ActualWidth + InfoColumn.ActualWidth) * 0.7))
-                  : sideRail ? RailWidth : 0;
-        var hold = viewer ? PreparePhotoGlide(width, animate) : 0;
-        AnimateColumn(InfoColumn, width, animate, closeAfterMs: hold, done: () =>
+        if (viewer)
+            BeginPhotoGlide(width, animate);
+        AnimateColumn(InfoColumn, width, animate, resized: viewer ? PhotoColumnResized : null, done: () =>
         {
             // Collapsed only once it has slid out, so its content doesn't vanish mid-slide.
-            if (RightSide() != RightPane.Info)
+            var now = RightSide();
+            if (now != RightPane.Info)
                 InfoPane.Visibility = Visibility.Collapsed;
-            if (RightSide() != RightPane.Edit)
+            if (now != RightPane.Edit)
                 EditPane.Visibility = Visibility.Collapsed;
-        }, content: [InfoPane, EditPane, SidePaneHeader, SideRail]);
+            if (now is RightPane.Rail or RightPane.None)
+                SidePaneHeader.Visibility = Visibility.Collapsed;
+            if (mapGoes && now != RightPane.Map)
+                PutMapBesideAway();
+        },
+        incoming: info ? [InfoPane, SidePaneHeader] : edit ? [EditPane, SidePaneHeader] : map ? [SidePaneHeader] : sideRail ? [SideRail] : [],
+        content: [InfoPane, EditPane, SidePaneHeader, SideRail]);
         // The filters work on the grid; the People page and the whole-library map have none.
         TopBar.Visibility = _chromeHidden || viewer || _workspace is Workspace.People or Workspace.Map ? Visibility.Collapsed : Visibility.Visible;
     }

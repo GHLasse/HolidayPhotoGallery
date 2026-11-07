@@ -54,7 +54,6 @@ public sealed partial class MainWindow
             control.OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(SlideMs) };
         ViewerCanvas.OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(167) };
         ViewerCanvas.ZoomedIn += async (_, _) => await ShowSharperPhotoAsync();
-        SetUpPhotoGlide();
         // handledEventsToo: the crop frame takes the pointer for itself while it is dragged.
         ViewerLayer.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, _) => ShowViewerControls()), true);
         _viewerIdleTimer = DispatcherQueue.CreateTimer();
@@ -200,7 +199,7 @@ public sealed partial class MainWindow
     {
         var version = ++_flightVersion;
         _viewerIdleTimer?.Stop();
-        DropPhotoGlide(animate: false);
+        DropPhotoGlide();
         ViewerFlyer.Visibility = Visibility.Collapsed;
         ViewerFlyer.Source = null;
         if (!s_animations)
