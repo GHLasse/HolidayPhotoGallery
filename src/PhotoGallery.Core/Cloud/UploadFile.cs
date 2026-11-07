@@ -78,6 +78,27 @@ public static class UploadFile
         return skipped;
     }
 
+    /// <summary>Takes the photos out of the lists in their folders, e.g. after they were removed from the service.</summary>
+    public static void Forget(CloudService service, IEnumerable<string> paths)
+    {
+        foreach (var group in paths.GroupBy(p => Path.GetDirectoryName(p) ?? "", StringComparer.OrdinalIgnoreCase))
+        {
+            if (group.Key.Length == 0 || !File.Exists(Path.Combine(group.Key, FileName)))
+                continue;
+            var all = ReadAll(group.Key);
+            if (!all.TryGetValue(Key(service), out var items))
+                continue;
+            var lookup = new Dictionary<string, string>(items, StringComparer.OrdinalIgnoreCase);
+            var changed = false;
+            foreach (var path in group)
+                changed |= lookup.Remove(Path.GetFileName(path));
+            if (!changed)
+                continue;
+            all[Key(service)] = lookup;
+            TryWrite(group.Key, all);
+        }
+    }
+
     /// <summary>
     /// Keeps a moved photo's marks: it was uploaded on its own or as part of an album, and the same copy in
     /// the cloud now belongs to it at its new place.

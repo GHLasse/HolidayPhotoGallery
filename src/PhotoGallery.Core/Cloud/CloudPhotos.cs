@@ -19,7 +19,8 @@ public sealed record UploadPhoto(string Path, string? Caption, string? SendPath 
     public string Source => SendPath ?? Path;
 }
 
-public sealed record UploadProgress(int Done, int Total);
+/// <summary>How far an upload got; <paramref name="NewlyUploaded"/> holds the photos (full paths) the last batch put up.</summary>
+public sealed record UploadProgress(int Done, int Total, IReadOnlyList<string>? NewlyUploaded = null);
 
 /// <summary>How an upload went: how many photos went up, were already there, or failed (with the first reason).</summary>
 public sealed record UploadResult(int Uploaded, int AlreadyThere, int Failed, string? FirstError, string? AlbumUrl);
@@ -46,4 +47,20 @@ public interface ICloudPhotos
 
     /// <summary>Gives the album in the service a new name, after the album was renamed in the app (AL-1).</summary>
     Task RenameAlbumAsync(CloudAlbumLink album, string oldName, string newName, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The album for an album's first upload, found or made before any photo goes up, so that an upload that
+    /// stops (or crashes) half way never leaves an album the app doesn't know about. An album made by an earlier,
+    /// interrupted upload of the same name is used again, unless its id is in <paramref name="linkedElsewhere"/>
+    /// (another album here uses it). Null when the service makes the album with the first batch.
+    /// </summary>
+    Task<CloudAlbumLink?> FindOrCreateAlbumAsync(string name, IReadOnlySet<string> linkedElsewhere, CancellationToken cancellationToken) =>
+        Task.FromResult<CloudAlbumLink?>(null);
+
+    /// <summary>
+    /// What is in the album there, by file name → id, so photos an interrupted upload already put in it aren't
+    /// sent twice. A name found more than once is left out. Empty when the service can't tell.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>> AlbumItemsAsync(CloudAlbumLink album, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
 }

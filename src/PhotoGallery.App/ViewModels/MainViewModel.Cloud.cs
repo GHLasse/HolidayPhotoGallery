@@ -257,16 +257,27 @@ public sealed partial class MainViewModel
             UploadText = Tr("Uploading to {0}: 0 of {1}…", name, total);
             using (cloud as IDisposable)
             {
+                var roots = _settings.Folders.ToList();
+                var linkedAlbums = await Task.Run(() => CloudUpload.LinkedAlbums(service, roots));
                 foreach (var (album, list) in groups)
                 {
                     var before = done;
                     var progress = new Progress<UploadProgress>(p =>
-                        UploadText = Tr("Uploading to {0}: {1} of {2}…", name, before + list.Count - p.Total + p.Done, total));
-                    state.LooseUploads ??= LoadLooseUploads(service, state, _settings.Folders.ToList());
+                    {
+                        UploadText = Tr("Uploading to {0}: {1} of {2}…", name, before + list.Count - p.Total + p.Done, total);
+                        // Each batch shows its marks at once, not only when the whole upload is through.
+                        if (p.NewlyUploaded is { Count: > 0 } newly)
+                            MarkUploaded(service, newly, true);
+                    });
+                    state.LooseUploads ??= LoadLooseUploads(service, state, roots);
                     var loose = state.LooseUploads;
-                    var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose, into, prepare));
-                    if (album is null && result.Uploaded > 0)
-                        SaveLooseUploads(service, state);
+                    var elsewhere = linkedAlbums.Where(l => !string.Equals(l.Key, album, StringComparison.OrdinalIgnoreCase))
+                        .Select(l => l.Value).ToHashSet();
+                    string? saveError = null;
+                    var result = await Task.Run(() => CloudUpload.UploadAsync(cloud, album, list, progress, cancel.Token, loose, into, prepare,
+                        elsewhere, () => saveError ??= TrySaveLooseUploads(service, state)));
+                    if (saveError is not null)
+                        Warn(Tr("Couldn't save which photos were uploaded: {0}", saveError));
                     done += list.Count;
                     uploaded += result.Uploaded;
                     already += result.AlreadyThere;
@@ -293,6 +304,12 @@ public sealed partial class MainViewModel
                                        or Core.ExifTool.ExifToolException
                                        or Core.GooglePhotos.GooglePhotosException or Core.OneDrive.OneDriveException)
         {
+            ErrorMessage = Tr("The upload to {0} stopped: {1} {2}", name, ex.Message, Summary(name, uploaded, already, failed));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Anything unexpected (e.g. an answer Google never gave before) stops the upload, not the app.
+            App.Trace($"upload to {service} failed: {ex}");
             ErrorMessage = Tr("The upload to {0} stopped: {1} {2}", name, ex.Message, Summary(name, uploaded, already, failed));
         }
         finally
@@ -375,16 +392,41 @@ public sealed partial class MainViewModel
         return loose;
     }
 
-    private void SaveLooseUploads(CloudService service, CloudState state)
+    // Called from the upload after every batch, off the UI thread; returns why it failed, or null.
+    private static string? TrySaveLooseUploads(CloudService service, CloudState state)
     {
         try
         {
-            UploadFile.Save(service, state.LooseUploads!);
-            CloudUpload.SaveLooseUploads(state.LooseUploadsFile, state.LooseUploads!);
+            Dictionary<string, string> items;
+            lock (state)
+                items = new Dictionary<string, string>(state.LooseUploads!, StringComparer.OrdinalIgnoreCase);
+            UploadFile.Save(service, items);
+            CloudUpload.SaveLooseUploads(state.LooseUploadsFile, items);
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Warn(Tr("Couldn't save which photos were uploaded: {0}", ex.Message));
+            return ex.Message;
+        }
+    }
+
+    /// <summary>Shows or clears the service's mark on the photos in the grid, and in the cloud filter.</summary>
+    private void MarkUploaded(CloudService service, IEnumerable<string> paths, bool on)
+    {
+        var state = _clouds[service];
+        foreach (var path in paths)
+        {
+            if (on)
+                state.Uploaded.Add(path);
+            else
+                state.Uploaded.Remove(path);
+            if (_photoItems.TryGetValue(path, out var item))
+            {
+                if (service == CloudService.GooglePhotos)
+                    item.IsOnGoogle = IsOn(service, path);
+                else
+                    item.IsOnOneDrive = IsOn(service, path);
+            }
         }
     }
 
