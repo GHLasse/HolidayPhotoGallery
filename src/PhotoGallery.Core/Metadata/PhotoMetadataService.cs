@@ -154,11 +154,16 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     /// </summary>
     public event Action<string, IReadOnlyList<string>>? ChangedElsewhere;
 
-    public async Task WriteAsync(string path, MetadataChanges changes, CancellationToken cancellationToken = default)
+    /// <param name="ownReplacement">
+    /// The app itself just replaced the file (an edit saved, undone or reverted), so it differs from what the index
+    /// read on purpose and is not checked for changes made elsewhere.
+    /// </param>
+    public async Task WriteAsync(string path, MetadataChanges changes, CancellationToken cancellationToken = default,
+                                 bool ownReplacement = false)
     {
         if (changes.IsEmpty)
             return;
-        if (BasisFor?.Invoke(path) is { } basis && SaveCheck.ChangedSince(basis, new FileInfo(path)))
+        if (!ownReplacement && BasisFor?.Invoke(path) is { } basis && SaveCheck.ChangedSince(basis, new FileInfo(path)))
         {
             var theirs = await ReadAsync(path, cancellationToken).ConfigureAwait(false);
             changes = SaveCheck.Merge(basis, theirs, changes, out var clashes);

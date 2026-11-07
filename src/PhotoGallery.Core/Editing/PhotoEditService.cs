@@ -94,7 +94,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
             }
             people.Add(person with { Box = box.ToUpright(turn) });
         }
-        await metadata.WriteAsync(target, new MetadataChanges { People = people }, cancellationToken).ConfigureAwait(false);
+        await metadata.WriteAsync(target, new MetadataChanges { People = people }, cancellationToken, ownReplacement: true).ConfigureAwait(false);
     }
 
     /// <summary>Undoes the most recent edit; returns the photo's path, which may change back to the old name.</summary>
@@ -122,7 +122,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
             Location = current.Latitude is { } lat && current.Longitude is { } lon ? new GeoPosition(lat, lon) : null,
             RemoveLocation = current.Latitude is null,
             Place = current.Place ?? new PlaceName(),
-        }, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken, ownReplacement: true).ConfigureAwait(false);
         return restored;
     }
 }
