@@ -1,3 +1,4 @@
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
 
 namespace PhotoGallery.Core.Tests;
@@ -102,5 +103,32 @@ public sealed class PrivateTests : IDisposable
         Assert.Empty(failed);
         Assert.Empty(Shown());
         Assert.True(PrivateMarks.IsPrivate(Path.Combine(_photos.Path, "Trip", "b.jpg")));
+    }
+
+    [Fact]
+    public void Making_all_photos_of_a_person_private_hides_them_from_the_people_list()
+    {
+        var whole = new FaceBox(0, 0, 1, 1);
+        var paths = new List<string>();
+        foreach (var (name, people) in new[] { ("a.jpg", new[] { "Anna", "Ben" }), ("b.jpg", ["Ben"]), ("c.jpg", ["Anna"]) })
+        {
+            var path = Path.GetFullPath(Path.Combine(_photos.Path, "Trip", name));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, [0]);
+            _index.Upsert([new IndexedPhoto { Path = path, Folder = Path.GetDirectoryName(path)!, People = people.Select(n => new PersonTag(n, whole)).ToList() }]);
+            paths.Add(path);
+        }
+
+        var ben = _index.GetPathsWithPerson("ben");
+        Assert.Equal(2, ben.Count);
+        PrivateMarks.SetFiles(ben, true);
+        _index.RefreshPrivate(Path.Combine(_photos.Path, "Trip"));
+
+        Assert.Equal([("Anna", 1)], _index.GetPeopleCounts()); // the group photo with Ben is hidden too
+        Assert.Empty(_index.GetPathsWithPerson("Ben"));
+
+        _index.ShowPrivate = true;
+        Assert.Equal(2, _index.GetPeopleCounts().Single(p => p.Name == "Ben").Count);
+        Assert.All(_index.GetPathsWithPerson("Ben"), p => Assert.True(PrivateMarks.IsPrivate(p)));
     }
 }

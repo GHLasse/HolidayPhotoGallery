@@ -222,17 +222,29 @@ public sealed partial class MainWindow
     {
         var version = ++_peoplePageVersion;
         var people = ViewModel.PeopleInViewOrder;
-        foreach (var person in people.Where(p => !_latestFaces.ContainsKey(p.Tag)))
-            _latestFaces[person.Tag] = await ViewModel.GetLatestFaceAsync(person.Tag);
-        if (version != _peoplePageVersion)
-            return; // A newer refresh started while the faces were loading.
-
-        PeopleCards.Children.Clear();
-        // Not while the people are still loading (U-9); the page is shown again once they are.
+        // While the library is still loading, a hint in the middle says so (U-9) instead of an empty page;
+        // the page is shown again once it has loaded.
+        var loading = people.Count == 0 && !ViewModel.HasLoaded;
+        PeopleLoading.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        PeopleLoadingRing.IsActive = loading;
         PeopleEmptyHint.Visibility = people.Count == 0 && ViewModel.HasLoaded ? Visibility.Visible : Visibility.Collapsed;
+
+        // The cards come at once and the faces fill in one after another, in the page's order: a face not
+        // found here (e.g. tagged in Windows Live Photo Gallery) is cut from its photo, which takes a moment.
+        PeopleCards.Children.Clear();
+        var waiting = new List<(Ellipse Face, string Name)>();
         foreach (var person in people)
-            PeopleCards.Children.Add(PersonCard(person));
+            PeopleCards.Children.Add(PersonCard(person, waiting));
         FilterPeopleCards();
+        foreach (var (face, name) in waiting)
+        {
+            if (!_latestFaces.TryGetValue(name, out var thumbnail))
+                _latestFaces[name] = thumbnail = await ViewModel.GetLatestFaceAsync(name);
+            if (version != _peoplePageVersion)
+                return; // A newer refresh took over.
+            if (thumbnail is not null)
+                LoadFaceFill(face, thumbnail);
+        }
     }
 
     // ---- The search box: photos in the Library, people on the People page, albums, places on the Map page ----
@@ -367,7 +379,8 @@ public sealed partial class MainWindow
         PeopleNoMatch.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private Button PersonCard(TagFilterViewModel person)
+    /// <param name="waiting">Takes the faces still to load, to be filled in after the cards are shown.</param>
+    private Button PersonCard(TagFilterViewModel person, List<(Ellipse Face, string Name)> waiting)
     {
         var face = new Ellipse
         {
@@ -381,7 +394,7 @@ public sealed partial class MainWindow
                 LoadFaceFill(face, thumbnail);
         }
         else
-            _ = LoadCardFaceAsync(face, person.Tag);
+            waiting.Add((face, person.Tag));
 
         var card = new StackPanel { Spacing = 6, Width = PersonFace + 24, Padding = new Thickness(0, 8, 0, 8) };
         card.Children.Add(face);
@@ -428,18 +441,10 @@ public sealed partial class MainWindow
         button.Tag = (Action)Open; // for Enter in the search box
         var rename = new MenuFlyoutItem { Text = Tr("Rename…"), Icon = new FontIcon { Glyph = "\uE8AC" } };
         rename.Click += (_, _) => _ = RenamePersonAsync(person.Tag);
-        button.ContextFlyout = new MenuFlyout { Items = { ReviewMatchesItem(person.Tag), rename } };
+        var menu = new MenuFlyout { Items = { ReviewMatchesItem(person.Tag), rename, new MenuFlyoutSeparator() } };
+        menu.Items.Add(PersonPrivateItem(person.Tag, menu));
+        button.ContextFlyout = menu;
         return button;
-    }
-
-    // The faces were forgotten while the page was being built (a person renamed or named): loaded here, so
-    // the card doesn't stay empty until the page is opened again.
-    private async Task LoadCardFaceAsync(Ellipse face, string name)
-    {
-        var thumbnail = await ViewModel.GetLatestFaceAsync(name);
-        _latestFaces[name] = thumbnail;
-        if (thumbnail is not null)
-            LoadFaceFill(face, thumbnail);
     }
 
     /// <summary>Asks for a person's new name and renames them in every photo; a name already used merges the two.</summary>

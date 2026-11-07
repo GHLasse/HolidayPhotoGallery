@@ -47,9 +47,35 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Makes single photos private, or public again.</summary>
-    public async Task SetPhotosPrivateAsync(IReadOnlyList<PhotoItemViewModel> items, bool isPrivate)
+    public Task SetPhotosPrivateAsync(IReadOnlyList<PhotoItemViewModel> items, bool isPrivate) =>
+        SetPathsPrivateAsync(items.Select(i => i.Path).ToList(), isPrivate,
+            isPrivate ? Tr("Made {0} private.", PhotoCount(items.Count)) : Tr("Made {0} public again.", PhotoCount(items.Count)));
+
+    /// <summary>
+    /// Makes every photo of a person private, e.g. after a falling-out, or public again. Group photos with them
+    /// go too. While private mode is off they then drop out of the People page, since none of their photos shows.
+    /// </summary>
+    public async Task SetPersonPrivateAsync(string name, bool isPrivate)
     {
-        var paths = items.Select(i => i.Path).ToList();
+        var paths = await Task.Run(() => _index.GetPathsWithPerson(name));
+        if (paths.Count == 0)
+            return;
+        await SetPathsPrivateAsync(paths, isPrivate,
+            isPrivate ? Tr("Made {0} with {1} private.", PhotoCount(paths.Count), name)
+                      : Tr("Made {0} with {1} public again.", PhotoCount(paths.Count), name));
+    }
+
+    /// <summary>How many of the person's photos there are, and how many of them are private (only asked in private mode).</summary>
+    public async Task<(int Total, int Private)> CountPersonPrivateAsync(string name) =>
+        await Task.Run(() =>
+        {
+            var paths = _index.GetPathsWithPerson(name);
+            var cache = new Dictionary<string, PrivateInfo?>(StringComparer.OrdinalIgnoreCase);
+            return (paths.Count, paths.Count(p => PrivateMarks.IsPrivate(p, cache)));
+        });
+
+    private async Task SetPathsPrivateAsync(IReadOnlyList<string> paths, bool isPrivate, string done)
+    {
         try
         {
             await Task.Run(() =>
@@ -66,9 +92,7 @@ public sealed partial class MainViewModel
         }
         if (isPrivate)
             NotePrivateOnce();
-        Inform(isPrivate
-            ? Tr("Made {0} private.", PhotoCount(paths.Count))
-            : Tr("Made {0} public again.", PhotoCount(paths.Count)));
+        Inform(done);
         await PrivacyChangedAsync();
     }
 
