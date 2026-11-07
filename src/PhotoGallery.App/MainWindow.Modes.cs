@@ -50,6 +50,8 @@ public sealed partial class MainWindow
     private async void ShowWorkspace(Workspace workspace)
     {
         App.Trace($"workspace: {workspace}");
+        // Whether the map was on screen before: ApplyChrome below shows it again, still laid out where it last was.
+        var mapWasOpen = IsMapOpen;
         _workspace = workspace;
         _syncingWorkspace = true;
         try
@@ -81,7 +83,7 @@ public sealed partial class MainWindow
         SyncSearchBox();
         TipForWorkspace(workspace);
         ApplyChrome(); // the People page has no use for the filter bar
-        await ApplyMapLayoutAsync();
+        await ApplyMapLayoutAsync(mapWasOpen);
         if (people)
             await ShowPeoplePageAsync();
     }
@@ -113,12 +115,13 @@ public sealed partial class MainWindow
     /// The Map workspace gives the map the grid's whole width; in the Library the Map button (M) still
     /// puts it beside the grid, for placing photos Geosetter-style, as wide as it was last dragged.
     /// </summary>
-    private async Task ApplyMapLayoutAsync()
+    private async Task ApplyMapLayoutAsync(bool? mapWasOpen = null)
     {
         var full = _workspace == Workspace.Map;
         var open = full || MapBeside;
         // Where the map was, if it was showing: from there it slides into its new place (side pane <-> Map page).
-        var wasAt = IsMapOpen && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
+        // Only a map that was on screen moves; one coming back (e.g. People, then Library) just appears in its place.
+        var wasAt = (mapWasOpen ?? IsMapOpen) && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
         // From the Map page back to the photos the big map stays put and draws in from the left onto the pane, uncovering
         // the photos (Lasse 2026-11-07: a small map flying across from the left looked odd).
         MapView.ClearClip(); // a shrink cut short
