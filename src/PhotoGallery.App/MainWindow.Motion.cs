@@ -69,50 +69,68 @@ public sealed partial class MainWindow
         var coming = shown.Where(c => incoming?.Contains(c) ?? to > from).ToList();
         var going = shown.Except(coming).ToList();
         _columnTargets[column] = to;
-        // Where things are on screen now, before any of the chrome's changes are laid out.
-        try
+
+        // However the motion goes (or fails), it ends exactly once in the final layout: the column at its width, the
+        // pane that went collapsed and back in its column, nothing left moved.
+        var finished = false;
+        void Finish()
         {
-            CaptureFollowers();
-        }
-        catch (Exception e)
-        {
-            App.Trace($"followers not captured: {e.Message}");
-        }
-        if (to < from)
-        {
-            foreach (var part in going.OfType<FrameworkElement>())
-                LiftOut(part, fromLeft);
-            lifted?.Invoke();
-        }
-        column.Width = new GridLength(to);
-        Root.UpdateLayout();
-        try
-        {
-            MorphFollowers();
-        }
-        catch (Exception e)
-        {
-            App.Trace($"followers not moved: {e.Message}");
-        }
-        var batch = to > from
-            ? Slide(coming, side * (float)to, 0, 1, 1, MorphMs)
-            : Slide(going, 0, side * (float)from, 1, 1, MorphMs);
-        if (to < from && coming.Count > 0)
-            Slide(coming, 0, 0, 0, 1, FadeInMs, delayMs: MorphMs);
-        batch.Completed += (_, _) =>
-        {
-            if (_columnVersions.GetValueOrDefault(column) != version)
+            if (finished)
                 return;
+            finished = true;
+            if (_columnVersions.GetValueOrDefault(column) != version)
+                return; // a newer change has taken over, and tidies up what this one lifted
             _columnTargets.Remove(column);
+            column.Width = new GridLength(to);
             App.Trace($"column slid to {to:0}");
-            done?.Invoke();
-            foreach (var element in going)
+            try
             {
-                ResetSlide(element);
-                if (element is FrameworkElement part)
-                    SetDown(part);
+                done?.Invoke();
             }
-        };
+            finally
+            {
+                foreach (var element in going)
+                {
+                    ResetSlide(element);
+                    if (element is FrameworkElement part)
+                        SetDown(part);
+                }
+            }
+        }
+
+        try
+        {
+            // Where things are on screen now, before any of the chrome's changes are laid out.
+            CaptureFollowers();
+            if (to < from)
+            {
+                foreach (var part in going.OfType<FrameworkElement>())
+                    LiftOut(part, fromLeft);
+                lifted?.Invoke();
+            }
+            column.Width = new GridLength(to);
+            Root.UpdateLayout();
+            MorphFollowers();
+            var batch = to > from
+                ? Slide(coming, side * (float)to, 0, 1, 1, MorphMs)
+                : Slide(going, 0, side * (float)from, 1, 1, MorphMs);
+            if (to < from && coming.Count > 0)
+                Slide(coming, 0, 0, 0, 1, FadeInMs, delayMs: MorphMs);
+            batch.Completed += (_, _) => Finish();
+            // In case the compositor never says it is done (e.g. nothing was animated after all).
+            var watchdog = DispatcherQueue.CreateTimer();
+            watchdog.Interval = TimeSpan.FromMilliseconds(MorphMs + 400);
+            watchdog.IsRepeating = false;
+            watchdog.Tick += (_, _) => Finish();
+            watchdog.Start();
+        }
+        catch (Exception e)
+        {
+            App.Trace($"pane motion skipped: {e.Message}");
+            foreach (var element in content)
+                ResetSlide(element);
+            Finish();
+        }
     }
 
     // The map's morph: one length and one curve, easing in and out (MapPanel.MorphMs).
@@ -134,9 +152,18 @@ public sealed partial class MainWindow
             // An element that already moves through its own Translation can't be taken over (WinUI throws).
             if (element.TranslationTransition is not null || element.ScaleTransition is not null)
                 continue;
-            ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+            Microsoft.UI.Composition.Visual visual;
+            try
+            {
+                ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+                visual = ElementCompositionPreview.GetElementVisual(element);
+            }
+            catch (Exception e)
+            {
+                App.Trace($"slide skipped: {e.Message}");
+                continue;
+            }
             _slid.Add(element);
-            var visual = ElementCompositionPreview.GetElementVisual(element);
             var move = compositor.CreateVector3KeyFrameAnimation();
             move.InsertKeyFrame(0, new Vector3(fromX, 0, 0));
             move.InsertKeyFrame(1, new Vector3(toX, 0, 0), easing);
@@ -173,12 +200,19 @@ public sealed partial class MainWindow
     {
         if (!_slid.Contains(element))
             return;
-        var visual = ElementCompositionPreview.GetElementVisual(element);
-        visual.StopAnimation("Translation");
-        visual.StopAnimation("Opacity");
-        visual.Opacity = 1;
-        if (visual.Properties.TryGetVector3("Translation", out _) == Microsoft.UI.Composition.CompositionGetValueStatus.Succeeded)
-            visual.Properties.InsertVector3("Translation", Vector3.Zero);
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.StopAnimation("Translation");
+            visual.StopAnimation("Opacity");
+            visual.Opacity = 1;
+            if (visual.Properties.TryGetVector3("Translation", out _) == Microsoft.UI.Composition.CompositionGetValueStatus.Succeeded)
+                visual.Properties.InsertVector3("Translation", Vector3.Zero);
+        }
+        catch (Exception e)
+        {
+            App.Trace($"slide reset: {e.Message}");
+        }
     }
 
     /// <summary>

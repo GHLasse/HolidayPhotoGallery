@@ -50,8 +50,11 @@ public sealed partial class MainWindow
     private async void ShowWorkspace(Workspace workspace)
     {
         App.Trace($"workspace: {workspace}");
-        // Whether the map was on screen before: ApplyChrome below shows it again, still laid out where it last was.
+        // Whether the map was on screen before, and where: the panes change at once in ApplyChrome below (and only then
+        // slide), so the map's place is noted first; ApplyMapLayoutAsync glides it from there.
         var mapWasOpen = IsMapOpen;
+        var mapWasAt = mapWasOpen && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
+        var mapControlsWere = mapWasAt is null ? default : MapView.CaptureControls();
         _workspace = workspace;
         _syncingWorkspace = true;
         try
@@ -83,7 +86,7 @@ public sealed partial class MainWindow
         SyncSearchBox();
         TipForWorkspace(workspace);
         ApplyChrome(); // the People page has no use for the filter bar
-        await ApplyMapLayoutAsync(mapWasOpen);
+        await ApplyMapLayoutAsync(mapWasOpen, mapWasAt, mapControlsWere);
         if (people)
             await ShowPeoplePageAsync();
     }
@@ -115,14 +118,15 @@ public sealed partial class MainWindow
     /// The Map workspace gives the map the grid's whole width; in the Library the Map button (M) still
     /// puts it beside the grid, for placing photos Geosetter-style, as wide as it was last dragged.
     /// </summary>
-    private async Task ApplyMapLayoutAsync(bool? mapWasOpen = null)
+    private async Task ApplyMapLayoutAsync(bool? mapWasOpen = null, Windows.Foundation.Point? mapWasAt = null,
+                                           (Windows.Foundation.Point?, Windows.Foundation.Point?) mapControlsWere = default)
     {
         var full = _workspace == Workspace.Map;
         var open = full || MapBeside;
         // Where the map was, if it was showing: from there it slides into its new place (side pane <-> Map page).
         // Only a map that was on screen moves; one coming back (e.g. People, then Library) just appears in its place.
-        var wasAt = (mapWasOpen ?? IsMapOpen) && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
-        var controlsWere = wasAt is null ? default : MapView.CaptureControls();
+        var wasAt = mapWasAt ?? ((mapWasOpen ?? IsMapOpen) && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null);
+        var controlsWere = mapWasAt is not null ? mapControlsWere : wasAt is null ? default : MapView.CaptureControls();
         // From the Map page back to the photos the big map stays put and draws in from the left onto the pane, uncovering
         // the photos (Lasse 2026-11-07: a small map flying across from the left looked odd).
         MapView.ClearClip(); // a shrink cut short
