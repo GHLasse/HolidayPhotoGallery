@@ -4,7 +4,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 namespace PhotoGallery.Core.Editing;
 
 /// <summary>
-/// The magic eraser (E-11): fills a masked part of a photo with matching background using the LaMa model (see
+/// The magic eraser (E-11): fills a masked part of a photo with matching background using the Big-LaMa model (see
 /// <see cref="EraseModel"/>). Only a square around the mask is worked on, made 512 × 512 for the model and scaled
 /// back, so any photo size works and the rest of the photo stays exactly as it was. Like the upscaler, it runs on
 /// the graphics card through DirectML and on the processor when there is none or that fails.
@@ -12,6 +12,8 @@ namespace PhotoGallery.Core.Editing;
 public sealed class Eraser : IDisposable
 {
     private const int Size = EraseModel.Size;
+    private const string ImageInput = "image";
+    private const string MaskInput = "mask";
 
     private readonly string _modelPath;
     private readonly Lock _gate = new();
@@ -59,13 +61,14 @@ public sealed class Eraser : IDisposable
     }
 
     /// <summary>
-    /// The square worked on for a mask: about twice the mask's size, so the model sees enough of the surroundings,
-    /// and at least 512 pixels (or the whole photo when it is smaller).
+    /// The square worked on for a mask: the mask with a border of half its size (at least 96 pixels) all round, so
+    /// the model sees enough of the surroundings without the square getting so big that the fill loses detail when
+    /// it is made 512 × 512, and at least 512 pixels (or the whole photo when it is smaller).
     /// </summary>
     public static PixelRect Area(PixelRect hole, int width, int height)
     {
         var side = Math.Max(hole.Width, hole.Height);
-        var size = Math.Max(Math.Max(side * 2, side + 128), Size);
+        var size = Math.Max(side + Math.Max(side / 2, 192), Size);
         var w = Math.Min(size, width);
         var h = Math.Min(size, height);
         var left = Math.Clamp(hole.X + hole.Width / 2 - w / 2, 0, width - w);
@@ -111,8 +114,13 @@ public sealed class Eraser : IDisposable
         }
         var back = area.Width == Size && area.Height == Size ? filled : ImageMath.Resize(filled, Size, Size, area.Width, area.Height);
 
-        // Only the painted part (and a soft edge around it) changes; the rest keeps its full sharpness.
+        // The model works at 512 pixels, so on a bigger area its fill comes back softer than the photo around it:
+        // it gets the photo's own fine grain back, so it does not look smeared.
         var scale = Math.Max(area.Width, area.Height) / (double)Size;
+        if (scale > 1.2)
+            AddGrain(back, crop, cropMask, area.Width, area.Height, hole.X * 31 + hole.Y);
+
+        // Only the painted part (and a soft edge around it) changes; the rest keeps its full sharpness.
         var reach = Math.Max(2, (int)Math.Ceiling(2 * scale));
         var alpha = Soften(Dilate(cropMask, area.Width, area.Height, reach), area.Width, area.Height, reach);
         for (var y = 0; y < area.Height; y++)
@@ -129,6 +137,78 @@ public sealed class Eraser : IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// Adds fine grain to the masked part of <paramref name="fill"/> until it is as grainy as the unmasked
+    /// surroundings in <paramref name="photo"/> (both the same size, 8-bit BGRA). Grain is measured as how much each
+    /// pixel's brightness differs from its 3 × 3 neighbourhood. The grain is the same in all three colours, like a
+    /// camera's, and always the same for the same <paramref name="seed"/>.
+    /// </summary>
+    internal static void AddGrain(byte[] fill, byte[] photo, byte[] mask, int width, int height, int seed)
+    {
+        // The surroundings: unmasked pixels within a band around the mask. The typical (median) difference is used,
+        // so a few strong edges (a horizon, a wall) do not count as grain.
+        var band = Dilate(mask, width, height, Math.Max(8, Math.Min(width, height) / 16));
+        var around = new int[256];
+        var inside = new int[256];
+        for (var y = 1; y < height - 1; y++)
+        {
+            for (var x = 1; x < width - 1; x++)
+            {
+                var i = y * width + x;
+                if (mask[i] != 0)
+                    inside[Bin(Detail(fill, width, x, y))]++;
+                else if (band[i] != 0)
+                    around[Bin(Detail(photo, width, x, y))]++;
+            }
+        }
+        if (around.Sum() < 16 || inside.Sum() == 0)
+            return;
+        // For normal noise the median difference is about two thirds of its spread.
+        var target = Math.Min(Median(around) * 1.48, 12);
+        var have = Median(inside) * 1.48;
+        if (target <= have + 0.3)
+            return;
+        // White noise loses about a tenth of its strength to the 3 × 3 measure.
+        var strength = Math.Sqrt(target * target - have * have) / 0.94;
+        var random = new Random(seed);
+        for (var i = 0; i < mask.Length; i++)
+        {
+            if (mask[i] == 0)
+                continue;
+            // A sum of uniforms: near-normal grain without the cost of a true Gaussian.
+            var noise = (random.NextDouble() + random.NextDouble() + random.NextDouble() - 1.5) * 2 * strength;
+            for (var c = 0; c < 3; c++)
+                fill[i * 4 + c] = (byte)Math.Clamp(Math.Round(fill[i * 4 + c] + noise), 0, 255);
+        }
+    }
+
+    private static int Bin(double detail) => Math.Min(255, (int)(Math.Abs(detail) * 4));
+
+    private static double Median(int[] bins)
+    {
+        var half = bins.Sum() / 2;
+        var count = 0;
+        for (var i = 0; i < bins.Length; i++)
+        {
+            count += bins[i];
+            if (count > half)
+                return (i + 0.5) / 4;
+        }
+        return bins.Length / 4.0;
+    }
+
+    // How much a pixel's brightness differs from the average of its 3 × 3 neighbourhood.
+    private static double Detail(byte[] bgra, int width, int x, int y)
+    {
+        double sum = 0;
+        for (var j = -1; j <= 1; j++)
+            for (var i = -1; i <= 1; i++)
+                sum += Brightness(bgra, ((y + j) * width + x + i) * 4);
+        return Brightness(bgra, (y * width + x) * 4) - sum / 9;
+    }
+
+    private static double Brightness(byte[] bgra, int o) => 0.114 * bgra[o] + 0.587 * bgra[o + 1] + 0.299 * bgra[o + 2];
 
     private static byte[] CropMask(byte[] mask, int width, PixelRect area)
     {
@@ -245,7 +325,8 @@ public sealed class Eraser : IDisposable
         return result;
     }
 
-    private static byte ToByte(float value) => (byte)Math.Clamp(MathF.Round(value * 255f), 0f, 255f);
+    // The model gives 0-255.
+    private static byte ToByte(float value) => (byte)Math.Clamp(MathF.Round(value), 0f, 255f);
 
     // A graphics card can fail mid-way (an old driver, out of memory); the processor then takes over.
     private float[] RunSafely(DenseTensor<float> image, DenseTensor<float> mask)
@@ -273,7 +354,7 @@ public sealed class Eraser : IDisposable
 
     private float[] Run(DenseTensor<float> image, DenseTensor<float> mask)
     {
-        using var results = _session.Run([NamedOnnxValue.CreateFromTensor("image", image), NamedOnnxValue.CreateFromTensor("mask", mask)]);
+        using var results = _session.Run([NamedOnnxValue.CreateFromTensor(ImageInput, image), NamedOnnxValue.CreateFromTensor(MaskInput, mask)]);
         return results[0].AsTensor<float>().ToArray();
     }
 

@@ -3,7 +3,7 @@ using PhotoGallery.Core.Editing;
 namespace PhotoGallery.Core.Tests;
 
 /// <summary>
-/// A test that needs the downloaded eraser model (about 170 MB, so CI does not fetch it); the folder is given in
+/// A test that needs the downloaded eraser model (about 210 MB; CI downloads it on Linux); the folder is given in
 /// PHOTOGALLERY_ERASE_MODEL.
 /// </summary>
 public sealed class EraseModelFactAttribute : FactAttribute
@@ -134,8 +134,9 @@ public sealed class RetouchTests
     public void The_eraser_works_on_a_square_around_the_mask_of_at_least_512_pixels()
     {
         Assert.Equal(new PixelRect(744, 494, 512, 512), Eraser.Area(new PixelRect(990, 740, 20, 20), 4000, 3000));
-        // A big mask gets twice its size, kept inside the photo.
-        Assert.Equal(new PixelRect(0, 0, 1200, 1200), Eraser.Area(new PixelRect(100, 100, 600, 300), 4000, 3000));
+        // A big mask gets a border of half its size, kept inside the photo.
+        Assert.Equal(new PixelRect(0, 0, 900, 900), Eraser.Area(new PixelRect(100, 100, 600, 300), 4000, 3000));
+        Assert.Equal(new PixelRect(1550, 1050, 1500, 1500), Eraser.Area(new PixelRect(1800, 1300, 1000, 1000), 4000, 3000));
         // A small photo is worked on whole.
         Assert.Equal(new PixelRect(0, 0, 300, 200), Eraser.Area(new PixelRect(100, 50, 30, 30), 300, 200));
     }
@@ -177,6 +178,69 @@ public sealed class RetouchTests
         Assert.Equal(0.3, x, 3);
         Assert.Equal(0.4, y, 3);
         Assert.Equal((0.25, 0.75), Straighten.PointBack(0.25, 0.75, 4000, 3000, 0));
+    }
+
+    [Fact]
+    public void Healing_carries_on_a_pattern_across_the_spot()
+    {
+        // Fine stripes (5 pixels apart) that get lighter towards the right: the patch must match the stripes, and
+        // the blend makes up for the brightness.
+        const int w = 240, h = 160, cx = 120, cy = 80, r = 7;
+        var clean = new byte[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var o = (y * w + x) * 4;
+                var v = (x % 5 < 2 ? 70 : 160) + x / 4;
+                clean[o] = clean[o + 1] = clean[o + 2] = (byte)v;
+                clean[o + 3] = 255;
+            }
+        }
+        var spotted = (byte[])clean.Clone();
+        Spot(spotted, w, cx, cy, r);
+        var stroke = new RetouchStroke(RetouchTool.Spot, [((cx + 0.5) / w, (cy + 0.5) / h)], (r + 1.5) / w);
+        Retouch.Apply(spotted, w, h, [stroke], erase: null);
+        Assert.True(Difference(spotted, clean, w, cx, cy, r) < 8, $"the stripes should carry on, off by {Difference(spotted, clean, w, cx, cy, r):0.0}");
+    }
+
+    [Fact]
+    public void A_soft_fill_gets_the_grain_of_its_surroundings()
+    {
+        const int w = 200, h = 200;
+        var random = new Random(9);
+        var photo = new byte[w * h * 4];
+        var mask = new byte[w * h];
+        for (var i = 0; i < w * h; i++)
+        {
+            var v = (byte)(128 + random.Next(-12, 13));
+            photo[i * 4] = photo[i * 4 + 1] = photo[i * 4 + 2] = v;
+            photo[i * 4 + 3] = 255;
+            var (x, y) = (i % w, i / w);
+            if (x is >= 70 and < 130 && y is >= 70 and < 130)
+                mask[i] = 255;
+        }
+        // The fill: perfectly smooth, as from a model working on a smaller picture.
+        var fill = (byte[])photo.Clone();
+        for (var i = 0; i < w * h; i++)
+            if (mask[i] != 0)
+                fill[i * 4] = fill[i * 4 + 1] = fill[i * 4 + 2] = 128;
+        Eraser.AddGrain(fill, photo, mask, w, h, seed: 1);
+
+        double Spread(byte[] p, int x0)
+        {
+            var values = new List<double>();
+            for (var y = 80; y < 120; y++)
+                for (var x = x0; x < x0 + 40; x++)
+                    values.Add(p[(y * w + x) * 4 + 1]);
+            var mean = values.Average();
+            return Math.Sqrt(values.Average(v => (v - mean) * (v - mean)));
+        }
+        var grain = Spread(fill, 80);
+        var around = Spread(photo, 10);
+        Assert.InRange(grain, around * 0.7, around * 1.3);
+        // Outside the mask nothing changes.
+        Assert.Equal(photo[0], fill[0]);
     }
 
     [EraseModelFact]

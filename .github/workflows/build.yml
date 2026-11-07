@@ -111,6 +111,20 @@ jobs:
           unzip -o -j -q "$dir/model.zip" '*.onnx' '*.data' -d "$dir"
           ls -l "$dir"
           echo "PHOTOGALLERY_UPSCALE_MODEL=$dir" >> "$GITHUB_ENV"
+      # The magic eraser's model (Big-LaMa, about 210 MB), so the tests erase with it.
+      - name: Cache eraser model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/erase-model
+          key: erase-model-big-lama-c3c0c9e4
+      - name: Download eraser model
+        run: |
+          dir="$RUNNER_TEMP/erase-model"
+          mkdir -p "$dir"
+          # The same revision and hash as EraseModel.cs.
+          [ -f "$dir/big-lama.onnx" ] || curl -sSfL --retry 3 -o "$dir/big-lama.onnx" https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx
+          echo "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6  $dir/big-lama.onnx" | sha256sum -c
+          echo "PHOTOGALLERY_ERASE_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 
