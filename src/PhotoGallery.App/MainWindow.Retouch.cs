@@ -190,7 +190,7 @@ public sealed partial class MainWindow
             XamlRoot = Root.XamlRoot,
             Title = Tr("Download the magic eraser?"),
             Content = Tr("The magic eraser fills what you paint over with matching background. It works on this PC, so no photo is sent anywhere.") + " " +
-                      Tr("It needs an AI model (LaMa) of about {0:N0} MB, which is downloaded once from Qualcomm AI Hub and kept in the app's data folder.", EraseModel.DownloadSize / 1_000_000),
+                      Tr("It needs an AI model (Big-LaMa) of about {0:N0} MB, which is downloaded once from Hugging Face and kept in the app's data folder.", EraseModel.DownloadSize / 1_000_000),
             PrimaryButtonText = Tr("Download"),
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,

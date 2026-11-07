@@ -15,7 +15,7 @@ public sealed partial class MainViewModel
 
     public static bool IsEraseModelInstalled => EraseModel.IsInstalled(EraseModelFolder);
 
-    /// <summary>Downloads the eraser model once (about 170 MB), showing progress in the filter row.</summary>
+    /// <summary>Downloads the eraser model once (about 210 MB), showing progress in the filter row.</summary>
     public async Task<bool> DownloadEraseModelAsync()
     {
         IsBusy = true;

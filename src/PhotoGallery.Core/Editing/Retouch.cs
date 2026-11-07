@@ -121,57 +121,88 @@ public static class Retouch
         return new PixelRect(left, top, right - left, bottom - top);
     }
 
-    // The shift to the source patch: of the candidates around the spot (a few distances, sixteen directions) that lie
-    // inside the photo and keep clear of the spot, the one whose unmasked surroundings differ least, with a small
-    // preference for near ones. Null when no candidate fits (a spot as large as the photo).
+    // The shift to the source patch. First a coarse search over every shift in a wide square around the spot (up to
+    // four times its size away), then a fine search around the best few. A candidate must lie inside the photo and
+    // keep clear of the spot. Its score is how much the texture around the spot differs; an overall difference in
+    // brightness or colour counts only a little, because the Poisson blend evens that out anyway, so the patch with
+    // the best matching texture wins even when it is a bit lighter. Near patches are slightly preferred. Null when
+    // no candidate fits (a spot as large as the photo).
     private static (int Dx, int Dy)? BestSource(byte[] bgra, int width, int height, byte[] mask, PixelRect area, int size)
     {
+        // Compare every pixel of small areas, every second or third of big ones; the result is the same.
+        var step = Math.Max(1, Math.Max(area.Width, area.Height) / 40);
+        var samples = new List<int>();
+        var ring = new List<int>();
+        for (var y = area.Y; y < area.Y + area.Height; y += step)
+        {
+            for (var x = area.X; x < area.X + area.Width; x += step)
+            {
+                var i = y * width + x;
+                samples.Add(i);
+                if (mask[i] == 0)
+                    ring.Add(i);
+            }
+        }
+        if (ring.Count == 0)
+            return null;
+
+        var reach = Math.Max(4, size * 4);
+        var minimum = size * 0.9;
+        var coarse = Math.Max(1, size / 5);
+        var found = new List<(double Score, int Dx, int Dy)>();
+        for (var dy = -reach; dy <= reach; dy += coarse)
+            for (var dx = -reach; dx <= reach; dx += coarse)
+                if (Score(dx, dy) is { } score)
+                    found.Add((score, dx, dy));
+        if (found.Count == 0)
+            return null;
+
         (int, int)? best = null;
         var bestScore = double.MaxValue;
-        // Compare every pixel of small areas, every second or third of big ones; the result is the same.
-        var step = Math.Max(1, Math.Max(area.Width, area.Height) / 48);
-        foreach (var distance in new[] { 1.2, 1.7, 2.4, 3.4 })
+        foreach (var (_, cx, cy) in found.OrderBy(f => f.Score).Take(4))
         {
-            for (var k = 0; k < 16; k++)
+            for (var dy = cy - coarse; dy <= cy + coarse; dy++)
             {
-                var angle = k * Math.PI / 8;
-                var dx = (int)Math.Round(Math.Cos(angle) * distance * size);
-                var dy = (int)Math.Round(Math.Sin(angle) * distance * size);
-                if (area.X + dx < 0 || area.Y + dy < 0 || area.X + area.Width + dx > width || area.Y + area.Height + dy > height)
-                    continue;
-                double sum = 0;
-                var count = 0;
-                var clear = true;
-                for (var y = area.Y; y < area.Y + area.Height && clear; y += step)
+                for (var dx = cx - coarse; dx <= cx + coarse; dx++)
                 {
-                    for (var x = area.X; x < area.X + area.Width; x += step)
-                    {
-                        var source = (y + dy) * width + x + dx;
-                        if (mask[source] != 0)
-                        {
-                            // The patch would take its texture from the spot itself.
-                            clear = false;
-                            break;
-                        }
-                        var target = y * width + x;
-                        if (mask[target] != 0)
-                            continue;
-                        for (var c = 0; c < 3; c++)
-                        {
-                            var d = bgra[target * 4 + c] - bgra[source * 4 + c];
-                            sum += d * d;
-                        }
-                        count++;
-                    }
+                    if (Score(dx, dy) is { } score && score < bestScore)
+                        (bestScore, best) = (score, (dx, dy));
                 }
-                if (!clear || count == 0)
-                    continue;
-                var score = sum / count * (1 + 0.15 * distance);
-                if (score < bestScore)
-                    (bestScore, best) = (score, (dx, dy));
             }
         }
         return best;
+
+        double? Score(int dx, int dy)
+        {
+            var distance = Math.Sqrt(dx * dx + dy * dy);
+            if (distance < minimum ||
+                area.X + dx < 0 || area.Y + dy < 0 || area.X + area.Width + dx > width || area.Y + area.Height + dy > height)
+                return null;
+            var shift = dy * width + dx;
+            // The patch would take its texture from the spot itself.
+            foreach (var i in samples)
+                if (mask[i + shift] != 0)
+                    return null;
+            Span<double> sum = stackalloc double[3];
+            Span<double> squares = stackalloc double[3];
+            foreach (var i in ring)
+            {
+                for (var c = 0; c < 3; c++)
+                {
+                    double d = bgra[i * 4 + c] - bgra[(i + shift) * 4 + c];
+                    sum[c] += d;
+                    squares[c] += d * d;
+                }
+            }
+            double total = 0;
+            for (var c = 0; c < 3; c++)
+            {
+                var mean = sum[c] / ring.Count;
+                var texture = squares[c] / ring.Count - mean * mean;
+                total += texture + 0.2 * mean * mean;
+            }
+            return total * (1 + 0.1 * distance / size);
+        }
     }
 
     // The source's texture plus a smooth correction that is zero inside nothing but meets the difference between the

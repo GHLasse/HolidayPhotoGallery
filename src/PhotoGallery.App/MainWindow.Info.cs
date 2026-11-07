@@ -30,7 +30,7 @@ public sealed partial class MainWindow
         ("SigLIP 2 by Google", Tr("AI tagging"), "Apache 2.0", "https://huggingface.co/google/siglip2-base-patch16-224"),
         ("YuNet, SFace (OpenCV Zoo)", Tr("Finding and recognising faces"), "MIT, Apache 2.0", "https://github.com/opencv/opencv_zoo"),
         ("Real-ESRGAN by Xintao Wang et al.", Tr("AI upscaling when repairing photos, in the versions from Qualcomm AI Hub"), "BSD 3-Clause", "https://github.com/xinntao/Real-ESRGAN"),
-        ("LaMa by Roman Suvorov et al. (Samsung AI Center)", Tr("The magic eraser, in the version from Qualcomm AI Hub"), "Apache 2.0", "https://github.com/advimman/lama"),
+        ("Big-LaMa by Roman Suvorov et al. (Samsung AI Center)", Tr("The magic eraser, in the ONNX version by Carve"), "Apache 2.0", "https://github.com/advimman/lama"),
         ("Leaflet, MapLibre GL JS", Tr("The map"), "BSD 2-Clause, BSD 3-Clause", "https://leafletjs.com"),
         ("OpenStreetMap", Tr("Map data, © OpenStreetMap contributors"), "ODbL", "https://www.openstreetmap.org/copyright"),
         ("OpenFreeMap", Tr("Map tiles"), "MIT, ODbL", "https://openfreemap.org"),
