@@ -113,6 +113,35 @@ public sealed partial class MainWindow
         _anchorRetries = 0;
     }
 
+    /// <summary>
+    /// The grid has just come back (from the Map or People page): the last selected photo is kept where it is if it is
+    /// on screen, else scrolled to the middle of the view. The grid may have reflowed or lost its place while hidden,
+    /// and a photo picked on the map could not be scrolled to then (Lasse 2026-11-08).
+    /// </summary>
+    private void RevealSelectionInGrid()
+    {
+        if (PhotoGrid.SelectedItems.OfType<PhotoItemViewModel>().LastOrDefault() is not { } item)
+            return;
+        // Nothing else may put the grid back where it was before the selected photo is placed.
+        _anchorItem = item;
+        _restoreAnchor = false;
+        // After the layout pass that gives the grid its size again.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (PhotoArea.Visibility != Visibility.Visible || PhotoGrid.Visibility != Visibility.Visible ||
+                !PhotoGrid.SelectedItems.Contains(item) || _gridScroller is not { } scroller || scroller.ViewportHeight <= 0)
+                return;
+            var y = TopInGrid(item);
+            _anchorItem = item;
+            _anchorY = y is { } top && top >= 0 && top + ViewModel.TileSize <= scroller.ViewportHeight
+                ? top
+                : Math.Max(0, (scroller.ViewportHeight - ViewModel.TileSize) / 2);
+            _anchorRetries = 0;
+            _restoreAnchor = true;
+            RestoreAnchor();
+        });
+    }
+
     private bool _carryingSelection;
 
     /// <summary>

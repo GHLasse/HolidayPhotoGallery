@@ -351,6 +351,12 @@ public sealed partial class MapPanel : UserControl
     /// <summary>The next time the map changes size, the page keeps what is in its bottom right corner where it is.</summary>
     public void AnchorNextResize() => Post(new JsonObject { ["type"] = "anchor" });
 
+    /// <summary>
+    /// A move between the side pane and the Map page has ended: if it left a selected photo out of sight, the map
+    /// brings the selection back into view (Lasse 2026-11-08); otherwise it stays where it is.
+    /// </summary>
+    public void Settle() => Post(new JsonObject { ["type"] = "settle" });
+
     /// <summary>Where the app's floating controls are on screen now (null: hidden), for <see cref="MorphControlsFrom"/>.</summary>
     public (Windows.Foundation.Point? Top, Windows.Foundation.Point? Assign) CaptureControls()
     {
@@ -523,6 +529,8 @@ public sealed partial class MapPanel : UserControl
                     ["routeLine"] = Tr("Your geotagged photos in the order taken"),
                     ["zoomIn"] = Tr("Zoom in"),
                     ["zoomOut"] = Tr("Zoom out"),
+                    ["showSelected"] = Tr("Show the selected photos"),
+                    ["showAll"] = Tr("Show all photos"),
                 }.ToJsonString());
                 SendStyle();
                 foreach (var json in _pending)

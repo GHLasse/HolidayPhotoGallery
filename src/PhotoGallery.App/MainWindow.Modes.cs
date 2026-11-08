@@ -55,6 +55,7 @@ public sealed partial class MainWindow
         var mapWasOpen = IsMapOpen;
         var mapWasAt = mapWasOpen && MapView.ActualWidth > 0 ? MapView.TransformToVisual(Root).TransformPoint(default) : (Windows.Foundation.Point?)null;
         var mapControlsWere = mapWasAt is null ? default : MapView.CaptureControls();
+        var photosWereHidden = PhotoArea.Visibility != Visibility.Visible;
         _workspace = workspace;
         _syncingWorkspace = true;
         try
@@ -86,7 +87,12 @@ public sealed partial class MainWindow
         SyncSearchBox();
         TipForWorkspace(workspace);
         ApplyChrome(); // the People page has no use for the filter bar
-        await ApplyMapLayoutAsync(mapWasOpen, mapWasAt, mapControlsWere);
+        var mapLayout = ApplyMapLayoutAsync(mapWasOpen, mapWasAt, mapControlsWere);
+        // Back on the photos from the Map or People page: the selected photo is in view, even if it was picked on the map
+        // while the grid was hidden (Lasse 2026-11-08).
+        if (photosWereHidden && PhotoArea.Visibility == Visibility.Visible)
+            RevealSelectionInGrid();
+        await mapLayout;
         if (people)
             await ShowPeoplePageAsync();
     }
@@ -180,7 +186,11 @@ public sealed partial class MainWindow
         // and the filter bar, the reverse of ShrinkMapOntoPane; its controls glide to their new places.
         if (dx > 0 && dy >= 0)
         {
-            MapView.ClipInsets(dx, dy, 0, 0, () => DispatcherQueue.TryEnqueue(() => MapView.ClearClip()));
+            MapView.ClipInsets(dx, dy, 0, 0, () => DispatcherQueue.TryEnqueue(() =>
+            {
+                MapView.ClearClip();
+                MapView.Settle(); // the move always ends with the selected photos in sight
+            }));
             Root.UpdateLayout();
             MapView.MorphControlsFrom(controlsWere);
             return;
@@ -192,7 +202,28 @@ public sealed partial class MainWindow
             MapView.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(PhotoGallery.App.Controls.MapPanel.MorphMs) };
             MapView.Translation = System.Numerics.Vector3.Zero;
         });
+        SettleMapAfterMove();
     }
+
+    // Once a move has had time to end (the map at its final size): the selected photos back in sight if they are not.
+    private void SettleMapAfterMove()
+    {
+        if (_mapSettleTimer is null)
+        {
+            _mapSettleTimer = DispatcherQueue.CreateTimer();
+            _mapSettleTimer.Interval = TimeSpan.FromMilliseconds(PhotoGallery.App.Controls.MapPanel.MorphMs + 100);
+            _mapSettleTimer.IsRepeating = false;
+            _mapSettleTimer.Tick += (_, _) =>
+            {
+                if (IsMapOpen)
+                    MapView.Settle();
+            };
+        }
+        _mapSettleTimer.Stop();
+        _mapSettleTimer.Start();
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _mapSettleTimer;
 
     // While the big map draws back onto the side pane it keeps the Map page's place (ApplyChrome leaves its column alone).
     private bool _mapShrinking;
@@ -232,7 +263,10 @@ public sealed partial class MainWindow
             MapView.ClearClip();
             ApplyChrome();
             if (IsMapOpen)
+            {
                 RefreshMap(fit: true);
+                SettleMapAfterMove();
+            }
         }
         if (left < 1 && top < 1)
         {
