@@ -190,7 +190,19 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             if (fileTrees.Count > 0)
                 changes = changes with { Tags = TagTree.KeepTrees(newTags, fileTrees) };
         }
-        var args = BuildWriteArguments(path, changes, current, fileTrees);
+        // The caption's title and headline, and the place's "location created", follow only while they agree or are empty.
+        IReadOnlyDictionary<string, string>? fileFields = null;
+        if ((changes.Caption is not null || changes.Place is not null) && File.Exists(target))
+            fileFields = await ReadFieldsAsync(target, [.. CaptionFields, .. TitleFields, .. LocationCreatedFields], cancellationToken).ConfigureAwait(false);
+        // A reject is XMP rating -1 for Lightroom, so the stars are written to the other rating fields first; taking
+        // the reject off brings them back.
+        if (changes.Rejected is not null && changes.Rating is null && !SupportedFormats.IsVideo(path))
+        {
+            current ??= await ReadAsync(path, cancellationToken).ConfigureAwait(false);
+            if (current.Rating > 0)
+                changes = changes with { Rating = current.Rating };
+        }
+        var args = BuildWriteArguments(path, changes, current, fileTrees, fileFields);
         for (var attempt = 1; ; attempt++)
         {
             await RemoveStaleTempFileAsync(target, cancellationToken).ConfigureAwait(false);
@@ -251,12 +263,17 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             $"-IFD0:ModifyDate={now.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture)}",
             $"-ExifIFD:OffsetTime={DateTaken.FormatOffset(now.Offset)}",
             $"-XMP-xmp:ModifyDate={now.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture)}{DateTaken.FormatOffset(now.Offset)}",
+            // The program that last changed the pixels (M-8); metadata-only saves leave it alone.
+            $"-IFD0:Software={AppName}",
             target,
         ], cancellationToken).ConfigureAwait(false);
         var errors = output.ErrorLines.ToList();
         if (errors.Count > 0)
             throw new ExifToolException(Tr("Could not copy the metadata of {0}: {1}", Path.GetFileName(source), string.Join(" ", errors)));
     }
+
+    /// <summary>The app's name as other programs see it in a photo's Software field.</summary>
+    public const string AppName = "Holiday Photo Gallery";
 
     private const int WriteAttempts = 5;
 
@@ -301,6 +318,27 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
     }
 
+    // Text fields of the file by their ExifTool name (with group); missing ones are left out.
+    private async Task<IReadOnlyDictionary<string, string>> ReadFieldsAsync(string path, IEnumerable<string> fields, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var output = await exifTool.RunAsync(["-json", "-G1", .. fields.Distinct().Select(f => "-" + f), path], cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(output.Output))
+            return result;
+        try
+        {
+            using var json = JsonDocument.Parse(output.Output);
+            foreach (var item in json.RootElement.EnumerateArray())
+                foreach (var field in fields)
+                    if (GetString(item, field) is { } value && value.Trim().Length > 0)
+                        result[field] = value.Trim();
+        }
+        catch (JsonException)
+        {
+        }
+        return result;
+    }
+
     // The tag trees in the file, as the app's paths ("Animals/Birds/Seagull").
     private async Task<IReadOnlyList<string>> ReadTreesAsync(string path, CancellationToken cancellationToken)
     {
@@ -325,8 +363,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     }
 
     /// <param name="fileTrees">The tag trees the file has; null when unknown, then the tree fields are always rewritten.</param>
+    /// <param name="fileFields">The file's caption, title, headline and "location created" fields (see <see cref="ReadFieldsAsync"/>).</param>
     internal static List<string> BuildWriteArguments(string path, MetadataChanges changes, PhotoMetadata? current = null,
-                                                     IReadOnlyList<string>? fileTrees = null)
+                                                     IReadOnlyList<string>? fileTrees = null, IReadOnlyDictionary<string, string>? fileFields = null)
     {
         var hasIptc = HasIptc(path);
         var args = new List<string>
@@ -407,7 +446,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.Rejected is { } rejected)
         {
             if (rejected)
-                args.Add("-XMP-digiKam:PickLabel=1");
+                // Lightroom and Windows know a reject as XMP rating -1 (M-8); the stars stay in the EXIF rating.
+                args.AddRange(["-XMP-digiKam:PickLabel=1", "-XMP-xmp:Rating=-1"]);
             else if (changes.Rating is null)
                 args.AddRange(["-XMP-digiKam:PickLabel-=1", "-XMP-xmp:Rating-=-1", "-IFD0:Rating-=-1"]);
             else
@@ -417,12 +457,29 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (changes.Caption is { } caption)
         {
             caption = caption.Trim();
-            args.Add($"-XMP-dc:Title={caption}");
             args.Add($"-XMP-dc:Description={caption}");
-            args.Add($"-IFD0:XPTitle={caption}");
             args.Add($"-IFD0:ImageDescription={caption}");
             if (hasIptc)
                 args.Add($"-IPTC:Caption-Abstract={caption}");
+            // Title and headline follow the caption while they are empty or read the same as it did; a title of its
+            // own (set in Lightroom or Apple Photos) stays (M-8). Without knowing the file, the title follows.
+            var oldCaption = fileFields is null ? null : CaptionFields.Select(f => fileFields.GetValueOrDefault(f)).FirstOrDefault(v => v is not null);
+            bool Follows(string field) => fileFields is null || fileFields.GetValueOrDefault(field) is not { } value ||
+                                          string.Equals(value, oldCaption, StringComparison.Ordinal);
+            if (Follows("XMP-dc:Title"))
+                args.Add($"-XMP-dc:Title={caption}");
+            if (Follows("IFD0:XPTitle"))
+                args.Add($"-IFD0:XPTitle={caption}");
+            if (fileFields is not null && Follows("XMP-photoshop:Headline"))
+                args.Add($"-XMP-photoshop:Headline={caption}");
+            if (hasIptc && fileFields is not null)
+            {
+                // IPTC's own title and headline are short fields (64 and 256 bytes).
+                if (Follows("IPTC:ObjectName") && System.Text.Encoding.UTF8.GetByteCount(caption) <= 64)
+                    args.Add($"-IPTC:ObjectName={caption}");
+                if (Follows("IPTC:Headline") && System.Text.Encoding.UTF8.GetByteCount(caption) <= 256)
+                    args.Add($"-IPTC:Headline={caption}");
+            }
         }
 
         if (changes.DateTaken is { } date)
@@ -513,6 +570,17 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 args.Add($"-IPTC:Province-State={Clean(place.State)}");
                 args.Add($"-IPTC:City={Clean(place.City)}");
                 args.Add($"-IPTC:Sub-location={Clean(place.Sublocation)}");
+                if (Clean(place.CountryCode).Length is 0 or 2 or 3)
+                    args.Add($"-IPTC:Country-PrimaryLocationCode={Clean(place.CountryCode).ToUpperInvariant()}");
+            }
+            // IPTC Extension's "location created" is filled from the place names when the photo has none (M-8).
+            if (fileFields is not null && !LocationCreatedFields.Any(fileFields.ContainsKey) && !string.IsNullOrWhiteSpace(place.Country + place.City))
+            {
+                args.Add($"-XMP-iptcExt:LocationCreatedCountryName={Clean(place.Country)}");
+                args.Add($"-XMP-iptcExt:LocationCreatedCountryCode={Clean(place.CountryCode).ToUpperInvariant()}");
+                args.Add($"-XMP-iptcExt:LocationCreatedProvinceState={Clean(place.State)}");
+                args.Add($"-XMP-iptcExt:LocationCreatedCity={Clean(place.City)}");
+                args.Add($"-XMP-iptcExt:LocationCreatedSublocation={Clean(place.Sublocation)}");
             }
         }
 
@@ -549,6 +617,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.AddRange(FaceRegions.WriteArguments(
                 people, current?.OtherRegions ?? [], current?.Width, current?.Height,
                 changes.Orientation ?? current?.Orientation ?? 1));
+            // The names alone too, for Lightroom, Photo Mechanic and press archives (M-8).
+            var names = people.Select(p => p.Name.Trim()).Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (names.Count == 0)
+                args.Add("-XMP-iptcExt:PersonInImage=");
+            else
+                args.AddRange(names.Select(n => $"-XMP-iptcExt:PersonInImage={n}"));
         }
 
         // IPTC needs to be told its text is UTF-8, or non-ASCII tags and captions are garbled in other apps.
@@ -637,17 +711,18 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (paths.Count > 0)
             tags = [.. TagTree.Merge(tags, paths)];
 
+        // Lightroom and Adobe write a reject as XMP rating -1 (M-8); the stars stay in the EXIF rating then.
+        var rejectedByRating = GetNumber(item, "XMP-xmp:Rating") is < 0;
         var rating = 0;
-        if (GetNumber(item, "XMP-xmp:Rating") is { } xmpRating)
+        if (GetNumber(item, "XMP-xmp:Rating") is { } xmpRating and >= 0)
             rating = (int)Math.Round(xmpRating);
         else if (GetNumber(item, "IFD0:Rating") is { } exifRating)
             rating = (int)Math.Round(exifRating);
         else if (GetNumber(item, "XMP-microsoft:RatingPercent") is { } percent)
             rating = PercentToRating(percent);
+        rejectedByRating |= rating < 0;
 
-        var caption = new[] { "XMP-dc:Title", "XMP-dc:Description", "IFD0:XPTitle", "IFD0:ImageDescription", "IPTC:Caption-Abstract" }
-            .Select(key => GetString(item, key)?.Trim())
-            .FirstOrDefault(c => !string.IsNullOrEmpty(c) && !JunkCaptions.Contains(c));
+        var caption = Caption(item);
 
         int? width = null, height = null;
         if (GetString(item, "Composite:ImageSize") is { } size)
@@ -678,7 +753,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 .Where(t => tags.Contains(t, StringComparer.OrdinalIgnoreCase))),
             Rating = Math.Clamp(rating, 0, 5),
             Flagged = GetNumber(item, "XMP-digiKam:PickLabel") == 3,
-            Rejected = GetNumber(item, "XMP-digiKam:PickLabel") == 1 || rating < 0,
+            Rejected = GetNumber(item, "XMP-digiKam:PickLabel") == 1 || rejectedByRating,
             Caption = caption,
             DateTaken = ParseDateTaken(item),
             Orientation = Orientation.Normalize(orientation),
@@ -748,6 +823,20 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var brand = make.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
         return model.StartsWith(brand, StringComparison.OrdinalIgnoreCase) ? model : $"{make} {model}";
     }
+
+    /// <summary>The fields a caption is read from, the description first; the title only when there is none (WLPG keeps its caption there).</summary>
+    internal static readonly string[] CaptionFields = ["XMP-dc:Description", "IFD0:ImageDescription", "IPTC:Caption-Abstract", "XMP-dc:Title", "IFD0:XPTitle"];
+
+    /// <summary>The title and headline fields, which follow the caption only while they read the same or are empty (M-8).</summary>
+    internal static readonly string[] TitleFields = ["XMP-dc:Title", "IFD0:XPTitle", "IPTC:ObjectName", "XMP-photoshop:Headline", "IPTC:Headline"];
+
+    /// <summary>Where the photo was taken, as IPTC Extension keeps it; filled from the place names when empty (M-8).</summary>
+    internal static readonly string[] LocationCreatedFields =
+        ["XMP-iptcExt:LocationCreatedCountryName", "XMP-iptcExt:LocationCreatedCity", "XMP-iptcExt:LocationCreatedSublocation"];
+
+    internal static string? Caption(JsonElement item) => CaptionFields
+        .Select(key => GetString(item, key)?.Trim())
+        .FirstOrDefault(c => !string.IsNullOrEmpty(c) && !JunkCaptions.Contains(c));
 
     internal static DateTaken? ParseDateTaken(JsonElement item)
     {
