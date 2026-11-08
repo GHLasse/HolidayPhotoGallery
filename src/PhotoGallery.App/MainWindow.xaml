@@ -1195,17 +1195,47 @@
                         <!-- One label over two boxes: the local date and time, and its time zone (just the offset
                              while closed; the list names the places). -->
                         <TextBlock Text="{local:Loc Text='Date taken'}" Margin="0,0,0,4" />
-                        <Grid ColumnSpacing="8">
+                        <Grid ColumnSpacing="4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="DateBox" PlaceholderText="2024-07-01 14:30:00" MinWidth="0"
                                      GotFocus="DateBox_GotFocus" LostFocus="DateBox_LostFocus" PreviewKeyDown="DateBox_PreviewKeyDown"
                                      AutomationProperties.Name="{local:Loc Text='Date taken'}"
                                      Text="{x:Bind ViewModel.Editor.DateText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <!-- Typing stays the fast way; the calendar and clock write into the same box (MainWindow.DatePick.cs). -->
+                            <Button x:Name="DatePickButton" Grid.Column="1" VerticalAlignment="Stretch" Padding="8,0"
+                                    AutomationProperties.Name="{local:Loc Text='Pick date and time'}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Pick the date and time from a calendar (Alt+Down)'}">
+                                <FontIcon Glyph="&#xE787;" FontSize="14" />
+                                <Button.Flyout>
+                                    <Flyout x:Name="DatePickFlyout" Placement="BottomEdgeAlignedRight" Opening="DatePickFlyout_Opening">
+                                        <StackPanel Spacing="12">
+                                            <CalendarView x:Name="DatePickCalendar" SelectionMode="Single" IsTodayHighlighted="False"
+                                                          AutomationProperties.Name="{local:Loc Text='Date'}" />
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TimePicker x:Name="DatePickTime" Header="{local:Loc Text='Time'}" MinuteIncrement="1" MinWidth="0"
+                                                            HorizontalAlignment="Stretch" />
+                                                <NumberBox x:Name="DatePickSeconds" Grid.Column="1" Header="{local:Loc Text='Seconds'}" Width="92"
+                                                           Minimum="0" Maximum="59" SmallChange="1" SpinButtonPlacementMode="Compact"
+                                                           ValidationMode="InvalidInputOverwritten" />
+                                            </Grid>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                                <Button Content="{local:Loc Text='Cancel'}" Click="DatePickCancel_Click" />
+                                                <Button Content="{local:Loc Text='Use this date'}" Click="DatePickApply_Click" Style="{StaticResource AccentButtonStyle}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
                             <!-- Filled from code: binding both the list and the index let x:Bind set the index first, which crashed at startup. -->
-                            <ComboBox x:Name="TimeZoneCombo" Grid.Column="1" MinWidth="118"
+                            <ComboBox x:Name="TimeZoneCombo" Grid.Column="2" MinWidth="118"
                                       AutomationProperties.Name="{local:Loc Text='Time zone'}"
                                       ToolTipService.ToolTip="{local:Loc Text='Time zone'}"
                                       SelectionChanged="TimeZoneCombo_SelectionChanged">
@@ -1225,7 +1255,7 @@
                                 </ComboBox.ItemTemplateSelector>
                             </ComboBox>
                         </Grid>
-                        <TextBlock Text="{local:Loc Text='The camera’s local time, and where it was taken. Summer time is worked out from the date.'}"
+                        <TextBlock Text="{local:Loc Text='The camera’s local time, and where it was taken. Summer time is worked out from the date. Type a date or just a time, or use the arrow keys to change the part at the cursor.'}"
                                    TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <TextBlock Text="{x:Bind ViewModel.Editor.ValidationError, Mode=OneWay}" TextWrapping="Wrap"

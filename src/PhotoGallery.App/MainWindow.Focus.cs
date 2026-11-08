@@ -56,10 +56,16 @@ public sealed partial class MainWindow
 
     private void DateBox_GotFocus(object sender, RoutedEventArgs e) => _dateBoxChosen |= _lastKeyWasTab;
 
-    private void DateBox_LostFocus(object sender, RoutedEventArgs e) => _dateBoxChosen = false;
+    private void DateBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        _dateBoxChosen = false;
+        TidyDateText();
+    }
 
     private async void DateBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (DateBoxKey(e))
+            return;
         if (_dateBoxChosen || IsDown(VirtualKey.Control) || IsDown(VirtualKey.Menu) || IsDown(VirtualKey.Shift))
             return;
         var stars = StarsFor(e.Key);
