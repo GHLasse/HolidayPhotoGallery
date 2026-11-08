@@ -84,16 +84,38 @@ public sealed class DateSyncTests : IAsyncLifetime
         Assert.True(await DateSync.SyncAsync(Service, check));
 
         var dates = (await _exifTool.RunAsync(["-s3", "-ExifIFD:CreateDate", "-IFD0:ModifyDate", "-IPTC:DateCreated", "-IPTC:TimeCreated", path])).Output;
-        Assert.Equal(["2019:05:04 13:14:15", "2019:05:04 13:14:15", "2019:05:04", "13:14:15+02:00"],
+        // The modified dates are later than the date taken: they stay (they say when the pixels last changed).
+        Assert.Equal(["2019:05:04 13:14:15", "2022:02:02 10:00:00", "2019:05:04", "13:14:15+02:00"],
                      dates.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        Assert.Equal(Utc("2019-05-04 11:14:15"), File.GetLastWriteTimeUtc(path));
+        Assert.Equal(Utc("2024-08-01 10:00:00"), File.GetLastWriteTimeUtc(path));
         var note = (await _exifTool.RunAsync(["-s3", $"-{DateSync.NoteField}", path])).Output.Trim();
         Assert.Contains("ExifIFD:CreateDate=2021:01:01 09:00:00", note);
-        Assert.Contains("IFD0:ModifyDate=2022:02:02 10:00:00", note);
+        Assert.DoesNotContain("ModifyDate", note);
 
         var again = Assert.Single(await DateSync.CheckAsync(_exifTool, [path]));
         Assert.False(again.NeedsSync);
         Assert.Equal(note, again.EarlierDates);
+    }
+
+    [Fact]
+    public void A_modified_date_is_only_wrong_when_earlier_than_the_date_taken()
+    {
+        var later = Compare("""{"ExifIFD:DateTimeOriginal":"2019:05:04 13:14:15","IFD0:ModifyDate":"2020:01:01 09:00:00"}""", null, Utc("2024-08-01 10:00:00"));
+        Assert.False(later.NeedsSync);
+        var earlier = Compare("""{"ExifIFD:DateTimeOriginal":"2019:05:04 13:14:15","IFD0:ModifyDate":"2018:01:01 09:00:00"}""", null, Utc("2018-01-01 08:00:00"));
+        Assert.Equal(["IFD0:ModifyDate", "File:Modified"], earlier.Mismatches.Select(m => m.Field));
+    }
+
+    [ExifToolFact]
+    public async Task An_earlier_modified_date_is_raised_to_the_date_taken()
+    {
+        var path = _temp.CopySample(".jpg");
+        await _exifTool!.RunAsync(["-overwrite_original", "-ExifIFD:DateTimeOriginal=2019:05:04 13:14:15", "-IFD0:ModifyDate=2018:01:01 09:00:00", path]);
+        File.SetLastWriteTimeUtc(path, Utc("2018-01-01 08:00:00"));
+        var check = Assert.Single(await DateSync.CheckAsync(_exifTool, [path]));
+        Assert.True(await DateSync.SyncAsync(Service, check));
+        Assert.Equal("2019:05:04 13:14:15", (await _exifTool.RunAsync(["-s3", "-IFD0:ModifyDate", path])).Output.Trim());
+        Assert.False(Assert.Single(await DateSync.CheckAsync(_exifTool, [path])).NeedsSync);
     }
 
     [ExifToolFact]

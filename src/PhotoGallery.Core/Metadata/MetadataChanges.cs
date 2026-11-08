@@ -35,10 +35,17 @@ public sealed record MetadataChanges
     public TimeSpan? ShiftCreateDateBy { get; init; }
 
     /// <summary>
-    /// With a new date taken: sets the file's other dates to it too (digitized, modified, and the file's
-    /// own dates), the "Keep all dates in sync" setting.
+    /// With a new date taken: sets the file's other "when it was made" dates to it too (digitized and the file's
+    /// creation date), the "Keep all dates in sync" setting. The modified dates say when the pixels last changed
+    /// and stay, unless <see cref="RaiseModifyDates"/> (Lasse, 2026-11-08).
     /// </summary>
     public bool SyncOtherDates { get; init; }
+
+    /// <summary>
+    /// With <see cref="SyncOtherDates"/>: the modified dates (EXIF and XMP ModifyDate, the file's modified time) are
+    /// set to the date taken too; for when they are earlier than it, which can't be right.
+    /// </summary>
+    public bool RaiseModifyDates { get; init; }
 
     /// <summary>The dates a date sync replaces, kept in the app's own XMP note (see <see cref="DateSync"/>).</summary>
     public string? DatesBeforeSync { get; init; }
