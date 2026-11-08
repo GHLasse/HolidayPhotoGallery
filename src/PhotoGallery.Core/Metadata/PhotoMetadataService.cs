@@ -641,6 +641,10 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 args.AddRange(names.Select(n => $"-XMP-iptcExt:PersonInImage={n}"));
         }
 
+        else if (changes.PersonNames is { Count: > 0 } personNames)
+            args.AddRange(personNames.Select(n => n.Trim()).Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)
+                                     .Select(n => $"-XMP-iptcExt:PersonInImage={n}"));
+
         // IPTC needs to be told its text is UTF-8, or non-ASCII tags and captions are garbled in other apps.
         if (hasIptc && (changes.Tags is not null || changes.Caption is not null || changes.Place is not null ||
                        changes.Copyright is not null || changes.Creator is not null))
