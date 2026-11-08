@@ -75,6 +75,38 @@ public sealed class PhotoEditServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task An_edit_keeps_the_colour_profile_and_drops_HDR_and_Lightroom_edits()
+    {
+        var path = _temp.CopySample(".jpg");
+        var icc = Path.Combine(_temp.Path, "p3.icc");
+        await File.WriteAllBytesAsync(icc, ColourProfileTests.DisplayP3);
+        await _exifTool!.RunAsync(["-overwrite_original", $"-ICC_Profile<={icc}", "-XMP-crs:HasSettings=True", "-XMP-crs:Exposure2012=+1",
+                                   "-XMP-hdrgm:Version=1.0", path]);
+        File.Delete(icc);
+        var before = await PhotoQuality.ReadColourAsync(_exifTool, path);
+        Assert.Equal("P3", before.Space);
+        Assert.True(before.OtherAppEdits);
+        Assert.True(before.Hdr);
+        Assert.NotNull(ColourProfile.Parse(await Metadata.ReadColourProfileAsync(path)));
+
+        // The small preview stands in for one made from the new pixels.
+        await Editor.SaveEditAsync(path, ".jpg", 100, 80, FreshImage(".jpg"), keepColourProfile: true,
+                                   writeThumbnail: target => { File.Copy(Path.Combine(AppContext.BaseDirectory, "TestData", "sample.jpg"), target); return Task.CompletedTask; });
+
+        var after = await PhotoQuality.ReadColourAsync(_exifTool, path);
+        Assert.Equal("P3", after.Space);
+        Assert.False(after.OtherAppEdits);
+        Assert.False(after.Hdr);
+        Assert.Equal("Display P3", ColourProfile.Parse(await Metadata.ReadColourProfileAsync(path))!.Description);
+        Assert.NotEmpty((await _exifTool.RunAsync(["-s3", "-ThumbnailLength", path])).Output.Trim());
+        Assert.Empty(Directory.GetFiles(Path.GetTempPath(), "photogallery-thumb-*"));
+
+        // Without it (a format that can't keep the profile, so the pixels were turned into sRGB) the profile goes.
+        await Editor.SaveEditAsync(path, ".jpg", 100, 80, FreshImage(".jpg"));
+        Assert.Null(await Metadata.ReadColourProfileAsync(path));
+    }
+
+    [ExifToolFact]
     public async Task Saving_as_a_copy_leaves_the_photo_alone_and_never_overwrites()
     {
         var path = _temp.CopySample(".jpg");

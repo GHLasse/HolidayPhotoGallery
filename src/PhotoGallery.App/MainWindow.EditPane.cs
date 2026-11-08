@@ -432,7 +432,7 @@ public sealed partial class MainWindow
             var look = Looks.Find((string?)button.Tag);
             var thumb = await Task.Run(() => Edited(small, null, look, 100, Adjustments.None, false, false, 0));
             if (((StackPanel)button.Content).Children[0] is Image image)
-                image.Source = await ImageLoader.ToImageSourceAsync(thumb);
+                image.Source = await ScreenSourceAsync(thumb);
         }
     }
 
@@ -525,7 +525,7 @@ public sealed partial class MainWindow
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels))
                     return;
-                ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(shown);
+                ViewerCanvas.Source = await ScreenSourceAsync(shown);
             }
             while (_renderAgain);
         }

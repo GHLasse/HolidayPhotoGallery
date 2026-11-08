@@ -993,10 +993,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         else
         {
             // PNG and HEIC: Windows decodes them upright, and its encoders save them again (HEIC needs the HEVC Video Extensions).
-            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            // Turned in its own colours, so a P3 photo stays P3 where the format allows (E-16).
+            var profile = await WideColourProfileAsync(path);
+            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue, ownColours: profile is not null);
             var turned = await Task.Run(() => new DecodedImage(ImageMath.Rotate90(image.Pixels, image.Width, image.Height, clockwise), image.Height, image.Width));
+            var keepProfile = await KeepColoursAsync(turned, profile, Path.GetExtension(path));
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), turned.Width, turned.Height,
-                                                        target => ImageEncoder.EncodeAsync(turned, target), turn: turn);
+                                                        target => ImageEncoder.EncodeAsync(turned, target), turn: turn,
+                                                        keepColourProfile: keepProfile);
         }
         await AfterFileReplacedAsync(item, path, newPath);
     }
@@ -1503,7 +1507,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusText = Tr("Saving the edit of {0}…", item.FileName);
         try
         {
-            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            // A P3 (or other wide) photo is edited in its own colours, so it stays P3 (E-16).
+            var profile = await WideColourProfileAsync(path);
+            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue, ownColours: profile is not null);
             var (fullWidth, fullHeight) = (image.Width, image.Height);
             FaceBox? kept = null;
             var eraser = strokes.Any(k => k.Tool == RetouchTool.Erase) ? await Task.Run(() => LoadEraser()) : null;
@@ -1543,6 +1549,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 ImageAdjust.Flip(result.Pixels, result.Width, result.Height, flipHorizontal, flipVertical);
                 return result;
             });
+            var keepProfile = await KeepColoursAsync(image, profile, extension);
 
             // A flip moves the people named in the photo too.
             var newPath = await _photoEditor.SaveEditAsync(path, extension, image.Width, image.Height,
@@ -1550,7 +1557,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                                            ImageAdjust.FlipOrientation(flipHorizontal, flipVertical),
                                                            beforeCrop: Math.Abs(straighten) < 0.01 ? null
                                                                : box => Straighten.Box(box, fullWidth, fullHeight, straighten),
-                                                           asCopy: asCopy);
+                                                           asCopy: asCopy, keepColourProfile: keepProfile,
+                                                           writeThumbnail: target => WriteThumbnailAsync(image, target));
             if (asCopy)
             {
                 // The photo stays as it was; the copy joins the library next to it (E-5).
@@ -1580,6 +1588,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// E-16: pixels in a wide colour space keep it when the format can carry the profile (true: the profile is copied
+    /// along); otherwise (HEIC) they are turned into sRGB here, so the colours still look right.
+    /// </summary>
+    private static async Task<bool> KeepColoursAsync(DecodedImage image, ColourProfile? profile, string extension)
+    {
+        if (profile is null)
+            return false;
+        if (PhotoEditService.CanKeepColourProfile(extension))
+            return true;
+        await Task.Run(() => profile.ToSrgb(image.Pixels, image.Width, image.Height));
+        return false;
+    }
+
+    // The small preview a JPEG keeps in its EXIF block, made from the new pixels (E-16).
+    private static async Task WriteThumbnailAsync(DecodedImage image, string target)
+    {
+        var (width, height) = PhotoEditService.ThumbnailSize(image.Width, image.Height);
+        await File.WriteAllBytesAsync(target, await ImageEncoder.EncodeJpegAsync(image, (uint)width, (uint)height));
     }
 
     public Task UndoEditAsync(PhotoItemViewModel item) =>

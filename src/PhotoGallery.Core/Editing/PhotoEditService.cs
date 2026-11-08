@@ -30,7 +30,8 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     public async Task<string> SaveEditAsync(string path, string extension, int width, int height,
                                             Func<string, Task> writeImage, FaceBox? crop = null, int turn = 1,
                                             string? metadataFrom = null, CancellationToken cancellationToken = default,
-                                            Func<FaceBox, FaceBox?>? beforeCrop = null, bool asCopy = false)
+                                            Func<FaceBox, FaceBox?>? beforeCrop = null, bool asCopy = false,
+                                            bool keepColourProfile = false, Func<string, Task>? writeThumbnail = null)
     {
         if (!asCopy && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
@@ -45,10 +46,14 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
 
         // Written next to the photo under a hidden name, then swapped in, so a failure leaves the photo as it was.
         var temp = Path.Combine(Path.GetDirectoryName(path)!, $".edit-{Guid.NewGuid():N}{extension}");
+        // JPEG keeps a small preview in its EXIF block; it is made from the new pixels so it doesn't show the old photo (E-16).
+        var thumbnail = writeThumbnail is not null && IsJpeg(extension) ? Path.Combine(Path.GetTempPath(), $"photogallery-thumb-{Guid.NewGuid():N}.jpg") : null;
         try
         {
             await writeImage(temp).ConfigureAwait(false);
-            await metadata.CopyMetadataAsync(metadataFrom ?? path, temp, width, height, cancellationToken).ConfigureAwait(false);
+            if (thumbnail is not null)
+                await writeThumbnail!(thumbnail).ConfigureAwait(false);
+            await metadata.CopyMetadataAsync(metadataFrom ?? path, temp, width, height, cancellationToken, keepColourProfile, thumbnail).ConfigureAwait(false);
             await MovePeopleAsync(metadataFrom ?? path, temp, crop, turn, beforeCrop, cancellationToken).ConfigureAwait(false);
             // A full disk or a failing drive can leave the new file short; then the photo stays as it was.
             if (Library.FileCheck.Check(temp) != Library.FileHealth.Whole)
@@ -76,7 +81,25 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
         {
             if (File.Exists(temp))
                 File.Delete(temp);
+            if (thumbnail is not null && File.Exists(thumbnail))
+                File.Delete(thumbnail);
         }
+    }
+
+    private static bool IsJpeg(string extension) => extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".jpe";
+
+    /// <summary>
+    /// Whether a photo saved with this extension can keep its colour profile (E-16): ExifTool writes the profile into
+    /// JPEG, PNG, TIFF and WebP, but not into HEIC, so a HEIC edit is turned into sRGB before saving.
+    /// </summary>
+    public static bool CanKeepColourProfile(string extension) =>
+        extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".jpe" or ".png" or ".tif" or ".tiff" or ".webp";
+
+    /// <summary>The size of the small preview kept in a JPEG: 160 pixels on the long edge, as cameras do.</summary>
+    public static (int Width, int Height) ThumbnailSize(int width, int height)
+    {
+        var scale = 160.0 / Math.Max(width, height);
+        return scale >= 1 ? (width, height) : (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
     }
 
     /// <summary>

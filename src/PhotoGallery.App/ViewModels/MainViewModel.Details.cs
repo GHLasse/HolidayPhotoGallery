@@ -27,18 +27,40 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>The chosen details of one photo; empty when ExifTool isn't running or can't read it.</summary>
-    /// <summary>Whether the photo is HDR, for the badge in the info pane; false when the file can't be read.</summary>
-    public async Task<bool> IsHdrAsync(string path)
+    /// <summary>
+    /// The photo's colours (E-16): HDR and the colour space for the badges in the info pane, and other apps' edits the
+    /// Edit pane warns about; nothing known when the file can't be read.
+    /// </summary>
+    public async Task<PhotoColour> ReadColourAsync(string path)
     {
         if (_exifTool is null)
-            return false;
+            return new PhotoColour(false, null, false);
         try
         {
-            return await PhotoQuality.IsHdrAsync(_exifTool, path);
+            return await PhotoQuality.ReadColourAsync(_exifTool, path);
         }
         catch (Exception ex) when (ex is Core.ExifTool.ExifToolException or IOException or System.Text.Json.JsonException)
         {
-            return false;
+            return new PhotoColour(false, null, false);
+        }
+    }
+
+    /// <summary>
+    /// The photo's colour profile when it is wider than sRGB (e.g. Display P3 from an iPhone) and can be worked with
+    /// (E-16): then the photo is edited in its own colours and shown converted. Null for sRGB and unknown profiles,
+    /// which are shown and edited in sRGB as before.
+    /// </summary>
+    public async Task<Core.Editing.ColourProfile?> WideColourProfileAsync(string path)
+    {
+        if (_metadata is null)
+            return null;
+        try
+        {
+            return Core.Editing.ColourProfile.Parse(await _metadata.ReadColourProfileAsync(path)) is { IsSrgb: false } profile ? profile : null;
+        }
+        catch (Exception ex) when (ex is Core.ExifTool.ExifToolException or IOException or System.Text.Json.JsonException or FormatException)
+        {
+            return null;
         }
     }
 

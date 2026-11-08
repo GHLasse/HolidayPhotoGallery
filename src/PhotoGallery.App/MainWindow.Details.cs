@@ -92,7 +92,7 @@ public sealed partial class MainWindow
 
     private int _qualityVersion;
 
-    /// <summary>The resolution class badge (exact size in its tooltip) and, once the file is read, LIVE for a Live or motion photo and HDR (U-7).</summary>
+    /// <summary>The resolution class badge (exact size in its tooltip) and, once the file is read, LIVE for a Live or motion photo, HDR (U-7) and the colour space (E-16).</summary>
     private async Task ShowQualityBadgesAsync()
     {
         var version = ++_qualityVersion;
@@ -115,8 +115,19 @@ public sealed partial class MainWindow
             return;
         if (live is not null)
             QualityBadges.Children.Add(QualityBadge("LIVE", live));
-        if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
+        var colour = await ViewModel.ReadColourAsync(item.Path);
+        if (version != _qualityVersion)
+            return;
+        if (colour.Hdr)
             QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
+        // E-16: the colour space, so it is clear how the colours will look on other screens.
+        if (!item.IsVideo && colour.Space is { } space)
+            QualityBadges.Children.Add(QualityBadge(space, space switch
+            {
+                "P3" => Tr("Display P3: wider colours, as iPhones and many newer phones take them. Screens that only show sRGB show them a little less vivid."),
+                "Adobe RGB" => Tr("Adobe RGB: wider colours, as cameras can take them for printing. Screens that only show sRGB show them a little less vivid."),
+                _ => Tr("sRGB: the usual colours, shown the same on nearly every screen."),
+            }));
     }
 
     private static Border QualityBadge(string label, string tooltip)

@@ -30,6 +30,9 @@ public sealed partial class MainWindow : Window
     private bool _handlingSelection;
     private bool _selectingFromMap;
     private DecodedImage? _viewerPixels;
+    // E-16: the colour profile _viewerPixels are in when it is wider than sRGB (they stay in the photo's own colours,
+    // so an edit keeps them); null when they are sRGB.
+    private Core.Editing.ColourProfile? _viewerProfile;
     private byte[]? _autoCurve;
     private bool _cropping, _autoLight; // the crop frame and Enhance light, previewed until Save (Edit pane)
 
@@ -1375,11 +1378,17 @@ public sealed partial class MainWindow : Window
             // Decode at screen resolution, not at the camera's full size.
             var scale = Root.XamlRoot?.RasterizationScale ?? 1.0;
             var maxSize = (uint)Math.Clamp(Math.Max(Root.ActualWidth, Root.ActualHeight) * scale, 800, 4096);
+            // A P3 (or other wide) photo is decoded a second time in its own colours, so edits keep them (E-16).
+            var wide = ViewModel.WideColourProfileAsync(item.Path);
             var pixels = await ImageLoader.DecodePixelsAsync(item.Path, maxSize);
-            var source = await ImageLoader.ToImageSourceAsync(pixels);
+            var profile = await wide;
+            if (profile is not null)
+                pixels = await ImageLoader.DecodePixelsAsync(item.Path, maxSize, ownColours: true);
+            var source = await ScreenSourceAsync(pixels, profile);
             if (version == _viewerLoadVersion)
             {
                 _viewerPixels = pixels;
+                _viewerProfile = profile;
                 ViewerCanvas.SetPixelSize(pixels.Width, pixels.Height);
                 ViewerCanvas.Source = source;
             }
@@ -2172,7 +2181,23 @@ public sealed partial class MainWindow : Window
             _ = ShowPixelsAsync(pixels);
     }
 
-    private async Task ShowPixelsAsync(DecodedImage pixels) => ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(pixels);
+    private async Task ShowPixelsAsync(DecodedImage pixels) => ViewerCanvas.Source = await ScreenSourceAsync(pixels);
+
+    /// <summary>Shows pixels of the photo in the viewer, turned into sRGB for the screen when they are in a wider colour space (E-16).</summary>
+    private Task<ImageSource> ScreenSourceAsync(DecodedImage pixels) => ScreenSourceAsync(pixels, _viewerProfile);
+
+    private static async Task<ImageSource> ScreenSourceAsync(DecodedImage pixels, Core.Editing.ColourProfile? profile)
+    {
+        if (profile is null)
+            return await ImageLoader.ToImageSourceAsync(pixels);
+        var screen = await Task.Run(() =>
+        {
+            var copy = (byte[])pixels.Pixels.Clone();
+            profile.ToSrgb(copy, pixels.Width, pixels.Height);
+            return new DecodedImage(copy, pixels.Width, pixels.Height);
+        });
+        return await ImageLoader.ToImageSourceAsync(screen);
+    }
 
     private void EndEdit()
     {
@@ -2218,6 +2243,8 @@ public sealed partial class MainWindow : Window
             ViewModel.Inform(Tr("Wait a moment until the retouch is done, then save."));
             return false;
         }
+        if (!await ConfirmPixelEditAsync(item, asCopy))
+            return false;
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
                                                   ChosenLook, _lookStrength, _strokes.ToList(),
@@ -2232,6 +2259,34 @@ public sealed partial class MainWindow : Window
             await ShowViewerImageAsync();
         }
         return saved;
+    }
+
+    /// <summary>
+    /// E-16: before new pixels are saved, says what can't come along: the HDR of the photo (its gain map), and another
+    /// app's edits (Lightroom keeps them beside the pixels and would put them on top of ours). True to go ahead.
+    /// </summary>
+    private async Task<bool> ConfirmPixelEditAsync(ViewModels.PhotoItemViewModel item, bool asCopy)
+    {
+        var colour = await ViewModel.ReadColourAsync(item.Path);
+        var losses = new List<string>();
+        if (colour.Hdr)
+            losses.Add(Tr("The edited photo is saved without HDR, so its highlights won’t shine brighter on HDR screens."));
+        if (colour.OtherAppEdits)
+            losses.Add(asCopy
+                ? Tr("The copy won’t have the edits made in Lightroom; they stay with the photo.")
+                : Tr("The edits made in Lightroom are removed, so Lightroom doesn’t put them on top of this edit."));
+        if (losses.Count == 0)
+            return true;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Save the edit?"),
+            Content = new TextBlock { Text = string.Join("\n\n", losses), TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = Tr("Save"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary;
     }
 
     private async void ViewerUndo_Click(object sender, RoutedEventArgs e)

@@ -248,15 +248,24 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     /// whose pixels are already upright and <paramref name="width"/> × <paramref name="height"/>. The old
     /// embedded thumbnail, colour profile and regions are left out, since they describe the old pixels.
     /// </summary>
-    public async Task CopyMetadataAsync(string source, string target, int width, int height, CancellationToken cancellationToken = default)
+    public async Task CopyMetadataAsync(string source, string target, int width, int height, CancellationToken cancellationToken = default,
+                                        bool keepColourProfile = false, string? thumbnail = null)
     {
         var now = DateTimeOffset.Now;
         var output = await exifTool.RunAsync(
         [
             "-overwrite_original", "-m",
             "-tagsFromFile", source, "-all:all", "--IFD1:all", "--PreviewImage", "--ThumbnailImage",
+            // The new pixels are still in the photo's own colours (E-16): its profile says which.
+            .. (keepColourProfile ? new[] { "-ICC_Profile" } : []),
             // Face and other regions are measured on the old pixels; the people are moved separately.
             "--XMP-mwg-rs:all", "--XMP-MP:all",
+            // E-16: the HDR gain map isn't in the new file, so nothing may claim it is; and Lightroom's edits
+            // (kept beside the pixels) would be put on top of ours, so they go too.
+            "--XMP-hdrgm:all", "--XMP-apdi:all", "--XMP-crs:all", "--XMP-crss:all",
+            "-MakerNotes:HDRHeadroom=", "-MakerNotes:HDRGain=",
+            // A small preview of the new pixels for Explorer and cameras, when the format has one (JPEG).
+            .. (thumbnail is null ? Array.Empty<string>() : [$"-ThumbnailImage<={thumbnail}"]),
             "-IFD0:Orientation#=1", "-XMP-tiff:Orientation=",
             $"-ExifIFD:ExifImageWidth={width}", $"-ExifIFD:ExifImageHeight={height}",
             // New pixels: the modified dates say so (the date taken and the digitized date stay).
@@ -270,6 +279,20 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var errors = output.ErrorLines.ToList();
         if (errors.Count > 0)
             throw new ExifToolException(Tr("Could not copy the metadata of {0}: {1}", Path.GetFileName(source), string.Join(" ", errors)));
+    }
+
+    /// <summary>The colour profile embedded in a photo (E-16), as ICC bytes; null when it has none.</summary>
+    public async Task<byte[]?> ReadColourProfileAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var output = await exifTool.RunAsync(["-json", "-b", "-ICC_Profile", path], cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(output.Output))
+            return null;
+        using var doc = System.Text.Json.JsonDocument.Parse(output.Output);
+        if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0 ||
+            !doc.RootElement[0].TryGetProperty("ICC_Profile", out var icc) || icc.GetString() is not { } text ||
+            !text.StartsWith("base64:", StringComparison.Ordinal))
+            return null;
+        return Convert.FromBase64String(text["base64:".Length..]);
     }
 
     /// <summary>The app's name as other programs see it in a photo's Software field.</summary>
