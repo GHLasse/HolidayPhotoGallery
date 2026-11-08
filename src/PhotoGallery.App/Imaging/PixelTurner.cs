@@ -131,4 +131,8 @@ public static class PixelTurner
 
     /// <summary>The message for an animated WebP, whose rotation is turned off.</summary>
     public static string AnimatedWebpHint => Tr("Animated WebP pictures can't be rotated.");
+
+    /// <summary>Why a file can't be turned: a video in a format without a rotation (AVI, MTS, MKV, WMV), or an animated WebP.</summary>
+    public static string CantRotateHint(string path) =>
+        PhotoGallery.Core.SupportedFormats.IsVideo(path) ? Tr("Only MP4, MOV, M4V and 3GP videos can be rotated.") : AnimatedWebpHint;
 }

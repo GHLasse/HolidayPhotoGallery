@@ -911,6 +911,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var rotatable = items.Where(i => i.CanRotate).ToList();
         var skipped = items.Count - rotatable.Count;
+        var skippedVideos = items.Count(i => i.IsVideo && !i.CanRotate);
         var failed = 0;
 
         await WaitForSavesAsync(); // the info pane's edits are in the files first
@@ -927,7 +928,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     StatusText = Tr("Rotating {0} of {1}…", i + 1, rotatable.Count);
                 try
                 {
-                    if (SupportedFormats.CanRotateLosslessly(item.Path))
+                    if (item.IsVideo)
+                    {
+                        // MP4 and MOV keep a turn in their track header, so the video isn't re-encoded.
+                        await _metadata.RotateVideoAsync(item.Path, clockwise);
+                        if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                            item.Photo = updated;
+                        await item.ReloadThumbnailAsync();
+                    }
+                    else if (SupportedFormats.CanRotateLosslessly(item.Path))
                     {
                         var current = item.Photo.Orientation;
                         var next = clockwise ? Orientation.RotateClockwise(current) : Orientation.RotateCounterClockwise(current);
@@ -962,9 +971,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (skipped == 0 && failed == 0 && done > 1)
             Inform(Tr("Rotated {0}.", PhotoCount(done)));
         else if (skipped > 0 && items.Count == 1)
-            Warn(PixelTurner.AnimatedWebpHint);
-        else if (skipped > 0)
+            Warn(PixelTurner.CantRotateHint(items[0].Path));
+        else if (skipped > 0 && skippedVideos == skipped)
+            Warn(Tr("Rotated {0}. {1} skipped: only MP4, MOV, M4V and 3GP videos can be rotated.", PhotoCount(done), skipped));
+        else if (skipped > 0 && skippedVideos == 0)
             Warn(Tr("Rotated {0}. {1} skipped: animated WebP pictures can't be rotated.", PhotoCount(done), skipped));
+        else if (skipped > 0)
+            Warn(Tr("Rotated {0}. {1} skipped: animated WebP pictures and AVI, MTS, MKV or WMV videos can't be rotated.", PhotoCount(done), skipped));
     }
 
     /// <summary>"1 photo" or "12 photos".</summary>
