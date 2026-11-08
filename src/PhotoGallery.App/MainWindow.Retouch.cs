@@ -58,7 +58,7 @@ public sealed partial class MainWindow
             ViewerCanvas.BrushSize = e.NewValue;
     }
 
-    /// <summary>Makes the brush smaller or larger ([ and ]).</summary>
+    /// <summary>Makes the brush smaller or larger ([ and ], or - and +).</summary>
     private void ChangeBrushSize(bool larger) =>
         BrushSizeSlider.Value = Math.Clamp(BrushSizeSlider.Value * (larger ? 1.25 : 0.8), BrushSizeSlider.Minimum, BrushSizeSlider.Maximum);
 

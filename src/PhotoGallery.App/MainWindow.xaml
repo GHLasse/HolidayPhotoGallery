@@ -1499,12 +1499,14 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="EditStatusText" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1">
-                            <Button x:Name="EditSaveButton" Style="{ThemeResource AccentButtonStyle}" CornerRadius="4,0,0,4" MinWidth="72"
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
+                            <!-- Both halves stretch to the taller one: a button centres itself, and the arrow half (a small icon,
+                                 no text line) came out lower than Save. -->
+                            <Button x:Name="EditSaveButton" Style="{ThemeResource AccentButtonStyle}" CornerRadius="4,0,0,4" MinWidth="72" VerticalAlignment="Stretch"
                                     Click="ViewerSaveEdit_Click" IsEnabled="False">
                                 <TextBlock x:Name="EditSaveText" Text="{local:Loc Text='Save'}" />
                             </Button>
-                            <Button x:Name="EditSaveMoreButton" Style="{ThemeResource AccentButtonStyle}" CornerRadius="0,4,4,0" Padding="8,5" IsEnabled="False"
+                            <Button x:Name="EditSaveMoreButton" Style="{ThemeResource AccentButtonStyle}" CornerRadius="0,4,4,0" Padding="8,5" IsEnabled="False" VerticalAlignment="Stretch"
                                     AutomationProperties.Name="{local:Loc Text='More ways to save'}"
                                     ToolTipService.ToolTip="{local:Loc Text='More ways to save'}">
                                 <FontIcon Glyph="&#xE70D;" FontSize="12" />
