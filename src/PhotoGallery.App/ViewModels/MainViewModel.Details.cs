@@ -42,6 +42,21 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>The photo's GPS time (UTC), to suggest its time zone (D-5); null when it has none or it can't be read.</summary>
+    public async Task<DateTime?> ReadGpsTimeAsync(string path)
+    {
+        if (_metadata is null)
+            return null;
+        try
+        {
+            return await Task.Run(() => _metadata.ReadGpsTimeAsync(path));
+        }
+        catch (Exception ex) when (ex is Core.ExifTool.ExifToolException or IOException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Whether the photo file carries its own short clip, as Android motion photos do.</summary>
     public async Task<bool> IsMotionPhotoAsync(string path)
     {

@@ -39,7 +39,7 @@ public static class DateSync
         "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal", "-XMP-photoshop:DateCreated",
         "-ExifIFD:CreateDate", "-ExifIFD:OffsetTimeDigitized", "-IFD0:ModifyDate", "-ExifIFD:OffsetTime",
         "-XMP-xmp:CreateDate", "-XMP-xmp:ModifyDate", "-IPTC:DateCreated", "-IPTC:TimeCreated",
-        "-Keys:CreationDate", "-QuickTime:CreateDate", $"-{NoteField}",
+        "-Keys:CreationDate", "-QuickTime:CreateDate", "-QuickTime:ModifyDate", "-ExifIFD:SubSecTimeOriginal", $"-{NoteField}",
     ];
 
     // Dates kept as the camera's local clock, compared with the date taken's clock time.
@@ -50,14 +50,18 @@ public static class DateSync
     private static readonly string[] ModifyFields = ["IFD0:ModifyDate", "XMP-xmp:ModifyDate"];
 
     /// <summary>The fields that say when the photo was last changed; a mismatch there raises them to the date taken.</summary>
-    internal static readonly IReadOnlySet<string> ModifyFieldNames = new HashSet<string>(ModifyFields) { "File:Modified" };
+    internal static readonly IReadOnlySet<string> ModifyFieldNames = new HashSet<string>(ModifyFields) { "File:Modified", "QuickTime:ModifyDate" };
 
     private static readonly string[] OffsetFields = ["ExifIFD:OffsetTimeDigitized"];
 
-    /// <summary>Photos only: a video's own dates are in UTC and its file times are left alone for now.</summary>
-    public static bool Applies(string path) => SupportedFormats.IsImage(path);
+    /// <summary>
+    /// Photos, and videos that keep their details in the file (MP4, MOV): a video with a sidecar (AVI, MTS…) is left
+    /// as it is, since its own dates can't be written.
+    /// </summary>
+    public static bool Applies(string path) =>
+        SupportedFormats.IsImage(path) || (SupportedFormats.IsVideo(path) && SupportedFormats.MetadataTarget(path) == path);
 
-    /// <summary>Checks the photos (videos and missing files are left out), reading their dates in one go.</summary>
+    /// <summary>Checks the photos and videos (sidecar videos and missing files are left out), reading their dates in one go.</summary>
     public static async Task<IReadOnlyList<DateSyncCheck>> CheckAsync(ExifToolProcess exifTool, IReadOnlyList<string> paths,
                                                                       CancellationToken cancellationToken = default)
     {
@@ -98,8 +102,9 @@ public static class DateSync
         var mismatches = new List<DateMismatch>();
         string? Get(string field) => PhotoMetadataService.GetString(item, field);
 
-        // GIF has no EXIF; its dates live in XMP only.
-        var hasExif = !Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase);
+        // GIF has no EXIF and videos keep their own dates in QuickTime; both keep the rest in XMP.
+        var isVideo = SupportedFormats.IsVideo(path);
+        var hasExif = !isVideo && !Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase);
         if (hasExif)
         {
             if (Get("ExifIFD:DateTimeOriginal") is not { } original)
@@ -128,6 +133,8 @@ public static class DateSync
                     mismatches.Add(new(field, value));
             }
         }
+        if (isVideo)
+            CompareVideo(item, date, mismatches);
         if (Get("IPTC:DateCreated") is { } iptcDate)
         {
             var iptc = Get("IPTC:TimeCreated") is { } time ? $"{iptcDate} {time}" : iptcDate;
@@ -160,6 +167,24 @@ public static class DateSync
             DatesBeforeSync = check.EarlierDates is null ? Note(check.Mismatches) : null,
         }, cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    // A video's QuickTime dates are UTC (what Google Photos, Windows and most players sort by); Keys:CreationDate,
+    // which Apple writes, is the local time with its zone. Zero (1904) is a camera without a clock: missing.
+    private static void CompareVideo(JsonElement item, DateTaken date, List<DateMismatch> mismatches)
+    {
+        var utc = FileTimeUtc(date);
+        var created = PhotoMetadataService.GetString(item, "QuickTime:CreateDate");
+        if (!DateTaken.TryParse(created, out var quickTime) || quickTime.Local.Year <= 1904)
+            mismatches.Add(new("QuickTime:CreateDate", ""));
+        else if (Math.Abs((Truncate(quickTime.Local) - Truncate(utc)).TotalSeconds) > 1)
+            mismatches.Add(new("QuickTime:CreateDate", created!));
+        if (PhotoMetadataService.GetString(item, "QuickTime:ModifyDate") is { } modified &&
+            DateTaken.TryParse(modified, out var m) && m.Local.Year > 1904 && Truncate(utc) - Truncate(m.Local) > TimeSpan.FromSeconds(1))
+            mismatches.Add(new("QuickTime:ModifyDate", modified));
+        if (PhotoMetadataService.GetString(item, "Keys:CreationDate") is { } keys &&
+            (!SameClock(keys, date) || (date.Offset is { } o && DateTaken.TryParse(keys, out var k) && k.Offset is { } ko && ko != o)))
+            mismatches.Add(new("Keys:CreationDate", keys));
     }
 
     /// <summary>The replaced dates as kept in the note: "field=value; …" (an empty value: the field was missing).</summary>

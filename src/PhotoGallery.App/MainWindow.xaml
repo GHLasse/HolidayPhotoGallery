@@ -1255,6 +1255,9 @@
                                 </ComboBox.ItemTemplateSelector>
                             </ComboBox>
                         </Grid>
+                        <HyperlinkButton Padding="0" Click="UseGpsTimeZone_Click" Visibility="{x:Bind ViewModel.Editor.HasGpsZoneHint, Mode=OneWay}">
+                            <TextBlock Text="{x:Bind ViewModel.Editor.GpsZoneHint, Mode=OneWay}" TextWrapping="Wrap" FontSize="12" />
+                        </HyperlinkButton>
                         <TextBlock Text="{local:Loc Text='The camera’s local time, and where it was taken. Summer time is worked out from the date. Type a date or just a time, or use the arrow keys to change the part at the cursor.'}"
                                    TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>

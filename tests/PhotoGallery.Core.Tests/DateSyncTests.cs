@@ -143,4 +143,51 @@ public sealed class DateSyncTests : IAsyncLifetime
         var copy = await OutgoingCopies.WithoutGpsAsync(_exifTool!, path, Path.Combine(_temp.Path, "out"));
         Assert.Equal(Utc("2019-05-04 11:14:15"), File.GetLastWriteTimeUtc(copy));
     }
+    [Fact]
+    public void A_videos_QuickTime_date_is_compared_in_UTC()
+    {
+        // 13:14:15 at +02:00 is 11:14:15 UTC.
+        var same = Compare("""
+            {"XMP-exif:DateTimeOriginal":"2019:05:04 13:14:15+02:00","QuickTime:CreateDate":"2019:05:04 11:14:15","Keys:CreationDate":"2019:05:04 13:14:15+02:00"}
+            """, null, Utc("2019-05-04 11:14:15"), "clip.mp4");
+        Assert.False(same.NeedsSync);
+
+        var different = Compare("""
+            {"XMP-exif:DateTimeOriginal":"2019:05:04 13:14:15+02:00","QuickTime:CreateDate":"2024:08:01 10:00:00","QuickTime:ModifyDate":"2018:01:01 00:00:00"}
+            """, null, Utc("2024-08-01 10:00:00"), "clip.mp4");
+        Assert.Equal(["QuickTime:CreateDate", "QuickTime:ModifyDate"], different.Mismatches.Select(m => m.Field));
+    }
+
+    [Fact]
+    public void A_camera_without_a_clock_gives_a_video_no_date_and_no_sync()
+    {
+        var check = Compare("""{"QuickTime:CreateDate":"0000:00:00 00:00:00"}""", null, Utc("2024-08-01 10:00:00"), "clip.mp4");
+        Assert.Null(check.Taken);
+        Assert.False(check.NeedsSync);
+    }
+
+    [Fact]
+    public void Videos_with_their_details_in_the_file_take_part_and_sidecar_videos_do_not()
+    {
+        Assert.True(DateSync.Applies("clip.mp4"));
+        Assert.True(DateSync.Applies("clip.mov"));
+        Assert.False(DateSync.Applies("clip.avi"));
+    }
+
+    [ExifToolFact]
+    public async Task A_videos_dates_are_brought_in_line()
+    {
+        var path = _temp.CopySample(".mp4");
+        await _exifTool!.RunAsync(["-overwrite_original", "-XMP-exif:DateTimeOriginal=2019:05:04 13:14:15+02:00",
+                                   "-QuickTime:CreateDate=2024:08:01 10:00:00", path]);
+        var check = Assert.Single(await DateSync.CheckAsync(_exifTool, [path]));
+        Assert.Contains(check.Mismatches, m => m.Field == "QuickTime:CreateDate");
+        Assert.True(await DateSync.SyncAsync(Service, check));
+
+        var dates = (await _exifTool.RunAsync(["-s3", "-QuickTime:CreateDate", "-Keys:CreationDate", path])).Output;
+        Assert.Equal(["2019:05:04 11:14:15", "2019:05:04 13:14:15+02:00"],
+                     dates.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        Assert.Contains("QuickTime:CreateDate=2024:08:01 10:00:00", (await _exifTool.RunAsync(["-s3", $"-{DateSync.NoteField}", path])).Output);
+        Assert.False(Assert.Single(await DateSync.CheckAsync(_exifTool, [path])).NeedsSync);
+    }
 }

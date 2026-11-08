@@ -56,6 +56,12 @@ public sealed record MetadataChanges
     /// <summary>The new GPS position. Altitude and other GPS details already in the file are left alone.</summary>
     public GeoPosition? Location { get; init; }
 
+    /// <summary>
+    /// The GPS time (UTC) to write with <see cref="Location"/>: the moment the photo was taken. Filled in by
+    /// <see cref="PhotoMetadataService.WriteAsync"/> from the date taken when its time zone is known (D-5).
+    /// </summary>
+    public DateTime? GpsTimeUtc { get; init; }
+
     /// <summary>Removes all GPS information from the file.</summary>
     public bool RemoveLocation { get; init; }
 

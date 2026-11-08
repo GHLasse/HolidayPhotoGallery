@@ -25,7 +25,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-XMP-lr:HierarchicalSubject", "-XMP-digiKam:TagsList",
         "-XMP-xmp:Rating", "-XMP-microsoft:RatingPercent", "-IFD0:Rating", "-XMP-digiKam:PickLabel",
         "-XMP-dc:Title", "-XMP-dc:Description", "-IFD0:XPTitle", "-IFD0:ImageDescription", "-IPTC:Caption-Abstract",
-        "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-XMP-exif:DateTimeOriginal",
+        "-ExifIFD:DateTimeOriginal", "-ExifIFD:OffsetTimeOriginal", "-ExifIFD:SubSecTimeOriginal", "-XMP-exif:DateTimeOriginal",
         "-XMP-photoshop:DateCreated", "-ExifIFD:CreateDate",
         "-IFD0:Orientation", "-XMP-tiff:Orientation",
         "-Composite:GPSLatitude", "-Composite:GPSLongitude", "-IFD0:Make", "-IFD0:Model", "-Composite:ImageSize",
@@ -181,6 +181,15 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         var current = changes.People is not null || changes.Orientation is not null
             ? await ReadAsync(path, cancellationToken).ConfigureAwait(false)
             : null;
+        // The GPS time goes with a new position (D-5): the moment the photo was taken, when its time zone is known.
+        // Without one the file's own GPS time, if any, is kept, since a guess would be worse than none.
+        if (changes.Location is not null && changes.GpsTimeUtc is null && !SupportedFormats.IsVideo(path))
+        {
+            var taken = changes.DateTaken ?? BasisFor?.Invoke(path)?.DateTaken ??
+                        (current ?? await ReadAsync(path, cancellationToken).ConfigureAwait(false)).DateTaken;
+            if (taken?.Instant is { } instant)
+                changes = changes with { GpsTimeUtc = instant.UtcDateTime };
+        }
         // Tag trees (M-5): a tag list from before the app knew trees ("Seagull" for "Animals/Birds/Seagull")
         // keeps the file's tree, and a file without trees gets no tree fields.
         IReadOnlyList<string>? fileTrees = null;
@@ -552,6 +561,13 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-GPS:GPSLongitudeRef={(location.Longitude < 0 ? "W" : "E")}");
             args.Add($"-XMP-exif:GPSLatitude={Degrees(location.Latitude)}");
             args.Add($"-XMP-exif:GPSLongitude={Degrees(location.Longitude)}");
+            if (changes.GpsTimeUtc is { } gpsTime)
+            {
+                var utc = DateTime.SpecifyKind(gpsTime, DateTimeKind.Utc);
+                args.Add($"-GPS:GPSDateStamp={utc.ToString("yyyy:MM:dd", CultureInfo.InvariantCulture)}");
+                args.Add($"-GPS:GPSTimeStamp={utc.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}");
+                args.Add($"-XMP-exif:GPSDateTime={utc.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture)}Z");
+            }
         }
 
         if (changes.Place is { } place)
@@ -845,11 +861,13 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (DateTaken.TryParse(GetString(item, "ExifIFD:DateTimeOriginal"), out var exif))
         {
             if (DateTaken.TryParseOffset(GetString(item, "ExifIFD:OffsetTimeOriginal"), out var offset))
-                return exif with { Offset = offset };
+                exif = exif with { Offset = offset };
             // Older files may only carry the offset in the XMP copy of the same date.
-            if (xmp is { Offset: not null } && xmp.Value.Local == exif.Local)
-                return exif with { Offset = xmp.Value.Offset };
-            return exif;
+            else if (xmp is { Offset: not null } && xmp.Value.Local == exif.Local)
+                exif = exif with { Offset = xmp.Value.Offset };
+            // The fraction of the second (D-5) puts burst shots in order. It is kept in a field of its own, which a
+            // date change leaves alone, so it moves along with the date.
+            return exif with { Local = exif.Local + SubSeconds(GetString(item, "ExifIFD:SubSecTimeOriginal")) };
         }
 
         if (xmp is not null)
@@ -868,6 +886,29 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             return new DateTaken(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeZoneInfo.Local.GetUtcOffset(local));
         }
         return null;
+    }
+
+    /// <summary>
+    /// The photo's GPS time (UTC), which a GPS receiver takes from the satellites: EXIF GPSDateStamp with
+    /// GPSTimeStamp, else the XMP copy. Null when the photo has none or it can't be read.
+    /// </summary>
+    /// <exception cref="ExifToolException">ExifTool could not read the file.</exception>
+    public async Task<DateTime?> ReadGpsTimeAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var fields = await ReadFieldsAsync(SupportedFormats.MetadataTarget(path), ["GPS:GPSDateStamp", "GPS:GPSTimeStamp", "XMP-exif:GPSDateTime"],
+                                           cancellationToken).ConfigureAwait(false);
+        return GpsTime.Parse(fields.GetValueOrDefault("GPS:GPSDateStamp"), fields.GetValueOrDefault("GPS:GPSTimeStamp"),
+                             fields.GetValueOrDefault("XMP-exif:GPSDateTime"));
+    }
+
+    /// <summary>EXIF's fraction of a second ("123" is 0.123 s, "5" is 0.5 s), to the millisecond; zero when unreadable.</summary>
+    internal static TimeSpan SubSeconds(string? digits)
+    {
+        var text = digits?.Trim() ?? "";
+        if (text.Length == 0 || !text.All(char.IsAsciiDigit))
+            return TimeSpan.Zero;
+        text = (text + "00")[..3];
+        return TimeSpan.FromMilliseconds(int.Parse(text, CultureInfo.InvariantCulture));
     }
 
     internal static string? GetString(JsonElement item, string key)

@@ -118,7 +118,10 @@ public sealed partial class MainWindow : Window
             else if (e.PropertyName is nameof(MetadataEditorViewModel.Tags))
                 ShowTagBadges();
             else if (e.PropertyName is nameof(MetadataEditorViewModel.Items))
+            {
                 _ = ShowQualityBadgesAsync();
+                _ = ShowGpsTimeZoneAsync();
+            }
         };
         SyncTimeZoneCombo();
         TimeZoneTyping.Attach(TimeZoneCombo);
