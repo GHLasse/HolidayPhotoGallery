@@ -54,6 +54,9 @@ public sealed class PhotoEditServiceTests : IAsyncLifetime
         Assert.Equal(date, edited.DateTaken);
         Assert.Equal(9.9, edited.Latitude!.Value, 5);
         Assert.Equal(1, edited.Orientation); // the new pixels are upright already
+        // New pixels: the modified date is now, the date taken stays.
+        var modifyDate = (await _exifTool!.RunAsync(["-s3", "-IFD0:ModifyDate", path])).Output.Trim();
+        Assert.StartsWith(DateTime.Now.ToString("yyyy:MM:dd", System.Globalization.CultureInfo.InvariantCulture), modifyDate);
 
         // A rating given after editing survives undo and revert.
         await Metadata.WriteAsync(path, new MetadataChanges { Rating = 5 });

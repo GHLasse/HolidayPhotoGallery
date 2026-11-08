@@ -238,6 +238,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     /// </summary>
     public async Task CopyMetadataAsync(string source, string target, int width, int height, CancellationToken cancellationToken = default)
     {
+        var now = DateTimeOffset.Now;
         var output = await exifTool.RunAsync(
         [
             "-overwrite_original", "-m",
@@ -246,6 +247,10 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             "--XMP-mwg-rs:all", "--XMP-MP:all",
             "-IFD0:Orientation#=1", "-XMP-tiff:Orientation=",
             $"-ExifIFD:ExifImageWidth={width}", $"-ExifIFD:ExifImageHeight={height}",
+            // New pixels: the modified dates say so (the date taken and the digitized date stay).
+            $"-IFD0:ModifyDate={now.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture)}",
+            $"-ExifIFD:OffsetTime={DateTaken.FormatOffset(now.Offset)}",
+            $"-XMP-xmp:ModifyDate={now.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture)}{DateTaken.FormatOffset(now.Offset)}",
             target,
         ], cancellationToken).ConfigureAwait(false);
         var errors = output.ErrorLines.ToList();
@@ -439,11 +444,15 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 args.Add($"-ExifIFD:CreateDate={exif}");
                 args.Add($"-ExifIFD:OffsetTimeDigitized={offset ?? ""}");
                 args.Add($"-XMP-xmp:CreateDate={exif}{offset}");
-                args.Add($"-IFD0:ModifyDate={exif}");
-                args.Add($"-ExifIFD:OffsetTime={offset ?? ""}");
-                args.Add($"-XMP-xmp:ModifyDate={exif}{offset}");
-                // The file's own dates, which Explorer shows; only Windows keeps a creation date ExifTool can set.
-                args.Add($"-FileModifyDate={exif}{offset}");
+                // The modified dates say when the pixels last changed, so they stay unless they are earlier.
+                if (changes.RaiseModifyDates)
+                {
+                    args.Add($"-IFD0:ModifyDate={exif}");
+                    args.Add($"-ExifIFD:OffsetTime={offset ?? ""}");
+                    args.Add($"-XMP-xmp:ModifyDate={exif}{offset}");
+                    args.Add($"-FileModifyDate={exif}{offset}");
+                }
+                // The file's own creation date, which Explorer shows; only Windows keeps one ExifTool can set.
                 if (OperatingSystem.IsWindows())
                     args.Add($"-FileCreateDate={exif}{offset}");
             }
@@ -573,7 +582,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 var utc = instant.UtcDateTime.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture);
                 args.Add($"-Keys:CreationDate={date.ToExifDate()}{DateTaken.FormatOffset(instant.Offset)}");
                 args.Add($"-QuickTime:CreateDate={utc}");
-                if (changes.SyncOtherDates)
+                if (changes.SyncOtherDates && changes.RaiseModifyDates)
                     args.Add($"-QuickTime:ModifyDate={utc}");
             }
             if (changes.RemoveLocation)

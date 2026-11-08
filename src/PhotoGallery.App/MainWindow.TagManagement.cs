@@ -286,11 +286,11 @@ public sealed partial class MainWindow
             {
                 sync,
                 Note(Tr("A photo holds several dates: when it was taken, when it was digitized, when it was last changed, and the file's own dates that Explorer shows. ") +
-                     Tr("When this is on, changing or shifting the date taken sets all of them to it. When it is off, only the date taken changes.")),
+                     Tr("When this is on, changing or shifting the date taken sets the digitized date and the file's created date to it. The modified dates only change when the pixels do. When it is off, only the date taken changes.")),
                 Note(Tr("It also brings them in line before photos are shared or uploaded, so Google Photos, Apple Photos, OneDrive and Explorer sort them by the date taken, whichever date they look at.")),
                 syncAll,
                 ProgressText(() => ViewModel.DateSyncProgressText()),
-                Note(Tr("Goes through the whole library quietly and sets every date of a photo to its date taken. The dates it replaces are kept in the photo, so none is lost. ") +
+                Note(Tr("Goes through the whole library quietly and sets the digitized and created dates of every photo to its date taken. The dates it replaces are kept in the photo, so none is lost. ") +
                      Tr("Photos without a date taken, videos and read-only photos are left as they are. Many files change at once, so cloud folders such as OneDrive upload them again.")),
                 language,
                 Note(Tr("For “Add place names”: the country, region, city and district are written in this language. ") +

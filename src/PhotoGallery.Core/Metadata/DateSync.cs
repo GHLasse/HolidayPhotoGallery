@@ -17,7 +17,8 @@ public sealed record DateSyncCheck(string Path, DateTaken? Taken, IReadOnlyList<
 }
 
 /// <summary>
-/// Keeps every date in a photo the same as its date taken, so other apps sort it right whichever date they look
+/// Keeps the "when it was made" dates in a photo the same as its date taken (the modified dates, which say when
+/// the pixels last changed, only when they are earlier), so other apps sort it right whichever date they look
 /// at: Google Photos, Apple Photos and Windows read the date taken (EXIF DateTimeOriginal) first, but fall back to
 /// the digitized date, the XMP and IPTC dates or the file's own created and modified times when it is missing or
 /// stripped, and some (Explorer's Date created, a file shared through a chat or a drive) only show the file's times.
@@ -43,9 +44,15 @@ public static class DateSync
 
     // Dates kept as the camera's local clock, compared with the date taken's clock time.
     private static readonly string[] ClockFields =
-        ["XMP-exif:DateTimeOriginal", "XMP-photoshop:DateCreated", "ExifIFD:CreateDate", "IFD0:ModifyDate", "XMP-xmp:CreateDate", "XMP-xmp:ModifyDate"];
+        ["XMP-exif:DateTimeOriginal", "XMP-photoshop:DateCreated", "ExifIFD:CreateDate", "XMP-xmp:CreateDate"];
 
-    private static readonly string[] OffsetFields = ["ExifIFD:OffsetTimeDigitized", "ExifIFD:OffsetTime"];
+    // When the pixels last changed: only wrong when earlier than the date taken (Lasse, 2026-11-08).
+    private static readonly string[] ModifyFields = ["IFD0:ModifyDate", "XMP-xmp:ModifyDate"];
+
+    /// <summary>The fields that say when the photo was last changed; a mismatch there raises them to the date taken.</summary>
+    internal static readonly IReadOnlySet<string> ModifyFieldNames = new HashSet<string>(ModifyFields) { "File:Modified" };
+
+    private static readonly string[] OffsetFields = ["ExifIFD:OffsetTimeDigitized"];
 
     /// <summary>Photos only: a video's own dates are in UTC and its file times are left alone for now.</summary>
     public static bool Applies(string path) => SupportedFormats.IsImage(path);
@@ -108,6 +115,11 @@ public static class DateSync
             if (Get(field) is { } value && !SameClock(value, date))
                 mismatches.Add(new(field, value));
         }
+        foreach (var field in ModifyFields)
+        {
+            if (Get(field) is { } value && EarlierClock(value, date))
+                mismatches.Add(new(field, value));
+        }
         if (date.Offset is { } known)
         {
             foreach (var field in OffsetFields)
@@ -124,14 +136,14 @@ public static class DateSync
         }
         if (createdUtc is { } created && !SameFileTime(created, date))
             mismatches.Add(new("File:Created", FileTimeText(created)));
-        if (!SameFileTime(modifiedUtc, date))
+        if (FileTimeUtc(date) - DateTime.SpecifyKind(modifiedUtc, DateTimeKind.Utc) > TimeSpan.FromSeconds(FileTolerance))
             mismatches.Add(new("File:Modified", FileTimeText(modifiedUtc)));
         return new DateSyncCheck(path, date, mismatches, note);
     }
 
     /// <summary>
-    /// Sets every date of the photo to its date taken (the "Keep all dates in sync" set: digitized, modified, XMP,
-    /// IPTC and the file's own times). The first time, the dates it replaces are kept in the file's note.
+    /// Sets the photo's dates to its date taken (the "Keep all dates in sync" set: digitized, XMP, IPTC and the
+    /// file's creation date; the modified dates only when they are earlier than the date taken). The first time, the dates it replaces are kept in the file's note.
     /// Returns false when there was nothing to do or the file is read-only (left as it is).
     /// </summary>
     /// <exception cref="ExifToolException">ExifTool could not write the file.</exception>
@@ -144,6 +156,7 @@ public static class DateSync
         {
             DateTaken = taken,
             SyncOtherDates = true,
+            RaiseModifyDates = check.Mismatches.Any(m => ModifyFieldNames.Contains(m.Field)),
             DatesBeforeSync = check.EarlierDates is null ? Note(check.Mismatches) : null,
         }, cancellationToken).ConfigureAwait(false);
         return true;
@@ -163,12 +176,16 @@ public static class DateSync
         return Truncate(value.Local) == Truncate(taken.Local);
     }
 
-    private static bool SameFileTime(DateTime fileUtc, DateTaken taken)
-    {
-        // With a time zone the moment is known; without one ExifTool sets the file time as this PC's local time.
-        var wanted = taken.Instant?.UtcDateTime ?? TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(taken.Local, DateTimeKind.Unspecified), TimeZoneInfo.Local);
-        return Math.Abs((DateTime.SpecifyKind(fileUtc, DateTimeKind.Utc) - wanted).TotalSeconds) <= FileTolerance;
-    }
+    private static bool EarlierClock(string text, DateTaken taken) =>
+        DateTaken.TryParse(text, out var value) && Truncate(value.Local) < Truncate(taken.Local) &&
+        !(text.Trim().Length <= 10 && value.Local.Date == taken.Local.Date);
+
+    // With a time zone the moment is known; without one ExifTool sets the file time as this PC's local time.
+    private static DateTime FileTimeUtc(DateTaken taken) =>
+        taken.Instant?.UtcDateTime ?? TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(taken.Local, DateTimeKind.Unspecified), TimeZoneInfo.Local);
+
+    private static bool SameFileTime(DateTime fileUtc, DateTaken taken) =>
+        Math.Abs((DateTime.SpecifyKind(fileUtc, DateTimeKind.Utc) - FileTimeUtc(taken)).TotalSeconds) <= FileTolerance;
 
     private static string FileTimeText(DateTime utc) =>
         new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToLocalTime().ToString("yyyy:MM:dd HH:mm:sszzz", CultureInfo.InvariantCulture);

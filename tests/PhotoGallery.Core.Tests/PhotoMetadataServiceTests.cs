@@ -58,12 +58,21 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         var path = _temp.CopySample(".jpg");
         DateTaken.TryParse("2019-05-04 13:14:15+02:00", out var date);
 
+        var modifyBefore = (await _exifTool!.RunAsync(["-s3", "-IFD0:ModifyDate", path])).Output.Trim();
         await Service.WriteAsync(path, new MetadataChanges { DateTaken = date, SyncOtherDates = true });
 
-        var dates = (await _exifTool!.RunAsync(["-s3", "-ExifIFD:CreateDate", "-IFD0:ModifyDate", "-XMP-xmp:CreateDate", path])).Output;
-        Assert.Equal(["2019:05:04 13:14:15", "2019:05:04 13:14:15", "2019:05:04 13:14:15+02:00"],
+        var modified = File.GetLastWriteTimeUtc(path);
+        var dates = (await _exifTool!.RunAsync(["-s3", "-ExifIFD:CreateDate", "-XMP-xmp:CreateDate", path])).Output;
+        Assert.Equal(["2019:05:04 13:14:15", "2019:05:04 13:14:15+02:00"],
                      dates.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        // The modified dates say when the pixels last changed: they stay (Lasse, 2026-11-08).
+        Assert.Equal(modifyBefore, (await _exifTool.RunAsync(["-s3", "-IFD0:ModifyDate", path])).Output.Trim());
+
+        // Unless they are earlier than the date taken.
+        await Service.WriteAsync(path, new MetadataChanges { DateTaken = date, SyncOtherDates = true, RaiseModifyDates = true });
+        Assert.Equal("2019:05:04 13:14:15", (await _exifTool.RunAsync(["-s3", "-IFD0:ModifyDate", path])).Output.Trim());
         Assert.Equal(new DateTimeOffset(2019, 5, 4, 11, 14, 15, TimeSpan.Zero), new DateTimeOffset(File.GetLastWriteTimeUtc(path)));
+        Assert.NotEqual(modified, File.GetLastWriteTimeUtc(path));
 
         // Without it, only the date taken changes.
         DateTaken.TryParse("2020-01-01 10:00:00", out var other);
