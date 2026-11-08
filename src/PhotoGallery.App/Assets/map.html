@@ -103,10 +103,14 @@
 //                 switch in the app's language; "of" is like "{0} of {1}")
 //                 (also find, placeholder, searching, notFound, searchFailed, offline, drag, zoomIn, zoomOut)
 //                 (also trackLine, routeLine: the legend under a drawn line; a track message's label replaces it)
+//                 (also showSelected, showAll: the button under zoom out that brings the selected photos, or all, into view)
 //                 {type:"style", accent, onAccent, dark} (dark: the night map and dark controls)
 //                 {type:"insets", top, left, bottom, animate} (pixels of the map the app's floating controls or its clip cover;
 //                 animate: glide there)
-//                 {type:"anchor"} (the next resize keeps the bottom right corner still; a fit soon after only if needed)
+//                 {type:"anchor"} (the next resize keeps the bottom right corner still; a fit soon after only if needed,
+//                 and a fit asked for before that resize is checked again once it has happened)
+//                 {type:"settle"} (a move between the pane and the Map page has ended: the selected photos are brought
+//                 back into sight if the move left them out of it)
 //                 {type:"estimates", points:[{lat,lon,name}]} (red dots where photos without GPS probably were, G-3)
 //   to the app:   {type:"ready"}, {type:"pin", lat, lon}, {type:"select", path, add}, {type:"places", q, names:[...]},
 //                 {type:"open", path} (the picture or Open in the preview), {type:"show", path} (Show in library),
@@ -215,7 +219,7 @@ function start() {
     .setView(saved ? [saved.lat, saved.lon] : [30, 10], saved ? saved.zoom : 2);
   // The app's controls float over the map (Map | Satellite and layers top right, the Assign bar at the bottom): zooming
   // to photos leaves room for them, and the legend and credits sit above the bar ({type:"insets"}).
-  let insetBottom = 0, insetTop = 0, morphTimer = 0;
+  let insetBottom = 0, insetTop = 0, insetLeft = 0, morphTimer = 0;
   // The legend sits just above the credits, however many lines they wrap to in a narrow pane.
   function placeLegend() {
     const credits = document.querySelector(".leaflet-control-attribution");
@@ -232,17 +236,22 @@ function start() {
   // When the app grows or shrinks the map between the side pane and the Map page ({type:"anchor"} first), what is in
   // the bottom right corner (the part both places share) stays put instead of the centre, and the vector map is
   // drawn at its new size straight away rather than a frame later (an empty frame looked like a stutter).
-  let anchorNext = false, gentleUntil = 0;
+  // A fit asked for before that resize (the app's messages arrive before the page learns its new size) is checked
+  // again after it: the corner kept still can push the selected photos out of the smaller map (Lasse 2026-11-08).
+  let anchorNext = false, gentleUntil = 0, fitAfterResize = false;
   map.on("resize", e => {
     if (anchorNext && Date.now() < gentleUntil) {
       anchorNext = false;
       map.panBy([(e.oldSize.x - e.newSize.x) / 2, (e.oldSize.y - e.newSize.y) / 2], { animate: false });
+      if (fitAfterResize) { fitAfterResize = false; fitSelection(true); }
     }
     if (base.layer && base.gl) {
       try { base.layer._update(); base.gl.redraw(); } catch (err) { }
     }
   });
-  const pad = () => ({ paddingTopLeft: [40, 100 + insetTop], paddingBottomRight: [40, 40 + insetBottom] });
+  const pad = () => ({ paddingTopLeft: [40 + insetLeft, 100 + insetTop], paddingBottomRight: [40, 40 + insetBottom] });
+  // The centre button's tooltips, in the app's language once its texts arrive.
+  const texts0 = { showSelected: "Show the selected photos", showAll: "Show all photos" };
   // Fluent's plus and minus on the zoom buttons, like the app's own zoom.
   map.zoomControl._zoomInButton.firstChild.textContent = "\uE710";
   map.zoomControl._zoomOutButton.firstChild.textContent = "\uE738";
@@ -424,12 +433,42 @@ function start() {
     findPlace(document.getElementById("query").value);
   });
 
-  function fitSelection() {
+  // The part of the map really on screen: not what the app's floating controls cover, nor what it clips away while
+  // the map grows or shrinks, with a little margin so a dot right at the edge counts as out of sight.
+  function inSight(point) {
+    const size = map.getSize(), at = map.latLngToContainerPoint(point), m = 20;
+    return at.x >= insetLeft + m && at.x <= size.x - m && at.y >= insetTop + m && at.y <= size.y - insetBottom - m;
+  }
+
+  // onlyIfHidden: the map moves only if some selected photo is out of sight (after a move between the pane and the
+  // Map page, so nothing jumps that need not). Right after such a move a plain fit does the same.
+  function fitSelection(onlyIfHidden) {
     const points = [...selected].filter(p => markers.has(p)).map(p => markers.get(p).getLatLng());
-    // Right after such a move the map only moves again if the selected photos are out of sight.
-    if (Date.now() < gentleUntil && points.length && points.every(p => map.getBounds().pad(-0.05).contains(p))) return;
-    if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 14));
-    else if (points.length > 1) map.fitBounds(L.latLngBounds(points), { ...pad(), maxZoom: 16 });
+    if (!points.length) return;
+    if ((onlyIfHidden || Date.now() < gentleUntil) && points.every(inSight)) return;
+    if (points.length === 1) {
+      // Centred in the part of the map on screen, between the controls above and the bar below.
+      const zoom = Math.max(map.getZoom(), 14);
+      const shift = L.point((insetLeft) / 2, (insetTop - insetBottom) / 2);
+      map.setView(map.unproject(map.project(points[0], zoom).subtract(shift), zoom), zoom);
+    }
+    else map.fitBounds(L.latLngBounds(points), { ...pad(), maxZoom: 16 });
+  }
+
+  // The button under zoom out: the selected photos back in view, or all the photos when none is selected.
+  function showSelectedOrAll() {
+    if ([...selected].some(p => markers.has(p))) fitSelection(false);
+    else if (markers.size) map.fitBounds(L.latLngBounds([...markers.values()].map(x => x.getLatLng())), { ...pad(), maxZoom: 12 });
+  }
+  const centreButton = L.DomUtil.create("a", "leaflet-control-centre", map.zoomControl.getContainer());
+  centreButton.href = "#";
+  centreButton.setAttribute("role", "button");
+  centreButton.textContent = "\uE81D";
+  centreButton.title = texts0.showSelected;
+  L.DomEvent.disableClickPropagation(centreButton);
+  L.DomEvent.on(centreButton, "click", ev => { L.DomEvent.preventDefault(ev); showSelectedOrAll(); });
+  function titleCentreButton() {
+    centreButton.title = [...selected].some(p => markers.has(p)) ? texts0.showSelected : texts0.showAll;
   }
 
   // The picture of a photo clicked on the whole-library map, in a bubble above its dot, with Show in library
@@ -521,12 +560,17 @@ function start() {
           markers.set(p.path, marker);
         }
         restyle();
+        titleCentreButton();
         if (m.fitAll && markers.size)
           map.fitBounds(L.latLngBounds([...markers.values()].map(x => x.getLatLng())), { ...pad(), maxZoom: 12 });
       } else if (m.type === "selection") {
         selected = new Set(m.paths);
         restyle();
-        if (m.fit) fitSelection();
+        titleCentreButton();
+        if (m.fit) {
+          fitSelection(false);
+          if (anchorNext && Date.now() < gentleUntil) fitAfterResize = true;
+        }
       } else if (m.type === "pin") {
         setPin(m.lat, m.lon, false);
       } else if (m.type === "placing") {
@@ -544,6 +588,9 @@ function start() {
         if (m.offline) document.getElementById("offline").textContent = m.offline;
         if (m.zoomIn) document.querySelector(".leaflet-control-zoom-in").title = m.zoomIn;
         if (m.zoomOut) document.querySelector(".leaflet-control-zoom-out").title = m.zoomOut;
+        if (m.showSelected) texts0.showSelected = m.showSelected;
+        if (m.showAll) texts0.showAll = m.showAll;
+        titleCentreButton();
       } else if (m.type === "layers") {
         if (m.mode) mode = m.mode === "satellite" ? "satellite" : "map";
         if (typeof m.labels === "boolean") labels = m.labels;
@@ -556,7 +603,10 @@ function start() {
         if (dark !== !!m.dark) { dark = !!m.dark; paintNight(); }
       } else if (m.type === "anchor") {
         anchorNext = true;
+        fitAfterResize = false;
         gentleUntil = Date.now() + 1500;
+      } else if (m.type === "settle") {
+        fitSelection(true);
       } else if (m.type === "insets") {
         // animate: the controls glide to their new places with the app's own (its Morph); otherwise they jump.
         const root = document.documentElement;
@@ -567,7 +617,8 @@ function start() {
         root.style.setProperty("--inset-bottom", insetBottom + "px");
         insetTop = m.top || 0;
         root.style.setProperty("--inset-top", insetTop + "px");
-        root.style.setProperty("--inset-left", (m.left || 0) + "px");
+        insetLeft = m.left || 0;
+        root.style.setProperty("--inset-left", insetLeft + "px");
         placeLegend();
         if (m.animate) morphTimer = setTimeout(() => root.classList.remove("morph"), 350);
       } else if (m.type === "estimates") {
