@@ -311,6 +311,7 @@ public sealed partial class MainViewModel
                     // What the user asked for goes first.
                     while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
+                    await WaitForMemoryAsync();
                     if (!_settings.FindPeopleAutomatically)
                         return;
                     try

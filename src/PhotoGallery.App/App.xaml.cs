@@ -152,12 +152,23 @@ public partial class App : Application
         var now = DateTime.UtcNow;
         while (s_survived.Count > 0 && now - s_survived.Peek() > TimeSpan.FromSeconds(10))
             s_survived.Dequeue();
-        var carryOn = s_survived.Count < 3 && e.Exception is not (OutOfMemoryException or StackOverflowException or AccessViolationException);
-        LogCrash(e.Exception, carryOn ? "Unhandled exception on the UI thread, the app carries on" : "Unhandled exception on the UI thread, the app ends",
+        // A lack of memory (another app took it) passes once that app lets go: the app frees what it can and carries
+        // on, instead of ending and losing the user's place. It doesn't count towards the limit, since a memory-hungry
+        // app next to it can cause a burst of them.
+        var memory = Core.MemoryTrouble.IsMemoryFailure(e.Exception);
+        var carryOn = memory || s_survived.Count < 3 && e.Exception is not (OutOfMemoryException or StackOverflowException or AccessViolationException);
+        LogCrash(e.Exception, memory ? "Out of memory on the UI thread, the app frees memory and carries on"
+                            : carryOn ? "Unhandled exception on the UI thread, the app carries on" : "Unhandled exception on the UI thread, the app ends",
                  e.Message);
         if (carryOn)
         {
-            s_survived.Enqueue(now);
+            if (memory)
+            {
+                ViewModels.PhotoItemViewModel.ForgetHidden();
+                Native.SystemMemory.TrimSoon();
+            }
+            else
+                s_survived.Enqueue(now);
             e.Handled = true;
         }
     }
