@@ -41,12 +41,15 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
     public string Details { get => _details; private set => SetProperty(ref _details, value); }
 
-    /// <summary>"GPS 53.34345, -6.28718" of a single photo, on its own line so "Look up place" can sit beside it.</summary>
+    /// <summary>
+    /// "GPS 53.34345, -6.28718" (or, for several photos, how many have a position), on its own line so
+    /// "Look up place" can sit beside it.
+    /// </summary>
     public string Position { get => _position; private set => SetProperty(ref _position, value); }
 
     public string Folder { get => _folder; private set => SetProperty(ref _folder, value); }
 
-    /// <summary>A single photo with a GPS position but no place names yet.</summary>
+    /// <summary>A selected photo with a GPS position but no place names yet.</summary>
     public bool CanLookUpPlace { get => _canLookUpPlace; private set => SetProperty(ref _canLookUpPlace, value); }
 
     public string CaptionPlaceholder { get => _captionPlaceholder; private set => SetProperty(ref _captionPlaceholder, value); }
@@ -200,7 +203,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
                 1 => photos[0].FileName,
                 _ => Tr("{0} photos selected", items.Count),
             };
-            DescribeSingle(items.Count == 1 ? photos[0] : null);
+            Describe(photos);
         }
         finally
         {
@@ -274,8 +277,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
             return;
         if (!IsDirty)
             Load(_items);
-        else if (_items is [var single])
-            DescribeSingle(single.Photo);
+        else
+            Describe(_items.Select(i => i.Photo).ToList());
     }
 
     /// <summary>Whether auto-tagging added the tag on every one of the photos that have it.</summary>
@@ -289,14 +292,22 @@ public sealed class MetadataEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsDirty));
     }
 
-    private void DescribeSingle(Core.Library.IndexedPhoto? photo)
+    // One photo: its own details. Several: what they have in common (SelectionSummary).
+    private void Describe(IReadOnlyList<Core.Library.IndexedPhoto> photos)
     {
-        Position = photo?.Location is { } at
-            ? string.Format(System.Globalization.CultureInfo.CurrentCulture, "GPS {0:0.00000}, {1:0.00000}", at.Latitude, at.Longitude)
-            : "";
-        CanLookUpPlace = photo is { Location: not null, Place: null };
-        Folder = photo?.Folder ?? "";
-        Details = photo is null ? "" : Describe(photo);
+        if (photos is [var photo])
+        {
+            Position = photo.Location is { } at ? Core.Library.SelectionSummary.FormatPosition(at) : "";
+            CanLookUpPlace = photo is { Location: not null, Place: null };
+            Folder = photo.Folder;
+            Details = Describe(photo);
+            return;
+        }
+        var common = Core.Library.SelectionSummary.Describe(photos);
+        Position = common.Position;
+        CanLookUpPlace = common.CanLookUpPlace;
+        Folder = common.Folder;
+        Details = common.Details;
     }
 
     private static string Describe(Core.Library.IndexedPhoto photo)

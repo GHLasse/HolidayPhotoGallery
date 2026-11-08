@@ -97,6 +97,15 @@ public sealed partial class MainWindow
     {
         var version = ++_qualityVersion;
         QualityBadges.Children.Clear();
+        // Several photos: the resolution class when they all share it.
+        if (ViewModel.Editor.Items is { Count: > 1 } many)
+        {
+            var common = Core.Library.SelectionSummary.Describe(many.Select(i => i.Photo).ToList());
+            if (common.Resolution is { } resolution)
+                QualityBadges.Children.Add(QualityBadge(resolution, common.ResolutionTip));
+            QualityBadges.Visibility = common.Resolution is null ? Visibility.Collapsed : Visibility.Visible;
+            return;
+        }
         if (ViewModel.Editor.Items is not [var item] || item.Photo.Width is not { } w || item.Photo.Height is not { } h)
         {
             QualityBadges.Visibility = Visibility.Collapsed;
