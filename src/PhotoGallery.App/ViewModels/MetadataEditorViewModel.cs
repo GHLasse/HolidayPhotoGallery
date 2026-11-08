@@ -134,6 +134,12 @@ public sealed class MetadataEditorViewModel : ObservableObject
         }
     }
 
+    /// <summary>The single photo's saved date taken: typing just a time keeps its day, just a day keeps its time.</summary>
+    public DateTime? SavedDate { get; private set; }
+
+    /// <summary>What the Date taken box means, in any form <see cref="DateTyping"/> understands, or null.</summary>
+    public DateTaken? TypedDate => DateTyping.Interpret(DateText, SavedDate);
+
     /// <summary>The time zone choices: unknown, the offset saved in the photo (if any), then Windows' time zones.</summary>
     public List<TimeZoneChoice> TimeZones
     {
@@ -237,6 +243,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
             Rating = ratings.Count == 1 && ratings[0] > 0 ? ratings[0] : -1;
 
             var date = items.Count == 1 ? photos[0].DateTaken : null;
+            SavedDate = date?.Local;
             DateText = date?.ToDisplayDate() ?? "";
             // Photos only store an offset, not a place, so the saved offset is offered as its own entry.
             TimeZones = date?.Offset is { } saved
@@ -284,7 +291,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
                 ValidationError = Tr("Enter a date such as 2024-07-01 14:30:00.");
                 return false;
             }
-            if (!DateTaken.TryParse(DateText, out var parsed))
+            if (TypedDate is not { } parsed)
             {
                 ValidationError = Tr("\"{0}\" is not a date. Use the form 2024-07-01 14:30:00.", DateText);
                 return false;

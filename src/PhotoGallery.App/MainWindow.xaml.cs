@@ -460,7 +460,7 @@ public sealed partial class MainWindow : Window
     // or open views. With a list open the focus is on one of its entries, which typing searches too (D-3:
     // "EST" opened the photo on E, and digits rated it instead of finding "+8").
     private bool IsTyping() =>
-        FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or CalendarDatePicker or ComboBox or ComboBoxItem;
+        FocusManager.GetFocusedElement(Root.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or CalendarDatePicker or CalendarView or CalendarViewDayItem or TimePicker or ComboBox or ComboBoxItem;
 
     private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -662,6 +662,8 @@ public sealed partial class MainWindow : Window
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
             ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),
             ("Ctrl+Shift+D", Tr("Adjust the date and time of the selected photos")),
+            ("↑ ↓", Tr("In the Date taken box: change the year, month, day, hour, minute or second at the cursor")),
+            ("Alt+↓", Tr("In the Date taken box: pick the date and time from a calendar")),
             ("Ctrl+Shift+C", Tr("Copy the details of the photo (location, date, camera, tags …)")),
             ("Ctrl+Shift+V", Tr("Paste details onto the selected photos")),
         ]),
