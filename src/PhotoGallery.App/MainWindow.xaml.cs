@@ -180,7 +180,9 @@ public sealed partial class MainWindow : Window
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
         // The text box handles the press itself, so it is caught with handled events too.
         DateBox.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(DateBox_PointerPressed), true);
-        Root.CharacterReceived += Root_CharacterReceived;
+        // handledEventsToo: a slider or button with the focus (such as Brush size) must not swallow [ and ].
+        Root.AddHandler(UIElement.CharacterReceivedEvent,
+            new Windows.Foundation.TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(Root_CharacterReceived), true);
         Root.ActualThemeChanged += Root_ActualThemeChanged;
         ApplyAppearance(ViewModel.Theme, ViewModel.Palette);
         _ = ViewModel.InitializeAsync();
@@ -501,13 +503,6 @@ public sealed partial class MainWindow : Window
                 ToggleRetouchTool(IsDown(VirtualKey.Shift) ? RetouchTool.Erase : RetouchTool.Spot);
                 return;
             }
-            // [ and ] make the retouch brush smaller and larger.
-            if (e.Key is (VirtualKey)219 or (VirtualKey)221 && ChosenRetouchTool is not null)
-            {
-                e.Handled = true;
-                ChangeBrushSize(larger: e.Key == (VirtualKey)221);
-                return;
-            }
             if (ViewerItem is not { } item || IsEditing)
                 return;
             if (stars >= 0)
@@ -594,13 +589,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // "?" is a different key on every keyboard layout, so it is caught as a typed character.
+    // "?", "[" and "]" are different keys on every keyboard layout (on a German one [ and ] need AltGr, which
+    // Windows reports as Ctrl+Alt), so they are caught as typed characters.
     private async void Root_CharacterReceived(UIElement sender, CharacterReceivedRoutedEventArgs e)
     {
-        if (e.Character == '?' && !IsTyping())
+        if (e.Handled || IsTyping() || CompareLayer.Visibility == Visibility.Visible)
+            return;
+        if (e.Character == '?')
         {
             e.Handled = true;
             await ShowShortcutsAsync();
+        }
+        else if (IsViewerOpen && ChosenRetouchTool is not null && Retouch.BrushKeyStep(e.Character) is var step and not 0)
+        {
+            // [ and ] (or - and +) make the retouch brush smaller and larger.
+            e.Handled = true;
+            ChangeBrushSize(larger: step > 0);
         }
     }
 
@@ -650,7 +654,7 @@ public sealed partial class MainWindow : Window
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
             ("E", Tr("Show or hide the Edit pane in the viewer: quick fixes, crop, light and colour")),
             ("H", Tr("Remove spots in the viewer; Shift+H the magic eraser")),
-            ("[ ]", Tr("Make the retouch brush smaller or larger")),
+            ("[ ]  - +", Tr("Make the retouch brush smaller or larger")),
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
             ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),

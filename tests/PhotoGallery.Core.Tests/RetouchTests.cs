@@ -66,6 +66,16 @@ public sealed class RetouchTests
         return sum / count;
     }
 
+    [Theory]
+    [InlineData('[', -1)]
+    [InlineData('-', -1)]
+    [InlineData(']', 1)]
+    [InlineData('+', 1)]
+    [InlineData('8', 0)]
+    [InlineData('ß', 0)]
+    public void Brush_keys_are_read_as_typed_characters(char typed, int step) =>
+        Assert.Equal(step, Retouch.BrushKeyStep(typed));
+
     [Fact]
     public void A_stroke_covers_its_brush_around_the_line()
     {

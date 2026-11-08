@@ -25,6 +25,17 @@ public sealed record RetouchStroke(RetouchTool Tool, IReadOnlyList<(double X, do
 public static class Retouch
 {
     /// <summary>
+    /// The brush keys as typed characters, so they work on every keyboard layout: [ and ] like Photoshop and
+    /// Lightroom, and - and + (also on the number pad) where [ and ] are awkward to reach. -1 smaller, +1 larger, 0 other.
+    /// </summary>
+    public static int BrushKeyStep(char typed) => typed switch
+    {
+        '[' or '-' => -1,
+        ']' or '+' => 1,
+        _ => 0,
+    };
+
+    /// <summary>
     /// The pixels the stroke covers (255) on a picture of this size, one byte per pixel; <paramref name="grow"/>
     /// widens the brush by that many pixels.
     /// </summary>
