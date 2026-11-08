@@ -28,6 +28,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
     private bool _canLookUpPlace;
     private string _captionPlaceholder = Tr("Add a caption");
     private string? _validationError;
+    private string? _gpsZoneHint;
+    private int _gpsZoneIndex = -1;
 
     public IReadOnlyList<PhotoItemViewModel> Items => _items;
 
@@ -149,6 +151,61 @@ public sealed class MetadataEditorViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// "The GPS time gives UTC+02:00. Use it": shown when the one selected photo's GPS time says another time zone
+    /// than the one saved, or it has none (D-5). Null when there is nothing to suggest.
+    /// </summary>
+    public string? GpsZoneHint
+    {
+        get => _gpsZoneHint;
+        private set
+        {
+            if (SetProperty(ref _gpsZoneHint, value))
+                OnPropertyChanged(nameof(HasGpsZoneHint));
+        }
+    }
+
+    public bool HasGpsZoneHint => _gpsZoneHint is not null;
+
+    /// <summary>
+    /// Offers the time zone the photo's GPS time gives (read after <see cref="Load"/>, as it is not in the index):
+    /// it goes into the list after the saved one, and <see cref="GpsZoneHint"/> offers to use it.
+    /// </summary>
+    public void ShowGpsTime(PhotoItemViewModel item, DateTime? gpsUtc)
+    {
+        if (_items is not [var only] || !ReferenceEquals(only, item) || only.Photo.DateTaken is not { } date || gpsUtc is not { } gps ||
+            GpsTime.SuggestOffset(date.Local, gps) is not { } offset || offset == date.Offset || _gpsZoneIndex >= 0)
+            return;
+        var at = date.Offset is null ? 1 : 2; // after "Unknown" and "as saved in the photo"
+        var zones = new List<TimeZoneChoice>(TimeZones);
+        zones.Insert(at, TimeZoneChoice.Fixed(offset, Tr("from the GPS time")));
+        var index = TimeZoneIndex >= at ? TimeZoneIndex + 1 : TimeZoneIndex;
+        var wasLoading = _loading;
+        _loading = true;
+        try
+        {
+            TimeZones = zones;
+            // Reset first: replacing the list clears the combo box, so the index must be raised again even if unchanged.
+            _timeZoneIndex = -1;
+            TimeZoneIndex = index;
+        }
+        finally
+        {
+            _loading = wasLoading;
+        }
+        _gpsZoneIndex = at;
+        GpsZoneHint = Tr("The GPS time gives UTC{0}. Use it", DateTaken.FormatOffset(offset));
+    }
+
+    /// <summary>Picks the time zone the GPS time gives; the date is then saved with it like any other change.</summary>
+    public void UseGpsTimeZone()
+    {
+        if (_gpsZoneIndex < 0 || _gpsZoneIndex >= TimeZones.Count)
+            return;
+        TimeZoneIndex = _gpsZoneIndex;
+        GpsZoneHint = null;
+    }
+
     public void Load(IReadOnlyList<PhotoItemViewModel> items)
     {
         foreach (var old in _items)
@@ -162,6 +219,8 @@ public sealed class MetadataEditorViewModel : ObservableObject
             _items = items;
             _captionChanged = _tagsChanged = _ratingChanged = _dateChanged = false;
             ValidationError = null;
+            _gpsZoneIndex = -1;
+            GpsZoneHint = null;
 
             var photos = items.Select(i => i.Photo).ToList();
             var counts = TagList.Counts(photos.Select(p => p.Tags).ToList());

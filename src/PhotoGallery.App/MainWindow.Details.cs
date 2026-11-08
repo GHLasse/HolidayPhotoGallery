@@ -93,6 +93,17 @@ public sealed partial class MainWindow
     private int _qualityVersion;
 
     /// <summary>The resolution class badge (exact size in its tooltip) and, once the file is read, LIVE for a Live or motion photo and HDR (U-7).</summary>
+    // The GPS time is not in the index: read for the one selected photo with a position, to offer its time zone (D-5).
+    private async Task ShowGpsTimeZoneAsync()
+    {
+        if (ViewModel.Editor.Items is not [var item] || item.IsVideo || item.Photo.DateTaken is null || item.Photo.Location is null)
+            return;
+        var gps = await ViewModel.ReadGpsTimeAsync(item.Path);
+        ViewModel.Editor.ShowGpsTime(item, gps);
+    }
+
+    private void UseGpsTimeZone_Click(object sender, RoutedEventArgs e) => ViewModel.Editor.UseGpsTimeZone();
+
     private async Task ShowQualityBadgesAsync()
     {
         var version = ++_qualityVersion;
