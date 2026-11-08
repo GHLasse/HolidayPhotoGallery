@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using PhotoGallery.Core.Library;
 
 namespace PhotoGallery.Core.Duplicates;
@@ -20,12 +21,19 @@ public sealed record DuplicateGroup(IReadOnlyList<IndexedPhoto> Photos, bool Exa
 /// <summary>
 /// Finds duplicate photos (F-3): exact copies (same bytes) and near-duplicates (the same picture resized,
 /// recompressed or sent through a messenger), by <see cref="PictureHash"/>. Photos taken at different moments
-/// are never duplicates, so burst shots and similar views stay apart.
+/// are never duplicates, and neither are two shots the camera numbered itself (IMG_1166, IMG_1167), so burst
+/// shots and similar views stay apart; the Similar shots stacks are for those.
 /// </summary>
-public static class DuplicateFinder
+public static partial class DuplicateFinder
 {
     /// <summary>Fingerprints at most this many bits apart count as the same picture.</summary>
     public const int MaxDistance = 4;
+
+    /// <summary>
+    /// The stricter limit for two photos from the same camera at the same size: a copy saved again at full size
+    /// barely changes its fingerprint, while burst shots taken a moment apart can be a few bits apart.
+    /// </summary>
+    public const int SameSizeMaxDistance = 1;
 
     public static int DetailCount(IndexedPhoto p) =>
         p.Tags.Count + p.People.Count + (p.Rating > 0 ? 1 : 0) + (string.IsNullOrEmpty(p.Caption) ? 0 : 1) +
@@ -76,7 +84,7 @@ public static class DuplicateFinder
                 continue;
             for (var j = i + 1; j < photos.Count; j++)
             {
-                if (hashes[j] is { } b && PictureHash.Distance(a, b) <= MaxDistance && Root(i) != Root(j) && Alike(photos[i], photos[j]))
+                if (hashes[j] is { } b && Root(i) != Root(j) && PictureHash.Distance(a, b) <= Limit(photos[i], photos[j]) && Alike(photos[i], photos[j]))
                     Join(i, j);
             }
         }
@@ -90,10 +98,20 @@ public static class DuplicateFinder
             .ToList();
     }
 
-    // Same moment (when both have one) and the same shape once upright; a photo never matches a video.
+    // Two originals straight from the same camera at full size: only an almost identical fingerprint will do.
+    private static int Limit(IndexedPhoto a, IndexedPhoto b) =>
+        a.Width is > 0 && a.Width == b.Width && a.Height == b.Height && a.DateTaken is not null && b.DateTaken is not null &&
+        !string.IsNullOrEmpty(a.Camera) && string.Equals(a.Camera, b.Camera, StringComparison.OrdinalIgnoreCase)
+            ? SameSizeMaxDistance
+            : MaxDistance;
+
+    // Same moment (when both have one) and the same shape once upright, and not two shots the camera numbered
+    // itself; a photo never matches a video.
     private static bool Alike(IndexedPhoto a, IndexedPhoto b)
     {
         if (a.IsVideo != b.IsVideo)
+            return false;
+        if (SeparateShots(a.Path, b.Path))
             return false;
         if (a.DateTaken is { } da && b.DateTaken is { } db && Math.Abs((da.Local - db.Local).TotalSeconds) > 2)
             return false;
@@ -101,6 +119,23 @@ public static class DuplicateFinder
             return false;
         return true;
     }
+
+    /// <summary>
+    /// Whether two file names are a camera's own numbering for two different shots, such as IMG_1166 and IMG_1167,
+    /// DSC01234 and DSC01235 or PXL_20240501_100000123 and PXL_20240501_100000456. Copies keep the name or add to
+    /// it ("IMG_1166 (1)", "IMG_1166-edited"), and messengers give new names, so those are still compared.
+    /// </summary>
+    public static bool SeparateShots(string pathA, string pathB)
+    {
+        var a = CameraName().Match(Path.GetFileNameWithoutExtension(pathA));
+        var b = CameraName().Match(Path.GetFileNameWithoutExtension(pathB));
+        return a.Success && b.Success &&
+               string.Equals(a.Groups["prefix"].Value, b.Groups["prefix"].Value, StringComparison.OrdinalIgnoreCase) &&
+               a.Groups["number"].Value != b.Groups["number"].Value;
+    }
+
+    [GeneratedRegex(@"^(?<prefix>[A-Za-z]{1,8}[_-]?)(?<number>\d{3,}(?:[_-]\d{3,})*)$")]
+    private static partial Regex CameraName();
 
     private static double? Ratio(IndexedPhoto p)
     {

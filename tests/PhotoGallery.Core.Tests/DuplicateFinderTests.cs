@@ -97,6 +97,47 @@ public sealed class DuplicateFinderTests : IDisposable
         Assert.Empty(DuplicateFinder.Find([a, b], p => Hash(p.Path)));
     }
 
+    [Theory]
+    [InlineData("IMG_1166.JPG", "IMG_1167.JPG", true)]
+    [InlineData("DSC01234.jpg", "DSC01235.jpg", true)]
+    [InlineData("PXL_20240501_100000123.jpg", "PXL_20240501_100000456.jpg", true)]
+    [InlineData("IMG_1166.JPG", "IMG_1166.HEIC", false)]
+    [InlineData("IMG_1166.JPG", "IMG_1166 (1).JPG", false)]
+    [InlineData("IMG_1166.JPG", "IMG_1167-edited.JPG", false)]
+    [InlineData("IMG_1166.JPG", "DSC01167.JPG", false)]
+    [InlineData("IMG-20200121-WA0001.jpg", "IMG-20200121-WA0002.jpg", false)]
+    [InlineData("holiday.jpg", "beach.jpg", false)]
+    public void Knows_two_shots_the_camera_numbered_itself(string a, string b, bool separate) =>
+        Assert.Equal(separate, DuplicateFinder.SeparateShots(Path.Combine("x", a), Path.Combine("y", b)));
+
+    [Fact]
+    public void Burst_shots_taken_in_the_same_second_are_not_duplicates()
+    {
+        var taken = new DateTime(2020, 1, 21, 15, 56, 0);
+        var first = Indexed(Picture("IMG_1166.JPG", 400, 95), taken) with { Camera = "Apple iPhone X" };
+        var second = Indexed(Picture("IMG_1167.JPG", 400, 90), taken) with { Camera = "Apple iPhone X" };
+
+        // Even with the very same fingerprint the camera's own numbering keeps them apart ...
+        Assert.Empty(DuplicateFinder.Find([first, second], _ => 0xFF00UL));
+
+        // ... and without it, two full-size originals from one camera must be all but identical.
+        var a = first with { Path = Path.Combine(_temp.Path, "a.jpg") };
+        var b = second with { Path = Path.Combine(_temp.Path, "b.jpg") };
+        Assert.Empty(DuplicateFinder.Find([a, b], p => p == a ? 0xFF00UL : 0xFF07UL));
+        Assert.Single(DuplicateFinder.Find([a, b], p => p == a ? 0xFF00UL : 0xFF01UL));
+    }
+
+    [Fact]
+    public void A_copy_saved_again_at_full_size_is_still_found()
+    {
+        var taken = new DateTime(2020, 1, 21, 15, 56, 0);
+        var original = Indexed(Picture("IMG_1166.JPG", 400, 95), taken) with { Camera = "Apple iPhone X" };
+        var copy = Indexed(Picture("IMG_1166 (1).JPG", 400, 60), taken) with { Camera = "Apple iPhone X" };
+
+        var group = Assert.Single(DuplicateFinder.Find([original, copy], p => Hash(p.Path)));
+        Assert.False(group.Exact);
+    }
+
     [Fact]
     public void The_index_keeps_fingerprints_until_the_file_changes()
     {
