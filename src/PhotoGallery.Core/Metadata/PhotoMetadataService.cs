@@ -38,6 +38,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-Keys:Make", "-Keys:Model", "-UserData:Make", "-UserData:Model", "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude",
         // Which way the camera looked (G-5).
         "-GPS:GPSImgDirection", "-XMP-exif:GPSImgDirection",
+        // A 360° photo (L-9).
+        "-XMP-GPano:ProjectionType",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -156,6 +158,15 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     /// </summary>
     public event Action<string, IReadOnlyList<string>>? ChangedElsewhere;
 
+    /// <summary>
+    /// Asked before details are saved into a video: a player showing it holds the file open, and Windows then
+    /// won't let ExifTool replace it. Returns true when it let go; <see cref="Released"/> follows once saved.
+    /// </summary>
+    public Func<string, Task<bool>>? ReleaseFile { get; set; }
+
+    /// <summary>A file let go of through <see cref="ReleaseFile"/> is saved (or the save failed), so it may be opened again.</summary>
+    public event Action<string>? Released;
+
     /// <param name="ownReplacement">
     /// The app itself just replaced the file (an edit saved, undone or reverted), so it differs from what the index
     /// read on purpose and is not checked for changes made elsewhere.
@@ -171,8 +182,10 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             changes = SaveCheck.Merge(basis, theirs, changes, out var clashes);
             ChangedElsewhere?.Invoke(path, clashes);
         }
-        if (SupportedFormats.IsVideo(path) && (changes.Orientation is not null || changes.People is not null))
-            throw new NotSupportedException(Tr("Videos can't be turned or have people marked yet."));
+        // Videos are turned by their track rotation instead. People are fine: their regions and names are XMP,
+        // which videos keep in the file (MP4, MOV) or in their sidecar (AVI, WMV…).
+        if (SupportedFormats.IsVideo(path) && changes.Orientation is not null)
+            throw new NotSupportedException(Tr("Videos can't be turned this way; use the video rotation instead."));
         if (changes.VideoRotation is not null && !SupportedFormats.CanRotateVideo(path))
             throw new NotSupportedException(Tr("Only MP4, MOV, M4V and 3GP videos can be rotated."));
 
@@ -216,6 +229,22 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 changes = changes with { Rating = current.Rating };
         }
         var args = BuildWriteArguments(path, changes, current, fileTrees, fileFields);
+        // Only a video written in place can be held open by a player; a photo is read into memory to be shown.
+        var released = target == path && SupportedFormats.IsVideo(path) && ReleaseFile is { } release &&
+                       await release(path).ConfigureAwait(false);
+        try
+        {
+            await RunWriteAsync(path, target, args, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (released)
+                Released?.Invoke(path);
+        }
+    }
+
+    private async Task RunWriteAsync(string path, string target, List<string> args, CancellationToken cancellationToken)
+    {
         for (var attempt = 1; ; attempt++)
         {
             await RemoveStaleTempFileAsync(target, cancellationToken).ConfigureAwait(false);
@@ -324,9 +353,10 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                if (attempt == 10)
-                    throw new ExifToolException(Tr("Could not save {0}: the leftover file {1} cannot be removed ({2}).", Path.GetFileName(path), Path.GetFileName(temp), ex.Message));
-                await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+                // A virus scanner can take a while over a big video that was just written, so this waits up to 10 s.
+                if (attempt == 20)
+                    throw new ExifToolException(Tr("Could not save {0}: another program is using it. Close it and try again.", Path.GetFileName(path)));
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -845,6 +875,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             OtherRegions = otherRegions,
             Duration = SupportedFormats.IsVideo(path) ? GetNumber(item, "QuickTime:Duration") ?? GetNumber(item, "Composite:Duration") : null,
             FrameRate = SupportedFormats.IsVideo(path) ? FrameRateOf(item) : null,
+            IsPanorama = !SupportedFormats.IsVideo(path) && Panorama.IsSphere(GetString(item, "XMP-GPano:ProjectionType")),
         };
     }
 

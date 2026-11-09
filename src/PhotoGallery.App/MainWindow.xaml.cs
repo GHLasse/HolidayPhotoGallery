@@ -183,6 +183,8 @@ public sealed partial class MainWindow : Window
         ViewModel.Notices.CollectionChanged += (_, _) => ShowNotices();
         ViewModel.ReviewDuplicatesRequested += ViewModel_ReviewDuplicatesRequested;
         ViewModel.FlagsChanged += SyncFlagButton;
+        ViewModel.ReleaseVideo = LetGoOfVideoAsync;
+        ViewModel.VideoReleased += PlayVideoAgain;
         ViewModel.HealthChanged += () => _ = ShowRepairAsync();
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
@@ -1332,6 +1334,7 @@ public sealed partial class MainWindow : Window
         EndEdit();
         StartCloseMotion();
         StopVideo();
+        HidePanorama();
         ApplyChrome(animate: false);
         _viewerPixels = null;
         if (_viewerIndex < _viewerItems.Count)
@@ -1369,6 +1372,7 @@ public sealed partial class MainWindow : Window
         ViewerProgress.IsActive = true;
         UpdateUndoButtons();
 
+        HidePanorama();
         ShowVideoTools(item.IsVideo);
         UpdateEditPane();
         if (item.IsVideo)
@@ -1411,6 +1415,7 @@ public sealed partial class MainWindow : Window
                 ViewerProgress.IsActive = false;
                 OnViewerImageReady();
                 UpdateEditPane();
+                OfferPanorama(item, version);
             }
         }
     }
@@ -2156,6 +2161,7 @@ public sealed partial class MainWindow : Window
     private void UpdateEditBar()
     {
         SyncEditPane();
+        FlattenPanoramaForEdit();
         CropShapePanel.Visibility = _cropping ? Visibility.Visible : Visibility.Collapsed;
         UpdateEditFooter();
     }

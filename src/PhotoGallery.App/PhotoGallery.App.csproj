@@ -60,6 +60,9 @@
     <None Remove="Assets\map.html" />
     <Content Remove="Assets\map.html" />
     <Content Include="Assets\map.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Remove="Assets\pano.html" />
+    <Content Remove="Assets\pano.html" />
+    <Content Include="Assets\pano.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- The app icon: built into the .exe (ApplicationIcon) and loaded for the title bar and taskbar. -->

@@ -42,6 +42,21 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Where a 360° photo's picture sits on the sphere (L-9); the whole sphere when it can't be read.</summary>
+    public async Task<PanoramaLayout> ReadPanoramaLayoutAsync(string path)
+    {
+        if (_exifTool is null)
+            return PanoramaLayout.Sphere;
+        try
+        {
+            return await Panorama.ReadLayoutAsync(_exifTool, path);
+        }
+        catch (Exception ex) when (ex is Core.ExifTool.ExifToolException or IOException)
+        {
+            return PanoramaLayout.Sphere;
+        }
+    }
+
     /// <summary>The photo's GPS time (UTC), to suggest its time zone (D-5); null when it has none or it can't be read.</summary>
     public async Task<DateTime?> ReadGpsTimeAsync(string path)
     {

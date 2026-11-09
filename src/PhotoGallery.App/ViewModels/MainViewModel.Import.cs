@@ -180,7 +180,7 @@ public sealed partial class MainViewModel
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or ArgumentException or InvalidCastException)
             {
                 App.Trace($"import {item.Name}: {ex.GetType().Name}: {ex.Message}");
-                failures.Add($"{item.Name}: {ex.Message}");
+                failures.Add(FailureLine(item.Name, ex));
                 try
                 {
                     File.Delete(Path.Combine(folder, temp));
@@ -323,7 +323,7 @@ public sealed partial class MainViewModel
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                failures.Add($"{item.Name}: {ex.Message}");
+                failures.Add(FailureLine(item.Name, ex));
             }
         }
     }
@@ -376,7 +376,7 @@ public sealed partial class MainViewModel
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
-                        failures.Add($"{name}: {ex.Message}");
+                        failures.Add(FailureLine(name, ex));
                     }
                 }
             }
@@ -385,7 +385,7 @@ public sealed partial class MainViewModel
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            failures.Add($"{source.Name}: {ex.Message}");
+            failures.Add(FailureLine(source.Name, ex));
         }
         finally
         {

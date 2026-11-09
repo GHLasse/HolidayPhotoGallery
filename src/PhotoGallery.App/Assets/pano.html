@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- The look-around view of a 360° photo (L-9). The app sends the picture and where to look; the mouse is handled
+     by the app (MainWindow.Panorama.cs), so the keyboard stays with the viewer. Plain WebGL 2, no libraries. -->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<script>
+"use strict";
+const canvas = document.getElementById("view");
+const gl = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: true, antialias: false });
+const post = m => window.chrome && chrome.webview && chrome.webview.postMessage(m);
+
+let view = { yaw: 0, pitch: 0, fov: 75 };
+let area = [0, 0, 1, 1];
+let wraps = true;
+let texture = null;
+let pending = false;
+
+function compile(type, source) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, source);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+
+let program, u;
+if (gl) {
+  program = gl.createProgram();
+  gl.attachShader(program, compile(gl.VERTEX_SHADER, `#version 300 es
+    const vec2 corners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+    void main() { gl_Position = vec4(corners[gl_VertexID], 0.0, 1.0); }`));
+  gl.attachShader(program, compile(gl.FRAGMENT_SHADER, `#version 300 es
+    precision highp float;
+    uniform sampler2D picture;
+    uniform vec2 size;
+    uniform float yaw, pitch, focal;
+    uniform vec4 area;   // left, top, width, height of the picture on the sphere (0..1)
+    uniform bool wraps;
+    out vec4 color;
+    const float PI = 3.14159265358979;
+    void main() {
+      vec2 p = (gl_FragCoord.xy - 0.5 * size) / (0.5 * size.y);
+      vec3 d = normalize(vec3(p.x, p.y, focal));
+      float cp = cos(pitch), sp = sin(pitch);
+      d = vec3(d.x, d.y * cp + d.z * sp, -d.y * sp + d.z * cp);
+      float cy = cos(yaw), sy = sin(yaw);
+      d = vec3(d.x * cy + d.z * sy, d.y, -d.x * sy + d.z * cy);
+      float u = atan(d.x, d.z) / (2.0 * PI) + 0.5;
+      float v = 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI;
+      float tu = (u - area.x) / area.z;
+      float tv = (v - area.y) / area.w;
+      if (wraps) tu = fract(tu);
+      if (tu < 0.0 || tu > 1.0 || tv < 0.0 || tv > 1.0) { color = vec4(0.0); return; }
+      // Where the picture's left and right edges meet, the step in u would pick the smallest mipmap: take the
+      // step of u shifted by half a turn there instead, which has no jump.
+      float shifted = fract(tu + 0.5);
+      vec2 g1 = vec2(dFdx(tu), dFdy(tu)), g2 = vec2(dFdx(shifted), dFdy(shifted));
+      vec2 gu = dot(g1, g1) < dot(g2, g2) ? g1 : g2;
+      color = textureGrad(picture, vec2(tu, tv), vec2(gu.x, dFdx(tv)), vec2(gu.y, dFdy(tv)));
+    }`));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+  u = name => gl.getUniformLocation(program, name);
+}
+
+function draw() {
+  pending = false;
+  const ratio = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(canvas.clientWidth * ratio)), h = Math.max(1, Math.round(canvas.clientHeight * ratio));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  if (!texture) return;
+  gl.useProgram(program);
+  gl.uniform2f(u("size"), w, h);
+  gl.uniform1f(u("yaw"), view.yaw * Math.PI / 180);
+  gl.uniform1f(u("pitch"), view.pitch * Math.PI / 180);
+  gl.uniform1f(u("focal"), 1 / Math.tan(view.fov * Math.PI / 360));
+  gl.uniform4fv(u("area"), area);
+  gl.uniform1i(u("wraps"), wraps ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+function redraw() {
+  if (!pending) { pending = true; requestAnimationFrame(draw); }
+}
+
+function load(url) {
+  const image = new Image();
+  image.onload = () => {
+    // A picture larger than the graphics card takes is drawn smaller first.
+    const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    let source = image;
+    if (image.width > max || image.height > max) {
+      const scale = max / Math.max(image.width, image.height);
+      const c = document.createElement("canvas");
+      c.width = Math.floor(image.width * scale);
+      c.height = Math.floor(image.height * scale);
+      c.getContext("2d").drawImage(image, 0, 0, c.width, c.height);
+      source = c;
+    }
+    if (texture) gl.deleteTexture(texture);
+    texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wraps ? gl.REPEAT : gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const anisotropy = gl.getExtension("EXT_texture_filter_anisotropic");
+    if (anisotropy) gl.texParameterf(gl.TEXTURE_2D, anisotropy.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    redraw();
+    post({ type: "loaded" });
+  };
+  image.onerror = () => post({ type: "error", message: "The picture could not be loaded." });
+  image.src = url;
+}
+
+if (window.chrome && chrome.webview) {
+  chrome.webview.addEventListener("message", e => {
+    const m = e.data;
+    if (!m || typeof m !== "object") return;
+    if (m.type === "image") {
+      area = [m.left, m.top, m.width, m.height];
+      wraps = m.width >= 0.999;
+      view = { yaw: m.yaw || 0, pitch: m.pitch || 0, fov: m.fov || 75 };
+      if (texture) { gl.deleteTexture(texture); texture = null; }
+      redraw();
+      load(m.url);
+    } else if (m.type === "view") {
+      view = { yaw: m.yaw, pitch: m.pitch, fov: m.fov };
+      redraw();
+    } else if (m.type === "clear") {
+      if (texture) { gl.deleteTexture(texture); texture = null; }
+      redraw();
+    }
+  });
+}
+window.addEventListener("resize", redraw);
+post(gl ? { type: "ready" } : { type: "error", message: "WebGL 2 is not available." });
+</script>
+</body>
+</html>
