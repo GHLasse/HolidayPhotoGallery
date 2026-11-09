@@ -348,34 +348,39 @@ public static partial class WebGalleryScanner
     }
 
     // The photo a photo page shows, by points: a picture no other photo page has, named like its preview, linked
-    // to its full size file, named by the page as its picture (og:image), or large. Pictures that were on the
-    // gallery page already, or are on other photo pages too, are the site's, not this photo.
+    // to its full size file, or large. Pictures that were on the gallery page already, or are on other photo pages
+    // too, are the site's, not this photo. The page's share picture (og:image) isn't shown on the page, and is often
+    // a cropped or framed version made for social media: it is taken only when the page shows no picture of its own.
     private static WebPageImage? MainImage(List<WebPageImage> images, HashSet<Uri> onParent, Uri preview, Func<Uri, bool> shared)
     {
-        var key = PhotoKey(preview);
-        WebPageImage? best = null;
-        var bestScore = int.MinValue;
-        foreach (var image in images)
+        var shown = Best(images.Where(i => !i.IsPageImage));
+        return shown is not null && shown.Url != preview ? shown : Best(images) ?? shown;
+
+        WebPageImage? Best(IEnumerable<WebPageImage> choices)
         {
-            // A picture inside a link to an image file stands for that file, the full size one.
-            var candidate = image.LinksTo is { } target && WebPageReader.IsImageFile(target) ? image with { Url = target } : image;
-            if (candidate.Url != preview && (onParent.Contains(image.Url) || shared(candidate.Url)))
-                continue;
-            var score = 0;
-            if (PhotoKey(candidate.Url) == key)
-                score += 50;
-            if (candidate.Url != image.Url)
-                score += 40;
-            if (image.IsPageImage)
-                score += 20;
-            if (image.Width >= 300 || image.Height >= 300)
-                score += 25;
-            if (candidate.Url == preview)
-                score -= 30;
-            if (score > bestScore)
-                (best, bestScore) = (candidate, score);
+            var key = PhotoKey(preview);
+            WebPageImage? best = null;
+            var bestScore = int.MinValue;
+            foreach (var image in choices)
+            {
+                // A picture inside a link to an image file stands for that file, the full size one.
+                var candidate = image.LinksTo is { } target && WebPageReader.IsImageFile(target) ? image with { Url = target } : image;
+                if (candidate.Url != preview && (onParent.Contains(image.Url) || shared(candidate.Url)))
+                    continue;
+                var score = 0;
+                if (PhotoKey(candidate.Url) == key)
+                    score += 50;
+                if (candidate.Url != image.Url)
+                    score += 40;
+                if (image.Width >= 300 || image.Height >= 300)
+                    score += 25;
+                if (candidate.Url == preview)
+                    score -= 30;
+                if (score > bestScore)
+                    (best, bestScore) = (candidate, score);
+            }
+            return best;
         }
-        return best;
     }
 
     // Each photo once: previews give way to their large photo, images on most pages (logos, buttons) are left out,
