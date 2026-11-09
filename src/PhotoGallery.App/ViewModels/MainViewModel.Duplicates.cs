@@ -198,6 +198,7 @@ public sealed partial class MainViewModel
                     ShowBackground("hashes", Tr("Fingerprinting photos to find duplicates…"));
                     while (IsBusy || _findingDuplicates)
                         await Task.Delay(2000);
+                    await WaitForMemoryAsync();
                     if (!Fingerprinting)
                         return;
                     if (!File.Exists(path))

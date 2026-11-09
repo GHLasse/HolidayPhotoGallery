@@ -141,6 +141,7 @@ public sealed partial class MainViewModel
                     ShowBackground("files", Tr("Checking files for damage…"));
                     while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
+                    await WaitForMemoryAsync();
                     try
                     {
                         var health = await Task.Run(() => FileCheck.Check(path));

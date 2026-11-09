@@ -17,13 +17,19 @@ namespace PhotoGallery.App.Imaging;
 /// </summary>
 public static class ImageLoader
 {
+    // Windows' thumbnail cache answers from another process, and while the PC is short of memory it can stop
+    // answering altogether. Without a limit, a few such calls held every thumbnail loader for good, and no tile
+    // showed a picture again even after the memory was back; with it, the call is given up and tried again later.
+    private static readonly TimeSpan ShellTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan DecodeTimeout = TimeSpan.FromSeconds(60);
+
     /// <summary>
     /// The thumbnail Windows Explorer would show. Fast, because Windows caches it and can use the
     /// small preview embedded in most camera files.
     /// </summary>
     public static async Task<ImageSource?> LoadShellThumbnailAsync(string path, uint size)
     {
-        var bitmap = await Task.Run(() => ReadShellThumbnailAsync(path, size));
+        var bitmap = await Task.Run(() => ReadShellThumbnailAsync(path, size)).WaitAsync(ShellTimeout);
         return bitmap is null ? null : await ToImageSourceAsync(bitmap);
     }
 
@@ -41,7 +47,7 @@ public static class ImageLoader
         stream.Seek(0);
         await stream.AsStreamForRead().ReadExactlyAsync(bytes);
         return (byte[]?)bytes;
-    });
+    }).WaitAsync(ShellTimeout);
 
     /// <summary>The thumbnail Windows shows, as pixels; for a video it is a frame from it.</summary>
     public static Task<DecodedImage> ShellThumbnailPixelsAsync(string path, uint size) => Task.Run(async () =>
@@ -51,7 +57,7 @@ public static class ImageLoader
         var pixels = new byte[straight.PixelWidth * straight.PixelHeight * 4];
         straight.CopyToBuffer(pixels.AsBuffer());
         return new DecodedImage(pixels, straight.PixelWidth, straight.PixelHeight);
-    });
+    }).WaitAsync(ShellTimeout);
 
     /// <summary>
     /// Like <see cref="ShellThumbnailPixelsAsync"/>, but from the shared pool: dispose it when done.
@@ -61,7 +67,7 @@ public static class ImageLoader
         using var bitmap = await ReadShellThumbnailAsync(path, size) ?? throw new IOException($"Windows has no thumbnail of {Path.GetFileName(path)}.");
         using var straight = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight);
         return Pooled(straight);
-    });
+    }).WaitAsync(ShellTimeout);
 
     private static async Task<SoftwareBitmap?> ReadShellThumbnailAsync(string path, uint size)
     {
@@ -82,7 +88,7 @@ public static class ImageLoader
     /// right after a rotation, when Windows' thumbnail cache may still hold the old picture.
     /// </summary>
     public static async Task<ImageSource> DecodeAsync(string path, uint maxSize) =>
-        await ToImageSourceAsync(await Task.Run(() => DecodeBitmapAsync(path, maxSize)));
+        await ToImageSourceAsync(await Task.Run(() => DecodeBitmapAsync(path, maxSize)).WaitAsync(DecodeTimeout));
 
     /// <summary>
     /// The photo's upright pixels as 8-bit BGRA with straight alpha, for editing; <paramref name="maxSize"/>
