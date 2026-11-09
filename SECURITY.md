@@ -27,6 +27,7 @@ downloaded models). Nothing in that folder is sent anywhere.
 | A photo's GPS position | OpenStreetMap Nominatim | When you look up place names, and in the background for photos without place names when Settings › Dates and places › “Add place names … by themselves” is on (off by default). |
 | The part of the world the map shows | The map's tile servers (OpenStreetMap, OpenFreeMap, Esri, EOX) | While the map is open. |
 | What you type in the map's Find box | OpenStreetMap Nominatim | When you search for a place. |
+| A photo's GPS position | Open-Meteo (elevation service) | With the place names (by hand or in the background), only for photos without a height of their own, to add the ground's height. |
 | The app's version | GitHub | When the app looks for updates (can be turned off in Settings). |
 | Downloads of the recognition models | Hugging Face, GitHub, Qualcomm AI Hub | Once, when you agree to the download. Each file is checked against its SHA-256. |
 

@@ -2,8 +2,8 @@ using PhotoGallery.Core.Metadata;
 
 namespace PhotoGallery.Core.Tracks;
 
-/// <summary>One recorded position: where the phone, watch or logger was at a moment (UTC).</summary>
-public readonly record struct TrackPoint(DateTime Utc, double Latitude, double Longitude)
+/// <summary>One recorded position: where the phone, watch or logger was at a moment (UTC), and its height in metres above sea level when recorded.</summary>
+public readonly record struct TrackPoint(DateTime Utc, double Latitude, double Longitude, double? Elevation = null)
 {
     public GeoPosition Position => new(Latitude, Longitude);
 }
@@ -65,6 +65,29 @@ public sealed class GpsTrack
             return null;
         var t = (utc - a.Utc).TotalSeconds / span.TotalSeconds;
         return new GeoPosition(a.Latitude + (b.Latitude - a.Latitude) * t, a.Longitude + Lerp180(a.Longitude, b.Longitude) * t);
+    }
+
+    /// <summary>
+    /// The track's height at <paramref name="utc"/> (G-5), between the two points around that moment like
+    /// <see cref="PositionAt"/>; null where the position is, or where the points around it have no height.
+    /// </summary>
+    public double? ElevationAt(DateTime utc, TimeSpan maxGap)
+    {
+        if (PositionAt(utc, maxGap) is null)
+            return null;
+        var next = FirstAtOrAfter(utc);
+        if (next < Points.Count && Points[next].Utc == utc)
+            return Points[next].Elevation;
+        if (next == 0)
+            return Points[0].Elevation;
+        if (next == Points.Count)
+            return Points[^1].Elevation;
+        var a = Points[next - 1];
+        var b = Points[next];
+        if (a.Elevation is not { } ea || b.Elevation is not { } eb)
+            return a.Elevation ?? b.Elevation;
+        var t = (utc - a.Utc).TotalSeconds / (b.Utc - a.Utc).TotalSeconds;
+        return ea + (eb - ea) * t;
     }
 
     // The shorter way round, so a track crossing the date line doesn't sweep across the globe.

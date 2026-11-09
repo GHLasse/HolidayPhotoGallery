@@ -53,23 +53,44 @@ public static partial class TrackReader
     {
         var points = new List<TrackPoint>();
         using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, IgnoreWhitespace = true });
-        double? lat = null, lon = null;
-        while (reader.Read())
+        double? lat = null, lon = null, ele = null;
+        DateTime? when = null;
+        var more = reader.Read();
+        while (more)
         {
-            if (reader.NodeType != XmlNodeType.Element)
-                continue;
-            if (reader.LocalName is "trkpt" or "rtept" or "wpt")
+            if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName is "trkpt" or "rtept" or "wpt")
             {
-                lat = Number(reader.GetAttribute("lat"));
-                lon = Number(reader.GetAttribute("lon"));
+                if (lat is { } la && lon is { } lo && when is { } utc)
+                    points.Add(new TrackPoint(utc, la, lo, ele));
+                lat = lon = ele = null;
+                when = null;
             }
-            else if (reader.LocalName == "time" && lat is { } la && lon is { } lo)
+            else if (reader.NodeType == XmlNodeType.Element)
             {
-                // Moves on to the next node, which is the point's end (nothing a point needs).
-                if (Time(reader.ReadElementContentAsString()) is { } utc)
-                    points.Add(new TrackPoint(utc, la, lo));
-                lat = lon = null;
+                if (reader.LocalName is "trkpt" or "rtept" or "wpt")
+                {
+                    lat = Number(reader.GetAttribute("lat"));
+                    lon = Number(reader.GetAttribute("lon"));
+                    ele = null;
+                    when = null;
+                    if (reader.IsEmptyElement)
+                        lat = lon = null;
+                }
+                else if (reader.LocalName == "time" && lat is not null)
+                {
+                    // Reading the text moves on to the next node already.
+                    when = Time(reader.ReadElementContentAsString());
+                    more = !reader.EOF;
+                    continue;
+                }
+                else if (reader.LocalName == "ele" && lat is not null)
+                {
+                    ele = Number(reader.ReadElementContentAsString());
+                    more = !reader.EOF;
+                    continue;
+                }
             }
+            more = reader.Read();
         }
         return points;
     }
@@ -81,7 +102,7 @@ public static partial class TrackReader
         var points = new List<TrackPoint>();
         using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, IgnoreWhitespace = true });
         var whens = new List<DateTime?>();
-        var coords = new List<(double Lat, double Lon)>();
+        var coords = new List<(double Lat, double Lon, double? Ele)>();
         var inTrack = false;
         DateTime? stamp = null;
         // Reading an element's text moves on to the next node already, so the loop only reads when nothing was.
@@ -94,7 +115,7 @@ public static partial class TrackReader
                 {
                     for (var i = 0; i < Math.Min(whens.Count, coords.Count); i++)
                         if (whens[i] is { } utc)
-                            points.Add(new TrackPoint(utc, coords[i].Lat, coords[i].Lon));
+                            points.Add(new TrackPoint(utc, coords[i].Lat, coords[i].Lon, coords[i].Ele));
                     whens.Clear();
                     coords.Clear();
                     inTrack = false;
@@ -120,13 +141,14 @@ public static partial class TrackReader
                         continue;
                     case "coord":
                         var parts = reader.ReadElementContentAsString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        coords.Add(parts.Length >= 2 ? (Number(parts[1]) ?? double.NaN, Number(parts[0]) ?? double.NaN) : (double.NaN, double.NaN));
+                        coords.Add(parts.Length >= 2 ? (Number(parts[1]) ?? double.NaN, Number(parts[0]) ?? double.NaN, parts.Length >= 3 ? Number(parts[2]) : null)
+                                                     : (double.NaN, double.NaN, null));
                         more = !reader.EOF;
                         continue;
                     case "coordinates" when stamp is { } at:
                         var first = reader.ReadElementContentAsString().Split((char[])[' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Split(',');
                         if (first is { Length: >= 2 } && Number(first[1]) is { } la && Number(first[0]) is { } lo)
-                            points.Add(new TrackPoint(at, la, lo));
+                            points.Add(new TrackPoint(at, la, lo, first.Length >= 3 ? Number(first[2]) : null));
                         more = !reader.EOF;
                         continue;
                 }
@@ -278,6 +300,9 @@ public static partial class TrackReader
     private static readonly DateTime FitEpoch = new(1989, 12, 31, 0, 0, 0, DateTimeKind.Utc);
     private const int RecordMessage = 20;
     private const int TimestampField = 253;
+    // The record's height: metres × 5 + 500 (the enhanced one in 32 bits wins over the older 16-bit one).
+    private const int AltitudeField = 2;
+    private const int EnhancedAltitudeField = 78;
 
     private sealed record FitField(byte Number, byte Size);
 
@@ -337,6 +362,7 @@ public static partial class TrackReader
 
             var definition = definitions[local] ?? throw new InvalidDataException("The FIT file uses a message it never defined.");
             int? lat = null, lon = null;
+            double? altitude = null;
             uint? timestamp = compressedTime;
             foreach (var field in definition.Fields)
             {
@@ -352,6 +378,14 @@ public static partial class TrackReader
                         lat = unchecked((int)value);
                     else if (definition.Global == RecordMessage && field.Number == 1 && value != 0x7FFFFFFF)
                         lon = unchecked((int)value);
+                    else if (definition.Global == RecordMessage && field.Number == EnhancedAltitudeField && value != 0xFFFFFFFF)
+                        altitude = value / 5.0 - 500;
+                }
+                else if (field.Size == 2 && definition.Global == RecordMessage && field.Number == AltitudeField && altitude is null)
+                {
+                    var value = definition.BigEndian ? BinaryPrimitives.ReadUInt16BigEndian(span) : BinaryPrimitives.ReadUInt16LittleEndian(span);
+                    if (value != 0xFFFF)
+                        altitude = value / 5.0 - 500;
                 }
                 at += field.Size;
             }
@@ -359,7 +393,7 @@ public static partial class TrackReader
             if (timestamp is { } ts && ts != 0xFFFFFFFF)
                 lastTimestamp = ts;
             if (definition.Global == RecordMessage && lat is { } la && lon is { } lo && timestamp is { } when)
-                points.Add(new TrackPoint(FitEpoch.AddSeconds(when), Semicircles(la), Semicircles(lo)));
+                points.Add(new TrackPoint(FitEpoch.AddSeconds(when), Semicircles(la), Semicircles(lo), altitude));
         }
         return points;
 

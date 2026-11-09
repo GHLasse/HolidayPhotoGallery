@@ -36,6 +36,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         // Videos (F-4): their own dates, length, turn, camera and place.
         "-Keys:CreationDate", "-QuickTime:CreateDate", "-QuickTime:Duration", "-Composite:Duration", "-Composite:Rotation", "-VideoFrameRate",
         "-Keys:Make", "-Keys:Model", "-UserData:Make", "-UserData:Model", "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude",
+        // Which way the camera looked (G-5).
+        "-GPS:GPSImgDirection", "-XMP-exif:GPSImgDirection",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -572,6 +574,27 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             }
         }
 
+        if (changes.Altitude is { } altitude && double.IsFinite(altitude))
+        {
+            // EXIF keeps the distance from sea level and whether it is above (0) or below (1).
+            var metres = Math.Abs(altitude).ToString("0.#", CultureInfo.InvariantCulture);
+            var below = altitude < 0 ? "1" : "0";
+            args.Add($"-GPS:GPSAltitude={metres}");
+            args.Add($"-GPS:GPSAltitudeRef#={below}");
+            args.Add($"-XMP-exif:GPSAltitude={metres}");
+            args.Add($"-XMP-exif:GPSAltitudeRef#={below}");
+        }
+
+        if (changes.Direction is { } direction && double.IsFinite(direction))
+        {
+            // Degrees clockwise from true north ("T"), as phones write it.
+            var heading = ((direction % 360 + 360) % 360).ToString("0.##", CultureInfo.InvariantCulture);
+            args.Add($"-GPS:GPSImgDirection={heading}");
+            args.Add("-GPS:GPSImgDirectionRef=T");
+            args.Add($"-XMP-exif:GPSImgDirection={heading}");
+            args.Add("-XMP-exif:GPSImgDirectionRef=T");
+        }
+
         if (changes.Place is { } place)
         {
             // The IPTC Core fields in XMP, which Lightroom, Bridge and digiKam use, plus the older IPTC
@@ -809,6 +832,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             // A video's sidecar has only the XMP copy of the position.
             Latitude = GetNumber(item, "Composite:GPSLatitude") ?? GetNumber(item, "XMP-exif:GPSLatitude"),
             Longitude = GetNumber(item, "Composite:GPSLongitude") ?? GetNumber(item, "XMP-exif:GPSLongitude"),
+            Direction = (GetNumber(item, "GPS:GPSImgDirection") ?? GetNumber(item, "XMP-exif:GPSImgDirection")) is { } heading and >= 0 and <= 360
+                ? heading % 360 : null,
             Camera = CameraName(FirstText(item, "IFD0:Make", "Keys:Make", "UserData:Make"), FirstText(item, "IFD0:Model", "Keys:Model", "UserData:Model")),
             Place = ParsePlace(item),
             Copyright = FirstText(item, "XMP-dc:Rights", "IFD0:Copyright", "IPTC:CopyrightNotice"),
@@ -931,6 +956,11 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         return GpsTime.Parse(fields.GetValueOrDefault("GPS:GPSDateStamp"), fields.GetValueOrDefault("GPS:GPSTimeStamp"),
                              fields.GetValueOrDefault("XMP-exif:GPSDateTime"));
     }
+
+    /// <summary>Whether the photo has a height of its own (G-5): one from the camera or a track is never replaced by a looked-up one.</summary>
+    /// <exception cref="ExifToolException">ExifTool could not read the file.</exception>
+    public async Task<bool> HasAltitudeAsync(string path, CancellationToken cancellationToken = default) =>
+        (await ReadFieldsAsync(SupportedFormats.MetadataTarget(path), ["GPS:GPSAltitude", "XMP-exif:GPSAltitude"], cancellationToken).ConfigureAwait(false)).Count > 0;
 
     /// <summary>EXIF's fraction of a second ("123" is 0.123 s, "5" is 0.5 s), to the millisecond; zero when unreadable.</summary>
     internal static TimeSpan SubSeconds(string? digits)

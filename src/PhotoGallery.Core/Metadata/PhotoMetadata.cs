@@ -60,4 +60,7 @@ public sealed record PhotoMetadata
 
     /// <summary>A video's frames per second; null for photos or when the file doesn't say.</summary>
     public double? FrameRate { get; init; }
+
+    /// <summary>Which way the camera looked, in degrees clockwise from north (EXIF GPSImgDirection, G-5).</summary>
+    public double? Direction { get; init; }
 }

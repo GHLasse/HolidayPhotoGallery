@@ -81,6 +81,11 @@ public sealed partial class MainWindow : Window
             RefreshMap(fit: false);
         };
         MapView.Estimator = ViewModel.EstimateLocationsAsync;
+        MapView.DirectionRequested += async (item, degrees) =>
+        {
+            await ViewModel.SetDirectionAsync(item, degrees);
+            RefreshMap(fit: false);
+        };
         MapView.RemoveRequested += async items =>
         {
             await ViewModel.SetLocationAsync(items, null);
