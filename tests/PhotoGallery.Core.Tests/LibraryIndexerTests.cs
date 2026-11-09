@@ -30,6 +30,51 @@ public sealed class LibraryIndexerTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task Photos_read_again_for_a_newer_app_version_are_not_called_new_or_changed()
+    {
+        var indexer = new LibraryIndexer(_index!, new PhotoMetadataService(_exifTool!));
+        var kept = _photos.CopySample(".jpg", "kept");
+        var refreshed = _photos.CopySample(".jpg", "refreshed");
+
+        var first = await indexer.SyncFolderAsync(_photos.Path);
+        Assert.Equal((2, 2, 0), (first.Read, first.New, first.Updated));
+
+        // Nothing changed on disk: nothing is read.
+        var again = await indexer.SyncFolderAsync(_photos.Path);
+        Assert.Equal(0, again.Read);
+
+        // An app update asks for one unchanged photo to be read again (as the index migrations do), and one
+        // photo arrives and another is edited meanwhile.
+        using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_data.Path, "index.db")};Pooling=False"))
+        {
+            db.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "UPDATE photos SET file_mtime = $mark WHERE path = $path;";
+            cmd.Parameters.AddWithValue("$mark", PhotoIndex.ReadAgainMark);
+            cmd.Parameters.AddWithValue("$path", refreshed);
+            Assert.Equal(1, cmd.ExecuteNonQuery());
+        }
+        _photos.CopySample(".jpg", "arrived");
+        File.SetLastWriteTimeUtc(kept, File.GetLastWriteTimeUtc(kept).AddMinutes(1));
+
+        var reports = new List<IndexProgress>();
+        var update = await indexer.SyncFolderAsync(_photos.Path, new SyncProgress<IndexProgress>(reports.Add));
+        Assert.Equal((3, 1, 1, 1), (update.Read, update.New, update.Changed, update.Updated));
+        // New and changed photos are read first and counted on their own; the brought-up-to-date one after them.
+        Assert.Contains(reports, r => !r.Updating && r.Processed == 2 && r.Total == 2);
+        Assert.Contains(reports, r => r.Updating && r.Processed == 1 && r.Total == 1);
+        Assert.True(reports.FindLastIndex(r => !r.Updating) < reports.FindIndex(r => r.Updating));
+
+        Assert.Equal(0, (await indexer.SyncFolderAsync(_photos.Path)).Read);
+    }
+
+    // Progress<T> posts to the thread pool, so its reports could come after the scan; this one reports at once.
+    private sealed class SyncProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
+    [ExifToolFact]
     public async Task New_files_in_a_known_folder_wait_for_auto_tagging()
     {
         var service = new PhotoMetadataService(_exifTool!);
