@@ -95,6 +95,8 @@ public sealed class VideoTests : IAsyncLifetime
         var path = _temp.CopySample(extension, "turn");
         var before = await Service.ReadAsync(path);
         var size = new FileInfo(path).Length;
+        var modified = new DateTime(2024, 5, 1, 12, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, modified);
         var start = int.Parse((await _exifTool!.RunAsync(["-s3", "-Composite:Rotation", path])).Output.Trim());
 
         await Service.RotateVideoAsync(path, clockwise: true);
@@ -103,6 +105,8 @@ public sealed class VideoTests : IAsyncLifetime
         Assert.Equal((before.Height, before.Width), (turned.Width, turned.Height));
         Assert.Equal(((start + 90) % 360).ToString(), (await _exifTool.RunAsync(["-s3", "-Composite:Rotation", path])).Output.Trim());
         Assert.InRange(new FileInfo(path).Length, size - 1024, size + 1024); // only the header changed
+        // Windows' thumbnail cache needs a new modified time to show the turn; it stays as good as the old one.
+        Assert.Equal(modified.AddSeconds(2), File.GetLastWriteTimeUtc(path));
 
         await Service.RotateVideoAsync(path, clockwise: false);
         Assert.Equal(start.ToString(), (await _exifTool.RunAsync(["-s3", "-Composite:Rotation", path])).Output.Trim());

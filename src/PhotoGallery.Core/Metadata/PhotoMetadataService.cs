@@ -712,6 +712,10 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             : 0;
         await WriteAsync(path, new MetadataChanges { VideoRotation = NormalizeRotation(current + (clockwise ? 90 : -90)) },
                          cancellationToken).ConfigureAwait(false);
+        // Saving keeps the file's modified time, but Windows' thumbnail cache only looks again when that time
+        // changes, so the grid would keep showing the video unturned. Two seconds later is enough for it, also on
+        // FAT drives, and leaves the date as good as it was.
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddSeconds(2));
     }
 
     // IPTC only belongs in JPEG and TIFF; other formats keep tags and captions in XMP and EXIF.
