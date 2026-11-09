@@ -155,10 +155,34 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      # ExifTool is kept in the cache and fetched again once a month, so a slow exiftool.org doesn't stop the
+      # build; when the fetch fails, the copy from the cache is used.
+      - name: ExifTool cache key
+        id: exiftool-key
+        shell: pwsh
+        run: '"month=" + (Get-Date -Format "yyyy-MM") | Out-File -FilePath $env:GITHUB_OUTPUT -Append'
+      - name: Cache ExifTool
+        id: exiftool-cache
+        uses: actions/cache@v4
+        with:
+          path: tools/exiftool
+          key: exiftool-win-${{ steps.exiftool-key.outputs.month }}
+          restore-keys: exiftool-win-
       - name: Download ExifTool
         shell: pwsh
         run: |
-          ./scripts/Get-ExifTool.ps1
+          $cached = Test-Path tools\exiftool\exiftool.exe
+          if ('${{ steps.exiftool-cache.outputs.cache-hit }}' -eq 'true' -and $cached) {
+              Write-Host "ExifTool from the cache"
+          } else {
+              try {
+                  ./scripts/Get-ExifTool.ps1
+              } catch {
+                  if (-not $cached) { throw }
+                  Write-Warning "ExifTool download failed, using the cached copy: $($_.Exception.Message)"
+              }
+          }
+          & tools\exiftool\exiftool.exe -ver
           "$PWD\tools\exiftool" | Out-File -FilePath $env:GITHUB_PATH -Append
       # The tagging model here too: ONNX Runtime on Windows loads it differently than on Linux.
       - name: Cache tagging model

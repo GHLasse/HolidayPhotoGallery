@@ -16,18 +16,33 @@ $ProgressPreference = 'SilentlyContinue'
 
 # The download page links the current Windows package; its name has changed over the years
 # (exiftool-13.xx_64.zip today), so take the link from the page rather than guessing it.
-$page = (Invoke-WebRequest -Uri 'https://exiftool.org/' -UseBasicParsing).Content
-$link = [regex]::Match($page, 'href="([^"]*exiftool-[0-9.]+_64\.zip)"', 'IgnoreCase')
 $candidates = @()
-if ($link.Success) {
-    $candidates += ([Uri]::new([Uri]'https://exiftool.org/', $link.Groups[1].Value)).AbsoluteUri
+try {
+    $page = (Invoke-WebRequest -Uri 'https://exiftool.org/' -UseBasicParsing -TimeoutSec 30).Content
+    $link = [regex]::Match($page, 'href="([^"]*exiftool-[0-9.]+_64\.zip)"', 'IgnoreCase')
+    if ($link.Success) {
+        $candidates += ([Uri]::new([Uri]'https://exiftool.org/', $link.Groups[1].Value)).AbsoluteUri
+    }
+}
+catch {
+    Write-Warning "exiftool.org did not answer: $($_.Exception.Message)"
 }
 # Fallback: the current version's package on exiftool.org, then its SourceForge mirror.
-$raw = (Invoke-WebRequest -Uri 'https://exiftool.org/ver.txt' -UseBasicParsing).Content
-if ($raw -is [byte[]]) { $raw = [Text.Encoding]::ASCII.GetString($raw) }
-$version = ([string]$raw).Trim()
-$candidates += "https://exiftool.org/exiftool-${version}_64.zip"
-$candidates += "https://sourceforge.net/projects/exiftool/files/exiftool-${version}_64.zip/download"
+$version = $null
+foreach ($versionUrl in 'https://exiftool.org/ver.txt', 'https://sourceforge.net/projects/exiftool/files/ver.txt/download') {
+    try {
+        $raw = (Invoke-WebRequest -Uri $versionUrl -UseBasicParsing -UserAgent 'Wget' -TimeoutSec 30).Content
+        if ($raw -is [byte[]]) { $raw = [Text.Encoding]::ASCII.GetString($raw) }
+        if (([string]$raw).Trim() -match '^[0-9]+\.[0-9]+$') { $version = ([string]$raw).Trim(); break }
+    }
+    catch {
+        Write-Warning "No version from ${versionUrl}: $($_.Exception.Message)"
+    }
+}
+if ($version) {
+    $candidates += "https://exiftool.org/exiftool-${version}_64.zip"
+    $candidates += "https://sourceforge.net/projects/exiftool/files/exiftool-${version}_64.zip/download"
+}
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) ("exiftool-" + [Guid]::NewGuid())
 New-Item -ItemType Directory -Path $temp | Out-Null
