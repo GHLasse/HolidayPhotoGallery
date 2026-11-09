@@ -27,8 +27,8 @@ public sealed class PhotoQualityTests
         Assert.Equal(expected, PhotoQuality.FrameRateClass(fps));
 
     [Theory]
-    [InlineData("""[{"SourceFile":"a.jpg","XMP-hdrgm:Version":"1.0"}]""", true)]
-    [InlineData("""[{"SourceFile":"a.heic","Apple:HDRHeadroom":1.01}]""", true)]
+    [InlineData("""[{"SourceFile":"a.jpg","XMP-hdrgm:Version":"1.0","MPF0:NumberOfImages":2}]""", true)]
+    [InlineData("""[{"SourceFile":"a.jpg","Apple:HDRHeadroom":1.01,"MPF0:NumberOfImages":2}]""", true)]
     [InlineData("""[{"SourceFile":"a.heic","QuickTime:TransferCharacteristics":"SMPTE ST 2084 (PQ)"}]""", true)]
     [InlineData("""[{"SourceFile":"a.heic","QuickTime:TransferCharacteristics":"BT.709"}]""", false)]
     [InlineData("""[{"SourceFile":"a.jpg"}]""", false)]
