@@ -239,4 +239,19 @@ public sealed class WebImportTests
         Assert.Empty(result.Photos);
         Assert.Equal(WebFetchFailure.Failed, result.StartFailure);
     }
+
+    [Fact]
+    public async Task Photo_pages_may_be_anywhere_on_the_site()
+    {
+        var start = new Uri("https://root.com/gallery/12789324");
+        var site = new FakeSite();
+        site.Pages[start.ToString()] = """<a href="/photo/123247892"><img src="/thumbs/123247892.jpg"></a><a href="/blog/">Blog</a>""";
+        site.Pages["https://root.com/photo/123247892"] = """<img src="/images/123247892.jpg" width="2000" height="1500">""";
+
+        using var client = new WebSiteClient(start, null, site, (_, _) => Task.CompletedTask);
+        var result = await WebGalleryScanner.ScanAsync(client, start);
+
+        Assert.Equal(new Uri("https://root.com/images/123247892.jpg"), result.Photos.Single().Url);
+        Assert.DoesNotContain(site.Requests, r => r.Contains("/blog/"));
+    }
 }
