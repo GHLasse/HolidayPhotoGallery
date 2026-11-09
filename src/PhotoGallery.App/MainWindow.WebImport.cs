@@ -80,9 +80,22 @@ public sealed partial class MainWindow
         into.Children.Add(destination);
         into.Children.Add(browse);
         var example = new TextBlock { Foreground = ThemeBrush("TextFillColorSecondaryBrush"), TextWrapping = TextWrapping.Wrap };
+        // File names: their own, what the page calls them, or numbered in gallery order like the batch rename.
+        var naming = new ComboBox
+        {
+            Header = Tr("File names"), MinWidth = 320,
+            ItemsSource = new[] { Tr("Keep the names they have on the site"), Tr("Use the names the page gives them"), Tr("A name and a number, in gallery order") },
+            SelectedIndex = 0,
+        };
+        var numberedName = new TextBox { Header = Tr("Name before the number"), Visibility = Visibility.Collapsed, MinWidth = 320 };
+        var namingRow = new StackPanel
+        {
+            Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 12,
+            Children = { naming, numberedName },
+        };
         var chosenTags = new List<string>();
         var tags = TagPicker(Tr("Tags for all of them (optional)"), chosenTags);
-        var where = new StackPanel { Spacing = 12, Visibility = Visibility.Collapsed, Children = { folderName, into, example, tags } };
+        var where = new StackPanel { Spacing = 12, Visibility = Visibility.Collapsed, Children = { folderName, into, namingRow, example, tags } };
 
         WebSiteClient? client = null;
         CancellationTokenSource? scanning = null;
@@ -91,11 +104,26 @@ public sealed partial class MainWindow
 
         string Target() => Path.Combine(destination.Text, CleanFolderName(folderName.Text));
 
+        WebPhotoNaming Naming() => (WebPhotoNaming)Math.Max(0, naming.SelectedIndex);
+
+        // The chosen photos in gallery order, with the names they get.
+        (List<WebPhoto> Photos, IReadOnlyList<string?> Names) Chosen()
+        {
+            var selected = grid.SelectedItems.OfType<FrameworkElement>().ToHashSet();
+            var chosen = grid.Items.OfType<FrameworkElement>().Where(selected.Contains).Select(t => t.Tag).OfType<WebPhoto>().ToList();
+            return (chosen, WebPhotoNames.For(chosen, Naming(), numberedName.Text));
+        }
+
         void Update()
         {
             var chosen = grid.SelectedItems.Count;
             chosenText.Text = Tr("{0:N0} of {1:N0} chosen", chosen, grid.Items.Count);
-            example.Text = Tr("The photos go into {0}", Target());
+            numberedName.Visibility = Naming() == WebPhotoNaming.Numbered ? Visibility.Visible : Visibility.Collapsed;
+            var (chosenPhotos, names) = Chosen();
+            example.Text = chosenPhotos.Count == 0
+                ? Tr("The photos go into {0}", Target())
+                : Tr("The photos go into {0}, for example as {1}", Target(),
+                     WebSiteClient.FileNameFor(chosenPhotos[0].Url, null, names[0]));
             find.IsEnabled = allowed.IsChecked == true && TryAddress(address.Text, out _) && scanning is null;
             if (dialog is not null)
                 dialog.IsPrimaryButtonEnabled = chosen > 0 && scanning is null && allowed.IsChecked == true;
@@ -151,6 +179,8 @@ public sealed partial class MainWindow
             {
                 if (string.IsNullOrWhiteSpace(folderName.Text))
                     folderName.Text = CleanFolderName(result.Title ?? start.Host);
+                if (string.IsNullOrWhiteSpace(numberedName.Text))
+                    numberedName.Text = folderName.Text;
                 foreach (var photo in photos)
                     grid.Items.Add(Tile(photo));
                 grid.SelectAll();
@@ -177,6 +207,8 @@ public sealed partial class MainWindow
         all.Click += (_, _) => grid.SelectAll();
         none.Click += (_, _) => grid.SelectedItems.Clear();
         folderName.TextChanged += (_, _) => Update();
+        naming.SelectionChanged += (_, _) => Update();
+        numberedName.TextChanged += (_, _) => Update();
         browse.Click += async (_, _) =>
         {
             var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
@@ -212,14 +244,14 @@ public sealed partial class MainWindow
         // A scan or the previews still loading stop with the dialog.
         scanning?.Cancel();
         _previewLoading?.Cancel();
-        var chosen = grid.SelectedItems.OfType<FrameworkElement>().Select(t => t.Tag).OfType<WebPhoto>().ToList();
+        var (chosen, chosenNames) = Chosen();
         if (answer != ContentDialogResult.Primary || chosen.Count == 0 || client is null)
         {
             client?.Dispose();
             return;
         }
         ViewModel.ImportFolder = destination.Text;
-        await ViewModel.WebImportAsync(client, chosen, Target(), chosenTags);
+        await ViewModel.WebImportAsync(client, chosen, chosenNames, Target(), chosenTags);
     }
 
     private CancellationTokenSource? _previewLoading;
@@ -231,6 +263,9 @@ public sealed partial class MainWindow
         _previewLoading?.Cancel();
         _previewLoading = new CancellationTokenSource();
         var cancel = _previewLoading.Token;
+        // The same picture twice (a preview also listed on its own, or one address written two ways) is shown once:
+        // the one that has a larger photo behind it stays.
+        var seen = new Dictionary<string, Grid>(StringComparer.Ordinal);
         foreach (var tile in grid.Items.OfType<Grid>().ToList())
         {
             if (cancel.IsCancellationRequested || tile.Tag is not WebPhoto photo)
@@ -265,6 +300,15 @@ public sealed partial class MainWindow
                 grid.Items.Remove(tile);
                 continue;
             }
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(result.Body!));
+            if (seen.TryGetValue(hash, out var other))
+            {
+                var keepNew = other.Tag is WebPhoto first && first.Url == first.Preview && photo.Url != photo.Preview;
+                grid.Items.Remove(keepNew ? other : tile);
+                if (!keepNew)
+                    continue;
+            }
+            seen[hash] = tile;
             if (tile.Children[0] is Image image)
                 image.Source = source;
             if (tile.Children[1] is ProgressRing ring)
@@ -284,12 +328,12 @@ public sealed partial class MainWindow
         tile.Children.Add(new ProgressRing { IsActive = true, Width = 20, Height = 20 });
         var name = new TextBlock
         {
-            Text = photo.Width is { } w && photo.Height is { } h ? $"{photo.Name} · {w} × {h}" : photo.Name,
+            Text = photo.Width is { } w && photo.Height is { } h ? $"{photo.Caption ?? photo.Name} · {w} × {h}" : photo.Caption ?? photo.Name,
             FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 4, 0, 0),
         };
         Grid.SetRow(name, 1);
         tile.Children.Add(name);
-        ToolTipService.SetToolTip(tile, photo.Url.AbsoluteUri);
+        ToolTipService.SetToolTip(tile, photo.Caption is null ? photo.Url.AbsoluteUri : $"{photo.Caption}{Environment.NewLine}{photo.Url.AbsoluteUri}");
         AutomationProperties.SetName(tile, photo.Name);
         return tile;
     }

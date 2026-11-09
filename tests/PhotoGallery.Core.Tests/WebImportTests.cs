@@ -254,4 +254,32 @@ public sealed class WebImportTests
         Assert.Equal(new Uri("https://root.com/images/123247892.jpg"), result.Photos.Single().Url);
         Assert.DoesNotContain(site.Requests, r => r.Contains("/blog/"));
     }
+
+    [Fact]
+    public async Task Each_photo_is_offered_once_with_the_name_the_page_gives_it()
+    {
+        var site = new FakeSite();
+        site.Pages["https://example.com/holiday/index.html"] = """
+            <meta property="og:image" content="http://www.example.com/holiday/big/0.jpg">
+            <img src="big/0.jpg" alt="IMG_0001.jpg">
+            <img src="small/1.jpg" srcset="small/1.jpg 400w, big/1.jpg 1600w" alt="Sunset at the beach">
+            <a href="p2.html" title="Old town"><img src="small/2.jpg" alt="thumbnail"></a>
+            <a href="p3.html"><img src="small/3.jpg"></a>
+            """;
+        site.Pages["https://example.com/holiday/p2.html"] = """<img src="big/2.jpg" width="1600" height="1200">""";
+        site.Pages["https://example.com/holiday/p3.html"] = """<meta property="og:title" content="The harbour"><img src="big/3.jpg" width="1600">""";
+
+        using var client = Client(site);
+        var result = await WebGalleryScanner.ScanAsync(client, Gallery);
+
+        Assert.Equal(["big/0.jpg", "big/1.jpg", "big/2.jpg", "big/3.jpg"], result.Photos.Select(p => p.Url.AbsolutePath["/holiday/".Length..]).ToList());
+        Assert.Equal([null, "Sunset at the beach", "Old town", "The harbour"], result.Photos.Select(p => p.Caption).ToList());
+        Assert.Equal(new Uri("https://example.com/holiday/small/1.jpg"), result.Photos[1].Preview);
+
+        Assert.Equal([null, "Sunset at the beach", "Old town", "The harbour"], WebPhotoNames.For(result.Photos, WebPhotoNaming.Caption, ""));
+        Assert.Equal(["Lisbon_001", "Lisbon_002", "Lisbon_003", "Lisbon_004"], WebPhotoNames.For(result.Photos, WebPhotoNaming.Numbered, "Lisbon"));
+        Assert.All(WebPhotoNames.For(result.Photos, WebPhotoNaming.FileName, "x"), Assert.Null);
+        Assert.Equal("Sunset at the beach.jpg", WebSiteClient.FileNameFor(result.Photos[1].Url, ".jpg", "Sunset at the beach"));
+        Assert.Equal("Mr. Smith.jpg", WebSiteClient.FileNameFor(new Uri("https://example.com/show.php?id=3"), ".jpg", "Mr. Smith"));
+    }
 }

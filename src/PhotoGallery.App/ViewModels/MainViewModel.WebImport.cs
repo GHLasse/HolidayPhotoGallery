@@ -14,15 +14,18 @@ public sealed partial class MainViewModel
     /// details, leaves out those already in the library (same name and size), and adds the new ones to the library.
     /// Takes over <paramref name="client"/> and closes it when done.
     /// </summary>
-    public async Task WebImportAsync(WebSiteClient client, IReadOnlyList<WebPhoto> photos, string folder, IReadOnlyList<string> tags)
+    /// <param name="names">The name each photo is saved under (without ending); null keeps its own file name.</param>
+    public async Task WebImportAsync(WebSiteClient client, IReadOnlyList<WebPhoto> photos, IReadOnlyList<string?> names, string folder, IReadOnlyList<string> tags)
     {
         using var site = client;
         if (photos.Count == 0)
             return;
+        // Another job is running (reading the library, finding people…): the download waits for it.
         if (IsBusy)
         {
-            Warn(Tr("The app is still busy. Try again when it has finished."));
-            return;
+            Inform(Tr("The download starts as soon as the app has finished: {0}", StatusText));
+            while (IsBusy)
+                await Task.Delay(500);
         }
         var imported = new List<string>();
         int failed = 0, already = 0;
@@ -44,7 +47,7 @@ public sealed partial class MainViewModel
                     failed++;
                     continue;
                 }
-                var name = WebSiteClient.FileNameFor(photo.Url, extension);
+                var name = WebSiteClient.FileNameFor(photo.Url, extension, names[i]);
                 if (have.Contains((name.ToLowerInvariant(), result.Body!.LongLength)))
                 {
                     already++;
@@ -52,7 +55,7 @@ public sealed partial class MainViewModel
                 }
                 try
                 {
-                    var path = await Task.Run(() => WebSiteClient.Save(result.Body!, photo.Url, folder));
+                    var path = await Task.Run(() => WebSiteClient.Save(result.Body!, photo.Url, folder, names[i]));
                     imported.Add(path);
                     // Where it came from goes into the photo, so it is known later.
                     if (_metadata is not null && Core.SupportedFormats.IsSupported(path))

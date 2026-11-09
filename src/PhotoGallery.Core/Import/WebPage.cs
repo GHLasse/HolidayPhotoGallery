@@ -9,14 +9,18 @@ namespace PhotoGallery.Core.Import;
 /// <param name="Width">The width the page gives for it, or from a srcset, when known.</param>
 /// <param name="Height">The height the page gives for it, when known.</param>
 /// <param name="IsPageImage">The page names it as its own picture (og:image, image_src).</param>
-public sealed record WebPageImage(Uri Url, Uri? LinksTo = null, int? Width = null, int? Height = null, bool IsPageImage = false)
+/// <param name="Preview">A smaller version the same tag shows (its src, when a srcset or data-full has a larger one).</param>
+/// <param name="Caption">What the page calls it: the picture's alt or title text, or its link's title.</param>
+public sealed record WebPageImage(Uri Url, Uri? LinksTo = null, int? Width = null, int? Height = null, bool IsPageImage = false,
+                                  Uri? Preview = null, string? Caption = null)
 {
     /// <summary>The page says the image is tiny (an icon, a spacer or a tracking pixel).</summary>
     public bool IsTiny => Width is > 0 and < 48 || Height is > 0 and < 48;
 }
 
 /// <summary>What a web page holds for the website import: its title, images and links.</summary>
-public sealed record WebPage(Uri Address, string? Title, IReadOnlyList<WebPageImage> Images, IReadOnlyList<Uri> Links);
+/// <param name="PhotoTitle">The title the page gives its picture (og:title), else its first heading.</param>
+public sealed record WebPage(Uri Address, string? Title, IReadOnlyList<WebPageImage> Images, IReadOnlyList<Uri> Links, string? PhotoTitle = null);
 
 /// <summary>
 /// Reads the images and links out of a web page's HTML (F-8). Forgiving on purpose: personal galleries are often
@@ -41,10 +45,10 @@ public static partial class WebPageReader
     public static WebPage Read(string html, Uri address)
     {
         var baseUri = address;
-        string? title = null;
+        string? title = null, ogTitle = null, heading = null;
         var images = new List<WebPageImage>();
         var links = new List<Uri>();
-        var anchors = new Stack<Uri?>();
+        var anchors = new Stack<(Uri? Target, string? Title)>();
         var seenLinks = new HashSet<Uri>();
 
         // Comments are left out; scripts and styles are looked at only for image addresses, after the tags.
@@ -68,7 +72,8 @@ public static partial class WebPageReader
                 continue;
             }
             var attributes = Attributes(tag.Groups[3].Value);
-            var inside = anchors.Count > 0 ? anchors.Peek() : null;
+            var inside = anchors.Count > 0 ? anchors.Peek().Target : null;
+            var anchorTitle = anchors.Count > 0 ? anchors.Peek().Title : null;
             switch (name)
             {
                 case "base" when attributes.TryGetValue("href", out var href) && Resolve(address, href) is { } newBase:
@@ -79,15 +84,21 @@ public static partial class WebPageReader
                     if (end > 0)
                         title = Clean(withoutScripts[(tag.Index + tag.Length)..end]);
                     break;
+                case "h1" or "h2" when heading is null:
+                    var close = withoutScripts.IndexOf("</" + name, tag.Index + tag.Length, StringComparison.OrdinalIgnoreCase);
+                    if (close > 0)
+                        heading = Clean(withoutScripts[(tag.Index + tag.Length)..close]);
+                    break;
                 case "a":
                 {
                     var target = attributes.TryGetValue("href", out var link) ? Resolve(baseUri, link) : null;
                     // An <a> left open by sloppy HTML ends where the next one starts.
                     if (anchors.Count > 0)
                         anchors.Pop();
-                    anchors.Push(target);
+                    var linkTitle = CaptionText(attributes.GetValueOrDefault("title") ?? attributes.GetValueOrDefault("data-title") ?? attributes.GetValueOrDefault("data-caption"));
+                    anchors.Push((target, linkTitle));
                     if (target is not null && IsImageFile(target))
-                        images.Add(new WebPageImage(target));
+                        images.Add(new WebPageImage(target, Caption: linkTitle));
                     else
                         AddLink(target);
                     break;
@@ -107,6 +118,8 @@ public static partial class WebPageReader
                 case "meta":
                 {
                     var key = (attributes.GetValueOrDefault("property") ?? attributes.GetValueOrDefault("name") ?? "").ToLowerInvariant();
+                    if (key == "og:title" && ogTitle is null)
+                        ogTitle = CaptionText(attributes.GetValueOrDefault("content"));
                     if (key is "og:image" or "og:image:url" or "og:image:secure_url" or "twitter:image" &&
                         attributes.TryGetValue("content", out var content) && Resolve(baseUri, content) is { } picture)
                         images.Add(new WebPageImage(picture, IsPageImage: true));
@@ -114,22 +127,26 @@ public static partial class WebPageReader
                 }
                 case "img" or "source" or "image":
                 {
+                    // One tag shows one photo: its largest version is the photo, the src the grid's picture.
                     int? width = Number(attributes.GetValueOrDefault("width"));
                     int? height = Number(attributes.GetValueOrDefault("height"));
+                    var caption = CaptionText(attributes.GetValueOrDefault("alt") ?? attributes.GetValueOrDefault("title")) ?? anchorTitle;
                     var source = LazySources.Select(attributes.GetValueOrDefault).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v) && !v.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                                  ?? attributes.GetValueOrDefault("href") ?? attributes.GetValueOrDefault("xlink:href");
-                    if (source is not null && Resolve(baseUri, source) is { } url)
-                        images.Add(new WebPageImage(url, inside, width, height));
+                    var small = source is null ? null : Resolve(baseUri, source);
+                    var shown = attributes.TryGetValue("src", out var src) ? Resolve(baseUri, src) : null;
+                    Uri? large = LargeSources.Select(a => Resolve(baseUri, attributes.GetValueOrDefault(a))).FirstOrDefault(u => u is not null);
+                    int? largeWidth = null;
                     foreach (var set in new[] { "srcset", "data-srcset" })
                     {
-                        if (attributes.TryGetValue(set, out var srcset) && LargestInSrcset(baseUri, srcset) is var (largest, w))
-                            images.Add(new WebPageImage(largest, inside, w ?? width, w is null ? height : null));
+                        if (large is null && attributes.TryGetValue(set, out var srcset) && LargestInSrcset(baseUri, srcset) is var (largest, w))
+                            (large, largeWidth) = (largest, w);
                     }
-                    foreach (var large in LargeSources)
-                    {
-                        if (attributes.TryGetValue(large, out var big) && Resolve(baseUri, big) is { } bigUrl)
-                            images.Add(new WebPageImage(bigUrl, inside));
-                    }
+                    var photo = large ?? small;
+                    if (photo is null)
+                        break;
+                    var preview = new[] { shown, small }.FirstOrDefault(u => u is not null && u != photo);
+                    images.Add(new WebPageImage(photo, inside, largeWidth ?? width, largeWidth is null ? height : null, Preview: preview, Caption: caption));
                     break;
                 }
             }
@@ -153,7 +170,7 @@ public static partial class WebPageReader
                 images.Add(new WebPageImage(url));
         }
 
-        return new WebPage(address, title, images.Where(i => i.Url.Scheme is "http" or "https").ToList(), links);
+        return new WebPage(address, title, images.Where(i => i.Url.Scheme is "http" or "https").ToList(), links, ogTitle ?? heading);
     }
 
     /// <summary>The address <paramref name="value"/> means on a page at <paramref name="baseUri"/>; null for anything but a web address.</summary>
@@ -207,6 +224,19 @@ public static partial class WebPageReader
         return result;
     }
 
+    // Alt texts that say nothing ("image", "IMG_0042.jpg", "thumbnail") are no caption.
+    internal static string? CaptionText(string? value)
+    {
+        var text = Clean(value ?? "");
+        if (text is null || text.Length < 2 || text.Length > 150)
+            return null;
+        var plain = text.ToLowerInvariant();
+        if (plain is "image" or "photo" or "picture" or "foto" or "bild" or "thumbnail" or "thumb" or "preview" or "img" or "logo" ||
+            ImageExtensions.Contains(Path.GetExtension(plain)) || NoWords().IsMatch(plain))
+            return null;
+        return text;
+    }
+
     private static int? Number(string? value) =>
         value is not null && int.TryParse(value.Trim().TrimEnd('x', 'p').Trim(), out var n) && n > 0 ? n : null;
 
@@ -215,6 +245,10 @@ public static partial class WebPageReader
         var plain = WebUtility.HtmlDecode(Regex.Replace(text, @"<[^>]*>|\s+", " ")).Trim();
         return plain.Length == 0 ? null : plain;
     }
+
+    // Only digits, dashes and the like ("12", "dsc_0042"): a camera's name for the file, not a caption.
+    [GeneratedRegex(@"^(img|dsc|dscn|dscf|p|pict|photo|image)?[\d_\-. ]+$")]
+    private static partial Regex NoWords();
 
     [GeneratedRegex(@"<!--.*?-->", RegexOptions.Singleline)]
     private static partial Regex CommentPattern();
