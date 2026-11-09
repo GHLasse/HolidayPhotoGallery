@@ -126,7 +126,13 @@ public static partial class WebGalleryScanner
             }
         }
 
-        void Report() => progress?.Report(new WebScanProgress(pagesRead, order.Count(u => !replaced.Contains(u))));
+        // The count only goes up: a preview giving way to a photo already found isn't news.
+        var mostFound = 0;
+        void Report()
+        {
+            mostFound = Math.Max(mostFound, order.Count(u => !replaced.Contains(u)));
+            progress?.Report(new WebScanProgress(pagesRead, mostFound));
+        }
 
         // The page the user entered.
         WebFetchResult first;

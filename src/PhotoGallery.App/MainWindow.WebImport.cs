@@ -138,7 +138,7 @@ public sealed partial class MainWindow
             scanning = new CancellationTokenSource();
             var cancel = scanning.Token;
             client?.Dispose();
-            var site = client = new WebSiteClient(start);
+            var site = client = new WebSiteClient(start) { Log = App.Trace };
             photos = [];
             grid.Items.Clear();
             grid.Visibility = selectRow.Visibility = where.Visibility = Visibility.Collapsed;
