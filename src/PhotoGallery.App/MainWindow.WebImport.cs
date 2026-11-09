@@ -299,7 +299,11 @@ public sealed partial class MainWindow
                             continue;
                         try
                         {
-                            cookies.Add(cookie.ToSystemNetCookie());
+                            cookies.Add(new Cookie(cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
+                            {
+                                Secure = cookie.IsSecure,
+                                HttpOnly = cookie.IsHttpOnly,
+                            });
                             copied++;
                         }
                         catch (CookieException)
