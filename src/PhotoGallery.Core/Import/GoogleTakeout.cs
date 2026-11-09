@@ -172,9 +172,6 @@ public static partial class GoogleTakeout
             return false;
         var current = await metadata.ReadAsync(photoPath, cancellationToken).ConfigureAwait(false);
         var changes = ChangesFor(details, current, TimeZoneInfo.Local);
-        // A video can't have people marked; its date and place still come in.
-        if (SupportedFormats.IsVideo(photoPath))
-            changes = changes with { PersonNames = null };
         if (changes.IsEmpty)
             return false;
         await metadata.WriteAsync(photoPath, changes, cancellationToken, ownReplacement: true).ConfigureAwait(false);

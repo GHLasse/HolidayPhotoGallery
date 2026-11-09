@@ -313,7 +313,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
                 {
-                    failures.Add($"{photo.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(photo.FileName, ex));
                 }
             }
             await Task.Run(() => _index.Remove(recycled));

@@ -74,6 +74,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             // M-6: a save first checks the file is as the index read it; another PC's change is merged in.
             _metadata.BasisFor = path => _index.GetPhoto(path);
             _metadata.ChangedElsewhere += (path, clashes) => _uiContext?.Post(_ => ChangedElsewhere(path, clashes), null);
+            // A video playing in the viewer holds its file open, so the viewer lets go of it while it is saved.
+            _metadata.ReleaseFile = path => ReleaseVideo?.Invoke(path) ?? Task.FromResult(false);
+            _metadata.Released += path => _uiContext?.Post(_ => VideoReleased?.Invoke(path), null);
             _indexer = new LibraryIndexer(_index, _metadata);
             _photoEditor = new PhotoEditService(_metadata);
         }
@@ -81,6 +84,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         foreach (var folder in _settings.Folders.Where(f => !PrivateMarks.IsFolderPrivate(f)))
             Folders.Add(new FolderNodeViewModel(folder, isRoot: true));
     }
+
+    /// <summary>"photo.jpg: why" for a list of failures, without naming the file twice when the reason already does.</summary>
+    private static string FailureLine(string fileName, Exception ex) =>
+        ex.Message.Contains(fileName, StringComparison.OrdinalIgnoreCase) ? ex.Message : $"{fileName}: {ex.Message}";
+
+    /// <summary>Asked before details are saved into a video; true when the viewer stopped playing it to let go of the file.</summary>
+    public Func<string, Task<bool>>? ReleaseVideo { get; set; }
+
+    /// <summary>The video let go of through <see cref="ReleaseVideo"/> is saved, so it can play again (on the UI thread).</summary>
+    public event Action<string>? VideoReleased;
 
     public ObservableCollection<FolderNodeViewModel> Folders { get; } = [];
 
@@ -890,7 +903,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
@@ -1103,12 +1116,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                     item.Photo = updated;
             }
-            catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException)
             {
-                failures.Add($"{item.FileName}: {ex.Message}");
+                failures.Add(FailureLine(item.FileName, ex));
             }
         }
-        ErrorMessage = failures.Count == 0 ? null : (flag ? Tr("Some photos could not be flagged.") : Tr("Some flags could not be removed.")) + " " + string.Join(" ", failures);
+        // One photo that failed says only why; several get a line first.
+        ErrorMessage = failures.Count == 0 ? null
+            : failures.Count == 1 && items.Count == 1 ? failures[0]
+            : (flag ? Tr("Some photos could not be flagged.") : Tr("Some flags could not be removed.")) + " " + string.Join(" ", failures);
         FlagsChanged?.Invoke();
         RememberMarks(flag ? Tr("flag on {0}", PhotoCount(items.Count)) : Tr("removing the flag from {0}", PhotoCount(items.Count)), before);
     }
@@ -1152,7 +1168,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
@@ -1206,7 +1222,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
@@ -1321,7 +1337,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or TaskCanceledException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
@@ -1468,7 +1484,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
@@ -1522,7 +1538,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }

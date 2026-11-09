@@ -1,4 +1,5 @@
 using PhotoGallery.Core.ExifTool;
+using PhotoGallery.Core.Faces;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 
@@ -76,6 +77,55 @@ public sealed class VideoTests : IAsyncLifetime
         Assert.Equal(0.5, read.Duration!.Value, 1);
         Assert.Equal(4, read.FrameRate!.Value, 1);
         Assert.Equal(extension == ".avi", File.Exists(path + ".xmp"));
+    }
+
+    [ExifToolTheory]
+    [InlineData(".mov")]
+    [InlineData(".mp4")]
+    [InlineData(".avi")]
+    public async Task People_can_be_added_to_and_removed_from_a_video(string extension)
+    {
+        var path = _temp.CopySample(extension, "people");
+        await Service.WriteAsync(path, new MetadataChanges { People = [new PersonTag("Anna", new FaceBox(0, 0, 1, 1))] });
+        await Service.WriteAsync(path, new MetadataChanges { Tags = ["Strand"] }); // other details keep the people
+
+        var read = await Service.ReadAsync(path);
+        var person = Assert.Single(read.People);
+        Assert.Equal("Anna", person.Name);
+        Assert.Equal(["Strand"], read.Tags);
+        var names = await _exifTool!.RunAsync(["-s3", "-XMP-iptcExt:PersonInImage", SupportedFormats.MetadataTarget(path)]);
+        Assert.Equal("Anna", names.Output.Trim());
+        Assert.Equal(extension == ".avi", File.Exists(path + ".xmp"));
+
+        await Service.WriteAsync(path, new MetadataChanges { People = [] });
+        Assert.Empty((await Service.ReadAsync(path)).People);
+    }
+
+    [ExifToolTheory]
+    [InlineData(".mp4", true)]
+    [InlineData(".mov", true)]
+    [InlineData(".avi", false)] // its details go to the sidecar, so the video itself isn't replaced
+    [InlineData(".jpg", false)]
+    public async Task A_player_lets_go_of_a_video_while_it_is_saved(string extension, bool asked)
+    {
+        var path = _temp.CopySample(extension, "playing");
+        var service = Service;
+        var log = new List<string>();
+        service.ReleaseFile = p => { log.Add("let go " + Path.GetFileName(p)); return Task.FromResult(true); };
+        service.Released += p => log.Add("saved " + Path.GetFileName(p));
+
+        await service.WriteAsync(path, new MetadataChanges { Flagged = true });
+
+        var name = Path.GetFileName(path);
+        Assert.Equal(asked ? ["let go " + name, "saved " + name] : [], log);
+        Assert.True((await service.ReadAsync(path)).Flagged);
+    }
+
+    [ExifToolFact]
+    public async Task A_video_is_not_turned_by_the_photo_orientation()
+    {
+        var path = _temp.CopySample(".mov", "turn");
+        await Assert.ThrowsAsync<NotSupportedException>(() => Service.WriteAsync(path, new MetadataChanges { Orientation = 6 }));
     }
 
     [Theory]

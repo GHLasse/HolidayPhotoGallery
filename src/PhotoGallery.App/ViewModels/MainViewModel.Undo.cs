@@ -120,7 +120,7 @@ public sealed partial class MainViewModel
             }
             catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
             {
-                failures.Add($"{item.FileName}: {ex.Message}");
+                failures.Add(FailureLine(item.FileName, ex));
             }
         }
         ErrorMessage = failures.Count == 0 ? null : Tr("Some photos could not be changed back.") + " " + string.Join(" ", failures);

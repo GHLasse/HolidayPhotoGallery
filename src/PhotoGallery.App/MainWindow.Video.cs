@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using PhotoGallery.App.ViewModels;
 using Windows.Media.Core;
+using Windows.Media.Playback;
 using Windows.Storage;
 using static PhotoGallery.Core.Localization.Strings;
 
@@ -26,6 +27,7 @@ public sealed partial class MainWindow
                 return;
             ViewerVideo.Source = MediaSource.CreateFromStorageFile(file);
             ViewerVideo.Visibility = Visibility.Visible;
+            ResumeVideo(item.Path);
         }
         catch (Exception ex)
         {
@@ -53,6 +55,77 @@ public sealed partial class MainWindow
         ViewerVideo.Source = null;
         ViewerVideo.Visibility = Visibility.Collapsed;
         ViewerCanvas.Visibility = Visibility.Visible;
+    }
+
+    // Where the video was when it was let go of for a save, so it carries on from there.
+    private (string Path, TimeSpan Position, bool Playing)? _videoLetGo;
+
+    /// <summary>
+    /// Stops the video in the viewer if it is <paramref name="path"/>: Windows won't let ExifTool replace a file
+    /// that is open, so flagging, rating or tagging the video being watched would fail. Called from any thread.
+    /// </summary>
+    private Task<bool> LetGoOfVideoAsync(string path)
+    {
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void LetGo()
+        {
+            try
+            {
+                done.SetResult(LetGoOfVideo(path));
+            }
+            catch (Exception ex)
+            {
+                done.SetException(ex);
+            }
+        }
+        if (DispatcherQueue.HasThreadAccess)
+            LetGo();
+        else if (!DispatcherQueue.TryEnqueue(LetGo))
+            done.SetResult(false);
+        return done.Task;
+    }
+
+    private bool LetGoOfVideo(string path)
+    {
+        if (ViewerVideo.Source is null || ViewerItem is not { IsVideo: true } item ||
+            !string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var session = ViewerVideo.MediaPlayer?.PlaybackSession;
+        _videoLetGo = (path, session?.Position ?? TimeSpan.Zero, session?.PlaybackState is MediaPlaybackState.Playing or MediaPlaybackState.Opening);
+        StopVideo();
+        return true;
+    }
+
+    /// <summary>Plays the video let go of for a save again, if the viewer still shows it.</summary>
+    private void PlayVideoAgain(string path)
+    {
+        if (_videoLetGo is not { } letGo || !string.Equals(letGo.Path, path, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (!IsViewerOpen || ViewerVideo.Source is not null || ViewerItem is not { IsVideo: true } item ||
+            !string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase))
+        {
+            _videoLetGo = null;
+            return;
+        }
+        _ = PlayVideoAsync(item, _viewerLoadVersion);
+    }
+
+    // After a save the video goes on where it was, playing or paused as before.
+    private void ResumeVideo(string path)
+    {
+        if (_videoLetGo is not { } letGo)
+            return;
+        _videoLetGo = null;
+        if (!string.Equals(letGo.Path, path, StringComparison.OrdinalIgnoreCase) || ViewerVideo.MediaPlayer is not { } player)
+            return;
+        void Opened(MediaPlayer sender, object args)
+        {
+            sender.MediaOpened -= Opened;
+            sender.PlaybackSession.Position = letGo.Position;
+            if (!letGo.Playing)
+                sender.Pause();
+        }
+        player.MediaOpened += Opened;
     }
 
     private void ShowVideoTools(bool video)
