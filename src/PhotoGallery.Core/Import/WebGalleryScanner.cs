@@ -61,6 +61,7 @@ public static partial class WebGalleryScanner
         // Photo pages (reached by clicking a preview) first, then further gallery pages.
         var photoPages = new Queue<(Uri Page, int Depth, Uri Preview, HashSet<Uri> ParentImages)>();
         var listPages = new Queue<(Uri Page, int Depth)>();
+        var photoPagesRead = new List<(Uri Preview, WebPage Page, List<WebPageImage> Images, HashSet<Uri> ParentImages)>();
         var folder = start.AbsolutePath[..(start.AbsolutePath.LastIndexOf('/') + 1)];
         int pagesRead = 0, failed = 0, otherSite = 0, robots = 0;
         string? title = null;
@@ -213,23 +214,9 @@ public static partial class WebGalleryScanner
                     var images = page.Images.Where(i => !i.IsTiny).ToList();
                     foreach (var url in images.Select(i => Canon(i.Url)).Distinct())
                         pagesWith[url] = pagesWith.GetValueOrDefault(url) + 1;
-                    if (MainImage(images, photoPage.ParentImages, photoPage.Preview) is { } main)
-                    {
-                        // The preview's own caption stays unless the photo page has one for it.
-                        var caption = main.Caption ?? WebPageReader.CaptionText(page.PhotoTitle);
-                        Add(main.Url, page.Address, photoPage.Preview, main.Width, main.Height, true, caption);
-                    }
-                    // A photo page may be a gallery page of its own (an album in an album): its next pages.
-                    if (photoPage.Depth < options.MaxDepth)
-                    {
-                        foreach (var image in images.Where(i => i.LinksTo is not null && !photoPage.ParentImages.Contains(i.Url)))
-                        {
-                            if (image.LinksTo is { } target && WebPageReader.IsImageFile(target))
-                                Add(target, page.Address, image.Preview ?? image.Url, null, null, false, image.Caption);
-                            else if (image.LinksTo is { } next && client.IsOnSite(next) && Follow(next))
-                                photoPages.Enqueue((next, photoPage.Depth + 1, image.Url, images.Select(i => i.Url).ToHashSet()));
-                        }
-                    }
+                    // Which picture is the page's photo is decided once all photo pages are read: a picture on
+                    // several of them (the site's logo, its cover in og:image, other galleries) isn't it.
+                    photoPagesRead.Add((photoPage.Preview, page, images, photoPage.ParentImages));
                     Report();
                 }
                 else if (listPages.TryDequeue(out var listPage))
@@ -249,25 +236,64 @@ public static partial class WebGalleryScanner
             stopped = true;
         }
 
+        var onPhotoPages = new Dictionary<Uri, int>();
+        foreach (var read in photoPagesRead)
+        {
+            foreach (var url in read.Images.SelectMany(i => new[] { i.Url, i.LinksTo }).OfType<Uri>().Select(Canon).Distinct())
+                onPhotoPages[url] = onPhotoPages.GetValueOrDefault(url) + 1;
+        }
+        bool Shared(Uri url) => photoPagesRead.Count >= 3 && onPhotoPages.GetValueOrDefault(Canon(url)) > 1;
+        foreach (var (preview, page, images, parent) in photoPagesRead)
+        {
+            // A page with many previews of its own linking on is another gallery (a "related galleries" link), not
+            // a photo: neither it nor its preview is offered.
+            if (images.Count(i => i.LinksTo is { } next && !WebPageReader.IsImageFile(next) && !parent.Contains(i.Url)) >= 5)
+            {
+                replaced.Add(Canon(preview));
+                continue;
+            }
+            if (MainImage(images, parent, preview, Shared) is { } main)
+            {
+                // The preview's own caption stays unless the photo page has one for it.
+                var caption = main.Caption ?? WebPageReader.CaptionText(page.PhotoTitle);
+                Add(main.Url, page.Address, preview, main.Width, main.Height, true, caption);
+            }
+        }
+
         var limitReached = !stopped && pagesRead >= options.MaxPages && (photoPages.Count > 0 || listPages.Count > 0);
         var photos = Choose(found, order, replaced, pagesWith, pagesRead);
         return new WebScanResult(start, title, photos, pagesRead, failed, otherSite, robots, limitReached, stopped);
     }
 
-    // The photo a photo page shows: the one it names as its picture, else the largest it gives a size for, else
-    // the first that wasn't on the gallery page already (logos and buttons are on every page).
-    private static WebPageImage? MainImage(List<WebPageImage> images, HashSet<Uri> onParent, Uri preview)
+    // The photo a photo page shows, by points: a picture no other photo page has, named like its preview, linked
+    // to its full size file, named by the page as its picture (og:image), or large. Pictures that were on the
+    // gallery page already, or are on other photo pages too, are the site's, not this photo.
+    private static WebPageImage? MainImage(List<WebPageImage> images, HashSet<Uri> onParent, Uri preview, Func<Uri, bool> shared)
     {
-        var fresh = images.Where(i => !onParent.Contains(i.Url) || i.Url == preview).ToList();
-        if (fresh.Count == 0)
-            return null;
-        var named = fresh.FirstOrDefault(i => i.IsPageImage);
-        var sized = fresh.Where(i => i.Width is not null).OrderByDescending(i => (long)i.Width!.Value * (i.Height ?? i.Width!.Value)).FirstOrDefault();
-        // A large photo inside a link to the file itself is the full size one.
-        var linked = fresh.FirstOrDefault(i => i.LinksTo is { } target && WebPageReader.IsImageFile(target));
-        if (linked?.LinksTo is { } full)
-            return linked with { Url = full };
-        return sized is { Width: >= 300 } ? sized : named ?? sized ?? fresh.FirstOrDefault(i => i.Url != preview) ?? fresh[0];
+        var key = PhotoKey(preview);
+        WebPageImage? best = null;
+        var bestScore = int.MinValue;
+        foreach (var image in images)
+        {
+            // A picture inside a link to an image file stands for that file, the full size one.
+            var candidate = image.LinksTo is { } target && WebPageReader.IsImageFile(target) ? image with { Url = target } : image;
+            if (candidate.Url != preview && (onParent.Contains(image.Url) || shared(candidate.Url)))
+                continue;
+            var score = 0;
+            if (PhotoKey(candidate.Url) == key)
+                score += 50;
+            if (candidate.Url != image.Url)
+                score += 40;
+            if (image.IsPageImage)
+                score += 20;
+            if (image.Width >= 300 || image.Height >= 300)
+                score += 25;
+            if (candidate.Url == preview)
+                score -= 30;
+            if (score > bestScore)
+                (best, bestScore) = (candidate, score);
+        }
+        return best;
     }
 
     // Each photo once: previews give way to their large photo, images on most pages (logos, buttons) are left out,

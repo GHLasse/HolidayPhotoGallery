@@ -303,4 +303,26 @@ public sealed class WebImportTests
         Assert.Equal(0, result.LinksFailed);
         Assert.Contains(log, l => l.Contains("p1.html: 429"));
     }
+
+    [Fact]
+    public async Task The_site_logo_and_related_galleries_are_not_taken_for_the_photos()
+    {
+        var start = new Uri("https://www.site.com/gallery/12789324");
+        var site = new FakeSite();
+        const string chrome = """
+            <meta property="og:image" content="https://www.site.com/cover.jpg">
+            <img src="/logo.png" width="200" height="80">
+            <a href="/gallery/555"><img src="/covers/555.jpg"></a>
+            """;
+        site.Pages[start.ToString()] = chrome + string.Concat(Enumerable.Range(1, 4).Select(i => $"""<a href="/photo/{i}"><img src="/t/{i}.jpg"></a>"""));
+        for (var i = 1; i <= 4; i++)
+            site.Pages[$"https://www.site.com/photo/{i}"] = chrome + $"""<img src="/media/x{i}.jpg"><a href="/photo/{i % 4 + 1}"><img src="/t/{i % 4 + 1}.jpg"></a>""";
+        site.Pages["https://www.site.com/gallery/555"] = chrome + string.Concat(Enumerable.Range(1, 6).Select(i => $"""<a href="/photo/9{i}"><img src="/t/9{i}.jpg"></a>"""));
+
+        using var client = new WebSiteClient(start, null, site, (_, _) => Task.CompletedTask);
+        var result = await WebGalleryScanner.ScanAsync(client, start);
+
+        Assert.Equal(["/media/x1.jpg", "/media/x2.jpg", "/media/x3.jpg", "/media/x4.jpg"],
+                     result.Photos.Select(p => p.Url.AbsolutePath).ToList());
+    }
 }
