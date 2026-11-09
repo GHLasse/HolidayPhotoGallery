@@ -95,6 +95,7 @@ public sealed partial class PhotoIndex : IDisposable
                 latitude REAL,
                 longitude REAL,
                 direction REAL,
+                panorama INTEGER NOT NULL DEFAULT 0,
                 country TEXT,
                 country_code TEXT,
                 state TEXT,
@@ -220,6 +221,11 @@ public sealed partial class PhotoIndex : IDisposable
         // files are unchanged, so what was worked out from their pictures (keyed by the file's time) still holds.
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'direction';"), CultureInfo.InvariantCulture) == 0)
             Execute("ALTER TABLE photos ADD COLUMN direction REAL; UPDATE photos SET file_mtime = 0 WHERE latitude IS NOT NULL;");
+        // 360° photos (L-9) came later still. They are twice as wide as high (or wider, when only part of the sphere
+        // was taken), so only such photos are read again to find them.
+        if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name = 'panorama';"), CultureInfo.InvariantCulture) == 0)
+            Execute("ALTER TABLE photos ADD COLUMN panorama INTEGER NOT NULL DEFAULT 0; " +
+                    "UPDATE photos SET file_mtime = 0 WHERE video = 0 AND width IS NOT NULL AND height > 0 AND width >= 1.9 * height;");
     }
 
     /// <summary>Path → (size, modified time) for every indexed file under a folder, to spot changes.</summary>
@@ -255,9 +261,9 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT INTO main.photos (path, folder, file_name, file_size, file_mtime, date_taken, date_offset_minutes, rating, flagged, caption, orientation, width, height, camera, latitude, longitude,
-                                country, country_code, state, city, sublocation, private, video, duration, frame_rate, direction)
+                                country, country_code, state, city, sublocation, private, video, duration, frame_rate, direction, panorama)
             VALUES ($path, $folder, $name, $size, $mtime, $date, $offset, $rating, $flagged, $caption, $orientation, $width, $height, $camera, $lat, $lon,
-                    $country, $countryCode, $state, $city, $sublocation, $private, $video, $duration, $frameRate, $direction)
+                    $country, $countryCode, $state, $city, $sublocation, $private, $video, $duration, $frameRate, $direction, $panorama)
             ON CONFLICT(path) DO UPDATE SET
                 folder = excluded.folder, file_name = excluded.file_name, file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime, date_taken = excluded.date_taken,
@@ -268,7 +274,7 @@ public sealed partial class PhotoIndex : IDisposable
                 country = excluded.country, country_code = excluded.country_code, state = excluded.state,
                 city = excluded.city, sublocation = excluded.sublocation, private = excluded.private,
                 video = excluded.video, duration = excluded.duration, frame_rate = excluded.frame_rate,
-                direction = excluded.direction
+                direction = excluded.direction, panorama = excluded.panorama
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", photo.Path);
@@ -298,6 +304,7 @@ public sealed partial class PhotoIndex : IDisposable
         cmd.Parameters.AddWithValue("$duration", (object?)photo.Duration ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$frameRate", (object?)photo.FrameRate ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$direction", (object?)photo.Direction ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$panorama", photo.IsPanorama ? 1 : 0);
         var id = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         using var delete = _connection.CreateCommand();
@@ -598,7 +605,7 @@ public sealed partial class PhotoIndex : IDisposable
                         FROM photo_people pp WHERE pp.photo_id = p.id) AS people,
                        p.flagged,
                        (SELECT group_concat(tag, char(31)) FROM photo_tags t WHERE t.photo_id = p.id AND t.auto = 1) AS auto_tags,
-                       p.duration, p.frame_rate, p.direction
+                       p.duration, p.frame_rate, p.direction, p.panorama
                 FROM photos p
                 """);
             if (where.Count > 0)
@@ -881,6 +888,7 @@ public sealed partial class PhotoIndex : IDisposable
             Duration = r.IsDBNull(24) ? null : r.GetDouble(24),
             FrameRate = r.IsDBNull(25) ? null : r.GetDouble(25),
             Direction = r.FieldCount > 26 && !r.IsDBNull(26) ? r.GetDouble(26) : null,
+            IsPanorama = r.FieldCount > 27 && !r.IsDBNull(27) && r.GetInt64(27) != 0,
         };
     }
 

@@ -135,6 +135,8 @@ public sealed partial class MainWindow
             return;
         if (live is not null)
             QualityBadges.Children.Add(QualityBadge("LIVE", live));
+        if (item.IsPanorama)
+            QualityBadges.Children.Add(QualityBadge("360°", Tr("360° photo: open it to look around")));
         if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
             QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
     }
