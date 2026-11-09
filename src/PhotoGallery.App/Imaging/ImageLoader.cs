@@ -152,6 +152,28 @@ public static class ImageLoader
         return await ToImageSourceAsync(bitmap);
     }
 
+    /// <summary>Shows an encoded photo made small (at most <paramref name="maxSize"/> on its long side), upright; call on the UI thread.</summary>
+    public static async Task<ImageSource> FromEncodedAsync(byte[] encoded, uint maxSize)
+    {
+        var bitmap = await Task.Run(async () =>
+        {
+            using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(encoded.AsBuffer());
+            stream.Seek(0);
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            var scale = Math.Min(1.0, (double)maxSize / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
+            var transform = new BitmapTransform
+            {
+                ScaledWidth = Math.Max(1, (uint)Math.Round(decoder.PixelWidth * scale)),
+                ScaledHeight = Math.Max(1, (uint)Math.Round(decoder.PixelHeight * scale)),
+                InterpolationMode = BitmapInterpolationMode.Fant,
+            };
+            return await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, transform,
+                ExifOrientationMode.RespectExifOrientation, ColorManagementMode.ColorManageToSRgb);
+        }).WaitAsync(DecodeTimeout);
+        return await ToImageSourceAsync(bitmap);
+    }
+
     /// <summary>Shows decoded (possibly edited) pixels; call on the UI thread.</summary>
     public static async Task<ImageSource> ToImageSourceAsync(DecodedImage image)
     {

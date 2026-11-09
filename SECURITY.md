@@ -28,6 +28,7 @@ downloaded models). Nothing in that folder is sent anywhere.
 | The part of the world the map shows | The map's tile servers (OpenStreetMap, OpenFreeMap, Esri, EOX) | While the map is open. |
 | What you type in the map's Find box | OpenStreetMap Nominatim | When you search for a place. |
 | A photo's GPS position | Open-Meteo (elevation service) | With the place names (by hand or in the background), only for photos without a height of their own, to add the ground's height. |
+| Requests for the pages and pictures of a website | Only the site whose address you enter in Library › *Import from a website* (and its own subdomains for pictures), one request at a time, as the app “HolidayPhotoGallery”; links and redirects to other sites are not followed, and its robots.txt is honoured | Only while you import from that site. Nothing about your photos or library is sent. |
 | The app's version | GitHub | When the app looks for updates (can be turned off in Settings). |
 | Downloads of the recognition models | Hugging Face, GitHub, Qualcomm AI Hub | Once, when you agree to the download. Each file is checked against its SHA-256. |
 
