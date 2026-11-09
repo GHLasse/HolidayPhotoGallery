@@ -58,7 +58,10 @@ public static class FileMend
             if (FileCheck.Check(temp) != FileHealth.Whole)
                 throw new IOException(Tr("{0} can't be mended this way: its picture data is not complete.", Path.GetFileName(path)));
             EditHistory.BackUp(path);
+            // The mended file is a new file: it keeps the photo's creation date (D-4).
+            var created = File.GetCreationTimeUtc(path);
             File.Move(temp, path, overwrite: true);
+            FileDates.KeepCreated(path, created);
         }
         finally
         {

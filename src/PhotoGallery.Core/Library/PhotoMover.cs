@@ -14,7 +14,11 @@ public static class PhotoMover
     {
         var target = FreeName(folder, Path.GetFileName(path));
         if (copy)
+        {
+            // A copy is a new file to Windows: it keeps the photo's creation date (D-4), as a move does.
             File.Copy(path, target);
+            FileDates.KeepCreated(target, path);
+        }
         else
             File.Move(path, target);
         EditHistory.Transfer(path, target, copy);
@@ -33,7 +37,10 @@ public static class PhotoMover
             if (!File.Exists(videoTarget))
             {
                 if (copy)
+                {
                     File.Copy(video, videoTarget);
+                    FileDates.KeepCreated(videoTarget, video);
+                }
                 else
                     File.Move(video, videoTarget);
             }
