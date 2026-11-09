@@ -508,4 +508,20 @@ public sealed class WebImportTests
         var page = WebPageReader.Read($"""<a href="x.html">{text}</a>""", Gallery);
         Assert.Equal(better, page.BetterLinks.Count == 1);
     }
+
+    [Fact]
+    public async Task The_share_picture_loses_to_the_picture_the_page_shows()
+    {
+        var site = new FakeSite();
+        site.Pages[Gallery.ToString()] = string.Concat(Enumerable.Range(1, 3).Select(i => $"""<a href="p{i}.html"><img src="t/{i}.jpg"></a>"""));
+        for (var i = 1; i <= 3; i++)
+            site.Pages[$"https://example.com/holiday/p{i}.html"] = $"""
+                <head><meta property="og:image" content="/share/square-{i}.jpg"></head>
+                <body><img src="/logo.png"><img src="/photos/view-{i}.jpg"></body>
+                """;
+        using var client = Client(site);
+        var result = await WebGalleryScanner.ScanAsync(client, Gallery);
+
+        Assert.Equal(["/photos/view-1.jpg", "/photos/view-2.jpg", "/photos/view-3.jpg"], result.Photos.Select(p => p.Url.AbsolutePath).ToList());
+    }
 }
