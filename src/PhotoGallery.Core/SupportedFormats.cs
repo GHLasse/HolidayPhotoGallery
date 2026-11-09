@@ -68,9 +68,16 @@ public static class SupportedFormats
     /// <summary>
     /// Every picture can be turned except animated WebP: JPEG and TIFF by their orientation tag, PNG, GIF and
     /// HEIC by saving them again with Windows' codecs, still WebP with <see cref="Editing.WebpRotation"/>.
+    /// MP4, MOV, M4V and 3GP videos are turned by the rotation in their track header (see <see cref="CanRotateVideo"/>).
     /// </summary>
     public static bool CanRotate(string path) =>
-        IsImage(path) && (!Editing.WebpRotation.Handles(path) || !IsAnimatedWebp(path));
+        CanRotateVideo(path) || (IsImage(path) && (!Editing.WebpRotation.Handles(path) || !IsAnimatedWebp(path)));
+
+    /// <summary>
+    /// True for the QuickTime family of videos (MP4, MOV, M4V, 3GP): they are turned losslessly by the rotation
+    /// stored in the file, which Windows, phones and players honour. AVI, MTS, MKV and WMV can't be turned.
+    /// </summary>
+    public static bool CanRotateVideo(string path) => IsVideo(path) && VideosWithMetadata.Contains(Path.GetExtension(path));
 
     /// <summary>True for a WebP file with more than one frame (it can't be turned).</summary>
     public static bool IsAnimatedWebp(string path) =>

@@ -53,6 +53,12 @@ public sealed record MetadataChanges
     /// <summary>EXIF orientation 1-8.</summary>
     public int? Orientation { get; init; }
 
+    /// <summary>
+    /// A video's turn in degrees clockwise (0, 90, 180 or 270), written into its track header; only for the videos
+    /// <see cref="SupportedFormats.CanRotateVideo"/> allows.
+    /// </summary>
+    public int? VideoRotation { get; init; }
+
     /// <summary>The new GPS position. Altitude and other GPS details already in the file are left alone.</summary>
     public GeoPosition? Location { get; init; }
 
@@ -90,6 +96,6 @@ public sealed record MetadataChanges
     public IReadOnlyList<PersonTag>? People { get; init; }
 
     public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null && DatesBeforeSync is null &&
-                           Orientation is null && Location is null && PersonNames is null && !RemoveLocation && Place is null && People is null &&
+                           Orientation is null && VideoRotation is null && Location is null && PersonNames is null && !RemoveLocation && Place is null && People is null &&
                            Camera is null && Copyright is null && Creator is null;
 }

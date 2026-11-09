@@ -32,12 +32,16 @@ public sealed class VideoTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Videos_are_supported_but_not_turned()
+    public void Videos_are_supported_and_only_the_quicktime_family_is_turned()
     {
         Assert.True(SupportedFormats.IsSupported("clip.MP4"));
         Assert.True(SupportedFormats.IsVideo("clip.mov"));
         Assert.False(SupportedFormats.IsImage("clip.mov"));
-        Assert.False(SupportedFormats.CanRotate("clip.mov"));
+        Assert.True(SupportedFormats.CanRotate("clip.MOV"));
+        Assert.True(SupportedFormats.CanRotate("clip.mp4"));
+        Assert.False(SupportedFormats.CanRotate("clip.avi"));
+        Assert.False(SupportedFormats.CanRotate("clip.mkv"));
+        Assert.False(SupportedFormats.CanRotateLosslessly("clip.mov"));
         Assert.Equal("clip.mp4", SupportedFormats.MetadataTarget("clip.mp4"));
         Assert.Equal("clip.avi.xmp", SupportedFormats.MetadataTarget("clip.avi"));
     }
@@ -72,6 +76,43 @@ public sealed class VideoTests : IAsyncLifetime
         Assert.Equal(0.5, read.Duration!.Value, 1);
         Assert.Equal(4, read.FrameRate!.Value, 1);
         Assert.Equal(extension == ".avi", File.Exists(path + ".xmp"));
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(90, 90)]
+    [InlineData(360, 0)]
+    [InlineData(-90, 270)]
+    [InlineData(450, 90)]
+    public void Video_turns_are_kept_to_quarter_turns(int degrees, int expected) =>
+        Assert.Equal(expected, PhotoMetadataService.NormalizeRotation(degrees));
+
+    [ExifToolTheory]
+    [InlineData(".mov")]
+    [InlineData(".mp4")]
+    public async Task A_video_is_turned_by_its_rotation_without_re_encoding(string extension)
+    {
+        var path = _temp.CopySample(extension, "turn");
+        var before = await Service.ReadAsync(path);
+        var size = new FileInfo(path).Length;
+        var start = int.Parse((await _exifTool!.RunAsync(["-s3", "-Composite:Rotation", path])).Output.Trim());
+
+        await Service.RotateVideoAsync(path, clockwise: true);
+
+        var turned = await Service.ReadAsync(path);
+        Assert.Equal((before.Height, before.Width), (turned.Width, turned.Height));
+        Assert.Equal(((start + 90) % 360).ToString(), (await _exifTool.RunAsync(["-s3", "-Composite:Rotation", path])).Output.Trim());
+        Assert.InRange(new FileInfo(path).Length, size - 1024, size + 1024); // only the header changed
+
+        await Service.RotateVideoAsync(path, clockwise: false);
+        Assert.Equal(start.ToString(), (await _exifTool.RunAsync(["-s3", "-Composite:Rotation", path])).Output.Trim());
+    }
+
+    [ExifToolFact]
+    public async Task An_avi_video_is_not_turned()
+    {
+        var path = _temp.CopySample(".avi", "turn");
+        await Assert.ThrowsAsync<NotSupportedException>(() => Service.RotateVideoAsync(path, clockwise: true));
     }
 
     [ExifToolFact]

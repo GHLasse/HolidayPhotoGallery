@@ -1506,9 +1506,10 @@ public sealed partial class MainWindow : Window
     {
         if (_viewerIndex >= _viewerItems.Count)
             return;
-        if (!_viewerItems[_viewerIndex].CanRotate)
+        var item = _viewerItems[_viewerIndex];
+        if (!item.CanRotate)
         {
-            ViewModel.Warn(PixelTurner.AnimatedWebpHint);
+            ViewModel.Warn(PixelTurner.CantRotateHint(item.Path));
             return;
         }
         // Turning saves at once, which would drop the edit being previewed.
@@ -1517,7 +1518,10 @@ public sealed partial class MainWindow : Window
             ViewModel.Inform(Tr("Save or cancel the edit first, then rotate."));
             return;
         }
-        await ViewModel.RotateAsync([_viewerItems[_viewerIndex]], clockwise);
+        // A playing video holds its file open, so it is let go before the turn is saved, then played again.
+        if (item.IsVideo)
+            StopVideo();
+        await ViewModel.RotateAsync([item], clockwise);
         await ShowViewerImageAsync();
     }
 
@@ -2158,12 +2162,13 @@ public sealed partial class MainWindow : Window
         SavedEditsText.Text = edits == 1 ? Tr("Saved with 1 edit.") : Tr("Saved with {0} edits.", edits);
         UpdateEditFooter();
 
-        // An animated WebP can't be turned. Faded rather than disabled, so the tooltip still says why (as Busy.Gate does).
-        var animated = ViewerItem is { } shown && PhotoGallery.Core.SupportedFormats.IsAnimatedWebp(shown.Path);
+        // An animated WebP or an AVI, MTS, MKV or WMV video can't be turned. Faded rather than disabled, so the
+        // tooltip still says why (as Busy.Gate does).
+        var stuck = ViewerItem is { CanRotate: false } shown ? PixelTurner.CantRotateHint(shown.Path) : null;
         foreach (var (button, tip) in new[] { (ViewerRotateLeftButton, Tr("Rotate left (Ctrl+,)")), (ViewerRotateRightButton, Tr("Rotate right (Ctrl+.)")) })
         {
-            button.Opacity = animated ? 0.4 : 1;
-            ToolTipService.SetToolTip(button, animated ? PixelTurner.AnimatedWebpHint : tip);
+            button.Opacity = stuck is null ? 1 : 0.4;
+            ToolTipService.SetToolTip(button, stuck ?? tip);
         }
     }
 
