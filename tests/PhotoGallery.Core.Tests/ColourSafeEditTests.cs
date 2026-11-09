@@ -87,7 +87,8 @@ public sealed class ColourSafeEditTests : IAsyncLifetime
         var gainMap = GainMapJpeg.Find(await File.ReadAllBytesAsync(path));
         Assert.NotNull(gainMap);
         Assert.Equal(gainMap!.Length.ToString(), await TagAsync(path, "-MPImage2:MPImageLength"));
-        Assert.Equal(gainMap.Length.ToString(), await TagAsync(path, "-XMP-Container:DirectoryItemLength"));
+        // Ultra HDR's directory in the photo's XMP names the gain map's length (ExifTool versions call its group differently).
+        Assert.Contains($"Item:Semantic='GainMap' Item:Mime='image/jpeg' Item:Length='{gainMap.Length}'", Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path)));
 
         // A rating written later by ExifTool keeps the gain map where the index says.
         await Metadata.WriteAsync(path, new MetadataChanges { Rating = 4 });
