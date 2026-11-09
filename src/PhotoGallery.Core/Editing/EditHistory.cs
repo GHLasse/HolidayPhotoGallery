@@ -149,8 +149,11 @@ public static class EditHistory
         if (!string.Equals(restored, path, StringComparison.OrdinalIgnoreCase) && File.Exists(restored))
             throw new IOException(Tr("Cannot restore {0}: a different photo with that name is in the folder now.", target.FileName));
 
-        // Copy back first and delete afterwards, so a failure never loses a version.
+        // Copy back first and delete afterwards, so a failure never loses a version. The photo keeps its creation
+        // date (D-4), also when the version comes back under its old name (saved as JPG before).
+        var created = File.GetCreationTimeUtc(path);
         File.Copy(Path.Combine(folder, target.Backup), restored, overwrite: true);
+        Library.FileDates.KeepCreated(restored, created);
         if (!string.Equals(restored, path, StringComparison.OrdinalIgnoreCase))
             File.Delete(path);
 
