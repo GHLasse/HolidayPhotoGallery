@@ -26,7 +26,9 @@ public sealed partial class MainViewModel
     /// Takes over <paramref name="client"/> and closes it when done.
     /// </summary>
     /// <param name="names">The name each photo is saved under (without ending); null keeps its own file name.</param>
-    public async Task WebImportAsync(WebSiteClient client, IReadOnlyList<WebPhoto> photos, IReadOnlyList<string?> names, string folder, IReadOnlyList<string> tags)
+    /// <param name="siteImages">The site's own pictures (logos and the like) the scan saw, never a photo.</param>
+    public async Task WebImportAsync(WebSiteClient client, IReadOnlyList<WebPhoto> photos, IReadOnlyList<string?> names, string folder,
+                                     IReadOnlyList<string> tags, IReadOnlySet<Uri>? siteImages = null)
     {
         using var site = client;
         if (photos.Count == 0)
@@ -52,6 +54,19 @@ public sealed partial class MainViewModel
                     break; // what is downloaded stays
                 var photo = photos[i];
                 StatusText = Tr("Downloading {0:N0} of {1:N0}…", i + 1, photos.Count);
+                // A photo page the scan didn't get to: its large photo is looked up first, not the preview taken.
+                if (photo.PhotoPage is not null)
+                {
+                    var (large, why) = await WebGalleryScanner.FindLargePhotoAsync(site, photo, siteImages ?? new HashSet<Uri>());
+                    if (why == WebFetchFailure.Challenge)
+                    {
+                        challenged = true;
+                        failed += photos.Count - i;
+                        break;
+                    }
+                    App.Trace($"web import {photo.Preview}: large photo {large.Url}");
+                    photo = large;
+                }
                 var result = await site.GetAsync(photo.Url, image: true, CancellationToken.None);
                 // The site wants a sign-in or a human check: no use asking it for more now.
                 if (result.Failure == WebFetchFailure.Challenge)
@@ -66,6 +81,7 @@ public sealed partial class MainViewModel
                     failed++;
                     continue;
                 }
+                App.Trace($"web import {photo.Url}: {result.Body!.Length:N0} bytes");
                 var name = WebSiteClient.FileNameFor(photo.Url, extension, names[i]);
                 if (have.Contains((name.ToLowerInvariant(), result.Body!.LongLength)))
                 {

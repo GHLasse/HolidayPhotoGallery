@@ -147,6 +147,7 @@ public sealed partial class MainWindow
         var browserReady = false;
         CancellationTokenSource? scanning = null;
         List<WebPhoto> photos = [];
+        IReadOnlySet<Uri> siteImages = new HashSet<Uri>();
         ContentDialog? dialog = null;
 
         string Target() => Path.Combine(destination.Text, CleanFolderName(folderName.Text));
@@ -222,6 +223,7 @@ public sealed partial class MainWindow
                 return;
             scanning = null;
             photos = result.Photos.ToList();
+            siteImages = result.SiteImages;
             status.Text = Describe(result);
             App.Trace($"web import scan {start.Host}: {result.Photos.Count} photos, {result.PagesRead} pages, {result.LinksFailed} failed, {result.OtherSiteLinks} other sites, {result.BlockedByRobots} robots{(result.Challenged ? ", challenged" : "")}");
             if (result.Challenged)
@@ -242,7 +244,7 @@ public sealed partial class MainWindow
             }
             Update();
             if (photos.Count > 0)
-                await LoadPreviewsAsync(site, grid, at =>
+                await LoadPreviewsAsync(site, grid, siteImages, at =>
                 {
                     challengeAt = at;
                     challengeBar.IsOpen = true;
@@ -393,14 +395,15 @@ public sealed partial class MainWindow
             return;
         }
         ViewModel.ImportFolder = destination.Text;
-        await ViewModel.WebImportAsync(client, chosen, chosenNames, Target(), chosenTags);
+        await ViewModel.WebImportAsync(client, chosen, chosenNames, Target(), chosenTags, siteImages);
     }
 
     private CancellationTokenSource? _previewLoading;
 
-    // The grid's pictures, one at a time and politely paced like the scan; a photo whose picture can't be read
+    // The grid's pictures, one at a time and politely paced like the scan. Each photo is read at full size here and
+    // kept in the temp folder, so the download needs nothing more from the site; a photo whose picture can't be read
     // isn't a photo after all (a counter, a script) and leaves the grid.
-    private async Task LoadPreviewsAsync(WebSiteClient client, GridView grid, Action<Uri>? onChallenge = null)
+    private async Task LoadPreviewsAsync(WebSiteClient client, GridView grid, IReadOnlySet<Uri> siteImages, Action<Uri>? onChallenge = null)
     {
         _previewLoading?.Cancel();
         _previewLoading = new CancellationTokenSource();
@@ -415,10 +418,23 @@ public sealed partial class MainWindow
             WebFetchResult result;
             try
             {
-                result = await Task.Run(() => client.GetAsync(photo.Preview, image: true, cancel));
+                // A photo page the scan didn't get to: its large photo is looked up now.
+                if (photo.PhotoPage is not null)
+                {
+                    var (large, why) = await Task.Run(() => WebGalleryScanner.FindLargePhotoAsync(client, photo, siteImages, cancel));
+                    if (why == WebFetchFailure.Challenge)
+                    {
+                        onChallenge?.Invoke(photo.PhotoPage);
+                        return;
+                    }
+                    tile.Tag = photo = large;
+                }
+                // The photo itself, at full size: it waits in the temp folder for the download, so the download
+                // asks the site for nothing more. The gallery's preview only when the photo can't be had.
+                result = await Task.Run(() => client.GetAsync(photo.Url, image: true, cancel));
                 if ((!result.Succeeded || WebSiteClient.ImageExtension(result.Body) is null) && photo.Preview != photo.Url &&
                     result.Failure != WebFetchFailure.Challenge)
-                    result = await Task.Run(() => client.GetAsync(photo.Url, image: true, cancel));
+                    result = await Task.Run(() => client.GetAsync(photo.Preview, image: true, cancel));
                 // The site wants a sign-in or a check: the photos stay, without their pictures, rather than leave the grid.
                 if (result.Failure == WebFetchFailure.Challenge)
                 {
