@@ -405,4 +405,28 @@ public sealed class WebImportTests
         Assert.True(client.IsSiteCookieDomain("photos.example.com"));
         Assert.False(client.IsSiteCookieDomain(".tracker.example"));
     }
+
+    [Fact]
+    public async Task A_photo_page_left_unread_by_the_page_limit_gives_its_large_photo_at_download()
+    {
+        var site = new FakeSite();
+        site.Pages[Gallery.ToString()] = string.Concat(Enumerable.Range(1, 6).Select(i => $"""<a href="p{i}.html"><img src="t/{i}.jpg"></a>"""));
+        for (var i = 1; i <= 6; i++)
+            site.Pages[$"https://example.com/holiday/p{i}.html"] =
+                $"""<img src="/logo.png" width="400"><img src="big/{i}.jpg" width="2000" height="1500">""";
+
+        using var client = Client(site, new WebImportOptions { MaxPages = 4 });
+        var result = await WebGalleryScanner.ScanAsync(client, Gallery);
+
+        Assert.True(result.PageLimitReached);
+        var unread = result.Photos.Single(p => p.Url.AbsolutePath == "/holiday/t/6.jpg");
+        Assert.Equal("https://example.com/holiday/p6.html", unread.PhotoPage?.ToString());
+        Assert.All(result.Photos.Where(p => p.Url.AbsolutePath.Contains("/big/")), p => Assert.Null(p.PhotoPage));
+
+        var (large, failure) = await WebGalleryScanner.FindLargePhotoAsync(client, unread, result.SiteImages);
+        Assert.Equal(WebFetchFailure.None, failure);
+        Assert.Equal("/holiday/big/6.jpg", large.Url.AbsolutePath);
+        Assert.Equal(unread.Preview, large.Preview);
+        Assert.Null(large.PhotoPage);
+    }
 }

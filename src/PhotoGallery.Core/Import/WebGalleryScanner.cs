@@ -7,7 +7,10 @@ namespace PhotoGallery.Core.Import;
 /// <param name="Preview">A small version to show in the grid (the gallery's thumbnail), or the photo itself.</param>
 /// <param name="FoundOn">The page it was found on.</param>
 /// <param name="Caption">What the page calls the photo (its alt text, link title or photo page title), if anything useful.</param>
-public sealed record WebPhoto(Uri Url, Uri Preview, Uri FoundOn, int? Width = null, int? Height = null, string? Caption = null)
+/// <param name="PhotoPage">The page the preview links to, when the scan didn't get to read it (page limit, a check, Stop):
+/// the large photo is looked up there before the download (<see cref="WebGalleryScanner.FindLargePhotoAsync"/>).</param>
+public sealed record WebPhoto(Uri Url, Uri Preview, Uri FoundOn, int? Width = null, int? Height = null, string? Caption = null,
+                              Uri? PhotoPage = null)
 {
     public string Name => WebSiteClient.FileNameFor(Url, null);
 }
@@ -30,6 +33,9 @@ public sealed record WebScanResult(Uri Start, string? Title, IReadOnlyList<WebPh
 
     /// <summary>The page that asked for a sign-in or a human check, to open for the user.</summary>
     public Uri? ChallengeAddress { get; init; }
+
+    /// <summary>Pictures on several pages (logos, buttons, other galleries' covers): never a photo page's photo.</summary>
+    public IReadOnlySet<Uri> SiteImages { get; init; } = new HashSet<Uri>();
 }
 
 /// <summary>
@@ -47,6 +53,7 @@ public static partial class WebGalleryScanner
         public int? Width { get; set; }
         public int? Height { get; set; }
         public string? Caption { get; set; }
+        public Uri? PhotoPage { get; set; }
         public long Area => (long)(Width ?? 0) * (Height ?? Width ?? 0);
 
         /// <summary>The main photo of a page it was reached for, or named by the page as its picture.</summary>
@@ -272,12 +279,47 @@ public static partial class WebGalleryScanner
             }
         }
 
+        // Photo pages left unread: their large photo is looked up when it is downloaded.
+        foreach (var unread in photoPages)
+        {
+            if (found.TryGetValue(unread.Preview, out var item) && !replaced.Contains(unread.Preview))
+                item.PhotoPage ??= unread.Page;
+        }
+
         var limitReached = !stopped && !challenged && pagesRead >= options.MaxPages && (photoPages.Count > 0 || listPages.Count > 0);
         var photos = Choose(found, order, replaced, pagesWith, pagesRead);
+        var siteImages = pagesWith.Where(p => p.Value > 1).Select(p => p.Key)
+            .Concat(onPhotoPages.Where(p => p.Value > 1).Select(p => p.Key)).ToHashSet();
         return new WebScanResult(start, title, photos, pagesRead, failed, otherSite, robots, limitReached, stopped, challenged)
         {
             ChallengeAddress = challengeAt,
+            SiteImages = siteImages,
         };
+    }
+
+    /// <summary>
+    /// The large photo for a photo whose page the scan didn't read: that page is read now and its photo chosen as
+    /// in the scan. The photo as it was when the page gives nothing better, or is a check or sign-in (see the failure).
+    /// </summary>
+    public static async Task<(WebPhoto Photo, WebFetchFailure Failure)> FindLargePhotoAsync(
+        WebSiteClient client, WebPhoto photo, IReadOnlySet<Uri> siteImages, CancellationToken cancellationToken = default)
+    {
+        if (photo.PhotoPage is not { } address)
+            return (photo, WebFetchFailure.None);
+        var result = await client.GetAsync(address, image: false, cancellationToken).ConfigureAwait(false);
+        if (result.Failure == WebFetchFailure.Challenge)
+            return (photo, WebFetchFailure.Challenge);
+        if (result.Succeeded && WebSiteClient.ImageExtension(result.Body) is not null)
+            return (photo with { Url = result.Address, PhotoPage = null }, WebFetchFailure.None);
+        if (!result.Succeeded || !result.IsHtml)
+            return (photo with { PhotoPage = null }, result.Failure);
+        var page = WebPageReader.Read(result.Text, result.Address);
+        var images = page.Images.Where(i => !i.IsTiny).ToList();
+        if (MainImage(images, [], photo.Preview, siteImages.Contains) is { } main && client.IsSiteImage(main.Url) && main.Url != photo.Preview)
+            return (photo with { Url = main.Url, Width = main.Width, Height = main.Height, PhotoPage = null,
+                                 Caption = photo.Caption ?? main.Caption ?? WebPageReader.CaptionText(page.PhotoTitle) },
+                    WebFetchFailure.None);
+        return (photo with { PhotoPage = null }, WebFetchFailure.None);
     }
 
     // The photo a photo page shows, by points: a picture no other photo page has, named like its preview, linked
@@ -337,7 +379,7 @@ public static partial class WebGalleryScanner
         }
         return result
             .OrderBy(f => Position(f))
-            .Select(f => new WebPhoto(f.Url, f.Preview ?? f.Url, f.FoundOn, f.Width, f.Height, f.Caption))
+            .Select(f => new WebPhoto(f.Url, f.Preview ?? f.Url, f.FoundOn, f.Width, f.Height, f.Caption, f.PhotoPage))
             .ToList();
 
         static bool LooksLikePreviewItem(Found f) => LooksLikePreview(f.Url);

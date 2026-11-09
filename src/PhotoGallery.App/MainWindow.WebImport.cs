@@ -147,6 +147,7 @@ public sealed partial class MainWindow
         var browserReady = false;
         CancellationTokenSource? scanning = null;
         List<WebPhoto> photos = [];
+        IReadOnlySet<Uri> siteImages = new HashSet<Uri>();
         ContentDialog? dialog = null;
 
         string Target() => Path.Combine(destination.Text, CleanFolderName(folderName.Text));
@@ -222,6 +223,7 @@ public sealed partial class MainWindow
                 return;
             scanning = null;
             photos = result.Photos.ToList();
+            siteImages = result.SiteImages;
             status.Text = Describe(result);
             App.Trace($"web import scan {start.Host}: {result.Photos.Count} photos, {result.PagesRead} pages, {result.LinksFailed} failed, {result.OtherSiteLinks} other sites, {result.BlockedByRobots} robots{(result.Challenged ? ", challenged" : "")}");
             if (result.Challenged)
@@ -393,7 +395,7 @@ public sealed partial class MainWindow
             return;
         }
         ViewModel.ImportFolder = destination.Text;
-        await ViewModel.WebImportAsync(client, chosen, chosenNames, Target(), chosenTags);
+        await ViewModel.WebImportAsync(client, chosen, chosenNames, Target(), chosenTags, siteImages);
     }
 
     private CancellationTokenSource? _previewLoading;
