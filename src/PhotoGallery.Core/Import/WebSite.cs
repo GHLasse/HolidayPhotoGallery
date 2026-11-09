@@ -276,7 +276,7 @@ public sealed partial class WebSiteClient : IDisposable
             return;
         try
         {
-            _pictureFolder ??= Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "HolidayPhotoGallery-web-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+            _pictureFolder ??= Directory.CreateDirectory(Path.Combine(TempRoot, Guid.NewGuid().ToString("N")[..8])).FullName;
             var file = Path.Combine(_pictureFolder, _pictures.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
             File.WriteAllBytes(file, body);
             _pictures[uri] = (file, mediaType);
@@ -352,6 +352,48 @@ public sealed partial class WebSiteClient : IDisposable
         {
             return null;
         }
+    }
+
+    /// <summary>Where the pictures read during a scan wait until the download (one folder per scan).</summary>
+    public static string TempRoot => Path.Combine(Path.GetTempPath(), "HolidayPhotoGallery-web");
+
+    /// <summary>
+    /// Removes the pictures left over from earlier imports (the app closed or crashed mid-import), at the app's start.
+    /// Folders written in the last <paramref name="keepNewerThan"/> are kept: another window of the app may be importing.
+    /// </summary>
+    public static int CleanUpTemp(TimeSpan? keepNewerThan = null, string? root = null)
+    {
+        root ??= TempRoot;
+        var keep = keepNewerThan ?? TimeSpan.FromMinutes(10);
+        var removed = 0;
+        var folders = new List<string>();
+        try
+        {
+            if (Directory.Exists(root))
+                folders.AddRange(Directory.GetDirectories(root));
+            // Earlier versions kept them straight in the temp folder.
+            if (root == TempRoot)
+                folders.AddRange(Directory.GetDirectories(Path.GetTempPath(), "HolidayPhotoGallery-web-*"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+        foreach (var folder in folders)
+        {
+            try
+            {
+                if (DateTime.UtcNow - Directory.GetLastWriteTimeUtc(folder) < keep)
+                    continue;
+                Directory.Delete(folder, recursive: true);
+                removed++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // In use, or gone already: next start.
+            }
+        }
+        return removed;
     }
 
     public void Dispose()

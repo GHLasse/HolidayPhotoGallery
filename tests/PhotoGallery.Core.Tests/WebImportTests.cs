@@ -429,4 +429,37 @@ public sealed class WebImportTests
         Assert.Equal(unread.Preview, large.Preview);
         Assert.Null(large.PhotoPage);
     }
+
+    [Fact]
+    public void Leftover_temp_pictures_are_removed_at_the_start_but_a_running_import_keeps_its_own()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "web-temp-test-" + Guid.NewGuid().ToString("N"));
+        var old = Directory.CreateDirectory(Path.Combine(root, "old")).FullName;
+        File.WriteAllText(Path.Combine(old, "0"), "x");
+        Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddHours(-2));
+        var running = Directory.CreateDirectory(Path.Combine(root, "running")).FullName;
+        try
+        {
+            Assert.Equal(1, WebSiteClient.CleanUpTemp(TimeSpan.FromMinutes(10), root));
+            Assert.False(Directory.Exists(old));
+            Assert.True(Directory.Exists(running));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_picture_read_for_the_grid_is_not_asked_for_again_at_download()
+    {
+        var site = new FakeSite();
+        site.Files["https://example.com/holiday/big/1.jpg"] = Jpeg;
+        using var client = Client(site);
+        var url = new Uri("https://example.com/holiday/big/1.jpg");
+        Assert.True((await client.GetAsync(url, image: true, CancellationToken.None)).Succeeded);
+        var again = await client.GetAsync(url, image: true, CancellationToken.None);
+        Assert.True(again.Succeeded);
+        Assert.Single(site.Requests, r => r == url.ToString());
+    }
 }

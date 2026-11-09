@@ -236,6 +236,13 @@ public partial class App : Application
             window.MaximizeIfRemembered();
             _window = window;
             _window.Activate();
+            // Pictures a website import left in the temp folder (the app closed mid-import) go, in the background.
+            _ = Task.Run(() =>
+            {
+                var removed = PhotoGallery.Core.Import.WebSiteClient.CleanUpTemp();
+                if (removed > 0)
+                    Trace($"web import: {removed} leftover temp folders removed");
+            });
         }
         catch (Exception ex)
         {
