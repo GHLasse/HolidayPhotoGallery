@@ -104,7 +104,7 @@ Microsoft Store; most Windows 11 PCs already have them. Saving HEIC also needs t
 - Windows 10 version 1809 or later, or Windows 11, 64-bit (x64).
 - The installer is per user and needs no admin rights. The zip runs without installing.
 - The tagging model (about 750 MB), the face models (about 40 MB) and the upscaling models download the first time they are needed.
-- The internet is only used for map tiles, satellite pictures and place names (OpenStreetMap), those one-time model downloads, update checks on GitHub, and Google Photos or OneDrive once you link them.
+- The internet is only used for map tiles, satellite pictures and place names (OpenStreetMap), heights for photos without one (Open-Meteo), those one-time model downloads, update checks on GitHub, and Google Photos or OneDrive once you link them.
 - The app is not code-signed yet, so Windows SmartScreen may warn the first time ("More info", then "Run anyway").
 
 ## Downloads and branches
@@ -176,6 +176,7 @@ It builds on the work of others (Settings › Info lists the same):
 | [Sentinel-2 cloudless](https://s2maps.eu) by EOX IT Services GmbH | Satellite pictures (contains modified Copernicus Sentinel data) | CC BY-NC-SA 4.0 |
 | [Esri World Imagery](https://www.esri.com/en-us/legal/terms/full-master-agreement) | Sharp satellite pictures, when the app has an Esri key | Esri terms of use |
 | [Nominatim](https://nominatim.org) | Place names and positions | GPL 2.0 (service), ODbL (data) |
+| [Open-Meteo](https://open-meteo.com) | The ground’s height for a position | CC BY 4.0 |
 | [Unicode CLDR](https://cldr.unicode.org) | Country names in many languages | Unicode License v3 |
 | [Inno Setup](https://jrsoftware.org/isinfo.php) by Jordan Russell | The installer | Inno Setup License |
 

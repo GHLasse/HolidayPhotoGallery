@@ -68,6 +68,9 @@ public sealed partial class MapPanel : UserControl
     private bool _pinIsEstimate;
     private int _estimateRun;
 
+    /// <summary>Raised when the user turns the direction arrow of the one selected photo (G-5): degrees clockwise from north.</summary>
+    public event Func<PhotoItemViewModel, double, Task>? DirectionRequested;
+
     /// <summary>Raised when the user removes the location from the selected photos.</summary>
     public event Func<IReadOnlyList<PhotoItemViewModel>, Task>? RemoveRequested;
 
@@ -144,12 +147,22 @@ public sealed partial class MapPanel : UserControl
             SetPin(own, tellMap: true);
             _pinIsEstimate = false;
         }
+        ShowDirection();
         // Photos without GPS and no pin of the user's: suggest where they were (G-3).
         if (CanPlacePhotos && selection.Count > 0 && selection.All(p => p.Photo.Location is null) && (_pin is null || _pinIsEstimate))
             _ = EstimateAsync(auto: true);
         else
             ClearEstimates();
         UpdateButtons();
+    }
+
+    // The direction arrow (G-5) of the one selected photo with a position; none for several photos or a video.
+    private void ShowDirection()
+    {
+        if (_selection is [{ Photo.Location: { } at, IsVideo: false } one])
+            Post(new JsonObject { ["type"] = "direction", ["lat"] = at.Latitude, ["lon"] = at.Longitude, ["deg"] = one.Photo.Direction });
+        else
+            Post(new JsonObject { ["type"] = "direction", ["lat"] = null });
     }
 
     /// <summary>
@@ -531,6 +544,8 @@ public sealed partial class MapPanel : UserControl
                     ["zoomOut"] = Tr("Zoom out"),
                     ["showSelected"] = Tr("Show the selected photos"),
                     ["showAll"] = Tr("Show all photos"),
+                    ["direction"] = Tr("Which way the camera looked. Drag to turn it."),
+                    ["setDirection"] = Tr("Drag to set which way the camera looked."),
                 }.ToJsonString());
                 SendStyle();
                 foreach (var json in _pending)
@@ -562,6 +577,10 @@ public sealed partial class MapPanel : UserControl
             case "show":
                 if (message["path"]?.GetValue<string>() is { } shown)
                     PhotoShown?.Invoke(shown);
+                break;
+            case "direction":
+                if (_selection is [var turned] && message["deg"]?.GetValue<double>() is { } degrees && DirectionRequested is { } turn)
+                    _ = turn(turned, degrees);
                 break;
             case "places":
                 PlacesFound?.Invoke(message["q"]?.GetValue<string>() ?? "",

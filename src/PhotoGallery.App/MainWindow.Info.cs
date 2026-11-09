@@ -37,6 +37,7 @@ public sealed partial class MainWindow
         ("Sentinel-2 cloudless by EOX IT Services GmbH", Tr("Satellite pictures (contains modified Copernicus Sentinel data)"), "CC BY-NC-SA 4.0", "https://s2maps.eu"),
         ("Esri World Imagery", Tr("Sharp satellite pictures, when the app has an Esri key"), "Esri terms of use", "https://www.esri.com/en-us/legal/terms/full-master-agreement"),
         ("Nominatim", Tr("Place names for a position, and positions for a place name"), "GPL 2.0, ODbL", "https://nominatim.org"),
+        ("Open-Meteo", Tr("The ground’s height for a position"), "CC BY 4.0", "https://open-meteo.com"),
         ("Unicode CLDR", Tr("Country names in many languages"), "Unicode License v3", "https://cldr.unicode.org"),
         ("Inno Setup by Jordan Russell", Tr("The installer"), "Inno Setup License", "https://jrsoftware.org/isinfo.php"),
     ];

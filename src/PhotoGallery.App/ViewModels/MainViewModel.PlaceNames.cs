@@ -70,7 +70,7 @@ public sealed partial class MainViewModel
                     }
                     try
                     {
-                        await _metadata.WriteAsync(path, new MetadataChanges { Place = place });
+                        await _metadata.WriteAsync(path, new MetadataChanges { Place = place, Altitude = await AltitudeToAddAsync(path, position) });
                         var updated = await _indexer.RefreshFileAsync(path);
                         if (updated is not null && Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is { } item)
                             item.Photo = updated;
@@ -92,6 +92,30 @@ public sealed partial class MainViewModel
             _placesInBackground = false;
             if (named > 0)
                 UpdatePlaces(await Task.Run(_index.GetPlaceCounts)); // the Places tree
+        }
+    }
+
+    private ElevationLookup? _elevation;
+
+    /// <summary>
+    /// The ground's height for a photo that has none of its own, looked up with its place names (G-5); null when
+    /// it has one (from the camera or a track), it is a video, or the lookup doesn't work. Never stops the place names.
+    /// </summary>
+    private async Task<double?> AltitudeToAddAsync(string path, GeoPosition position)
+    {
+        if (_metadata is null || PhotoGallery.Core.SupportedFormats.IsVideo(path))
+            return null;
+        try
+        {
+            if (await Task.Run(() => _metadata.HasAltitudeAsync(path)))
+                return null;
+            _elevation ??= new ElevationLookup();
+            return await _elevation.LookUpAsync(position);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or ExifToolException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            App.Trace($"Height for {path} not looked up: {ex.Message}");
+            return null;
         }
     }
 

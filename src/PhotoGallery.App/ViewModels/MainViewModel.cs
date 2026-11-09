@@ -1208,6 +1208,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             : Tr("Placed {0} photo(s) on the map", done));
     }
 
+    /// <summary>Writes which way the camera looked into the photo (G-5), set with the map's arrow. Quietly, like a rating.</summary>
+    public async Task SetDirectionAsync(PhotoItemViewModel item, double degrees)
+    {
+        if (_metadata is null || _indexer is null)
+            return;
+        await WaitForSavesAsync(); // the info pane's edits are in the files first
+        try
+        {
+            await _metadata.WriteAsync(item.Path, new MetadataChanges { Direction = degrees });
+            if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
+                item.Photo = updated;
+        }
+        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+        {
+            ErrorMessage = Tr("The direction could not be saved: {0}", ex.Message);
+        }
+    }
+
     /// <summary>
     /// The GPS tracks' facts for photos placed where a track was at the time (G-5): its height there and the
     /// moment, so the photo gets the track's altitude and GPS time. A pin dragged away from the track (more than
@@ -1277,7 +1295,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                         unknown++;
                         continue;
                     }
-                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Place = place });
+                    await _metadata.WriteAsync(item.Path, new MetadataChanges { Place = place, Altitude = await AltitudeToAddAsync(item.Path, item.Photo.Location!.Value) });
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
                 }
@@ -1694,6 +1712,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _exifTool?.Dispose();
         _index.Dispose();
         _geocoder?.Dispose();
+        _elevation?.Dispose();
         _tagger?.Dispose();
         _eraser?.Dispose();
         _beautyAnalyzer?.Dispose();

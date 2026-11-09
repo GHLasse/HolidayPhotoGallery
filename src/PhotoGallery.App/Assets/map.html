@@ -386,6 +386,59 @@ function start() {
     if (notify) send({ type: "pin", lat, lon });
   }
 
+  // Which way the camera looked (G-5): a cone at the one selected photo, turned by dragging the round handle at its
+  // tip (Geosetter-style). A photo without a direction shows only a faint handle to the north, to set one.
+  let heading = null;            // { lat, lon, deg } or null
+  let headingCone = null, headingHandle = null;
+  const headingReach = 70;       // pixels from the photo to the handle
+  function coneIcon(deg) {
+    return L.divIcon({
+      className: "", iconSize: [140, 140], iconAnchor: [70, 70],
+      html: '<svg width="140" height="140" viewBox="-70 -70 140 140" style="pointer-events:none;overflow:visible">' +
+            '<g transform="rotate(' + deg + ')"><path d="M0 0 L-24 -66 A70 70 0 0 1 24 -66 Z" fill="var(--accent)" fill-opacity=".28" stroke="var(--accent)" stroke-width="1.5"/>' +
+            '<line x1="0" y1="0" x2="0" y2="-66" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/></g></svg>'
+    });
+  }
+  const handleIcon = set => L.divIcon({
+    className: "", iconSize: [18, 18], iconAnchor: [9, 9],
+    html: '<div style="width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5);background:' +
+          (set ? 'var(--accent)' : 'rgba(128,128,128,.7)') + ';cursor:grab"></div>'
+  });
+  function handleAt(lat, lon, deg) {
+    const o = map.latLngToContainerPoint([lat, lon]);
+    const r = deg * Math.PI / 180;
+    return map.containerPointToLatLng([o.x + headingReach * Math.sin(r), o.y - headingReach * Math.cos(r)]);
+  }
+  function bearingTo(lat, lon, to) {
+    const o = map.latLngToContainerPoint([lat, lon]);
+    const p = map.latLngToContainerPoint(to);
+    return (Math.atan2(p.x - o.x, o.y - p.y) * 180 / Math.PI + 360) % 360;
+  }
+  function drawHeading() {
+    if (headingCone) { map.removeLayer(headingCone); headingCone = null; }
+    if (headingHandle) { map.removeLayer(headingHandle); headingHandle = null; }
+    if (!heading || !placing) return;
+    const { lat, lon, deg } = heading;
+    const set = deg !== null && deg !== undefined;
+    if (set) headingCone = L.marker([lat, lon], { icon: coneIcon(deg), interactive: false, keyboard: false, zIndexOffset: -500 }).addTo(map);
+    headingHandle = L.marker(handleAt(lat, lon, set ? deg : 0), {
+      icon: handleIcon(set), draggable: true, keyboard: false, zIndexOffset: 500,
+      title: set ? (texts.direction || "Which way the camera looked. Drag to turn it.") : (texts.setDirection || "Drag to set which way the camera looked.")
+    }).addTo(map);
+    headingHandle.on("drag", e => {
+      const deg = bearingTo(lat, lon, e.target.getLatLng());
+      if (headingCone) headingCone.setIcon(coneIcon(deg));
+      else headingCone = L.marker([lat, lon], { icon: coneIcon(deg), interactive: false, keyboard: false, zIndexOffset: -500 }).addTo(map);
+    });
+    headingHandle.on("dragend", e => {
+      const deg = Math.round(bearingTo(lat, lon, e.target.getLatLng()) * 10) / 10;
+      heading = { lat, lon, deg };
+      drawHeading();
+      send({ type: "direction", deg });
+    });
+  }
+  map.on("zoomend", drawHeading);
+
   // Off while browsing the whole map (Map workspace): there are no photos picked to place there.
   let placing = true;
   map.on("click", e => { if (placing) setPin(e.latlng.lat, e.latlng.lng, true); });
@@ -573,9 +626,13 @@ function start() {
         }
       } else if (m.type === "pin") {
         setPin(m.lat, m.lon, false);
+      } else if (m.type === "direction") {
+        heading = m.lat === null || m.lat === undefined ? null : { lat: m.lat, lon: m.lon, deg: m.deg };
+        drawHeading();
       } else if (m.type === "placing") {
         placing = m.on;
         if (!placing) setPin(null);
+        drawHeading();
         // Over the whole library the app's search box finds places; beside the photos this one sets the pin.
         document.getElementById("search").style.display = placing ? "flex" : "none";
       } else if (m.type === "preview") {

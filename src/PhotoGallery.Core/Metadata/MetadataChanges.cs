@@ -56,7 +56,10 @@ public sealed record MetadataChanges
     /// <summary>The new GPS position. Altitude and other GPS details already in the file are left alone.</summary>
     public GeoPosition? Location { get; init; }
 
-    /// <summary>The height in metres above sea level to write with <see cref="Location"/> (G-5); below sea level is negative.</summary>
+    /// <summary>Which way the camera looked, in degrees clockwise from north (G-5, set by dragging the map's arrow).</summary>
+    public double? Direction { get; init; }
+
+    /// <summary>The height in metres above sea level (G-5), with a position or on its own; below sea level is negative.</summary>
     public double? Altitude { get; init; }
 
     /// <summary>
@@ -93,6 +96,6 @@ public sealed record MetadataChanges
     public IReadOnlyList<PersonTag>? People { get; init; }
 
     public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null && DatesBeforeSync is null &&
-                           Orientation is null && Location is null && PersonNames is null && !RemoveLocation && Place is null && People is null &&
+                           Orientation is null && Location is null && Direction is null && Altitude is null && PersonNames is null && !RemoveLocation && Place is null && People is null &&
                            Camera is null && Copyright is null && Creator is null;
 }

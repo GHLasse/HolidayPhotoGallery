@@ -50,6 +50,9 @@ public sealed record IndexedPhoto
     /// <summary>A video's frames per second, when ExifTool could read it.</summary>
     public double? FrameRate { get; init; }
 
+    /// <summary>Which way the camera looked, in degrees clockwise from north (G-5), when the photo says.</summary>
+    public double? Direction { get; init; }
+
     public bool IsVideo => SupportedFormats.IsVideo(Path);
 
     public string FileName => System.IO.Path.GetFileName(Path);
@@ -96,5 +99,6 @@ public sealed record IndexedPhoto
         People = metadata.People,
         Duration = metadata.Duration,
         FrameRate = metadata.FrameRate,
+        Direction = metadata.Direction,
     };
 }
