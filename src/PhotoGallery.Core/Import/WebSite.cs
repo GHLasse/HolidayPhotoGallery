@@ -95,6 +95,9 @@ public sealed partial class WebSiteClient : IDisposable
 
     public Uri Site { get; }
 
+    /// <summary>Where each request and why it failed is noted (the app's activity log).</summary>
+    public Action<string>? Log { get; set; }
+
     public WebImportOptions Options => _options;
 
     /// <summary>The pause before the next request; a longer one the site's robots.txt asks for wins (up to 10 s).</summary>
@@ -145,18 +148,38 @@ public sealed partial class WebSiteClient : IDisposable
             if (!_robotsRead)
                 await ReadRobotsAsync(cancellationToken).ConfigureAwait(false);
             var address = uri;
+            var retried = false;
             for (var hop = 0; hop < 6; hop++)
             {
                 if (!_robots.Allows(address) && SameHost(address, Site))
+                {
+                    Log?.Invoke($"web {address}: robots.txt asks not to");
                     return new WebFetchResult(address, WebFetchFailure.Robots);
+                }
                 using var response = await SendAsync(address, image, cancellationToken).ConfigureAwait(false);
                 if (response is null)
+                {
+                    Log?.Invoke($"web {address}: no answer");
                     return new WebFetchResult(address, WebFetchFailure.Failed);
+                }
+                Log?.Invoke($"web {address}: {(int)response.StatusCode} {response.Content.Headers.ContentType?.MediaType}");
+                // "Too many requests" or "busy": once more after the pause the site asks for (at most 30 s).
+                if ((int)response.StatusCode is 429 or 503 && !retried)
+                {
+                    retried = true;
+                    var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(5);
+                    await _wait(wait > TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(30) : wait, cancellationToken).ConfigureAwait(false);
+                    hop--;
+                    continue;
+                }
                 if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } location)
                 {
                     var next = WebPageReader.Resolve(address, location.OriginalString);
                     if (next is null || !(image ? IsSiteImage(next) : IsOnSite(next)))
+                    {
+                        Log?.Invoke($"web {address}: sends on to {next?.Host ?? location.OriginalString}, not followed");
                         return new WebFetchResult(address, WebFetchFailure.OtherSite);
+                    }
                     address = next;
                     continue;
                 }
@@ -177,6 +200,7 @@ public sealed partial class WebSiteClient : IDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
+            Log?.Invoke($"web {uri}: {ex.Message}");
             return new WebFetchResult(uri, WebFetchFailure.Failed);
         }
         finally
@@ -218,6 +242,7 @@ public sealed partial class WebSiteClient : IDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
+            Log?.Invoke($"web {address}: {(ex is TaskCanceledException ? "timed out" : ex.Message)}");
             return null;
         }
         finally

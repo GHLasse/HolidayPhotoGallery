@@ -17,11 +17,14 @@ public sealed class WebImportTests
         public Dictionary<string, byte[]> Files { get; } = [];
         public Dictionary<string, string> Redirects { get; } = [];
         public List<string> Requests { get; } = [];
+        public HashSet<string> BusyOnce { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var url = request.RequestUri!.ToString();
             Requests.Add(url);
+            if (BusyOnce.Remove(url))
+                return Task.FromResult(new HttpResponseMessage((HttpStatusCode)429));
             if (Redirects.TryGetValue(url, out var to))
             {
                 var redirect = new HttpResponseMessage(HttpStatusCode.Found);
@@ -281,5 +284,23 @@ public sealed class WebImportTests
         Assert.All(WebPhotoNames.For(result.Photos, WebPhotoNaming.FileName, "x"), Assert.Null);
         Assert.Equal("Sunset at the beach.jpg", WebSiteClient.FileNameFor(result.Photos[1].Url, ".jpg", "Sunset at the beach"));
         Assert.Equal("Mr. Smith.jpg", WebSiteClient.FileNameFor(new Uri("https://example.com/show.php?id=3"), ".jpg", "Mr. Smith"));
+    }
+
+    [Fact]
+    public async Task A_site_that_asks_to_slow_down_gets_a_second_try()
+    {
+        var site = new FakeSite();
+        site.Pages["https://example.com/holiday/index.html"] = """<a href="p1.html"><img src="t/1.jpg"></a>""";
+        site.Pages["https://example.com/holiday/p1.html"] = """<img src="big/1.jpg" width="2000">""";
+        site.BusyOnce.Add("https://example.com/holiday/p1.html");
+        var log = new List<string>();
+        using var client = Client(site);
+        client.Log = log.Add;
+
+        var result = await WebGalleryScanner.ScanAsync(client, Gallery);
+
+        Assert.Equal(new Uri("https://example.com/holiday/big/1.jpg"), result.Photos.Single().Url);
+        Assert.Equal(0, result.LinksFailed);
+        Assert.Contains(log, l => l.Contains("p1.html: 429"));
     }
 }
