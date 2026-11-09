@@ -288,17 +288,26 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
     /// <summary>
     /// Copies all metadata from <paramref name="source"/> into a freshly encoded <paramref name="target"/>
     /// whose pixels are already upright and <paramref name="width"/> × <paramref name="height"/>. The old
-    /// embedded thumbnail, colour profile and regions are left out, since they describe the old pixels.
+    /// embedded thumbnail and regions are left out, since they describe the old pixels (E-16).
+    /// <paramref name="colourProfile"/>: the new pixels are in the colour space of the source (not converted to
+    /// sRGB), so its colour profile comes along (Display P3, Adobe RGB…). <paramref name="keepHdr"/>: the gain map is
+    /// attached again afterwards, so the HDR notes stay; otherwise they are left out, since the new file is SDR.
+    /// Lightroom's and Camera Raw's edit settings are always left out: they belong to the old pixels, and Lightroom
+    /// would put its edit on top of this one.
     /// </summary>
-    public async Task CopyMetadataAsync(string source, string target, int width, int height, CancellationToken cancellationToken = default)
+    public async Task CopyMetadataAsync(string source, string target, int width, int height, CancellationToken cancellationToken = default,
+                                        bool colourProfile = false, bool keepHdr = false)
     {
         var now = DateTimeOffset.Now;
+        string[] hdr = keepHdr ? [] : ["--XMP-hdrgm:all", "--XMP-HDRGainMap:all", "--XMP-apdi:all", "--XMP-Container:all"];
+        string[] profile = colourProfile ? ["-ICC_Profile"] : [];
         var output = await exifTool.RunAsync(
         [
             "-overwrite_original", "-m",
-            "-tagsFromFile", source, "-all:all", "--IFD1:all", "--PreviewImage", "--ThumbnailImage",
+            "-tagsFromFile", source, "-all:all", .. profile, "--IFD1:all", "--PreviewImage", "--ThumbnailImage",
             // Face and other regions are measured on the old pixels; the people are moved separately.
             "--XMP-mwg-rs:all", "--XMP-MP:all",
+            "--XMP-crs:all", "--XMP-crss:all", .. hdr,
             "-IFD0:Orientation#=1", "-XMP-tiff:Orientation=",
             $"-ExifIFD:ExifImageWidth={width}", $"-ExifIFD:ExifImageHeight={height}",
             // New pixels: the modified dates say so (the date taken and the digitized date stay).
@@ -313,6 +322,19 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         if (errors.Count > 0)
             throw new ExifToolException(Tr("Could not copy the metadata of {0}: {1}", Path.GetFileName(source), string.Join(" ", errors)));
     }
+
+    /// <summary>Puts a new embedded thumbnail (a small JPEG) into a JPEG's EXIF data (E-16).</summary>
+    public async Task WriteThumbnailAsync(string path, string thumbnail, CancellationToken cancellationToken = default)
+    {
+        var output = await exifTool.RunAsync(["-overwrite_original", "-m", $"-ThumbnailImage<={thumbnail}", path], cancellationToken).ConfigureAwait(false);
+        var errors = output.ErrorLines.ToList();
+        if (errors.Count > 0)
+            throw new ExifToolException(Tr("Could not save {0}: {1}", Path.GetFileName(path), string.Join(" ", errors)));
+    }
+
+    /// <summary>The HDR, colour and Lightroom details of one photo (E-16).</summary>
+    public Task<PhotoQuality.Info> ReadQualityAsync(string path, CancellationToken cancellationToken = default) =>
+        PhotoQuality.ReadAsync(exifTool, path, cancellationToken);
 
     /// <summary>The app's name as other programs see it in a photo's Software field.</summary>
     public const string AppName = "Holiday Photo Gallery";

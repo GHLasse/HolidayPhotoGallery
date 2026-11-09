@@ -2239,6 +2239,8 @@ public sealed partial class MainWindow : Window
             ViewModel.Inform(Tr("Wait a moment until the retouch is done, then save."));
             return false;
         }
+        if (!await ConfirmEditLossAsync(item, asJpeg, asCopy))
+            return false;
         ViewerProgress.IsActive = true;
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
                                                   ChosenLook, _lookStrength, _strokes.ToList(),
@@ -2253,6 +2255,37 @@ public sealed partial class MainWindow : Window
             await ShowViewerImageAsync();
         }
         return saved;
+    }
+
+    /// <summary>
+    /// Says before saving what the edit can't keep (E-16): HDR, when the edited file can't carry the gain map, and
+    /// Lightroom's own edits, which are removed so Lightroom doesn't put them on top of this edit. One question for
+    /// both; true when there is nothing to say or the user chose to save.
+    /// </summary>
+    private async Task<bool> ConfirmEditLossAsync(PhotoItemViewModel item, bool asJpeg, bool asCopy)
+    {
+        if (await ViewModel.CheckEditAsync(item, asJpeg) is not { } check)
+            return true;
+        var lines = new List<string>();
+        if (check.LosesHdr)
+            lines.Add(asCopy
+                ? Tr("This is an HDR photo. The copy can’t keep the extra brightness for HDR screens, so it will look the same on every screen (SDR).")
+                : Tr("This is an HDR photo. The edited photo can’t keep the extra brightness for HDR screens, so it will look the same on every screen (SDR)."));
+        // A copy is a new file: the photo keeps Lightroom's edits, so there is nothing to ask.
+        if (check.RemovesLightroomEdits && !asCopy)
+            lines.Add(Tr("This photo has edits from Lightroom or Camera Raw. They will be removed, so Lightroom doesn’t put its edit on top of this one."));
+        if (lines.Count == 0)
+            return true;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Save the edit?"),
+            Content = new TextBlock { Text = string.Join("\n\n", lines), TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = Tr("Save"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary;
     }
 
     private async void ViewerUndo_Click(object sender, RoutedEventArgs e)

@@ -92,11 +92,14 @@ public static class ImageLoader
 
     /// <summary>
     /// The photo's upright pixels as 8-bit BGRA with straight alpha, for editing; <paramref name="maxSize"/>
-    /// limits the longer side (uint.MaxValue gives full size). Runs on a background thread.
+    /// limits the longer side (uint.MaxValue gives full size). Runs on a background thread. With
+    /// <paramref name="keepColours"/> the pixels stay in the photo's own colour space (e.g. Display P3) instead of being
+    /// converted to sRGB, for saving an edit that keeps the colour profile (E-16).
     /// </summary>
-    public static Task<DecodedImage> DecodePixelsAsync(string path, uint maxSize) => Task.Run(async () =>
+    public static Task<DecodedImage> DecodePixelsAsync(string path, uint maxSize, bool keepColours = false) => Task.Run(async () =>
     {
-        using var bitmap = await DecodeBitmapAsync(path, maxSize, BitmapAlphaMode.Straight);
+        using var bitmap = await DecodeBitmapAsync(path, maxSize, BitmapAlphaMode.Straight,
+                                                   keepColours ? ColorManagementMode.DoNotColorManage : ColorManagementMode.ColorManageToSRgb);
         var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
         bitmap.CopyToBuffer(pixels.AsBuffer());
         return new DecodedImage(pixels, bitmap.PixelWidth, bitmap.PixelHeight);
@@ -185,7 +188,8 @@ public static class ImageLoader
         return await ToImageSourceAsync(bitmap);
     }
 
-    private static async Task<SoftwareBitmap> DecodeBitmapAsync(string path, uint maxSize, BitmapAlphaMode alpha = BitmapAlphaMode.Premultiplied)
+    private static async Task<SoftwareBitmap> DecodeBitmapAsync(string path, uint maxSize, BitmapAlphaMode alpha = BitmapAlphaMode.Premultiplied,
+                                                                ColorManagementMode colours = ColorManagementMode.ColorManageToSRgb)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);
         using var stream = await file.OpenReadAsync();
@@ -208,7 +212,7 @@ public static class ImageLoader
             alpha,
             transform,
             ExifOrientationMode.RespectExifOrientation,
-            ColorManagementMode.ColorManageToSRgb);
+            colours);
     }
 
     private static async Task<ImageSource> ToImageSourceAsync(SoftwareBitmap bitmap)

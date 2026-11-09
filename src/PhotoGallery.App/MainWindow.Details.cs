@@ -92,7 +92,7 @@ public sealed partial class MainWindow
 
     private int _qualityVersion;
 
-    /// <summary>The resolution class badge (exact size in its tooltip) and, once the file is read, LIVE for a Live or motion photo and HDR (U-7).</summary>
+    /// <summary>The resolution class badge (exact size in its tooltip) and, once the file is read, LIVE for a Live or motion photo, HDR (U-7) and the colour space (E-16).</summary>
     // The GPS time is not in the index: read for the one selected photo with a position, to offer its time zone (D-5).
     private async Task ShowGpsTimeZoneAsync()
     {
@@ -137,8 +137,21 @@ public sealed partial class MainWindow
             QualityBadges.Children.Add(QualityBadge("LIVE", live));
         if (item.IsPanorama)
             QualityBadges.Children.Add(QualityBadge("360°", Tr("360° photo: open it to look around")));
-        if (await ViewModel.IsHdrAsync(item.Path) && version == _qualityVersion)
+        if (await ViewModel.ReadQualityAsync(item.Path) is not { } quality || version != _qualityVersion)
+            return;
+        if (quality.Hdr)
             QualityBadges.Children.Add(QualityBadge("HDR", Tr("High dynamic range: brighter highlights on an HDR screen")));
+        // The colour space (E-16): wide P3 colours from phones, or plain sRGB that looks alike on every screen.
+        var colours = quality.ColourSpace switch
+        {
+            "P3" => Tr("Wide colours (Display P3): richer reds and greens on screens that can show them"),
+            "sRGB" => Tr("Standard colours (sRGB): they look the same on every screen"),
+            "Adobe RGB" => Tr("Wide colours (Adobe RGB), as some cameras save them"),
+            _ => null,
+        };
+        if (colours is not null)
+            QualityBadges.Children.Add(QualityBadge(quality.ColourSpace!,
+                quality.ProfileName is { } profile ? colours + "\n" + Tr("Colour profile: {0}", profile) : colours));
     }
 
     private static Border QualityBadge(string label, string tooltip)

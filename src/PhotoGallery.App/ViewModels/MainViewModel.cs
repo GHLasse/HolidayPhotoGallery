@@ -1012,22 +1012,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             // Windows can't write WebP: SkiaSharp turns it, lossless staying lossless.
             var (width, height) = await Task.Run(() => WebpRotation.TurnedSize(path));
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), width, height,
-                                                        target => Task.Run(() => WebpRotation.Turn(path, target, clockwise)), turn: turn);
+                                                        target => Task.Run(() => WebpRotation.Turn(path, target, clockwise)), turn: turn,
+                                                        colourProfile: true);
         }
         else if (PixelTurner.Handles(path))
         {
             // GIF: every frame of an animation is turned with Windows' GIF codec.
             var (width, height) = await PixelTurner.TurnedSizeAsync(path);
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), width, height,
-                                                        target => PixelTurner.TurnAsync(path, target, clockwise), turn: turn);
+                                                        target => PixelTurner.TurnAsync(path, target, clockwise), turn: turn,
+                                                        colourProfile: true);
         }
         else
         {
             // PNG and HEIC: Windows decodes them upright, and its encoders save them again (HEIC needs the HEVC Video Extensions).
-            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            // With a colour profile, the pixels stay in its colours and it is kept (E-16).
+            var colourProfile = (await _photoEditor!.InspectAsync(path, Path.GetExtension(path))).ColourProfile;
+            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue, keepColours: colourProfile);
             var turned = await Task.Run(() => new DecodedImage(ImageMath.Rotate90(image.Pixels, image.Width, image.Height, clockwise), image.Height, image.Width));
             newPath = await _photoEditor!.SaveEditAsync(path, Path.GetExtension(path), turned.Width, turned.Height,
-                                                        target => ImageEncoder.EncodeAsync(turned, target), turn: turn);
+                                                        target => ImageEncoder.EncodeAsync(turned, target), turn: turn, colourProfile: colourProfile);
         }
         await AfterFileReplacedAsync(item, path, newPath);
     }
@@ -1571,10 +1575,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return false;
 
         var path = item.Path;
-        var extension = Path.GetExtension(path);
-        var isJpeg = extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".jpe";
-        if ((asJpeg && !isJpeg) || !ImageEncoder.CanEncode(extension))
-            extension = ".jpg";
+        var extension = EditedExtension(path, asJpeg);
 
         // The banners shown while saving (the info pane's edits written first) give way to the one for the edit.
         var noticesBefore = Notices.ToList();
@@ -1584,7 +1585,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusText = Tr("Saving the edit of {0}…", item.FileName);
         try
         {
-            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue);
+            // A photo with a colour profile (Display P3 from iPhones, Adobe RGB…) is edited in its own colours, and the
+            // profile is kept; converted to sRGB, its strongest colours would be lost (E-16).
+            var colourProfile = (await _photoEditor.InspectAsync(path, extension)).ColourProfile;
+            var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue, keepColours: colourProfile);
             var (fullWidth, fullHeight) = (image.Width, image.Height);
             FaceBox? kept = null;
             var eraser = strokes.Any(k => k.Tool == RetouchTool.Erase) ? await Task.Run(() => LoadEraser()) : null;
@@ -1631,7 +1635,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                                            ImageAdjust.FlipOrientation(flipHorizontal, flipVertical),
                                                            beforeCrop: Math.Abs(straighten) < 0.01 ? null
                                                                : box => Straighten.Box(box, fullWidth, fullHeight, straighten),
-                                                           asCopy: asCopy);
+                                                           asCopy: asCopy, colourProfile: colourProfile,
+                                                           // An HDR JPEG's gain map gets the same shape (E-16).
+                                                           geometry: new EditGeometry(straighten, kept, flipHorizontal, flipVertical, Strokes: strokes));
             if (asCopy)
             {
                 // The photo stays as it was; the copy joins the library next to it (E-5).
@@ -1660,6 +1666,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    // HEIC stays HEIC unless JPEG is asked for; formats Windows can't write (WebP, GIF) become JPEG.
+    private static string EditedExtension(string path, bool asJpeg)
+    {
+        var extension = Path.GetExtension(path);
+        var isJpeg = extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".jpe";
+        return (asJpeg && !isJpeg) || !ImageEncoder.CanEncode(extension) ? ".jpg" : extension;
+    }
+
+    /// <summary>
+    /// What saving the edit would lose (HDR, Lightroom's edits), to ask first (E-16); null when the photo can't be
+    /// read, and then the save says what went wrong.
+    /// </summary>
+    public async Task<PhotoEditService.EditCheck?> CheckEditAsync(PhotoItemViewModel item, bool asJpeg)
+    {
+        if (_photoEditor is null)
+            return null;
+        await WaitForSavesAsync();
+        try
+        {
+            return await _photoEditor.InspectAsync(item.Path, EditedExtension(item.Path, asJpeg));
+        }
+        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 
