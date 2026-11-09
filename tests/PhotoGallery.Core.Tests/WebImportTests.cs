@@ -462,4 +462,50 @@ public sealed class WebImportTests
         Assert.True(again.Succeeded);
         Assert.Single(site.Requests, r => r == url.ToString());
     }
+
+    [Fact]
+    public async Task A_click_for_better_quality_page_gives_the_full_photo()
+    {
+        var site = new FakeSite();
+        site.Pages[Gallery.ToString()] = """
+            <a href="p1.html"><img src="t/1.jpg"></a> <a href="p2.html"><img src="t/2.jpg"></a> <a href="p3.html"><img src="t/3.jpg"></a>
+            """;
+        // Photo 1: the framed square picture links to its better page. Photo 2: a text link does.
+        // Photo 3: its picture links to the next photo's page, which is not a better version of it.
+        site.Pages["https://example.com/holiday/p1.html"] = """
+            <img src="/logo.png" width="300"><a href="view.php?id=1&q=hi"><img src="/square/1.jpg" width="600" height="600"></a>
+            """;
+        site.Pages["https://example.com/holiday/p2.html"] = """
+            <img src="/logo.png" width="300"><img src="/square/2.jpg" width="600" height="600">
+            <a href="view.php?id=2&q=hi">Click for better quality</a>
+            """;
+        site.Pages["https://example.com/holiday/p3.html"] = """
+            <img src="/logo.png" width="300"><a href="p1.html"><img src="/square/3.jpg" width="600" height="600"></a>
+            """;
+        site.Pages["https://example.com/holiday/view.php?id=1&q=hi"] = """<img src="/logo.png" width="300"><img src="/full/1.jpg">""";
+        site.Pages["https://example.com/holiday/view.php?id=2&q=hi"] = """<img src="/logo.png" width="300"><img src="/full/2.jpg">""";
+
+        using var client = Client(site);
+        var result = await WebGalleryScanner.ScanAsync(client, Gallery);
+        var photos = result.Photos.OrderBy(p => p.Url.AbsolutePath).ToList();
+        Assert.Equal(["/square/1.jpg", "/square/2.jpg", "/square/3.jpg"], photos.Select(p => p.Url.AbsolutePath).ToList());
+        Assert.Null(photos[2].PhotoPage);
+
+        var large = new List<string>();
+        foreach (var photo in photos)
+            large.Add((await WebGalleryScanner.FindLargePhotoAsync(client, photo, result.SiteImages)).Photo.Url.AbsolutePath);
+        Assert.Equal(["/full/1.jpg", "/full/2.jpg", "/square/3.jpg"], large);
+    }
+
+    [Theory]
+    [InlineData("Click for better quality", true)]
+    [InlineData("Original size", true)]
+    [InlineData("In voller Größe anzeigen", true)]
+    [InlineData("Next photo", false)]
+    [InlineData("Back to the gallery", false)]
+    public void Knows_links_that_promise_a_better_picture(string text, bool better)
+    {
+        var page = WebPageReader.Read($"""<a href="x.html">{text}</a>""", Gallery);
+        Assert.Equal(better, page.BetterLinks.Count == 1);
+    }
 }
