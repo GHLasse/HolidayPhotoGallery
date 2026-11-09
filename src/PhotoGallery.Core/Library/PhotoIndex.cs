@@ -18,6 +18,12 @@ public sealed record TagCount(string Tag, int Count, bool IsGroup, bool IsAuto =
 public sealed partial class PhotoIndex : IDisposable
 {
     private const int SchemaVersion = 8;
+
+    /// <summary>
+    /// The file time an index entry gets when a newer app version wants the (unchanged) file read again: the next
+    /// scan reads it and says it is bringing the photo up to date rather than calling it new or changed.
+    /// </summary>
+    public const long ReadAgainMark = 0;
     // The fraction of a second is only written when there is one (burst shots, D-5); older rows have none. Both
     // sort right as text, since "…:15" comes before "…:15.250".
     private const string DateFormat = "yyyy-MM-ddTHH:mm:ss.FFF";

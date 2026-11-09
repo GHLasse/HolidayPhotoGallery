@@ -2,10 +2,20 @@ using PhotoGallery.Core.Metadata;
 
 namespace PhotoGallery.Core.Library;
 
-public sealed record IndexProgress(string Folder, int Processed, int Total);
+/// <summary>
+/// How far a scan is. <paramref name="Updating"/> is true while it reads photos that have not changed but are read
+/// again because a newer version of the app keeps more details about them; Processed and Total then count those.
+/// </summary>
+public sealed record IndexProgress(string Folder, int Processed, int Total, bool Updating = false);
 
-/// <summary>What a scan changed in the index: new or changed files read, deleted files dropped.</summary>
-public sealed record IndexChanges(int Read, int Removed, int OnDisk = 0, int Known = 0);
+/// <summary>
+/// What a scan changed in the index: files read (<paramref name="New"/> ones, changed ones and unchanged ones
+/// <paramref name="Updated"/> for a newer app version), deleted files dropped.
+/// </summary>
+public sealed record IndexChanges(int Read, int Removed, int OnDisk = 0, int Known = 0, int New = 0, int Updated = 0)
+{
+    public int Changed => Read - New - Updated;
+}
 
 /// <summary>
 /// Keeps the index in step with the folders on disk: new and changed files are read with ExifTool,
@@ -27,14 +37,21 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var toRead = new List<FileInfo>();
+        // Unchanged files whose index entry an app update asked to read again (it keeps more about them now).
+        var toUpdate = new List<FileInfo>();
+        var newCount = 0;
         foreach (var file in onDisk)
         {
             seen.Add(file.FullName);
-            if (!known.TryGetValue(file.FullName, out var stamp) ||
-                stamp.Size != file.Length || stamp.ModifiedUtc != file.LastWriteTimeUtc)
+            if (!known.TryGetValue(file.FullName, out var stamp))
             {
                 toRead.Add(file);
+                newCount++;
             }
+            else if (stamp.ModifiedUtc.Ticks == PhotoIndex.ReadAgainMark && stamp.Size == file.Length)
+                toUpdate.Add(file);
+            else if (stamp.Size != file.Length || stamp.ModifiedUtc != file.LastWriteTimeUtc)
+                toRead.Add(file);
         }
 
         var removed = known.Keys.Where(p => !seen.Contains(p)).ToList();
@@ -42,28 +59,37 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
             index.Remove(removed);
 
         var jsonNames = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        progress?.Report(new IndexProgress(rootFolder, 0, toRead.Count));
-        for (var i = 0; i < toRead.Count; i += BatchSize)
+        // New and changed photos first, so they show up soon; the ones only brought up to date come after.
+        await ReadAllAsync(toRead, updating: false).ConfigureAwait(false);
+        await ReadAllAsync(toUpdate, updating: true).ConfigureAwait(false);
+        return new IndexChanges(toRead.Count + toUpdate.Count, removed.Count, onDisk.Count, known.Count, newCount, toUpdate.Count);
+
+        async Task ReadAllAsync(List<FileInfo> files, bool updating)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var batch = toRead.Skip(i).Take(BatchSize).ToList();
-            await BringInTakeoutDetailsAsync(batch.Where(f => !known.ContainsKey(f.FullName)), jsonNames, fileFailed, cancellationToken).ConfigureAwait(false);
-            var read = await ReadBatchAsync(batch, fileFailed, cancellationToken).ConfigureAwait(false);
+            if (files.Count == 0 && (updating || toUpdate.Count > 0))
+                return;
+            progress?.Report(new IndexProgress(rootFolder, 0, files.Count, updating));
+            for (var i = 0; i < files.Count; i += BatchSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var batch = files.Skip(i).Take(BatchSize).ToList();
+                await BringInTakeoutDetailsAsync(batch.Where(f => !known.ContainsKey(f.FullName)), jsonNames, fileFailed, cancellationToken).ConfigureAwait(false);
+                var read = await ReadBatchAsync(batch, fileFailed, cancellationToken).ConfigureAwait(false);
 
-            var photos = batch.Select(file => IndexedPhoto.From(
-                file,
-                // A file ExifTool cannot read still shows up in the gallery, just without metadata.
-                read.TryGetValue(file.FullName, out var m) ? m : new PhotoMetadata { Path = file.FullName }));
-            index.Upsert(photos);
-            // New files in a folder the library already knew are new photos (a trip copied in, an import),
-            // so they get their auto tags in the background. A folder read for the first time is not: its
-            // photos are older ones the user may have tagged their own way.
-            if (known.Count > 0)
-                index.QueueAutoTag(batch.Where(f => !known.ContainsKey(f.FullName)).Select(f => f.FullName));
+                var photos = batch.Select(file => IndexedPhoto.From(
+                    file,
+                    // A file ExifTool cannot read still shows up in the gallery, just without metadata.
+                    read.TryGetValue(file.FullName, out var m) ? m : new PhotoMetadata { Path = file.FullName }));
+                index.Upsert(photos);
+                // New files in a folder the library already knew are new photos (a trip copied in, an import),
+                // so they get their auto tags in the background. A folder read for the first time is not: its
+                // photos are older ones the user may have tagged their own way.
+                if (known.Count > 0)
+                    index.QueueAutoTag(batch.Where(f => !known.ContainsKey(f.FullName)).Select(f => f.FullName));
 
-            progress?.Report(new IndexProgress(rootFolder, Math.Min(i + BatchSize, toRead.Count), toRead.Count));
+                progress?.Report(new IndexProgress(rootFolder, Math.Min(i + BatchSize, files.Count), files.Count, updating));
+            }
         }
-        return new IndexChanges(toRead.Count, removed.Count, onDisk.Count, known.Count);
     }
 
     /// <summary>

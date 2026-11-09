@@ -621,12 +621,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await WaitForSavesAsync(); // the info pane's edits are in the files first
 
         IsBusy = true;
-        int read = 0, removed = 0;
+        int read = 0, removed = 0, added = 0, updated = 0;
         try
         {
             var progress = new Progress<IndexProgress>(p =>
-                StatusText = p.Total == 0
-                    ? Tr("Checking {0}…", p.Folder)
+                StatusText = p.Total == 0 ? Tr("Checking {0}…", p.Folder)
+                    // Unchanged photos read again after an app update: they are not new, so the text must not say so.
+                    : p.Updating ? Tr("Updating the details of {0:N0} of {1:N0} photos in {2} for this app version…", p.Processed, p.Total, p.Folder)
                     : Tr("Reading {0} of {1} new or changed photos in {2}…", p.Processed, p.Total, p.Folder));
 
             foreach (var folder in folders)
@@ -638,7 +639,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     var changes = await _indexer.SyncFolderAsync(folder, progress, fileFailed: (path, ex) =>
                         App.Trace($"Could not read {path}: {ex}"));
                     (read, removed) = (read + changes.Read, removed + changes.Removed);
-                    App.Trace($"Rescan of \"{folder}\": exists {Directory.Exists(folder)}, {changes.OnDisk} photos on disk, {changes.Known} in the index");
+                    (added, updated) = (added + changes.New, updated + changes.Updated);
+                    App.Trace($"Rescan of \"{folder}\": exists {Directory.Exists(folder)}, {changes.OnDisk} photos on disk, {changes.Known} in the index, " +
+                              $"read {changes.New} new, {changes.Changed} changed, {changes.Updated} unchanged for this app version");
                     if (!Directory.Exists(folder))
                         Warn(Tr("The library folder {0} can't be found. Is the drive connected?", folder));
                 }
@@ -655,10 +658,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsBusy = false;
         }
         RefreshFolderTree();
-        App.Trace($"Rescan of {folders.Count} folder(s): {read} new or changed, {removed} removed");
+        App.Trace($"Rescan of {folders.Count} folder(s): {added} new, {read - added - updated} changed, {updated} updated for this app version, {removed} removed");
         if (report)
-            Inform(read == 0 && removed == 0 ? Tr("No new, changed or deleted photos found.")
-                : Tr("Photos read: {0}. Photos no longer there: {1}.", read, removed));
+            Inform(read - updated == 0 && removed == 0 ? Tr("No new, changed or deleted photos found.")
+                : Tr("Photos read: {0}. Photos no longer there: {1}.", read - updated, removed));
         LivePhotos.Forget(); // new or moved clips
         await SearchAsync();
         await CheckReadOnlyAsync();
