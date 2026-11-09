@@ -39,64 +39,98 @@ public static partial class DuplicateFinder
         p.Tags.Count + p.People.Count + (p.Rating > 0 ? 1 : 0) + (string.IsNullOrEmpty(p.Caption) ? 0 : 1) +
         (p.Location is null ? 0 : 1) + (p.Place is null ? 0 : 1) + (p.DateTaken is null ? 0 : 1);
 
-    /// <summary>The groups, largest first. <paramref name="hash"/> gives each photo's fingerprint (null: unreadable).</summary>
+    /// <summary>
+    /// The groups, largest first. <paramref name="hash"/> gives each photo's fingerprint (null: unreadable) and
+    /// <paramref name="look"/> its colours and brightness (<see cref="PictureHash.LookFromPixels"/>; null: not known).
+    /// Every photo in a group matches every other one: a photo that is a bit like two others never joins them
+    /// into one group.
+    /// </summary>
     public static List<DuplicateGroup> Find(IReadOnlyList<IndexedPhoto> photos, Func<IndexedPhoto, ulong?> hash,
                                             Func<string, string?>? contentHash = null, IProgress<int>? progress = null,
-                                            CancellationToken cancellationToken = default)
+                                            CancellationToken cancellationToken = default, Func<IndexedPhoto, ulong?>? look = null)
     {
         contentHash ??= Sha256;
-        var parent = Enumerable.Range(0, photos.Count).ToArray();
-        int Root(int i)
+        var cluster = Enumerable.Range(0, photos.Count).ToArray();
+        var members = Enumerable.Range(0, photos.Count).Select(i => new List<int> { i }).ToArray();
+        void Merge(int a, int b)
         {
-            while (parent[i] != i)
-                i = parent[i] = parent[parent[i]];
-            return i;
+            var (from, into) = (cluster[a], cluster[b]);
+            if (from == into)
+                return;
+            foreach (var m in members[from])
+                cluster[m] = into;
+            members[into].AddRange(members[from]);
+            members[from].Clear();
         }
-        void Join(int a, int b) => parent[Root(a)] = Root(b);
 
         // Exact copies: same size first, then same bytes.
-        var exact = new HashSet<int>();
+        var content = new Dictionary<int, string>();
         foreach (var sameSize in Enumerable.Range(0, photos.Count).Where(i => photos[i].FileSize > 0).GroupBy(i => photos[i].FileSize).Where(g => g.Count() > 1))
         {
             foreach (var same in sameSize.GroupBy(i => contentHash(photos[i].Path)).Where(g => g.Key is not null && g.Count() > 1))
             {
-                var first = same.First();
-                foreach (var other in same.Skip(1))
+                foreach (var i in same)
                 {
-                    Join(other, first);
-                    exact.Add(other);
-                    exact.Add(first);
+                    content[i] = same.Key!;
+                    Merge(i, same.First());
                 }
             }
         }
 
-        // Near-duplicates by fingerprint.
+        // Near-duplicates by fingerprint: first every pair that could be the same picture ...
         var hashes = new ulong?[photos.Count];
+        var looks = new ulong?[photos.Count];
         for (var i = 0; i < photos.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             hashes[i] = hash(photos[i]);
+            looks[i] = look?.Invoke(photos[i]);
             progress?.Report(i + 1);
         }
+        var pairs = new List<(int A, int B, int Distance)>();
+        var matching = new HashSet<(int, int)>();
         for (var i = 0; i < photos.Count; i++)
         {
-            if (hashes[i] is not { } a)
+            if (hashes[i] is not { } a || Plain(a, looks[i]))
                 continue;
             for (var j = i + 1; j < photos.Count; j++)
             {
-                if (hashes[j] is { } b && Root(i) != Root(j) && PictureHash.Distance(a, b) <= Limit(photos[i], photos[j]) && Alike(photos[i], photos[j]))
-                    Join(i, j);
+                if (hashes[j] is not { } b || Plain(b, looks[j]))
+                    continue;
+                var distance = PictureHash.Distance(a, b);
+                if (distance <= Limit(photos[i], photos[j]) && Alike(photos[i], photos[j]) &&
+                    (looks[i] is not { } la || looks[j] is not { } lb || PictureHash.LooksAlike(la, lb)))
+                {
+                    pairs.Add((i, j, distance));
+                    matching.Add((i, j));
+                }
             }
         }
 
-        return Enumerable.Range(0, photos.Count)
-            .GroupBy(Root)
-            .Where(g => g.Count() > 1)
-            .Select(g => new DuplicateGroup(g.Select(i => photos[i]).ToList(), g.All(exact.Contains) && g.Select(i => contentHash(photos[i].Path)).Distinct().Count() == 1))
+        // ... then the closest pairs first, two groups joining only when every photo in one matches every photo
+        // in the other (no chains: A like B and B like C doesn't make A and C duplicates).
+        bool Match(int x, int y) =>
+            (content.TryGetValue(x, out var cx) && content.TryGetValue(y, out var cy) && cx == cy) ||
+            matching.Contains(x < y ? (x, y) : (y, x));
+        foreach (var (i, j, _) in pairs.OrderBy(p => p.Distance))
+        {
+            if (cluster[i] != cluster[j] && members[cluster[i]].All(x => members[cluster[j]].All(y => Match(x, y))))
+                Merge(i, j);
+        }
+
+        return members
+            .Where(g => g.Count > 1)
+            .Select(g => new DuplicateGroup(g.Order().Select(i => photos[i]).ToList(),
+                                            g.All(content.ContainsKey) && g.Select(i => content[i]).Distinct().Count() == 1))
             .OrderByDescending(g => g.Photos.Count)
             .ThenBy(g => g.Photos[0].Path, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    // Pictures with hardly any detail (a dark shot, haze, plain sky) have fingerprints that many other pictures
+    // share, so they are only found as exact copies.
+    private static bool Plain(ulong hash, ulong? look) =>
+        PictureHash.Plain(hash) || look is { } l && PictureHash.Contrast(l) < PictureHash.PlainContrast;
 
     // Two originals straight from the same camera at full size: only an almost identical fingerprint will do.
     private static int Limit(IndexedPhoto a, IndexedPhoto b) =>
