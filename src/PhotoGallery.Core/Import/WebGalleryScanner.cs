@@ -6,7 +6,8 @@ namespace PhotoGallery.Core.Import;
 /// <param name="Url">The largest version found: what is downloaded.</param>
 /// <param name="Preview">A small version to show in the grid (the gallery's thumbnail), or the photo itself.</param>
 /// <param name="FoundOn">The page it was found on.</param>
-public sealed record WebPhoto(Uri Url, Uri Preview, Uri FoundOn, int? Width = null, int? Height = null)
+/// <param name="Caption">What the page calls the photo (its alt text, link title or photo page title), if anything useful.</param>
+public sealed record WebPhoto(Uri Url, Uri Preview, Uri FoundOn, int? Width = null, int? Height = null, string? Caption = null)
 {
     public string Name => WebSiteClient.FileNameFor(Url, null);
 }
@@ -41,6 +42,7 @@ public static partial class WebGalleryScanner
         public Uri? Preview { get; set; }
         public int? Width { get; set; }
         public int? Height { get; set; }
+        public string? Caption { get; set; }
         public long Area => (long)(Width ?? 0) * (Height ?? Width ?? 0);
 
         /// <summary>The main photo of a page it was reached for, or named by the page as its picture.</summary>
@@ -64,8 +66,19 @@ public static partial class WebGalleryScanner
         string? title = null;
         var stopped = false;
 
-        void Add(Uri url, Uri page, Uri? preview, int? width, int? height, bool main)
+        // The same picture written as http and https, or with and without "www.", is one picture.
+        var canonical = new Dictionary<string, Uri>(StringComparer.Ordinal);
+        Uri Canon(Uri uri)
         {
+            var host = uri.Host.ToLowerInvariant();
+            var key = (host.StartsWith("www.", StringComparison.Ordinal) ? host[4..] : host) + uri.PathAndQuery;
+            return canonical.TryAdd(key, uri) ? uri : canonical[key];
+        }
+
+        void Add(Uri url, Uri page, Uri? preview, int? width, int? height, bool main, string? caption = null)
+        {
+            url = Canon(url);
+            preview = preview is null ? null : Canon(preview);
             if (!client.IsSiteImage(url))
             {
                 otherSite++;
@@ -84,6 +97,11 @@ public static partial class WebGalleryScanner
             if (width > (item.Width ?? 0))
                 (item.Width, item.Height) = (width, height);
             item.IsMain |= main;
+            if (caption is not null && (main || item.Caption is null))
+                item.Caption = caption;
+            // A large photo keeps the caption its preview had in the grid.
+            if (item.Caption is null && preview is not null && found.TryGetValue(preview, out var small))
+                item.Caption = small.Caption;
         }
 
         bool Follow(Uri link) => visited.Add(link);
@@ -133,18 +151,18 @@ public static partial class WebGalleryScanner
             pagesRead++;
             title ??= page.Title;
             var images = page.Images.Where(i => !i.IsTiny).ToList();
-            foreach (var url in images.Select(i => i.Url).Distinct())
+            foreach (var url in images.Select(i => Canon(i.Url)).Distinct())
                 pagesWith[url] = pagesWith.GetValueOrDefault(url) + 1;
             var here = images.Select(i => i.Url).ToHashSet();
             foreach (var image in images)
             {
                 if (image.LinksTo is { } target && WebPageReader.IsImageFile(target))
-                    Add(target, page.Address, image.Url, null, null, false); // a preview linking straight to the photo
+                    Add(target, page.Address, image.Preview ?? image.Url, null, null, false, image.Caption); // a preview linking straight to the photo
                 else
                 {
-                    Add(image.Url, page.Address, null, image.Width, image.Height, false);
+                    Add(image.Url, page.Address, image.Preview, image.Width, image.Height, false, image.Caption);
                     if (image.LinksTo is { } photoPage && depth < options.MaxDepth && client.IsOnSite(photoPage) && Follow(photoPage))
-                        photoPages.Enqueue((photoPage, depth + 1, image.Url, here));
+                        photoPages.Enqueue((photoPage, depth + 1, Canon(image.Url), here));
                 }
             }
             // Further pages of the gallery: links on the same site, within the folder of the page entered.
@@ -187,17 +205,21 @@ public static partial class WebGalleryScanner
                     var page = WebPageReader.Read(result.Text, result.Address);
                     pagesRead++;
                     var images = page.Images.Where(i => !i.IsTiny).ToList();
-                    foreach (var url in images.Select(i => i.Url).Distinct())
+                    foreach (var url in images.Select(i => Canon(i.Url)).Distinct())
                         pagesWith[url] = pagesWith.GetValueOrDefault(url) + 1;
                     if (MainImage(images, photoPage.ParentImages, photoPage.Preview) is { } main)
-                        Add(main.Url, page.Address, photoPage.Preview, main.Width, main.Height, true);
+                    {
+                        // The preview's own caption stays unless the photo page has one for it.
+                        var caption = main.Caption ?? WebPageReader.CaptionText(page.PhotoTitle);
+                        Add(main.Url, page.Address, photoPage.Preview, main.Width, main.Height, true, caption);
+                    }
                     // A photo page may be a gallery page of its own (an album in an album): its next pages.
                     if (photoPage.Depth < options.MaxDepth)
                     {
                         foreach (var image in images.Where(i => i.LinksTo is not null && !photoPage.ParentImages.Contains(i.Url)))
                         {
                             if (image.LinksTo is { } target && WebPageReader.IsImageFile(target))
-                                Add(target, page.Address, image.Url, null, null, false);
+                                Add(target, page.Address, image.Preview ?? image.Url, null, null, false, image.Caption);
                             else if (image.LinksTo is { } next && client.IsOnSite(next) && Follow(next))
                                 photoPages.Enqueue((next, photoPage.Depth + 1, image.Url, images.Select(i => i.Url).ToHashSet()));
                         }
@@ -268,7 +290,7 @@ public static partial class WebGalleryScanner
         }
         return result
             .OrderBy(f => Position(f))
-            .Select(f => new WebPhoto(f.Url, f.Preview ?? f.Url, f.FoundOn, f.Width, f.Height))
+            .Select(f => new WebPhoto(f.Url, f.Preview ?? f.Url, f.FoundOn, f.Width, f.Height, f.Caption))
             .ToList();
 
         static bool LooksLikePreviewItem(Found f) => LooksLikePreview(f.Url);

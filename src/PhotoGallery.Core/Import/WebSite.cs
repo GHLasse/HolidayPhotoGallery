@@ -286,12 +286,17 @@ public sealed partial class WebSiteClient : IDisposable
     /// A file name for a photo from <paramref name="url"/>: its own name where it has one, with the ending its
     /// content really has; characters Windows doesn't allow are replaced.
     /// </summary>
-    public static string FileNameFor(Uri url, string? realExtension)
+    public static string FileNameFor(Uri url, string? realExtension, string? stemInstead = null)
     {
         var name = Uri.UnescapeDataString(url.Segments.LastOrDefault() ?? "").Trim('/', ' ', '.');
         name = InvalidNameCharacters().Replace(name, "_");
         var stem = Path.GetFileNameWithoutExtension(name);
         var extension = Path.GetExtension(name).ToLowerInvariant();
+        // Only a photo ending is an ending: "show.php" has none.
+        if (!WebPageReader.ImageExtensions.Contains(extension))
+            (stem, extension) = (name.Length > 0 && extension.Length == 0 ? name : stem, "");
+        if (!string.IsNullOrWhiteSpace(stemInstead))
+            stem = InvalidNameCharacters().Replace(stemInstead.Trim(), "_");
         if (stem.Length == 0)
             stem = "photo";
         if (stem.Length > 120)
@@ -349,9 +354,9 @@ public sealed partial class WebSiteClient : IDisposable
     /// Writes a downloaded photo into <paramref name="folder"/> under its own name; a name taken by another file
     /// gets " (2)", " (3)"… Returns the new file.
     /// </summary>
-    public static string Save(byte[] data, Uri url, string folder)
+    public static string Save(byte[] data, Uri url, string folder, string? stemInstead = null)
     {
-        var name = FileNameFor(url, ImageExtension(data));
+        var name = FileNameFor(url, ImageExtension(data), stemInstead);
         Directory.CreateDirectory(folder);
         var target = Path.Combine(folder, name);
         for (var n = 2; File.Exists(target); n++)
@@ -363,4 +368,42 @@ public sealed partial class WebSiteClient : IDisposable
 
     [GeneratedRegex(@"[\\/:*?""<>|\x00-\x1F]")]
     private static partial Regex InvalidNameCharacters();
+}
+
+/// <summary>How downloaded photos are named (F-8).</summary>
+public enum WebPhotoNaming
+{
+    /// <summary>The file's own name on the site.</summary>
+    FileName,
+    /// <summary>What the page calls the photo (alt text, link title, photo page title); the file name where it says nothing.</summary>
+    Caption,
+    /// <summary>A name and a counter in gallery order, like the batch rename: "Lisbon_001".</summary>
+    Numbered,
+}
+
+public static class WebPhotoNames
+{
+    /// <summary>
+    /// The name (without ending) each photo is saved under, in the order given; null keeps the file's own name.
+    /// <paramref name="text"/> is the name the counter goes with.
+    /// </summary>
+    public static IReadOnlyList<string?> For(IReadOnlyList<WebPhoto> photos, WebPhotoNaming naming, string text)
+    {
+        var digits = Math.Max(3, Library.RenamePattern.CounterDigits(photos.Count));
+        var stem = Clean(text);
+        return photos.Select((photo, i) => naming switch
+        {
+            WebPhotoNaming.Caption => photo.Caption is { } caption ? Clean(caption) is { Length: > 0 } c ? c : null : null,
+            WebPhotoNaming.Numbered => (stem.Length > 0 ? stem + "_" : "") + (i + 1).ToString(new string('0', digits), System.Globalization.CultureInfo.InvariantCulture),
+            _ => null,
+        }).ToList();
+    }
+
+    // Characters Windows doesn't allow in a name are left out, and long captions cut short.
+    private static string Clean(string text)
+    {
+        var name = System.Text.RegularExpressions.Regex.Replace(text, @"[\\/:*?""<>|\x00-\x1F]", " ");
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+", " ").Trim().TrimEnd('.', ' ');
+        return name.Length > 100 ? name[..100].TrimEnd() : name;
+    }
 }
