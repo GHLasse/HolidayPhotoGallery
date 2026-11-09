@@ -45,6 +45,7 @@ public sealed partial class MainWindow
             (ViewerEditSeparator, photo),
             (ViewerRotateRightButton, turnable),
             (ViewerRotateLeftButton, turnable),
+            (ViewerLookAroundButton, photo && ViewerItem is { IsPanorama: true }),
         ];
     }
 

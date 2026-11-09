@@ -38,6 +38,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         "-Keys:Make", "-Keys:Model", "-UserData:Make", "-UserData:Model", "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude",
         // Which way the camera looked (G-5).
         "-GPS:GPSImgDirection", "-XMP-exif:GPSImgDirection",
+        // A 360° photo (L-9).
+        "-XMP-GPano:ProjectionType",
     ];
 
     // Placeholder descriptions some cameras write into every photo.
@@ -870,6 +872,7 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             OtherRegions = otherRegions,
             Duration = SupportedFormats.IsVideo(path) ? GetNumber(item, "QuickTime:Duration") ?? GetNumber(item, "Composite:Duration") : null,
             FrameRate = SupportedFormats.IsVideo(path) ? FrameRateOf(item) : null,
+            IsPanorama = !SupportedFormats.IsVideo(path) && Panorama.IsSphere(GetString(item, "XMP-GPano:ProjectionType")),
         };
     }
 

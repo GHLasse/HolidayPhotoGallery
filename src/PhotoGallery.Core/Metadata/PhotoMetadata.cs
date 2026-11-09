@@ -63,4 +63,7 @@ public sealed record PhotoMetadata
 
     /// <summary>Which way the camera looked, in degrees clockwise from north (EXIF GPSImgDirection, G-5).</summary>
     public double? Direction { get; init; }
+
+    /// <summary>A 360° photo: the phone or camera marked it as a photo sphere (XMP GPano equirectangular, L-9).</summary>
+    public bool IsPanorama { get; init; }
 }

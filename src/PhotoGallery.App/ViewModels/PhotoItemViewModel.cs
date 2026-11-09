@@ -39,6 +39,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 OnPropertyChanged(nameof(StripTileOpacity));
                 OnPropertyChanged(nameof(Tooltip));
                 OnPropertyChanged(nameof(DurationText));
+                OnPropertyChanged(nameof(PanoramaVisibility));
                 NotifyQualityHints();
             }
         }
@@ -190,6 +191,12 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     /// <summary>Videos show a play mark and their length on the tile.</summary>
     public Microsoft.UI.Xaml.Visibility VideoVisibility =>
         Photo.IsVideo ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    /// <summary>A 360° photo (L-9): the tile shows "360°", and the viewer lets you look around in it.</summary>
+    public bool IsPanorama => Photo.IsPanorama;
+
+    public Microsoft.UI.Xaml.Visibility PanoramaVisibility =>
+        Photo.IsPanorama ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     /// <summary>A Live Photo (its clip is hidden with it) shows "LIVE" in the info pane, as on the iPhone.</summary>
     public bool IsLive => LivePhotos.Has(Path);

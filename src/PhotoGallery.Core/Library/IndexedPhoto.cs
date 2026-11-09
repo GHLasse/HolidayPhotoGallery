@@ -53,6 +53,9 @@ public sealed record IndexedPhoto
     /// <summary>Which way the camera looked, in degrees clockwise from north (G-5), when the photo says.</summary>
     public double? Direction { get; init; }
 
+    /// <summary>A 360° photo (L-9): it gets a badge and can be looked around in.</summary>
+    public bool IsPanorama { get; init; }
+
     public bool IsVideo => SupportedFormats.IsVideo(Path);
 
     public string FileName => System.IO.Path.GetFileName(Path);
@@ -100,5 +103,6 @@ public sealed record IndexedPhoto
         Duration = metadata.Duration,
         FrameRate = metadata.FrameRate,
         Direction = metadata.Direction,
+        IsPanorama = metadata.IsPanorama,
     };
 }

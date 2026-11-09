@@ -744,6 +744,11 @@
                                         Visibility="{x:Bind IsOnOneDrive, Mode=OneWay}" ToolTipService.ToolTip="{local:Loc Text='In OneDrive'}">
                                     <controls:OneDriveLogo Width="12" Height="12" />
                                 </Border>
+                                <!-- A 360° photo (L-9). -->
+                                <Border Padding="5,1" CornerRadius="10" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                        Visibility="{x:Bind PanoramaVisibility, Mode=OneWay}" ToolTipService.ToolTip="{local:Loc Text='360° photo: open it to look around'}">
+                                    <TextBlock Text="360°" FontSize="11" FontWeight="SemiBold" />
+                                </Border>
                             </StackPanel>
                             <!-- A video: play mark and length, on the picture's lower left corner (F-4). -->
                             <Border IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,32"
@@ -1710,6 +1715,15 @@
                 </Grid>
                 <!-- The buttons drop their labels when the window is too narrow, then leave the bar one by one; More actions and Close always stay (FitViewerToolbar). -->
                 <StackPanel x:Name="ViewerTools" Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <!-- A 360° photo (L-9): look around in it, or see it flat (to edit it). -->
+                    <ToggleButton x:Name="ViewerLookAroundButton" Visibility="Collapsed" Click="ViewerLookAround_Click"
+                                  AutomationProperties.Name="{local:Loc Text='Look around'}"
+                                  ToolTipService.ToolTip="{local:Loc Text='Look around in this 360° photo: drag to turn, scroll to zoom, double-click to look straight ahead again. Off shows it flat.'}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="360°" FontWeight="SemiBold" />
+                            <TextBlock Text="{local:Loc Text='Look around'}" />
+                        </StackPanel>
+                    </ToggleButton>
                     <Button x:Name="ViewerRotateLeftButton" Click="ViewerRotateLeft_Click" ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
                         <FontIcon Glyph="&#xE7AD;" RenderTransformOrigin="0.5,0.5">
                             <FontIcon.RenderTransform>
@@ -1754,6 +1768,12 @@
                 </StackPanel>
             </Grid>
             <controls:EditCanvas x:Name="ViewerCanvas" Grid.Row="1" Margin="56,0,56,16" />
+            <!-- A 360° photo is looked around in here (L-9). The mouse goes to the layer on top, so the keyboard stays with the viewer. -->
+            <WebView2 x:Name="ViewerPano" Grid.Row="1" Margin="56,0,56,16" Visibility="Collapsed" IsHitTestVisible="False" IsTabStop="False" />
+            <Grid x:Name="ViewerPanoInput" Grid.Row="1" Margin="56,0,56,16" Visibility="Collapsed" Background="Transparent"
+                  PointerPressed="ViewerPano_PointerPressed" PointerMoved="ViewerPano_PointerMoved"
+                  PointerReleased="ViewerPano_PointerReleased" PointerCanceled="ViewerPano_PointerReleased" PointerCaptureLost="ViewerPano_PointerReleased"
+                  PointerWheelChanged="ViewerPano_PointerWheelChanged" DoubleTapped="ViewerPano_DoubleTapped" />
             <!-- Videos play here instead (F-4), with Windows' own play, seek and volume controls. -->
             <MediaPlayerElement x:Name="ViewerVideo" Grid.Row="1" Margin="56,0,56,16" Visibility="Collapsed"
                                 AreTransportControlsEnabled="True" AutoPlay="True" Stretch="Uniform" />
