@@ -524,4 +524,36 @@ public sealed class WebImportTests
 
         Assert.Equal(["/photos/view-1.jpg", "/photos/view-2.jpg", "/photos/view-3.jpg"], result.Photos.Select(p => p.Url.AbsolutePath).ToList());
     }
+
+    [Fact]
+    public async Task A_photo_a_script_puts_on_the_page_is_read_from_the_browser()
+    {
+        var site = new FakeSite();
+        site.Pages[Gallery.ToString()] = string.Concat(Enumerable.Range(1, 3).Select(i => $"""<a href="p{i}.html"><img src="t/{i}.jpg"></a>"""));
+        for (var i = 1; i <= 3; i++)
+            site.Pages[$"https://example.com/holiday/p{i}.html"] = $"""
+                <head><meta property="og:image" content="/share/square-{i}.jpg"></head>
+                <body><div id="slideshow"><center><img src="/images/lightbox-ico-loading.gif"> Loading...</center></div></body>
+                """;
+        using var client = Client(site);
+        var result = await WebGalleryScanner.ScanAsync(client, Gallery);
+        var photo = result.Photos.Single(p => p.Preview.AbsolutePath == "/holiday/t/2.jpg");
+        Assert.Equal("/share/square-2.jpg", photo.Url.AbsolutePath);
+        Assert.Equal("https://example.com/holiday/p2.html", photo.PhotoPage?.ToString());
+
+        // Without a browser the share picture stays; with one, the photo the script shows is taken.
+        Assert.Equal("/share/square-2.jpg", (await WebGalleryScanner.FindLargePhotoAsync(client, photo, result.SiteImages)).Photo.Url.AbsolutePath);
+        var rendered = new List<Uri>();
+        client.Renderer = (page, _) =>
+        {
+            rendered.Add(page);
+            return Task.FromResult<string?>("""
+                <div id="slideshow"><center><div><span><img alt="" src="https://example.com/images/full/1/2/222.jpg?secure=abc,1794275359" width="700" height="1056"></span></div></center></div>
+                """);
+        };
+        var large = (await WebGalleryScanner.FindLargePhotoAsync(client, photo, result.SiteImages)).Photo;
+        Assert.Equal("https://example.com/images/full/1/2/222.jpg?secure=abc,1794275359", large.Url.ToString());
+        Assert.Equal(700, large.Width);
+        Assert.Single(rendered);
+    }
 }
