@@ -282,6 +282,10 @@ public static partial class WebGalleryScanner
                     .Concat(page.BetterLinks)
                     .FirstOrDefault(l => l is not null && !WebPageReader.IsImageFile(l) && client.IsOnSite(l) && !WebSiteClient.IsWallAddress(l) &&
                                          !visited.Contains(l) && l != page.Address && Canon(l) != Canon(page.Address));
+                // A page that shows no picture of its own builds it with a script (a slideshow showing "Loading…"):
+                // it is looked at again in the app's browser when the photo is read (WebSiteClient.Renderer).
+                if (MainImage(images, parent, preview, Shared, allowShare: false) is null)
+                    better ??= page.Address;
                 if (better is not null && found.TryGetValue(Canon(main.Url), out var item))
                     item.PhotoPage ??= better;
             }
@@ -332,6 +336,25 @@ public static partial class WebGalleryScanner
             var page = WebPageReader.Read(result.Text, result.Address);
             var images = page.Images.Where(i => !i.IsTiny).ToList();
             bool Taken(Uri url) => siteImages.Contains(url) || url == photo.Url;
+            // No picture of its own in the HTML: the page as the browser shows it, after its scripts ran.
+            if (MainImage(images, [], photo.Preview, Taken, allowShare: false) is null && client.Renderer is { } render)
+            {
+                string? html = null;
+                try
+                {
+                    html = await render(result.Address, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    client.Log?.Invoke($"web {result.Address}: the browser could not show it ({ex.Message})");
+                }
+                if (html is not null)
+                {
+                    client.Log?.Invoke($"web {result.Address}: read as the browser shows it");
+                    page = WebPageReader.Read(html, result.Address);
+                    images = page.Images.Where(i => !i.IsTiny).ToList();
+                }
+            }
             if (MainImage(images, [], photo.Preview, Taken) is not { } main || !client.IsSiteImage(main.Url) || main.Url == photo.Preview || Taken(main.Url))
                 break;
             var next = new[] { images.FirstOrDefault(i => i.Url == main.Url || i.LinksTo == main.Url)?.LinksTo }
@@ -351,9 +374,12 @@ public static partial class WebGalleryScanner
     // to its full size file, or large. Pictures that were on the gallery page already, or are on other photo pages
     // too, are the site's, not this photo. The page's share picture (og:image) isn't shown on the page, and is often
     // a cropped or framed version made for social media: it is taken only when the page shows no picture of its own.
-    private static WebPageImage? MainImage(List<WebPageImage> images, HashSet<Uri> onParent, Uri preview, Func<Uri, bool> shared)
+    private static WebPageImage? MainImage(List<WebPageImage> images, HashSet<Uri> onParent, Uri preview, Func<Uri, bool> shared,
+                                           bool allowShare = true)
     {
         var shown = Best(images.Where(i => !i.IsPageImage));
+        if (!allowShare)
+            return shown is not null && shown.Url != preview ? shown : null;
         return shown is not null && shown.Url != preview ? shown : Best(images) ?? shown;
 
         WebPageImage? Best(IEnumerable<WebPageImage> choices)

@@ -115,6 +115,12 @@ public sealed partial class WebSiteClient : IDisposable
     /// <summary>Where each request and why it failed is noted (the app's activity log).</summary>
     public Action<string>? Log { get; set; }
 
+    /// <summary>
+    /// Shows a page in the app's browser and gives its HTML after its scripts ran, for pages that build their photo
+    /// with a script (null: no browser at hand, the HTML as sent is all there is). Called one page at a time.
+    /// </summary>
+    public Func<Uri, CancellationToken, Task<string?>>? Renderer { get; set; }
+
     public WebImportOptions Options => _options;
 
     /// <summary>The pause before the next request; a longer one the site's robots.txt asks for wins (up to 10 s).</summary>

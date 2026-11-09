@@ -186,7 +186,11 @@ public sealed partial class MainWindow
             scanning = new CancellationTokenSource();
             var cancel = scanning.Token;
             client?.Dispose();
-            var site = client = new WebSiteClient(start, WebImportOptions.ForPace(pace.SelectedIndex), cookies: cookies) { Log = App.Trace };
+            var site = client = new WebSiteClient(start, WebImportOptions.ForPace(pace.SelectedIndex), cookies: cookies)
+            {
+                Log = App.Trace,
+                Renderer = (page, cancel) => ShowPageAsync(page, cancel),
+            };
             challengeBar.IsOpen = false;
             browserPanel.Visibility = Visibility.Collapsed;
             photos = [];
@@ -291,37 +295,82 @@ public sealed partial class MainWindow
         async Task CarryOnAsync()
         {
             if (browserReady && client is { } site)
-            {
-                try
-                {
-                    var copied = 0;
-                    foreach (var cookie in await browser.CoreWebView2.CookieManager.GetCookiesAsync(string.Empty))
-                    {
-                        if (!site.IsSiteCookieDomain(cookie.Domain))
-                            continue;
-                        try
-                        {
-                            cookies.Add(new Cookie(cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
-                            {
-                                Secure = cookie.IsSecure,
-                                HttpOnly = cookie.IsHttpOnly,
-                            });
-                            copied++;
-                        }
-                        catch (CookieException)
-                        {
-                        }
-                    }
-                    App.Trace($"web import: {copied} cookies from the page");
-                }
-                catch (Exception ex)
-                {
-                    App.Trace($"web import cookies: {ex}");
-                }
-            }
+                await CopyCookiesAsync(browser.CoreWebView2, site, cookies);
             browserPanel.Visibility = Visibility.Collapsed;
             challengeBar.IsOpen = false;
             await ScanAsync();
+        }
+
+        // Pages that build their photo with a script ("Loading…" in the HTML) are shown in a browser the user doesn't
+        // see, and read once the photo is there. Its cookies (and so a sign-in) are the same as the page shown above.
+        var reader = new WebView2 { Width = 1280, Height = 900 };
+        var readerHost = new Canvas { Width = 1, Height = 1, Opacity = 0, IsHitTestVisible = false, Children = { reader } };
+        AutomationProperties.SetAccessibilityView(readerHost, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        Task<CoreWebView2>? readerStarting = null;
+
+        async Task<CoreWebView2> StartReaderAsync()
+        {
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                null, Path.Combine(LibrarySettings.DefaultDataFolder, "WebView2"), new CoreWebView2EnvironmentOptions());
+            await reader.EnsureCoreWebView2Async(environment);
+            var web = reader.CoreWebView2;
+            web.Settings.AreDevToolsEnabled = false;
+            web.Settings.AreDefaultScriptDialogsEnabled = false;
+            web.IsMuted = true;
+            web.NewWindowRequested += (_, args) => args.Handled = true;
+            return web;
+        }
+
+        // On the window's thread, one page at a time (the import asks for them one after another).
+        async Task<string?> ShowPageOnUiAsync(Uri page, CancellationToken cancel)
+        {
+            var web = await (readerStarting ??= StartReaderAsync());
+            var loaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Done(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args) => loaded.TrySetResult(args.IsSuccess);
+            web.NavigationCompleted += Done;
+            try
+            {
+                web.Navigate(page.AbsoluteUri);
+                if (await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromSeconds(30), cancel)) != loaded.Task || !loaded.Task.Result)
+                    return null;
+            }
+            finally
+            {
+                web.NavigationCompleted -= Done;
+            }
+            // The script puts the photo in after the page has loaded: wait until a large picture shows and no
+            // "loading" picture is left, at most 15 seconds.
+            const string ready = "(() => { const imgs = Array.from(document.images);" +
+                                 " return !imgs.some(i => /loading/i.test(i.src)) && imgs.some(i => i.complete && i.naturalWidth >= 300); })()";
+            for (var i = 0; i < 30 && await web.ExecuteScriptAsync(ready) != "true"; i++)
+                await Task.Delay(500, cancel);
+            var html = System.Text.Json.JsonSerializer.Deserialize<string>(await web.ExecuteScriptAsync("document.documentElement.outerHTML"));
+            // The photo's address may only work with the page's cookies.
+            if (client is { } site)
+                await CopyCookiesAsync(web, site, cookies);
+            return html;
+        }
+
+        Task<string?> ShowPageAsync(Uri page, CancellationToken cancel)
+        {
+            var result = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!DispatcherQueue.TryEnqueue(async () =>
+                {
+                    try
+                    {
+                        result.TrySetResult(await ShowPageOnUiAsync(page, cancel));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        result.TrySetCanceled();
+                    }
+                    catch (Exception ex)
+                    {
+                        result.TrySetException(ex);
+                    }
+                }))
+                result.TrySetResult(null);
+            return result.Task;
         }
 
         openPage.Click += async (_, _) => await OpenPageAsync();
@@ -366,7 +415,7 @@ public sealed partial class MainWindow
                 Content = new StackPanel
                 {
                     Spacing = 12,
-                    Children = { notice, allowed, addressRow, pace, progress, status, challengeBar, browserPanel, selectRow, grid, where },
+                    Children = { notice, allowed, addressRow, pace, progress, status, challengeBar, browserPanel, selectRow, grid, where, readerHost },
                 },
             },
             PrimaryButtonText = Tr("Download"),
@@ -383,12 +432,16 @@ public sealed partial class MainWindow
         try
         {
             browser.Close();
+            reader.Close();
         }
         catch (Exception ex)
         {
             App.Trace($"web import browser close: {ex.Message}");
         }
         var (chosen, chosenNames) = Chosen();
+        // The hidden browser has closed with the dialog: the download reads pages as they are sent.
+        if (client is not null)
+            client.Renderer = null;
         if (answer != ContentDialogResult.Primary || chosen.Count == 0 || client is null)
         {
             client?.Dispose();
@@ -399,6 +452,37 @@ public sealed partial class MainWindow
     }
 
     private CancellationTokenSource? _previewLoading;
+
+    // The site's cookies from the app's browser go with the app's own requests to that site (nothing for other sites).
+    private static async Task CopyCookiesAsync(CoreWebView2 web, WebSiteClient site, CookieContainer cookies)
+    {
+        try
+        {
+            var copied = 0;
+            foreach (var cookie in await web.CookieManager.GetCookiesAsync(string.Empty))
+            {
+                if (!site.IsSiteCookieDomain(cookie.Domain))
+                    continue;
+                try
+                {
+                    cookies.Add(new Cookie(cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
+                    {
+                        Secure = cookie.IsSecure,
+                        HttpOnly = cookie.IsHttpOnly,
+                    });
+                    copied++;
+                }
+                catch (CookieException)
+                {
+                }
+            }
+            App.Trace($"web import: {copied} cookies from the browser");
+        }
+        catch (Exception ex)
+        {
+            App.Trace($"web import cookies: {ex}");
+        }
+    }
 
     // The grid's pictures, one at a time and politely paced like the scan. Each photo is read at full size here and
     // kept in the temp folder, so the download needs nothing more from the site; a photo whose picture can't be read
