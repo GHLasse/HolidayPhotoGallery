@@ -345,7 +345,16 @@ public sealed partial class MainWindow
     {
         if (PhotoGrid.ItemsPanelRoot is not ItemsWrapGrid panel)
             return;
-        var width = PhotoGrid.ActualWidth - PhotoGrid.Padding.Left - PhotoGrid.Padding.Right - ScrollBarWidth;
+        // While a pane opens the tiles can briefly be wider than the room left for them; the grid then takes the
+        // tiles' width instead of the room's, and Root grows past the window. Measuring the tiles from that width
+        // (less the scroll bar) made them 1 px smaller, the grid 16 px narrower, and so on, then a column fewer
+        // made them big again: an endless loop that WinUI ended with a layout cycle error, after which the grid
+        // stopped showing changes (Lasse 2026-11-09). So the part of the grid that lies outside the window is
+        // left out, and the width the tiles were made for is never taken as the room for them.
+        var overflow = Root.XamlRoot is { } root && root.Size.Width > 0 ? Math.Max(0, Root.ActualWidth - root.Size.Width) : 0;
+        var width = PhotoGrid.ActualWidth - overflow - PhotoGrid.Padding.Left - PhotoGrid.Padding.Right - ScrollBarWidth;
+        if (!TileSizeSettled())
+            return;
         var wanted = ViewModel.TileSize + 4;
         var slot = wanted;
         if (width > wanted)
@@ -355,9 +364,37 @@ public sealed partial class MainWindow
         }
         if (Math.Abs(panel.ItemWidth - slot) >= 0.5 || double.IsNaN(panel.ItemWidth))
         {
+            _tileSizeChanges.Enqueue(Environment.TickCount64);
             panel.ItemWidth = slot;
             panel.ItemHeight = slot;
         }
+    }
+
+    // A last guard against any other loop between the grid's width and its tiles: at most 40 changes in 2 s (the loop
+    // above made about 18 a second; dragging the window's edge makes fewer for that long). Past that the size is kept,
+    // and set again once the changes have stopped.
+    private readonly Queue<long> _tileSizeChanges = new();
+    private bool _tileSizeRetryQueued;
+
+    private bool TileSizeSettled()
+    {
+        var now = Environment.TickCount64;
+        while (_tileSizeChanges.Count > 0 && now - _tileSizeChanges.Peek() > 2000)
+            _tileSizeChanges.Dequeue();
+        if (_tileSizeChanges.Count < 40)
+            return true;
+        if (!_tileSizeRetryQueued)
+        {
+            _tileSizeRetryQueued = true;
+            App.Trace("tile size kept for now: the grid kept changing its width");
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
+            {
+                await Task.Delay(2100);
+                _tileSizeRetryQueued = false;
+                ApplyTileSize();
+            });
+        }
+        return false;
     }
 
     // ---- Timeline ----

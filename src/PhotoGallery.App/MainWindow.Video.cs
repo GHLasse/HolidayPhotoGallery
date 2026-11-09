@@ -8,7 +8,7 @@ namespace PhotoGallery.App;
 
 /// <summary>
 /// Videos in the viewer (F-4): they play in place of the photo, with play, pause, seeking and volume. The
-/// photo tools (turning, cropping, adjusting, repairing) are hidden while a video is shown.
+/// photo tools (cropping, adjusting, repairing) are hidden while a video is shown; MP4 and MOV can still be turned.
 /// </summary>
 public sealed partial class MainWindow
 {

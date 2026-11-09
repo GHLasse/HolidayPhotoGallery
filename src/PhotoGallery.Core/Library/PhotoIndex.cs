@@ -68,6 +68,11 @@ public sealed partial class PhotoIndex : IDisposable
                 """);
         }
 
+        // Fingerprints from before the look (colours and brightness) came are taken again, with it.
+        if (Convert.ToInt64(Scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'picture_hashes';"), CultureInfo.InvariantCulture) > 0 &&
+            Convert.ToInt64(Scalar("SELECT COUNT(*) FROM pragma_table_info('picture_hashes') WHERE name = 'look';"), CultureInfo.InvariantCulture) == 0)
+            Execute("DROP TABLE picture_hashes;");
+
         Execute($"""
             PRAGMA journal_mode = WAL;
             PRAGMA foreign_keys = ON;
@@ -142,7 +147,8 @@ public sealed partial class PhotoIndex : IDisposable
             CREATE TABLE IF NOT EXISTS picture_hashes (
                 photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
                 file_mtime INTEGER NOT NULL,
-                dhash INTEGER
+                dhash INTEGER,
+                look INTEGER
             );
             -- Groups of look-alikes the user kept all of; a new copy joining the group changes its key.
             CREATE TABLE IF NOT EXISTS kept_duplicates (group_key TEXT PRIMARY KEY);

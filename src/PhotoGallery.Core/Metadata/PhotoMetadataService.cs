@@ -173,6 +173,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
         if (SupportedFormats.IsVideo(path) && (changes.Orientation is not null || changes.People is not null))
             throw new NotSupportedException(Tr("Videos can't be turned or have people marked yet."));
+        if (changes.VideoRotation is not null && !SupportedFormats.CanRotateVideo(path))
+            throw new NotSupportedException(Tr("Only MP4, MOV, M4V and 3GP videos can be rotated."));
 
         if (File.Exists(path) && File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly))
             throw new ExifToolException(Tr("Could not save {0}: the file is read-only. Use \"Make editable\" to unlock the photos in this folder.", Path.GetFileName(path)));
@@ -702,6 +704,8 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 if (changes.SyncOtherDates && changes.RaiseModifyDates)
                     args.Add($"-QuickTime:ModifyDate={utc}");
             }
+            if (changes.VideoRotation is { } rotation)
+                args.Add($"-Composite:Rotation={NormalizeRotation(rotation)}");
             if (changes.RemoveLocation)
                 args.AddRange(["-Keys:GPSCoordinates=", "-UserData:GPSCoordinates="]);
             if (changes.Location is { } location)
@@ -712,6 +716,29 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
         }
         args.Add(target);
         return args;
+    }
+
+    /// <summary>A turn in degrees brought to 0, 90, 180 or 270.</summary>
+    public static int NormalizeRotation(int degrees) => ((int)Math.Round(degrees / 90.0) * 90 % 360 + 360) % 360;
+
+    /// <summary>
+    /// Turns a video (MP4, MOV, M4V, 3GP) a quarter turn by the rotation in its track header, so nothing is re-encoded.
+    /// </summary>
+    public async Task RotateVideoAsync(string path, bool clockwise, CancellationToken cancellationToken = default)
+    {
+        if (!SupportedFormats.CanRotateVideo(path))
+            throw new NotSupportedException(Tr("Only MP4, MOV, M4V and 3GP videos can be rotated."));
+        var fields = await ReadFieldsAsync(path, ["Composite:Rotation"], cancellationToken).ConfigureAwait(false);
+        var current = fields.TryGetValue("Composite:Rotation", out var text) &&
+                      double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var degrees)
+            ? (int)degrees
+            : 0;
+        await WriteAsync(path, new MetadataChanges { VideoRotation = NormalizeRotation(current + (clockwise ? 90 : -90)) },
+                         cancellationToken).ConfigureAwait(false);
+        // Saving keeps the file's modified time, but Windows' thumbnail cache only looks again when that time
+        // changes, so the grid would keep showing the video unturned. Two seconds later is enough for it, also on
+        // FAT drives, and leaves the date as good as it was.
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddSeconds(2));
     }
 
     // IPTC only belongs in JPEG and TIFF; other formats keep tags and captions in XMP and EXIF.

@@ -299,6 +299,7 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
     private static int _loading;
     private LinkedListNode<PhotoItemViewModel>? _loadedNode;
     private int _shown;
+    private int _failures; // tries in a row that failed for a lack of memory or a stuck call
 
     /// <summary>A grid or strip shows this tile now (or stopped showing it): its thumbnail is loaded or kept.</summary>
     public void SetShown(bool shown)
@@ -335,17 +336,50 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 try
                 {
                     item.Thumbnail = await ImageLoader.LoadShellThumbnailAsync(item.Path, ThumbnailSize);
+                    item._failures = 0;
                     item.Keep();
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Unreadable file or missing codec: the tile keeps its placeholder.
+                    // Unreadable file or missing codec: the tile keeps its placeholder, and is asked for again when it
+                    // next scrolls into view. A lack of memory (another app took it) or a call that got stuck passes,
+                    // so a tile on screen tries again by itself a little later.
+                    item._thumbnailRequested = false;
+                    if (MemoryTrouble.IsMemoryFailure(ex))
+                    {
+                        ForgetHidden();
+                        Native.SystemMemory.TrimSoon();
+                    }
+                    if (MemoryTrouble.IsPassing(ex))
+                        item.RetryLater();
                 }
             }
         }
         finally
         {
             _loading--;
+        }
+    }
+
+    private async void RetryLater()
+    {
+        var attempt = ++_failures;
+        if (attempt == 1)
+            App.Trace("A thumbnail could not be loaded for now (memory short or Windows not answering); trying again shortly.");
+        await Task.Delay(MemoryTrouble.RetryDelay(attempt));
+        if (_shown > 0 && _thumbnail is null)
+            EnsureThumbnail();
+    }
+
+    /// <summary>Memory ran short: lets go of every thumbnail no tile shows now (they load again when scrolled to).</summary>
+    public static void ForgetHidden()
+    {
+        for (var node = Loaded.First; node is not null;)
+        {
+            var next = node.Next;
+            if (node.Value._shown == 0)
+                node.Value.Forget();
+            node = next;
         }
     }
 
@@ -391,9 +425,12 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
             Thumbnail = IsVideo ? await ImageLoader.LoadShellThumbnailAsync(Path, ThumbnailSize) : await ImageLoader.DecodeAsync(Path, ThumbnailSize);
             Keep();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             Thumbnail = null;
+            _thumbnailRequested = false; // asked for again when shown, or shortly when memory was short
+            if (MemoryTrouble.IsPassing(ex))
+                RetryLater();
         }
     }
 }

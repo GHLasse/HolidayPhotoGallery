@@ -45,5 +45,5 @@ public static class ViewSummary
         _ => Tr("{0} bytes", bytes),
     };
 
-    private static string ShortDate(DateTime date) => date.ToString("d MMM yyyy", CultureInfo.CurrentCulture);
+    internal static string ShortDate(DateTime date) => date.ToString("d MMM yyyy", CultureInfo.CurrentCulture);
 }

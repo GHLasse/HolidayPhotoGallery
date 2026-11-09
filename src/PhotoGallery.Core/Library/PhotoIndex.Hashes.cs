@@ -18,12 +18,31 @@ public sealed partial class PhotoIndex
         }
     }
 
+    /// <summary>The looks (<see cref="Duplicates.PictureHash.LookFromPixels"/>) saved for files that haven't changed since.</summary>
+    public Dictionary<string, ulong> GetPictureLooks()
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT p.path, h.look FROM picture_hashes h JOIN photos p ON p.id = h.photo_id WHERE h.file_mtime = p.file_mtime AND h.look IS NOT NULL;";
+            var result = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result[r.GetString(0)] = unchecked((ulong)r.GetInt64(1));
+            return result;
+        }
+    }
+
+    /// <summary>Saves fresh fingerprints without a look; see the other overload.</summary>
+    public List<string> SavePictureHashes(IEnumerable<(string Path, ulong? Hash)> hashes) =>
+        SavePictureHashes(hashes.Select(h => (h.Path, h.Hash, (ulong?)null)));
+
     /// <summary>
     /// Saves fresh fingerprints and returns the photos whose picture changed since their last fingerprint
     /// (another app edited the pixels, perhaps while this app was closed), so what was worked out from the
     /// picture can be worked out again. A file whose only change is its details keeps its fingerprint.
     /// </summary>
-    public List<string> SavePictureHashes(IEnumerable<(string Path, ulong? Hash)> hashes)
+    public List<string> SavePictureHashes(IEnumerable<(string Path, ulong? Hash, ulong? Look)> hashes)
     {
         var changed = new List<string>();
         lock (_lock)
@@ -39,13 +58,14 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = """
-                INSERT INTO picture_hashes (photo_id, file_mtime, dhash)
-                SELECT id, file_mtime, $hash FROM main.photos WHERE path = $path
-                ON CONFLICT (photo_id) DO UPDATE SET file_mtime = excluded.file_mtime, dhash = excluded.dhash;
+                INSERT INTO picture_hashes (photo_id, file_mtime, dhash, look)
+                SELECT id, file_mtime, $hash, $look FROM main.photos WHERE path = $path
+                ON CONFLICT (photo_id) DO UPDATE SET file_mtime = excluded.file_mtime, dhash = excluded.dhash, look = excluded.look;
                 """;
             var path = cmd.Parameters.Add("$path", Microsoft.Data.Sqlite.SqliteType.Text);
             var hash = cmd.Parameters.Add("$hash", Microsoft.Data.Sqlite.SqliteType.Integer);
-            foreach (var (p, h) in hashes)
+            var look = cmd.Parameters.Add("$look", Microsoft.Data.Sqlite.SqliteType.Integer);
+            foreach (var (p, h, l) in hashes)
             {
                 beforePath.Value = p;
                 using (var r = before.ExecuteReader())
@@ -59,6 +79,7 @@ public sealed partial class PhotoIndex
                 }
                 path.Value = p;
                 hash.Value = h is { } value ? unchecked((long)value) : DBNull.Value;
+                look.Value = l is { } seen ? unchecked((long)seen) : DBNull.Value;
                 cmd.ExecuteNonQuery();
             }
             tx.Commit();

@@ -29,7 +29,8 @@ public sealed partial class MainViewModel
         {
             var photos = await Task.Run(() => _index.Search(new PhotoQuery { Folder = folder }).ToList());
             var known = await Task.Run(_index.GetPictureHashes);
-            var fresh = new List<(string, ulong?)>();
+            var looks = await Task.Run(_index.GetPictureLooks);
+            var fresh = new List<(string, ulong?, ulong?)>();
             var done = 0;
             var lastShown = DateTime.MinValue;
 
@@ -37,10 +38,19 @@ public sealed partial class MainViewModel
             {
                 if (known.TryGetValue(photo.Path, out var saved))
                     return saved;
-                var hash = HashOf(photo.Path);
+                var (hash, look) = HashOf(photo.Path);
                 lock (fresh)
-                    fresh.Add((photo.Path, hash));
+                {
+                    fresh.Add((photo.Path, hash, look));
+                    if (look is { } l)
+                        looks[photo.Path] = l;
+                }
                 return hash;
+            }
+            ulong? Look(IndexedPhoto photo)
+            {
+                lock (fresh)
+                    return looks.TryGetValue(photo.Path, out var l) ? l : null;
             }
             var progress = new Progress<int>(n =>
             {
@@ -51,7 +61,7 @@ public sealed partial class MainViewModel
                     StatusText = Tr("Looking for duplicates: {0:N0} of {1:N0} photos…", n, photos.Count);
                 }
             });
-            var groups = await Task.Run(() => DuplicateFinder.Find(photos, Hash, progress: progress));
+            var groups = await Task.Run(() => DuplicateFinder.Find(photos, Hash, progress: progress, look: Look));
             await ForgetChangedPicturesAsync(await Task.Run(() => _index.SavePictureHashes(fresh)));
             var kept = await Task.Run(_index.GetKeptDuplicates);
             groups.RemoveAll(g => kept.Contains(g.Key));
@@ -93,7 +103,7 @@ public sealed partial class MainViewModel
         StartBackgroundJobsSoon();
     }
 
-    private static ulong? HashOf(string path)
+    private static (ulong? Hash, ulong? Look) HashOf(string path)
     {
         foreach (var decode in new Func<Task<DecodedImage>>[]
                  {
@@ -104,13 +114,14 @@ public sealed partial class MainViewModel
             try
             {
                 var image = decode().GetAwaiter().GetResult();
-                return PictureHash.FromPixels(image.Pixels, image.Width, image.Height);
+                return (PictureHash.FromPixels(image.Pixels, image.Width, image.Height),
+                        PictureHash.LookFromPixels(image.Pixels, image.Width, image.Height));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
             {
             }
         }
-        return null;
+        return (null, null);
     }
 
     private int _duplicateCount;
@@ -192,12 +203,13 @@ public sealed partial class MainViewModel
                     .Where(p => !unreadable.Contains(p)).Take(Batch).ToList();
                 if (todo.Count == 0)
                     break;
-                var fresh = new List<(string, ulong?)>();
+                var fresh = new List<(string, ulong?, ulong?)>();
                 foreach (var path in todo)
                 {
                     ShowBackground("hashes", Tr("Fingerprinting photos to find duplicates…"));
                     while (IsBusy || _findingDuplicates)
                         await Task.Delay(2000);
+                    await WaitForMemoryAsync();
                     if (!Fingerprinting)
                         return;
                     if (!File.Exists(path))
@@ -205,7 +217,8 @@ public sealed partial class MainViewModel
                         unreadable.Add(path); // gone: the next check of the folders removes it
                         continue;
                     }
-                    fresh.Add((path, await Task.Run(() => HashOf(path))));
+                    var (hash, look) = await Task.Run(() => HashOf(path));
+                    fresh.Add((path, hash, look));
                 }
                 await ForgetChangedPicturesAsync(await Task.Run(() => _index.SavePictureHashes(fresh)));
                 taken += fresh.Count;
@@ -241,8 +254,10 @@ public sealed partial class MainViewModel
     {
         var photos = await Task.Run(() => _index.Search(new PhotoQuery()).ToList());
         var known = await Task.Run(_index.GetPictureHashes);
+        var looks = await Task.Run(_index.GetPictureLooks);
         var kept = await Task.Run(_index.GetKeptDuplicates);
-        var groups = await Task.Run(() => DuplicateFinder.Find(photos, p => known.GetValueOrDefault(p.Path)));
+        var groups = await Task.Run(() => DuplicateFinder.Find(photos, p => known.GetValueOrDefault(p.Path),
+                                                                look: p => looks.TryGetValue(p.Path, out var l) ? l : null));
         ShowDuplicateCounts(groups.Where(g => !kept.Contains(g.Key)).ToList());
     }
 

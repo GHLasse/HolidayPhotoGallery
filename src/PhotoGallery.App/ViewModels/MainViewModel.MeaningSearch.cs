@@ -138,6 +138,7 @@ public sealed partial class MainViewModel
                         : Tr("Auto-tagging new photos: {0:N0} to go", Math.Max(1, waiting - n++)));
                     while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
+                    await WaitForMemoryAsync();
                     if (tagging.Automatic == AutoTagSettings.AutomaticOff)
                         return;
                     try
@@ -175,6 +176,7 @@ public sealed partial class MainViewModel
                     ShowBackground("tagging", Tr("Preparing search by meaning: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
+                    await WaitForMemoryAsync();
                     if (!tagging.SearchByMeaning)
                         return;
                     try

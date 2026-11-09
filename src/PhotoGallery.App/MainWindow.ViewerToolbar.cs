@@ -17,7 +17,7 @@ public sealed partial class MainWindow
     // Room it keeps before buttons leave the bar; below that the name is cut short instead.
     private const double ViewerTitleMinRoom = 48;
 
-    // A video has no rotate, crop, auto adjust, repair, undo or back to original (ShowVideoTools).
+    // A video has no crop, auto adjust, repair, undo or back to original (ShowVideoTools); MP4 and MOV can be rotated.
     private bool _viewerShowsVideo;
 
     private void ViewerTopBar_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -34,6 +34,7 @@ public sealed partial class MainWindow
     private (UIElement Tool, bool Wanted)[] ViewerToolsByPriority()
     {
         var photo = !_viewerShowsVideo;
+        var turnable = photo || ViewerItem is { CanRotate: true };
         var apps = ViewModel.FavouriteApps.Count;
         return
         [
@@ -42,8 +43,8 @@ public sealed partial class MainWindow
             (ViewerOpenWithButton, true),
             (ViewerRepairButton, photo),
             (ViewerEditSeparator, photo),
-            (ViewerRotateRightButton, photo),
-            (ViewerRotateLeftButton, photo),
+            (ViewerRotateRightButton, turnable),
+            (ViewerRotateLeftButton, turnable),
         ];
     }
 

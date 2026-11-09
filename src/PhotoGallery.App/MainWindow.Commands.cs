@@ -420,6 +420,7 @@ public sealed partial class MainWindow
         var viewer = IsViewerOpen;
         var photoTools = viewer && !IsEditing && !_viewerShowsVideo; // also when a narrow bar hides the buttons
         var editTools = viewer && !_viewerShowsVideo && _viewerPixels is not null;
+        var turnTools = photoTools || (viewer && _viewerShowsVideo && ViewerItem is { CanRotate: true });
         Action? action = (ctrl, shift, e.Key) switch
         {
             (true, false, VirtualKey.C) => () => _ = CopyFilesAsync(),
@@ -440,8 +441,8 @@ public sealed partial class MainWindow
                 SetAutoLight(!_autoLight);
             },
             // In the grid Ctrl+, and Ctrl+. are keyboard accelerators (MainWindow.Frame.cs).
-            (true, false, CommaKey) when photoTools => () => ViewerRotateLeft_Click(this, new RoutedEventArgs()),
-            (true, false, PeriodKey) when photoTools => () => ViewerRotateRight_Click(this, new RoutedEventArgs()),
+            (true, false, CommaKey) when turnTools => () => ViewerRotateLeft_Click(this, new RoutedEventArgs()),
+            (true, false, PeriodKey) when turnTools => () => ViewerRotateRight_Click(this, new RoutedEventArgs()),
             (false, false, VirtualKey.R) when editTools => () =>
             {
                 ShowEditPane();
