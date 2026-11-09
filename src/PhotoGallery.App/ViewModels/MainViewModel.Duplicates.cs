@@ -24,45 +24,58 @@ public sealed partial class MainViewModel
             Warn(Tr("Already looking for duplicates."));
             return null;
         }
+        if (IsBusy)
+        {
+            Warn(Tr("The app is still busy. Try again when it has finished."));
+            return null;
+        }
+        // Work the user asked for: the title bar spells out how far it has got, with Stop in its details.
         _findingDuplicates = true;
+        IsBusy = true;
+        StatusText = Tr("Looking for duplicates…");
         try
         {
             var photos = await Task.Run(() => _index.Search(new PhotoQuery { Folder = folder }).ToList());
             var known = await Task.Run(_index.GetPictureHashes);
             var looks = await Task.Run(_index.GetPictureLooks);
-            var fresh = new List<(string, ulong?, ulong?)>();
-            var done = 0;
-            var lastShown = DateTime.MinValue;
 
-            ulong? Hash(IndexedPhoto photo)
+            // Photos new or changed since their fingerprint: the slow part, one photo at a time, saved as it goes
+            // so a stop or a crash keeps what is done.
+            var todo = photos.Where(p => !known.ContainsKey(p.Path)).Select(p => p.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var fresh = new List<(string, ulong?, ulong?)>();
+            var taken = 0;
+            async Task SaveFreshAsync()
             {
-                if (known.TryGetValue(photo.Path, out var saved))
-                    return saved;
-                var (hash, look) = HashOf(photo.Path);
-                lock (fresh)
-                {
-                    fresh.Add((photo.Path, hash, look));
-                    if (look is { } l)
-                        looks[photo.Path] = l;
-                }
-                return hash;
+                if (fresh.Count == 0)
+                    return;
+                var batch = fresh.ToList();
+                fresh.Clear();
+                await ForgetChangedPicturesAsync(await Task.Run(() => _index.SavePictureHashes(batch)));
             }
-            ulong? Look(IndexedPhoto photo)
+            foreach (var path in todo)
             {
-                lock (fresh)
-                    return looks.TryGetValue(photo.Path, out var l) ? l : null;
-            }
-            var progress = new Progress<int>(n =>
-            {
-                done = n;
-                if (DateTime.UtcNow - lastShown > TimeSpan.FromMilliseconds(300) && !IsBusy)
+                if (_stopRequested)
                 {
-                    lastShown = DateTime.UtcNow;
-                    StatusText = Tr("Looking for duplicates: {0:N0} of {1:N0} photos…", n, photos.Count);
+                    await SaveFreshAsync();
+                    Inform(Tr("Stopped looking for duplicates. The next search goes on where this one stopped."));
+                    return null;
                 }
-            });
-            var groups = await Task.Run(() => DuplicateFinder.Find(photos, Hash, progress: progress, look: Look));
-            await ForgetChangedPicturesAsync(await Task.Run(() => _index.SavePictureHashes(fresh)));
+                StatusText = Tr("Fingerprinting photos to find duplicates: {0:N0} of {1:N0}", taken + 1, todo.Count);
+                var (hash, look) = await Task.Run(() => HashOf(path));
+                known[path] = hash;
+                if (look is { } l)
+                    looks[path] = l;
+                fresh.Add((path, hash, look));
+                taken++;
+                if (fresh.Count >= 50)
+                    await SaveFreshAsync();
+            }
+            await SaveFreshAsync();
+
+            StatusText = Tr("Comparing {0}…", PhotoCount(photos.Count));
+            var groups = await Task.Run(() => DuplicateFinder.Find(photos, p => known.GetValueOrDefault(p.Path),
+                                                                    look: p => looks.TryGetValue(p.Path, out var l) ? l : null));
             var kept = await Task.Run(_index.GetKeptDuplicates);
             groups.RemoveAll(g => kept.Contains(g.Key));
             if (folder is null)
@@ -74,8 +87,8 @@ public sealed partial class MainViewModel
         finally
         {
             _findingDuplicates = false;
-            if (!IsBusy)
-                StatusText = _countText;
+            IsBusy = false;
+            StatusText = _countText;
         }
     }
 
@@ -203,10 +216,13 @@ public sealed partial class MainViewModel
                     .Where(p => !unreadable.Contains(p)).Take(Batch).ToList();
                 if (todo.Count == 0)
                     break;
+                var progress = await Task.Run(_index.GetPictureHashProgress);
                 var fresh = new List<(string, ulong?, ulong?)>();
+                var n = 0;
                 foreach (var path in todo)
                 {
-                    ShowBackground("hashes", Tr("Fingerprinting photos to find duplicates…"));
+                    ShowBackground("hashes", Tr("Fingerprinting photos to find duplicates: {0:N0} of {1:N0}",
+                                                Math.Min(progress.Done + ++n, progress.Total), progress.Total));
                     while (IsBusy || _findingDuplicates)
                         await Task.Delay(2000);
                     await WaitForMemoryAsync();

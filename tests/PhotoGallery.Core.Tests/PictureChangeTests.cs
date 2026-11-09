@@ -60,6 +60,22 @@ public sealed class PictureChangeTests : IDisposable
         Assert.Empty(_index.SavePictureHashes([(path, 0x00FF00FF00FF00FFUL)]));
     }
 
+    [Fact]
+    public void Fingerprint_progress_counts_only_files_unchanged_since_their_fingerprint()
+    {
+        var day = new DateTime(2026, 7, 1, 12, 0, 0, DateTimeKind.Utc);
+        var a = Add("a.jpg", day);
+        var b = Add("b.jpg", day);
+        Add("c.jpg", day);
+        Assert.Equal(new JobProgress(0, 3), _index.GetPictureHashProgress());
+
+        _index.SavePictureHashes([(a, 0xFF00FF00FF00FF00UL), (b, (ulong?)null)]); // an unreadable photo is done too
+        Assert.Equal(new JobProgress(2, 3), _index.GetPictureHashProgress());
+
+        Touch(a, day.AddHours(1));
+        Assert.Equal(new JobProgress(1, 3), _index.GetPictureHashProgress());
+    }
+
     [Theory]
     [InlineData(1UL, 3UL, false)]
     [InlineData(0UL, 0x1FUL, true)]

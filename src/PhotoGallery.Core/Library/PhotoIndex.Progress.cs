@@ -30,6 +30,14 @@ public sealed partial class PhotoIndex
         """,
         "SELECT COUNT(*) FROM main.photos WHERE video = 0;");
 
+    /// <summary>
+    /// Photos and videos with a fingerprint for the file as it is now (finding duplicates, stacking similar shots),
+    /// of all. One that changed since its fingerprint was taken isn't done, like in <see cref="GetNotPictureHashed"/>.
+    /// </summary>
+    public JobProgress GetPictureHashProgress() => Progress(
+        "SELECT COUNT(*) FROM main.photos p WHERE EXISTS (SELECT 1 FROM picture_hashes h WHERE h.photo_id = p.id AND h.file_mtime = p.file_mtime);",
+        "SELECT COUNT(*) FROM main.photos;");
+
     private JobProgress Progress(string doneSql, string totalSql)
     {
         lock (_lock)

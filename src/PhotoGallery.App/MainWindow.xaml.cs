@@ -1707,6 +1707,7 @@ public sealed partial class MainWindow : Window
         var taggingProgress = ProgressText(() => ViewModel.VectorProgressText());
         var peopleProgress = ProgressText(() => ViewModel.FaceScanProgressText());
         var qualityProgress = ProgressText(() => ViewModel.QualityProgressText());
+        var duplicatesProgress = ProgressText(() => ViewModel.PictureHashProgressText());
 
         var tagging = new StackPanel
         {
@@ -1812,6 +1813,7 @@ public sealed partial class MainWindow : Window
                 findPeople,
                 peopleProgress,
                 findDuplicates,
+                duplicatesProgress,
                 checkQuality,
                 qualityProgress,
                 new TextBlock
