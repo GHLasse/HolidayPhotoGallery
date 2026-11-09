@@ -46,7 +46,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{photo.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(photo.FileName, ex));
                 }
             }
         }
@@ -94,7 +94,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{photo.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(photo.FileName, ex));
                 }
             }
         }
@@ -146,7 +146,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ExifToolException)
                 {
-                    failures.Add($"{Path.GetFileName(todo[i])}: {ex.Message}");
+                    failures.Add(FailureLine(Path.GetFileName(todo[i]), ex));
                 }
             }
         }

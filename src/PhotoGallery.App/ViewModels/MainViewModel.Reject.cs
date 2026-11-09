@@ -45,7 +45,7 @@ public sealed partial class MainViewModel
             }
             catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
             {
-                failures.Add($"{item.FileName}: {ex.Message}");
+                failures.Add(FailureLine(item.FileName, ex));
             }
         }
         ErrorMessage = failures.Count == 0 ? null : (reject ? Tr("Some photos could not be rejected.") : Tr("Some reject marks could not be removed.")) + " " + string.Join(" ", failures);
@@ -100,7 +100,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
             await Task.Run(() => _index.Remove(moved));

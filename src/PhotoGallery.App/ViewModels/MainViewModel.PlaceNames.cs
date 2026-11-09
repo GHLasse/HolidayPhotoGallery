@@ -195,7 +195,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                    failures.Add(FailureLine(Path.GetFileName(path), ex));
                 }
             }
         }
@@ -246,7 +246,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                 {
-                    failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                    failures.Add(FailureLine(Path.GetFileName(path), ex));
                 }
             }
         }

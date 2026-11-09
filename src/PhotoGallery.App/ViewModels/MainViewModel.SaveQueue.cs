@@ -76,7 +76,7 @@ public sealed partial class MainViewModel
                     }
                     catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
                     {
-                        failures.Add($"{item.FileName}: {ex.Message}");
+                        failures.Add(FailureLine(item.FileName, ex));
                     }
                     var left = _pendingWrites.GetValueOrDefault(item.Path) - 1;
                     if (left > 0)
@@ -98,7 +98,8 @@ public sealed partial class MainViewModel
                 }
 
                 if (failures.Count > 0)
-                    ErrorMessage = Tr("Some photos could not be saved.") + " " + string.Join(" ", failures.Take(3));
+                    ErrorMessage = failures.Count == 1 && job.Edits.Count == 1 ? failures[0]
+                        : Tr("Some photos could not be saved.") + " " + string.Join(" ", failures.Take(3));
                 var count = job.Edits.Count;
                 if (job.Undo is { } undo)
                 {

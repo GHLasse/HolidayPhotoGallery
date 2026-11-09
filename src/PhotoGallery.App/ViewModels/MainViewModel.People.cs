@@ -208,7 +208,7 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
@@ -510,7 +510,7 @@ public sealed partial class MainViewModel
             if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                 item.Photo = updated;
         }
-        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
             ErrorMessage = Tr("Could not change {0}: {1}", item.FileName, ex.Message);
         }
@@ -551,9 +551,9 @@ public sealed partial class MainViewModel
                         item.Photo = updated;
                     changed++;
                 }
-                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
@@ -607,9 +607,9 @@ public sealed partial class MainViewModel
                         item.Photo = updated;
                     changed++;
                 }
-                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException)
                 {
-                    failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                    failures.Add(FailureLine(Path.GetFileName(path), ex));
                 }
             }
             await Task.Run(() => _index.RenameRejectedName(from, to));
@@ -659,9 +659,9 @@ public sealed partial class MainViewModel
                         item.Photo = updated;
                     changed++;
                 }
-                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException)
                 {
-                    failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                    failures.Add(FailureLine(Path.GetFileName(path), ex));
                 }
             }
         }
@@ -710,9 +710,9 @@ public sealed partial class MainViewModel
                         item.Photo = updated;
                     changed++;
                 }
-                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException)
                 {
-                    failures.Add($"{item.FileName}: {ex.Message}");
+                    failures.Add(FailureLine(item.FileName, ex));
                 }
             }
         }
