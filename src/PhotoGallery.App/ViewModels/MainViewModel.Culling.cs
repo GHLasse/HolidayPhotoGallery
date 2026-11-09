@@ -121,6 +121,8 @@ public sealed partial class MainViewModel
 
     public async Task<string> FaceScanProgressText() => ProgressText(await Task.Run(_index.GetFaceScanProgress));
 
+    public async Task<string> PictureHashProgressText() => ProgressText(await Task.Run(_index.GetPictureHashProgress));
+
     public async Task<string> QualityProgressText() => ProgressText(await Task.Run(_index.GetQualityProgress));
 
     private static string ProgressText(JobProgress progress) =>
