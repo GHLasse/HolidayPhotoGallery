@@ -297,10 +297,22 @@ public sealed partial class MainViewModel
             StatusText = Tr("Importing {0:N0} of {1:N0}…", i + 1, plan.Count);
             try
             {
-                await Task.Run(() =>
+                await Task.Run(async () =>
                 {
                     // Only a copy checked byte for byte lets the original be deleted.
                     DriveImport.Copy(item.SourcePath!, target, verify: delete);
+                    // A Google Takeout (F-7): what Google kept beside the photo goes into the copy.
+                    if (_metadata is not null && GoogleTakeout.FindSidecar(item.SourcePath!) is { } sidecar)
+                    {
+                        try
+                        {
+                            await GoogleTakeout.ApplyAsync(_metadata, target, sidecar);
+                        }
+                        catch (Exception ex) when (ex is ExifToolException or NotSupportedException)
+                        {
+                            App.Trace($"Takeout details for {target}: {ex.Message}");
+                        }
+                    }
                     if (delete)
                     {
                         File.SetAttributes(item.SourcePath!, System.IO.FileAttributes.Normal);

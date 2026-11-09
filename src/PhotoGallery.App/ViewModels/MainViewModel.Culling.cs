@@ -167,6 +167,7 @@ public sealed partial class MainViewModel
                     ShowBackground("quality", Tr("Checking photo quality: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     while (IsBusy || HasPendingSaves)
                         await Task.Delay(2000);
+                    await WaitForMemoryAsync();
                     if (!_settings.CheckQualityAutomatically)
                         break;
                     QualityMeasure? measure = null;

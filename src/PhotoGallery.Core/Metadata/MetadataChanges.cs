@@ -62,6 +62,18 @@ public sealed record MetadataChanges
     /// <summary>The new GPS position. Altitude and other GPS details already in the file are left alone.</summary>
     public GeoPosition? Location { get; init; }
 
+    /// <summary>
+    /// The GPS time (UTC) to write with <see cref="Location"/>: the moment the photo was taken. Filled in by
+    /// <see cref="PhotoMetadataService.WriteAsync"/> from the date taken when its time zone is known (D-5).
+    /// </summary>
+    public DateTime? GpsTimeUtc { get; init; }
+
+    /// <summary>
+    /// Names of the people in the photo without their faces marked (a Google Takeout, F-7): written to the IPTC
+    /// "person in image" list other apps read; the face regions are left as they are.
+    /// </summary>
+    public IReadOnlyList<string>? PersonNames { get; init; }
+
     /// <summary>Removes all GPS information from the file.</summary>
     public bool RemoveLocation { get; init; }
 
@@ -84,6 +96,6 @@ public sealed record MetadataChanges
     public IReadOnlyList<PersonTag>? People { get; init; }
 
     public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null && DatesBeforeSync is null &&
-                           Orientation is null && VideoRotation is null && Location is null && !RemoveLocation && Place is null && People is null &&
+                           Orientation is null && VideoRotation is null && Location is null && PersonNames is null && !RemoveLocation && Place is null && People is null &&
                            Camera is null && Copyright is null && Creator is null;
 }

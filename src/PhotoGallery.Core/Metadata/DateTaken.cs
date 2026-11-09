@@ -26,8 +26,12 @@ public readonly record struct DateTaken(DateTime Local, TimeSpan? Offset)
     /// Moves the time by <paramref name="delta"/>, e.g. to correct a camera clock that was wrong,
     /// and optionally records a different UTC offset (the time zone the photo was really taken in).
     /// </summary>
+    /// <remarks>
+    /// The shift is rounded to whole seconds: the fraction of a second is kept in a field of its own in the photo,
+    /// which a shift leaves as it is, so the written date must move by exactly the whole seconds.
+    /// </remarks>
     public DateTaken Shifted(TimeSpan delta, TimeSpan? newOffset = null) =>
-        new(Local + delta, newOffset ?? Offset);
+        new(Local + TimeSpan.FromSeconds(Math.Round(delta.TotalSeconds)), newOffset ?? Offset);
 
     public static string FormatOffset(TimeSpan offset)
     {

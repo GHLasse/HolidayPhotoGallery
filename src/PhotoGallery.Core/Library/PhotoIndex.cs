@@ -18,7 +18,10 @@ public sealed record TagCount(string Tag, int Count, bool IsGroup, bool IsAuto =
 public sealed partial class PhotoIndex : IDisposable
 {
     private const int SchemaVersion = 8;
-    private const string DateFormat = "yyyy-MM-ddTHH:mm:ss";
+    // The fraction of a second is only written when there is one (burst shots, D-5); older rows have none. Both
+    // sort right as text, since "…:15" comes before "…:15.250".
+    private const string DateFormat = "yyyy-MM-ddTHH:mm:ss.FFF";
+    private static readonly string[] DateFormats = ["yyyy-MM-ddTHH:mm:ss.FFF", "yyyy-MM-ddTHH:mm:ss"];
 
     private readonly SqliteConnection _connection;
     private readonly Lock _lock = new();
@@ -535,7 +538,7 @@ public sealed partial class PhotoIndex : IDisposable
             if (query.TakenTo is { } to)
             {
                 // A bare date means "until the end of that day".
-                var end = to.TimeOfDay == TimeSpan.Zero ? to.Date.AddDays(1).AddSeconds(-1) : to;
+                var end = to.TimeOfDay == TimeSpan.Zero ? to.Date.AddDays(1).AddMilliseconds(-1) : to;
                 where.Add("p.date_taken <= $to");
                 cmd.Parameters.AddWithValue("$to", end.ToString(DateFormat, CultureInfo.InvariantCulture));
             }
@@ -787,7 +790,7 @@ public sealed partial class PhotoIndex : IDisposable
         }
 
         static DateTime? ParseDate(SqliteDataReader r, int i) =>
-            !r.IsDBNull(i) && DateTime.TryParseExact(r.GetString(i), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            !r.IsDBNull(i) && DateTime.TryParseExact(r.GetString(i), DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
                 ? d : null;
     }
 
@@ -806,7 +809,7 @@ public sealed partial class PhotoIndex : IDisposable
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
-                if (!DateTime.TryParseExact(reader.GetString(1), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
+                if (!DateTime.TryParseExact(reader.GetString(1), DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
                     continue;
                 TimeSpan? offset = reader.IsDBNull(2) ? null : TimeSpan.FromMinutes(reader.GetInt32(2));
                 points.Add(new Metadata.GeoTimePoint(reader.GetString(0), Metadata.LocationEstimate.ToUtc(new Metadata.DateTaken(local, offset)),
@@ -837,7 +840,7 @@ public sealed partial class PhotoIndex : IDisposable
     {
         DateTaken? date = null;
         if (!r.IsDBNull(5) &&
-            DateTime.TryParseExact(r.GetString(5), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
+            DateTime.TryParseExact(r.GetString(5), DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
         {
             date = new DateTaken(local, r.IsDBNull(6) ? null : TimeSpan.FromMinutes(r.GetInt32(6)));
         }

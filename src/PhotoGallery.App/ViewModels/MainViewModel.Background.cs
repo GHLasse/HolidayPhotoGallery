@@ -68,6 +68,17 @@ public sealed partial class MainViewModel
             StartBackgroundJobs();
     }
 
+    /// <summary>
+    /// While the PC's memory is nearly full (another app took it), a background job waits before its next photo,
+    /// up to half a minute at a time, so it doesn't push the PC further into swapping. It always goes on after that,
+    /// so a PC that runs with full memory still gets its work done, only slower.
+    /// </summary>
+    private static async Task WaitForMemoryAsync()
+    {
+        for (var waited = 0; waited < 30 && Native.SystemMemory.IsLow; waited += 5)
+            await Task.Delay(TimeSpan.FromSeconds(5));
+    }
+
     private bool _keepingJobsGoing;
 
     /// <summary>Every 15 minutes, the background jobs are started again (see above). Runs while the app does.</summary>

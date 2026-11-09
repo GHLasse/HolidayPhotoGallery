@@ -41,11 +41,13 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
         if (removed.Count > 0)
             index.Remove(removed);
 
+        var jsonNames = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         progress?.Report(new IndexProgress(rootFolder, 0, toRead.Count));
         for (var i = 0; i < toRead.Count; i += BatchSize)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var batch = toRead.Skip(i).Take(BatchSize).ToList();
+            await BringInTakeoutDetailsAsync(batch.Where(f => !known.ContainsKey(f.FullName)), jsonNames, fileFailed, cancellationToken).ConfigureAwait(false);
             var read = await ReadBatchAsync(batch, fileFailed, cancellationToken).ConfigureAwait(false);
 
             var photos = batch.Select(file => IndexedPhoto.From(
@@ -62,6 +64,43 @@ public sealed class LibraryIndexer(PhotoIndex index, PhotoMetadataService metada
             progress?.Report(new IndexProgress(rootFolder, Math.Min(i + BatchSize, toRead.Count), toRead.Count));
         }
         return new IndexChanges(toRead.Count, removed.Count, onDisk.Count, known.Count);
+    }
+
+    /// <summary>
+    /// Photos new to the library that came from a Google Takeout (F-7) get what Google kept in the JSON beside
+    /// them (description, people, place, date), where they have none of their own, before they are read. The
+    /// folders' .json names are listed once per scan.
+    /// </summary>
+    private async Task BringInTakeoutDetailsAsync(IEnumerable<FileInfo> newFiles, Dictionary<string, List<string>> jsonNames,
+                                                  Action<string, Exception>? fileFailed, CancellationToken cancellationToken)
+    {
+        foreach (var file in newFiles)
+        {
+            var folder = file.DirectoryName ?? "";
+            if (!jsonNames.TryGetValue(folder, out var names))
+            {
+                try
+                {
+                    names = Directory.EnumerateFiles(folder, "*.json").Select(Path.GetFileName).OfType<string>().ToList();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    names = [];
+                }
+                jsonNames[folder] = names;
+            }
+            if (names.Count == 0 || Import.GoogleTakeout.FindSidecar(file.FullName, names) is not { } sidecar)
+                continue;
+            try
+            {
+                if (await Import.GoogleTakeout.ApplyAsync(metadata, file.FullName, sidecar, cancellationToken).ConfigureAwait(false))
+                    file.Refresh();
+            }
+            catch (Exception ex) when (ex is ExifTool.ExifToolException or IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                fileFailed?.Invoke(file.FullName, ex);
+            }
+        }
     }
 
     // One ExifTool call for the batch; when that fails (an odd value in one file, output that isn't valid

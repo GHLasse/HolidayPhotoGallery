@@ -291,7 +291,7 @@ public sealed partial class MainWindow
                 syncAll,
                 ProgressText(() => ViewModel.DateSyncProgressText()),
                 Note(Tr("Goes through the whole library quietly and sets the digitized and created dates of every photo to its date taken. The dates it replaces are kept in the photo, so none is lost. ") +
-                     Tr("Photos without a date taken, videos and read-only photos are left as they are. Many files change at once, so cloud folders such as OneDrive upload them again.")),
+                     Tr("Photos and videos also get the same dates. Left as they are: photos without a date taken, read-only files and videos whose details are kept in a separate file (AVI, MTS). Many files change at once, so cloud folders such as OneDrive upload them again.")),
                 language,
                 Note(Tr("For “Add place names”: the country, region, city and district are written in this language. ") +
                      Tr("Local uses the names as people there write them. Photos that already have place names keep them until you add them again.")),

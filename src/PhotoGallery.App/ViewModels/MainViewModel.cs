@@ -67,6 +67,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _exifTool = ExifToolProcess.TryStart();
         if (_exifTool is not null)
         {
+            _exifTool.Trouble += App.Trace;
             _metadata = new PhotoMetadataService(_exifTool);
             _metadata.WrongFormatFound += path => _uiContext?.Post(_ => _ = NoteHealthAsync(path), null);
             // M-6: a save first checks the file is as the index read it; another PC's change is merged in.

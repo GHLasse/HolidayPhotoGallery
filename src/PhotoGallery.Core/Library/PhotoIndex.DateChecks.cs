@@ -6,7 +6,7 @@ namespace PhotoGallery.Core.Library;
 /// </summary>
 public sealed partial class PhotoIndex
 {
-    /// <summary>Photos (not videos) whose dates were not checked yet, or that changed since, newest first.</summary>
+    /// <summary>Photos and videos whose dates were not checked yet, or that changed since, newest first.</summary>
     public IReadOnlyList<string> GetNotDateChecked(int limit)
     {
         lock (_lock)
@@ -14,7 +14,7 @@ public sealed partial class PhotoIndex
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 SELECT p.path FROM main.photos p
-                WHERE p.video = 0 AND NOT EXISTS (SELECT 1 FROM date_checks d WHERE d.photo_id = p.id AND d.file_mtime = p.file_mtime)
+                WHERE NOT EXISTS (SELECT 1 FROM date_checks d WHERE d.photo_id = p.id AND d.file_mtime = p.file_mtime)
                 ORDER BY p.id DESC LIMIT $limit;
                 """;
             cmd.Parameters.AddWithValue("$limit", limit);
@@ -51,8 +51,8 @@ public sealed partial class PhotoIndex
 
     /// <summary>Photos with their dates checked, of all photos.</summary>
     public JobProgress GetDateCheckProgress() => Progress(
-        "SELECT COUNT(*) FROM main.photos p WHERE p.video = 0 AND EXISTS (SELECT 1 FROM date_checks d WHERE d.photo_id = p.id AND d.file_mtime = p.file_mtime);",
-        "SELECT COUNT(*) FROM main.photos WHERE video = 0;");
+        "SELECT COUNT(*) FROM main.photos p WHERE EXISTS (SELECT 1 FROM date_checks d WHERE d.photo_id = p.id AND d.file_mtime = p.file_mtime);",
+        "SELECT COUNT(*) FROM main.photos;");
 
     /// <summary>
     /// After only the photo's details and file times changed (a date sync), what was worked out from its picture
