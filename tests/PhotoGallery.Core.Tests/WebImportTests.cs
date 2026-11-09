@@ -325,4 +325,84 @@ public sealed class WebImportTests
         Assert.Equal(["/media/x1.jpg", "/media/x2.jpg", "/media/x3.jpg", "/media/x4.jpg"],
                      result.Photos.Select(p => p.Url.AbsolutePath).ToList());
     }
+
+    [Fact]
+    public async Task A_site_asking_for_a_human_check_stops_the_scan_and_says_where()
+    {
+        var site = new FakeSite();
+        site.Pages[Gallery.ToString()] = """
+            <a href="p1.html"><img src="t1.jpg"></a> <a href="p2.html"><img src="t2.jpg"></a>
+            <a href="/login.php">Sign in</a>
+            """;
+        site.Pages["https://example.com/holiday/p1.html"] = """<img src="/media/one.jpg" width="1600" height="1200">""";
+        site.Redirects["https://example.com/holiday/p2.html"] = "/human-verification?next=p2";
+        site.Pages["https://example.com/human-verification?next=p2"] = "<p>Are you human?</p>";
+        var result = await WebGalleryScanner.ScanAsync(Client(site), Gallery);
+
+        Assert.True(result.Challenged);
+        Assert.Equal("/human-verification", result.ChallengeAddress?.AbsolutePath);
+        Assert.False(result.PageLimitReached);
+        Assert.Contains(result.Photos, p => p.Url.AbsolutePath == "/media/one.jpg");
+        // The sign-in link on the gallery is not followed, nor the check page itself.
+        Assert.DoesNotContain(site.Requests, r => r.Contains("login.php") || r.Contains("human-verification"));
+    }
+
+    [Fact]
+    public async Task A_captcha_page_in_place_of_the_gallery_is_a_challenge()
+    {
+        var site = new FakeSite();
+        site.Pages[Gallery.ToString()] = """<html><body><div class="g-recaptcha" data-sitekey="x"></div></body></html>""";
+        var result = await WebGalleryScanner.ScanAsync(Client(site), Gallery);
+
+        Assert.True(result.Challenged);
+        Assert.Equal(WebFetchFailure.Challenge, result.StartFailure);
+        Assert.Equal(Gallery, result.ChallengeAddress);
+    }
+
+    [Fact]
+    public async Task A_gallery_with_a_captcha_on_its_comment_form_is_still_read()
+    {
+        var site = new FakeSite();
+        site.Pages[Gallery.ToString()] = """
+            <img src="/media/a.jpg" width="1600" height="1200"><img src="/media/b.jpg" width="1600" height="1200">
+            <img src="/media/c.jpg" width="1600" height="1200">
+            <form><div class="g-recaptcha"></div></form>
+            """;
+        var result = await WebGalleryScanner.ScanAsync(Client(site), Gallery);
+
+        Assert.False(result.Challenged);
+        Assert.Equal(3, result.Photos.Count);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/login.php", true)]
+    [InlineData("https://example.com/user/sign-in?next=/a", true)]
+    [InlineData("https://example.com/human-verification", true)]
+    [InlineData("https://example.com/captcha-check", true)]
+    [InlineData("https://example.com/photo/123247892", false)]
+    [InlineData("https://example.com/gallery/logout-party.html", false)]
+    public void Knows_sign_in_and_human_check_addresses(string address, bool wall) =>
+        Assert.Equal(wall, WebSiteClient.IsWallAddress(new Uri(address)));
+
+    [Fact]
+    public void Slower_paces_wait_longer()
+    {
+        var normal = WebImportOptions.ForPace(0);
+        var slow = WebImportOptions.ForPace(1);
+        var verySlow = WebImportOptions.ForPace(2);
+        Assert.True(slow.Pause > normal.Pause && verySlow.Pause > slow.Pause);
+        Assert.True(slow.ImagePause > normal.ImagePause && verySlow.ImagePause > slow.ImagePause);
+    }
+
+    [Fact]
+    public void Cookies_from_a_sign_in_go_with_the_requests()
+    {
+        var cookies = new CookieContainer();
+        cookies.Add(new Cookie("session", "abc", "/", "example.com"));
+        var client = new WebSiteClient(Gallery, cookies: cookies);
+        Assert.Contains("session=abc", client.Cookies.GetCookieHeader(Gallery));
+        Assert.True(client.IsSiteCookieDomain(".example.com"));
+        Assert.True(client.IsSiteCookieDomain("photos.example.com"));
+        Assert.False(client.IsSiteCookieDomain(".tracker.example"));
+    }
 }

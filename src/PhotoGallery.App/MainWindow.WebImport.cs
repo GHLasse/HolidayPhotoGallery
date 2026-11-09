@@ -1,9 +1,12 @@
+using System.Net;
 using System.Text.RegularExpressions;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using PhotoGallery.Core.Import;
+using PhotoGallery.Core.Library;
 using Windows.Storage.Pickers;
 using Windows.System;
 using static PhotoGallery.Core.Localization.Strings;
@@ -58,7 +61,47 @@ public sealed partial class MainWindow
         addressRow.Children.Add(find);
         addressRow.Children.Add(stop);
 
+        // How fast the app reads the site: slower for sites that start asking whether you're human.
+        var pace = new ComboBox
+        {
+            Header = Tr("Pace"), MinWidth = 320,
+            ItemsSource = new[] { Tr("Normal"), Tr("Slow: a page every 2 seconds"), Tr("Very slow: a page every 5 seconds") },
+            SelectedIndex = ViewModel.WebImportPace,
+        };
+        pace.SelectionChanged += (_, _) => ViewModel.WebImportPace = Math.Max(0, pace.SelectedIndex);
+
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
+
+        // A sign-in or a human check the site asks for: the user does it on the site's own page, here in the app,
+        // and the scan carries on with that sign-in.
+        var openPage = new Button { Content = Tr("Open the page") };
+        var challengeBar = new InfoBar
+        {
+            IsOpen = false, IsClosable = false, Severity = InfoBarSeverity.Warning,
+            Title = Tr("The site asks for a sign-in or a check that you’re human"),
+            Message = Tr("Open the page, sign in or pass the check there yourself, then choose Carry on. A slower pace helps the check not come back."),
+            ActionButton = openPage,
+        };
+        var browser = new WebView2 { Height = 480, MinWidth = 640 };
+        AutomationProperties.SetName(browser, Tr("The site’s page"));
+        var browserAddress = new TextBlock { Foreground = ThemeBrush("TextFillColorSecondaryBrush"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        var carryOn = new Button { Content = Tr("Carry on"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var closeBrowser = new Button { Content = Tr("Close the page") };
+        var browserButtons = new Grid
+        {
+            ColumnSpacing = 8,
+            ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto }, new ColumnDefinition { Width = GridLength.Auto } },
+        };
+        Grid.SetColumn(closeBrowser, 1);
+        Grid.SetColumn(carryOn, 2);
+        browserButtons.Children.Add(browserAddress);
+        browserButtons.Children.Add(closeBrowser);
+        browserButtons.Children.Add(carryOn);
+        var browserPanel = new StackPanel
+        {
+            Spacing = 8, Visibility = Visibility.Collapsed,
+            Children = { new TextBlock { Text = Tr("Sign in or pass the check on the site’s page, then choose Carry on."), TextWrapping = TextWrapping.Wrap }, browser, browserButtons },
+        };
         var progress = new ProgressBar { IsIndeterminate = true, Visibility = Visibility.Collapsed };
 
         var grid = new GridView
@@ -98,6 +141,10 @@ public sealed partial class MainWindow
         var where = new StackPanel { Spacing = 12, Visibility = Visibility.Collapsed, Children = { folderName, into, namingRow, example, tags } };
 
         WebSiteClient? client = null;
+        // The site's cookies, kept from scan to scan: a sign-in made on the page here goes with every request.
+        var cookies = new CookieContainer();
+        Uri? challengeAt = null;
+        var browserReady = false;
         CancellationTokenSource? scanning = null;
         List<WebPhoto> photos = [];
         ContentDialog? dialog = null;
@@ -138,7 +185,9 @@ public sealed partial class MainWindow
             scanning = new CancellationTokenSource();
             var cancel = scanning.Token;
             client?.Dispose();
-            var site = client = new WebSiteClient(start) { Log = App.Trace };
+            var site = client = new WebSiteClient(start, WebImportOptions.ForPace(pace.SelectedIndex), cookies: cookies) { Log = App.Trace };
+            challengeBar.IsOpen = false;
+            browserPanel.Visibility = Visibility.Collapsed;
             photos = [];
             grid.Items.Clear();
             grid.Visibility = selectRow.Visibility = where.Visibility = Visibility.Collapsed;
@@ -174,7 +223,12 @@ public sealed partial class MainWindow
             scanning = null;
             photos = result.Photos.ToList();
             status.Text = Describe(result);
-            App.Trace($"web import scan {start.Host}: {result.Photos.Count} photos, {result.PagesRead} pages, {result.LinksFailed} failed, {result.OtherSiteLinks} other sites, {result.BlockedByRobots} robots");
+            App.Trace($"web import scan {start.Host}: {result.Photos.Count} photos, {result.PagesRead} pages, {result.LinksFailed} failed, {result.OtherSiteLinks} other sites, {result.BlockedByRobots} robots{(result.Challenged ? ", challenged" : "")}");
+            if (result.Challenged)
+            {
+                challengeAt = result.ChallengeAddress ?? start;
+                challengeBar.IsOpen = true;
+            }
             if (photos.Count > 0)
             {
                 if (string.IsNullOrWhiteSpace(folderName.Text))
@@ -188,9 +242,85 @@ public sealed partial class MainWindow
             }
             Update();
             if (photos.Count > 0)
-                await LoadPreviewsAsync(site, grid);
+                await LoadPreviewsAsync(site, grid, at =>
+                {
+                    challengeAt = at;
+                    challengeBar.IsOpen = true;
+                });
         }
 
+        // The site's page in the app, with the same browser data as the map (so a sign-in is remembered there).
+        async Task OpenPageAsync()
+        {
+            if (challengeAt is null)
+                return;
+            try
+            {
+                // Shown first: the browser starts once it is on screen.
+                browserPanel.Visibility = Visibility.Visible;
+                if (!browserReady)
+                {
+                    var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                        null, Path.Combine(LibrarySettings.DefaultDataFolder, "WebView2"), new CoreWebView2EnvironmentOptions());
+                    await browser.EnsureCoreWebView2Async(environment);
+                    browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                    // Links that open a new window stay in this one.
+                    browser.CoreWebView2.NewWindowRequested += (_, args) =>
+                    {
+                        args.Handled = true;
+                        if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var to) && to.Scheme is "http" or "https")
+                            browser.CoreWebView2.Navigate(to.AbsoluteUri);
+                    };
+                    browser.CoreWebView2.SourceChanged += (_, _) => browserAddress.Text = browser.CoreWebView2.Source;
+                    browserReady = true;
+                }
+                browser.CoreWebView2.Navigate(challengeAt.AbsoluteUri);
+                browser.StartBringIntoView();
+            }
+            catch (Exception ex)
+            {
+                App.Trace($"web import browser: {ex}");
+                browserPanel.Visibility = Visibility.Collapsed;
+                status.Text = Tr("The page could not be opened in the app.");
+            }
+        }
+
+        // The cookies the page set for this site go to the app's own requests; then the scan starts again.
+        async Task CarryOnAsync()
+        {
+            if (browserReady && client is { } site)
+            {
+                try
+                {
+                    var copied = 0;
+                    foreach (var cookie in await browser.CoreWebView2.CookieManager.GetCookiesAsync(string.Empty))
+                    {
+                        if (!site.IsSiteCookieDomain(cookie.Domain))
+                            continue;
+                        try
+                        {
+                            cookies.Add(cookie.ToSystemNetCookie());
+                            copied++;
+                        }
+                        catch (CookieException)
+                        {
+                        }
+                    }
+                    App.Trace($"web import: {copied} cookies from the page");
+                }
+                catch (Exception ex)
+                {
+                    App.Trace($"web import cookies: {ex}");
+                }
+            }
+            browserPanel.Visibility = Visibility.Collapsed;
+            challengeBar.IsOpen = false;
+            await ScanAsync();
+        }
+
+        openPage.Click += async (_, _) => await OpenPageAsync();
+        carryOn.Click += async (_, _) => await CarryOnAsync();
+        closeBrowser.Click += (_, _) => browserPanel.Visibility = Visibility.Collapsed;
         address.TextChanged += (_, _) => Update();
         address.KeyDown += async (_, args) =>
         {
@@ -230,7 +360,7 @@ public sealed partial class MainWindow
                 Content = new StackPanel
                 {
                     Spacing = 12,
-                    Children = { notice, allowed, addressRow, progress, status, selectRow, grid, where },
+                    Children = { notice, allowed, addressRow, pace, progress, status, challengeBar, browserPanel, selectRow, grid, where },
                 },
             },
             PrimaryButtonText = Tr("Download"),
@@ -244,6 +374,14 @@ public sealed partial class MainWindow
         // A scan or the previews still loading stop with the dialog.
         scanning?.Cancel();
         _previewLoading?.Cancel();
+        try
+        {
+            browser.Close();
+        }
+        catch (Exception ex)
+        {
+            App.Trace($"web import browser close: {ex.Message}");
+        }
         var (chosen, chosenNames) = Chosen();
         if (answer != ContentDialogResult.Primary || chosen.Count == 0 || client is null)
         {
@@ -258,7 +396,7 @@ public sealed partial class MainWindow
 
     // The grid's pictures, one at a time and politely paced like the scan; a photo whose picture can't be read
     // isn't a photo after all (a counter, a script) and leaves the grid.
-    private async Task LoadPreviewsAsync(WebSiteClient client, GridView grid)
+    private async Task LoadPreviewsAsync(WebSiteClient client, GridView grid, Action<Uri>? onChallenge = null)
     {
         _previewLoading?.Cancel();
         _previewLoading = new CancellationTokenSource();
@@ -274,8 +412,15 @@ public sealed partial class MainWindow
             try
             {
                 result = await Task.Run(() => client.GetAsync(photo.Preview, image: true, cancel));
-                if ((!result.Succeeded || WebSiteClient.ImageExtension(result.Body) is null) && photo.Preview != photo.Url)
+                if ((!result.Succeeded || WebSiteClient.ImageExtension(result.Body) is null) && photo.Preview != photo.Url &&
+                    result.Failure != WebFetchFailure.Challenge)
                     result = await Task.Run(() => client.GetAsync(photo.Url, image: true, cancel));
+                // The site wants a sign-in or a check: the photos stay, without their pictures, rather than leave the grid.
+                if (result.Failure == WebFetchFailure.Challenge)
+                {
+                    onChallenge?.Invoke(result.Address);
+                    return;
+                }
             }
             catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
             {
@@ -347,15 +492,20 @@ public sealed partial class MainWindow
                 WebFetchFailure.OtherSite => Tr("This address sends the app on to another site, which it doesn’t follow. Enter the address the page ends up at in your browser."),
                 WebFetchFailure.Robots => Tr("This site asks apps like this one not to read the page (in its robots.txt), so the app leaves it alone."),
                 WebFetchFailure.TooLarge => Tr("The page is too large to read."),
+                WebFetchFailure.Challenge => Tr("The site shows a sign-in or a check that you’re human instead of the page."),
                 _ => Tr("The page could not be read. Check the address and your internet connection."),
             };
         }
+        if (result.Photos.Count == 0 && result.Challenged)
+            return Tr("The site asked for a sign-in or a check that you’re human before any photos were found.");
         if (result.Photos.Count == 0)
             return result.Stopped
                 ? Tr("Stopped before any photos were found.")
                 : Tr("No photos were found on this page. Sites that build their gallery with scripts, or that need a sign-in, can’t be read.");
         var text = Tr("{0:N0} photos found on {1:N0} pages. Tick the ones to download.", result.Photos.Count, result.PagesRead);
-        if (result.Stopped)
+        if (result.Challenged)
+            text += " " + Tr("The site then asked for a sign-in or a check that you’re human: there may be more.");
+        else if (result.Stopped)
             text += " " + Tr("Stopped early: there may be more.");
         else if (result.PageLimitReached)
             text += " " + Tr("The app stopped after {0:N0} pages: there may be more.", result.PagesRead);
