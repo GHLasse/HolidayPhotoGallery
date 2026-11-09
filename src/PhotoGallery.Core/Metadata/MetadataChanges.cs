@@ -98,10 +98,13 @@ public sealed record MetadataChanges
     /// <summary>Who took the photo; empty removes it.</summary>
     public string? Creator { get; init; }
 
+    /// <summary>The web address the photo was downloaded from (F-8), written as XMP "Source".</summary>
+    public string? SourceUrl { get; init; }
+
     /// <summary>The complete new list of people in the photo (faces on the stored pixels); other regions stay.</summary>
     public IReadOnlyList<PersonTag>? People { get; init; }
 
     public bool IsEmpty => Tags is null && AutoTags is null && Rating is null && Flagged is null && Rejected is null && Caption is null && DateTaken is null && ShiftCreateDateBy is null && DatesBeforeSync is null &&
                            Orientation is null && VideoRotation is null && Location is null && Direction is null && Altitude is null && PersonNames is null && !RemoveLocation && Place is null && People is null &&
-                           Camera is null && Copyright is null && Creator is null;
+                           Camera is null && Copyright is null && Creator is null && SourceUrl is null;
 }

@@ -34,6 +34,8 @@ public sealed partial class MainWindow
         return
         [
             new(Tr("Import from a device…"), "\uE8B5", () => Do(Import_Click), "Ctrl+I", Tr("Import photos from a phone, camera or SD card")),
+            new(Tr("Import from a website…"), "\uE774", () => _ = WebImportAsync(),
+                Tip: Tr("Goes online: download photos from a web gallery you may use, such as your own")),
             new(Tr("Add a folder…"), "\uE8F4", () => Do(AddFolder_Click), Tip: Tr("Add a folder to the library")),
             new(Tr("Look for changes"), "\uE72C", () => Do(Rescan_Click), "F5", Tr("Look for new, changed and deleted photos")),
             null,

@@ -52,6 +52,18 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
         Assert.Equal(date, m.DateTaken);
     }
 
+    [ExifToolTheory]
+    [InlineData(".jpg")]
+    [InlineData(".png")]
+    [InlineData(".webp")]
+    public async Task A_photo_from_a_website_keeps_its_address(string extension)
+    {
+        var path = _temp.CopySample(extension);
+        await Service.WriteAsync(path, new MetadataChanges { SourceUrl = "https://example.com/holiday/full/beach.jpg" });
+        var result = await _exifTool!.RunAsync(["-s3", "-XMP-dc:Source", path]);
+        Assert.Equal("https://example.com/holiday/full/beach.jpg", result.Output.Trim());
+    }
+
     [ExifToolFact]
     public async Task Keeping_dates_in_sync_sets_the_other_dates_and_the_file_date_too()
     {

@@ -652,6 +652,9 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
                 args.Add($"-IPTC:By-line={creator}");
         }
 
+        if (changes.SourceUrl is { } source)
+            args.Add($"-XMP-dc:Source={source.Trim()}");
+
         var people = changes.People ?? (changes.Orientation is not null && current is { People.Count: > 0 } ? current.People : null);
         if (people is not null)
         {
