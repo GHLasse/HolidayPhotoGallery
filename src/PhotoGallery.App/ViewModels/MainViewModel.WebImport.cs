@@ -9,6 +9,17 @@ namespace PhotoGallery.App.ViewModels;
 /// <summary>Importing photos from a website (F-8): the chosen photos are downloaded in the background, one at a time.</summary>
 public sealed partial class MainViewModel
 {
+    /// <summary>How fast the website import reads a site: 0 normal, 1 slow, 2 very slow (<see cref="WebImportOptions.ForPace"/>).</summary>
+    public int WebImportPace
+    {
+        get => _settings.WebImportPace;
+        set
+        {
+            _settings.WebImportPace = Math.Clamp(value, 0, 2);
+            _settings.Save(SettingsPath);
+        }
+    }
+
     /// <summary>
     /// Downloads <paramref name="photos"/> into <paramref name="folder"/> with the address each came from in its
     /// details, leaves out those already in the library (same name and size), and adds the new ones to the library.
@@ -29,6 +40,7 @@ public sealed partial class MainViewModel
         }
         var imported = new List<string>();
         int failed = 0, already = 0;
+        var challenged = false;
         await WaitForSavesAsync(); // the info pane's edits are in the files first
         var have = await Task.Run(_index.GetNamesAndSizes);
         IsBusy = true;
@@ -41,6 +53,13 @@ public sealed partial class MainViewModel
                 var photo = photos[i];
                 StatusText = Tr("Downloading {0:N0} of {1:N0}…", i + 1, photos.Count);
                 var result = await site.GetAsync(photo.Url, image: true, CancellationToken.None);
+                // The site wants a sign-in or a human check: no use asking it for more now.
+                if (result.Failure == WebFetchFailure.Challenge)
+                {
+                    challenged = true;
+                    failed += photos.Count - i;
+                    break;
+                }
                 if (!result.Succeeded || WebSiteClient.ImageExtension(result.Body) is not { } extension)
                 {
                     App.Trace($"web import {photo.Url}: {result.Failure}");
@@ -105,7 +124,9 @@ public sealed partial class MainViewModel
             : Tr("No photos were downloaded.");
         if (already > 0)
             message += " " + Tr("{0:N0} were in the library already and were left out.", already);
-        if (failed > 0)
+        if (challenged)
+            message += " " + Tr("The site asked for a sign-in or a check that you’re human, so {0:N0} were not downloaded. Import again and choose a slower pace: photos already downloaded are left out.", failed);
+        else if (failed > 0)
             message += " " + Tr("{0:N0} could not be downloaded.", failed);
         if (imported.Count > 0 && failed == 0)
             Inform(message);

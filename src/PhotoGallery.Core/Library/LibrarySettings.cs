@@ -122,6 +122,9 @@ public sealed class LibrarySettings
     /// <summary>Where imported photos go (F-1); null: the first library folder.</summary>
     public string? ImportFolder { get; set; }
 
+    /// <summary>How fast the website import reads a site (F-8): 0 normal, 1 slow, 2 very slow.</summary>
+    public int WebImportPace { get; set; }
+
     /// <summary>The dated folders imported photos go into, e.g. "{year}/{date} {event}".</summary>
     public string ImportPattern { get; set; } = Import.ImportPlanner.DefaultPattern;
 

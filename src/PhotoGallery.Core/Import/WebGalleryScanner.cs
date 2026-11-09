@@ -21,11 +21,15 @@ public readonly record struct WebScanProgress(int PagesRead, int PhotosFound);
 /// <param name="BlockedByRobots">Pages the site's robots.txt asks robots not to read.</param>
 /// <param name="PageLimitReached">It stopped at the page limit with pages left to read.</param>
 /// <param name="Stopped">The user stopped it; what was found so far is in <see cref="Photos"/>.</param>
+/// <param name="Challenged">The site asked for a human check or a sign-in, so the scan stopped there; what was found before is in <see cref="Photos"/>.</param>
 public sealed record WebScanResult(Uri Start, string? Title, IReadOnlyList<WebPhoto> Photos, int PagesRead, int LinksFailed,
-                                   int OtherSiteLinks, int BlockedByRobots, bool PageLimitReached, bool Stopped)
+                                   int OtherSiteLinks, int BlockedByRobots, bool PageLimitReached, bool Stopped, bool Challenged = false)
 {
     /// <summary>The start page itself could not be read (the reason is in <see cref="StartFailure"/>).</summary>
     public WebFetchFailure StartFailure { get; init; }
+
+    /// <summary>The page that asked for a sign-in or a human check, to open for the user.</summary>
+    public Uri? ChallengeAddress { get; init; }
 }
 
 /// <summary>
@@ -66,6 +70,8 @@ public static partial class WebGalleryScanner
         int pagesRead = 0, failed = 0, otherSite = 0, robots = 0;
         string? title = null;
         var stopped = false;
+        var challenged = false;
+        Uri? challengeAt = null;
 
         // The same picture written as http and https, or with and without "www.", is one picture.
         var canonical = new Dictionary<string, Uri>(StringComparer.Ordinal);
@@ -124,6 +130,11 @@ public static partial class WebGalleryScanner
                 case WebFetchFailure.Failed or WebFetchFailure.TooLarge:
                     failed++;
                     break;
+                case WebFetchFailure.Challenge:
+                    // Reading on would only meet more checks, and makes the site warier still.
+                    challenged = true;
+                    challengeAt ??= result.Address;
+                    break;
             }
         }
 
@@ -148,9 +159,10 @@ public static partial class WebGalleryScanner
         if (first.Succeeded && WebSiteClient.ImageExtension(first.Body) is not null)
             return new WebScanResult(start, null, [new WebPhoto(first.Address, first.Address, start)], 1, 0, 0, 0, false, false);
         if (!first.Succeeded || !first.IsHtml)
-            return new WebScanResult(start, null, [], 0, 0, 0, 0, false, false)
+            return new WebScanResult(start, null, [], 0, 0, 0, 0, false, false, first.Failure == WebFetchFailure.Challenge)
             {
                 StartFailure = first.Failure == WebFetchFailure.None ? WebFetchFailure.Failed : first.Failure,
+                ChallengeAddress = first.Failure == WebFetchFailure.Challenge ? first.Address : null,
             };
 
         void ReadList(WebPage page, int depth)
@@ -168,7 +180,7 @@ public static partial class WebGalleryScanner
                 else
                 {
                     Add(image.Url, page.Address, image.Preview, image.Width, image.Height, false, image.Caption);
-                    if (image.LinksTo is { } photoPage && depth < options.MaxDepth && client.IsOnSite(photoPage) && Follow(photoPage))
+                    if (image.LinksTo is { } photoPage && depth < options.MaxDepth && client.IsOnSite(photoPage) && !WebSiteClient.IsWallAddress(photoPage) && Follow(photoPage))
                         photoPages.Enqueue((photoPage, depth + 1, Canon(image.Url), here));
                 }
             }
@@ -180,7 +192,7 @@ public static partial class WebGalleryScanner
                     otherSite++;
                     continue;
                 }
-                if (depth < options.MaxDepth && link.AbsolutePath.StartsWith(folder, StringComparison.Ordinal) && Follow(link))
+                if (depth < options.MaxDepth && link.AbsolutePath.StartsWith(folder, StringComparison.Ordinal) && !WebSiteClient.IsWallAddress(link) && Follow(link))
                     listPages.Enqueue((link, depth + 1));
             }
             Report();
@@ -192,7 +204,7 @@ public static partial class WebGalleryScanner
         {
             while (photoPages.Count > 0 || listPages.Count > 0)
             {
-                if (pagesRead >= options.MaxPages)
+                if (pagesRead >= options.MaxPages || challenged)
                     break;
                 cancellationToken.ThrowIfCancellationRequested();
                 if (photoPages.TryDequeue(out var photoPage))
@@ -260,9 +272,12 @@ public static partial class WebGalleryScanner
             }
         }
 
-        var limitReached = !stopped && pagesRead >= options.MaxPages && (photoPages.Count > 0 || listPages.Count > 0);
+        var limitReached = !stopped && !challenged && pagesRead >= options.MaxPages && (photoPages.Count > 0 || listPages.Count > 0);
         var photos = Choose(found, order, replaced, pagesWith, pagesRead);
-        return new WebScanResult(start, title, photos, pagesRead, failed, otherSite, robots, limitReached, stopped);
+        return new WebScanResult(start, title, photos, pagesRead, failed, otherSite, robots, limitReached, stopped, challenged)
+        {
+            ChallengeAddress = challengeAt,
+        };
     }
 
     // The photo a photo page shows, by points: a picture no other photo page has, named like its preview, linked

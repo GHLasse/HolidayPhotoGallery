@@ -25,6 +25,14 @@ public sealed record WebImportOptions
     public long MaxPageBytes { get; init; } = 5 * 1024 * 1024;
 
     public long MaxImageBytes { get; init; } = 200 * 1024 * 1024;
+
+    /// <summary>The pace the user picked: 0 normal, 1 slow, 2 very slow (for sites that ask for a human check when read fast).</summary>
+    public static WebImportOptions ForPace(int pace) => pace switch
+    {
+        1 => new WebImportOptions { Pause = TimeSpan.FromSeconds(2), ImagePause = TimeSpan.FromSeconds(1) },
+        >= 2 => new WebImportOptions { Pause = TimeSpan.FromSeconds(5), ImagePause = TimeSpan.FromSeconds(2.5) },
+        _ => new WebImportOptions(),
+    };
 }
 
 /// <summary>Why a web address gave nothing.</summary>
@@ -39,6 +47,8 @@ public enum WebFetchFailure
     Robots,
     /// <summary>Larger than the import takes.</summary>
     TooLarge,
+    /// <summary>The site answered with a human check (captcha) or a sign-in page instead: it wants a person.</summary>
+    Challenge,
 }
 
 /// <summary>What one request brought back.</summary>
@@ -76,16 +86,20 @@ public sealed partial class WebSiteClient : IDisposable
     /// <param name="site">The address the user entered: the site everything stays on.</param>
     /// <param name="handler">For tests; it must not follow redirects by itself.</param>
     /// <param name="wait">For tests: how a pause is waited for.</param>
+    /// <param name="cookies">The site's cookies, kept across scans: a sign-in the user made in the app's browser window.</param>
     public WebSiteClient(Uri site, WebImportOptions? options = null, HttpMessageHandler? handler = null,
-                         Func<TimeSpan, CancellationToken, Task>? wait = null)
+                         Func<TimeSpan, CancellationToken, Task>? wait = null, CookieContainer? cookies = null)
     {
         Site = site;
+        Cookies = cookies ?? new CookieContainer();
         _options = options ?? new WebImportOptions();
         _wait = wait ?? Task.Delay;
         _http = new HttpClient(handler ?? new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
             AutomaticDecompression = DecompressionMethods.All,
+            UseCookies = true,
+            CookieContainer = Cookies,
             ConnectTimeout = TimeSpan.FromSeconds(15),
         }) { Timeout = Timeout.InfiniteTimeSpan };
         var version = typeof(WebSiteClient).Assembly.GetName().Version;
@@ -94,6 +108,9 @@ public sealed partial class WebSiteClient : IDisposable
     }
 
     public Uri Site { get; }
+
+    /// <summary>The cookies sent to the site (its own, and a sign-in made in the app's browser window).</summary>
+    public CookieContainer Cookies { get; }
 
     /// <summary>Where each request and why it failed is noted (the app's activity log).</summary>
     public Action<string>? Log { get; set; }
@@ -115,6 +132,10 @@ public sealed partial class WebSiteClient : IDisposable
     /// <summary>A picture may come from the site or one of its own subdomains (images.example.com for example.com).</summary>
     public bool IsSiteImage(Uri uri) => uri.Scheme is "http" or "https" && BaseDomain(uri.Host) == BaseDomain(Site.Host);
 
+    /// <summary>A cookie for this domain (".example.com", "www.example.com") belongs to the site: it is passed on from the app's browser.</summary>
+    public bool IsSiteCookieDomain(string domain) =>
+        domain.TrimStart('.') is { Length: > 0 } host && BaseDomain(host) == BaseDomain(Site.Host);
+
     public static bool SameHost(Uri a, Uri b) =>
         a.Scheme is "http" or "https" && b.Scheme is "http" or "https" &&
         string.Equals(WithoutWww(a.Host), WithoutWww(b.Host), StringComparison.OrdinalIgnoreCase) &&
@@ -132,6 +153,30 @@ public sealed partial class WebSiteClient : IDisposable
         var count = labels[^1].Length == 2 && labels[^2].Length <= 3 ? 3 : 2;
         return string.Join('.', labels[^Math.Min(count, labels.Length)..]);
     }
+
+    private static readonly HashSet<string> WallNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "login", "log-in", "logon", "signin", "sign-in", "signup", "sign-up", "register", "registration", "auth",
+        "authenticate", "wp-login", "captcha", "verify", "verification", "human-verification", "challenge", "anmelden",
+    };
+
+    /// <summary>The address is a sign-in, sign-up or human check page (login.php, /human-verification, /captcha…).</summary>
+    public static bool IsWallAddress(Uri uri) =>
+        uri.Segments.Select(s => Path.GetFileNameWithoutExtension(Uri.UnescapeDataString(s.Trim('/'))))
+            .Any(s => s.Length > 0 && (WallNames.Contains(s) || s.Contains("captcha", StringComparison.OrdinalIgnoreCase) ||
+                                       s.Contains("verification", StringComparison.OrdinalIgnoreCase)));
+
+    private static readonly string[] WallMarkers =
+        ["g-recaptcha", "h-captcha", "hcaptcha.com", "cf-turnstile", "challenge-platform", "cf-chl-", "recaptcha/api.js"];
+
+    /// <summary>
+    /// The page is a human check: it holds one of the usual captcha or bot-check widgets. A page that came
+    /// back fine (<paramref name="answeredFine"/>) only counts when it shows hardly any pictures, so a gallery
+    /// with a captcha on its comment form is still read.
+    /// </summary>
+    public static bool IsWallPage(string html, bool answeredFine = false) =>
+        WallMarkers.Any(marker => html.Contains(marker, StringComparison.OrdinalIgnoreCase)) &&
+        (!answeredFine || Regex.Matches(html, "<img\\b", RegexOptions.IgnoreCase).Count < 3);
 
     private static string WithoutWww(string host) => host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? host[4..] : host;
 
@@ -175,6 +220,11 @@ public sealed partial class WebSiteClient : IDisposable
                 if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } location)
                 {
                     var next = WebPageReader.Resolve(address, location.OriginalString);
+                    if (next is not null && IsWallAddress(next))
+                    {
+                        Log?.Invoke($"web {address}: sends on to a human check or sign-in ({next.AbsolutePath}), stopped");
+                        return new WebFetchResult(next, WebFetchFailure.Challenge);
+                    }
                     if (next is null || !(image ? IsSiteImage(next) : IsOnSite(next)))
                     {
                         Log?.Invoke($"web {address}: sends on to {next?.Host ?? location.OriginalString}, not followed");
@@ -183,7 +233,7 @@ public sealed partial class WebSiteClient : IDisposable
                     address = next;
                     continue;
                 }
-                if (!response.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode && (int)response.StatusCode is not (401 or 403 or 429 or 503))
                     return new WebFetchResult(address, WebFetchFailure.Failed);
                 var limit = image ? _options.MaxImageBytes : _options.MaxPageBytes;
                 if (response.Content.Headers.ContentLength > limit)
@@ -192,6 +242,17 @@ public sealed partial class WebSiteClient : IDisposable
                 if (body is null)
                     return new WebFetchResult(address, WebFetchFailure.TooLarge);
                 var type = response.Content.Headers.ContentType;
+                var isHtml = type?.MediaType is "text/html" or "application/xhtml+xml";
+                // A page asking for a human check or a sign-in, in place of the page or picture asked for.
+                // (A gallery page with a captcha on its comment form is still a gallery: it has its pictures.)
+                if (isHtml && (address != uri && IsWallAddress(address) || (int)response.StatusCode == 401 ||
+                               IsWallPage((EncodingOf(type) ?? Encoding.UTF8).GetString(body), response.IsSuccessStatusCode)))
+                {
+                    Log?.Invoke($"web {address}: a human check or sign-in page, stopped");
+                    return new WebFetchResult(address, WebFetchFailure.Challenge);
+                }
+                if (!response.IsSuccessStatusCode)
+                    return new WebFetchResult(address, WebFetchFailure.Failed);
                 if (image)
                     Keep(uri, body, type?.MediaType);
                 return new WebFetchResult(address, WebFetchFailure.None, type?.MediaType?.ToLowerInvariant(), body, EncodingOf(type));
