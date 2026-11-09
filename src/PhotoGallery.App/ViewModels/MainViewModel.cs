@@ -11,6 +11,7 @@ using PhotoGallery.Core.Geocoding;
 using PhotoGallery.Core.Library;
 using PhotoGallery.Core.Metadata;
 using PhotoGallery.Core.Tagging;
+using PhotoGallery.Core.Tracks;
 using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App.ViewModels;
@@ -1169,6 +1170,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var items = placed.Select(p => p.Item).ToList();
         var failures = new List<string>();
+        Dictionary<string, TrackMatch> fromTracks = removing ? [] : await TrackFactsAsync(placed);
         await WaitForSavesAsync(); // the info pane's edits are in the files first
         IsBusy = true;
         try
@@ -1182,6 +1184,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 try
                 {
                     var changes = placed[i].Position is { } p ? new MetadataChanges { Location = p } : new MetadataChanges { RemoveLocation = true };
+                    if (fromTracks.TryGetValue(item.Path, out var track))
+                        changes = changes with { Altitude = track.Elevation, GpsTimeUtc = track.Utc };
                     await _metadata.WriteAsync(item.Path, changes);
                     if (await _indexer.RefreshFileAsync(item.Path) is { } updated)
                         item.Photo = updated;
@@ -1202,6 +1206,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Inform(removing
             ? Tr("Removed the location from {0} photo(s)", done)
             : Tr("Placed {0} photo(s) on the map", done));
+    }
+
+    /// <summary>
+    /// The GPS tracks' facts for photos placed where a track was at the time (G-5): its height there and the
+    /// moment, so the photo gets the track's altitude and GPS time. A pin dragged away from the track (more than
+    /// 100 m) gets neither, since the track's height is then for another place.
+    /// </summary>
+    private async Task<Dictionary<string, TrackMatch>> TrackFactsAsync(IReadOnlyList<(PhotoItemViewModel Item, GeoPosition? Position)> placed)
+    {
+        try
+        {
+            var tracks = await TracksAsync();
+            if (tracks.Count == 0)
+                return [];
+            var options = TrackOptions with { ReplaceExisting = true };
+            var positions = placed.Where(p => p.Position is not null)
+                                  .ToDictionary(p => p.Item.Path, p => p.Position!.Value, StringComparer.OrdinalIgnoreCase);
+            return await Task.Run(() => TrackMatcher.Match(placed.Select(p => p.Item.Photo), tracks, options)
+                .Where(m => positions.TryGetValue(m.Path, out var at) && LocationEstimate.Kilometres(at, m.Position) <= 0.1)
+                .ToDictionary(m => m.Path, StringComparer.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            App.Trace($"Track facts for the placed photos: {ex.Message}");
+            return [];
+        }
     }
 
     /// <summary>

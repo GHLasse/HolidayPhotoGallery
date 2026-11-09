@@ -33,7 +33,8 @@ public sealed class TrackTests : IDisposable
             </gpx>
             """, ".gpx");
         Assert.Equal(2, track.Points.Count);
-        Assert.Equal(new TrackPoint(Utc(10), 38.7223, -9.1393), track.Points[0]);
+        Assert.Equal(new TrackPoint(Utc(10), 38.7223, -9.1393, 20), track.Points[0]);
+        Assert.Null(track.Points[1].Elevation);
         Assert.Equal(Utc(10, 10), track.EndUtc);
     }
 

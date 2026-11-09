@@ -56,6 +56,9 @@ public sealed record MetadataChanges
     /// <summary>The new GPS position. Altitude and other GPS details already in the file are left alone.</summary>
     public GeoPosition? Location { get; init; }
 
+    /// <summary>The height in metres above sea level to write with <see cref="Location"/> (G-5); below sea level is negative.</summary>
+    public double? Altitude { get; init; }
+
     /// <summary>
     /// The GPS time (UTC) to write with <see cref="Location"/>: the moment the photo was taken. Filled in by
     /// <see cref="PhotoMetadataService.WriteAsync"/> from the date taken when its time zone is known (D-5).

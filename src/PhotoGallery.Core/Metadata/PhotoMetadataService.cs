@@ -561,6 +561,16 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             args.Add($"-GPS:GPSLongitudeRef={(location.Longitude < 0 ? "W" : "E")}");
             args.Add($"-XMP-exif:GPSLatitude={Degrees(location.Latitude)}");
             args.Add($"-XMP-exif:GPSLongitude={Degrees(location.Longitude)}");
+            if (changes.Altitude is { } altitude && double.IsFinite(altitude))
+            {
+                // EXIF keeps the distance from sea level and whether it is above (0) or below (1).
+                var metres = Math.Abs(altitude).ToString("0.#", CultureInfo.InvariantCulture);
+                var below = altitude < 0 ? "1" : "0";
+                args.Add($"-GPS:GPSAltitude={metres}");
+                args.Add($"-GPS:GPSAltitudeRef#={below}");
+                args.Add($"-XMP-exif:GPSAltitude={metres}");
+                args.Add($"-XMP-exif:GPSAltitudeRef#={below}");
+            }
             if (changes.GpsTimeUtc is { } gpsTime)
             {
                 var utc = DateTime.SpecifyKind(gpsTime, DateTimeKind.Utc);

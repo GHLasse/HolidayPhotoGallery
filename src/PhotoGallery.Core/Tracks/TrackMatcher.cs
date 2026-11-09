@@ -22,8 +22,8 @@ public sealed record TrackMatchOptions
     public bool ReplaceExisting { get; init; }
 }
 
-/// <summary>Where one photo lands, and from which track.</summary>
-public sealed record TrackMatch(string Path, GeoPosition Position, string Track, DateTime Utc);
+/// <summary>Where one photo lands, and from which track; with the track's height there when it recorded one (G-5).</summary>
+public sealed record TrackMatch(string Path, GeoPosition Position, string Track, DateTime Utc, double? Elevation = null);
 
 /// <summary>Places photos on recorded tracks by the time they were taken (G-4).</summary>
 public static class TrackMatcher
@@ -70,7 +70,7 @@ public static class TrackMatcher
                 if (gap < bestGap)
                 {
                     bestGap = gap;
-                    best = new TrackMatch(photo.Path, position, track.Name, utc);
+                    best = new TrackMatch(photo.Path, position, track.Name, utc, track.ElevationAt(utc, options.MaxGap));
                 }
             }
             if (best is not null)
