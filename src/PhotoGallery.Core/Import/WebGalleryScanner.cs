@@ -276,6 +276,14 @@ public static partial class WebGalleryScanner
                 // The preview's own caption stays unless the photo page has one for it.
                 var caption = main.Caption ?? WebPageReader.CaptionText(page.PhotoTitle);
                 Add(main.Url, page.Address, preview, main.Width, main.Height, true, caption);
+                // The photo may link on to a page with it in better quality ("Click for better quality"): that page
+                // is read when the photo is (WebPhoto.PhotoPage). Not a link to another photo's page ("next").
+                var better = new[] { images.FirstOrDefault(i => Canon(i.Url) == Canon(main.Url) || i.LinksTo == main.Url)?.LinksTo }
+                    .Concat(page.BetterLinks)
+                    .FirstOrDefault(l => l is not null && !WebPageReader.IsImageFile(l) && client.IsOnSite(l) && !WebSiteClient.IsWallAddress(l) &&
+                                         !visited.Contains(l) && l != page.Address && Canon(l) != Canon(page.Address));
+                if (better is not null && found.TryGetValue(Canon(main.Url), out var item))
+                    item.PhotoPage ??= better;
             }
         }
 
@@ -288,8 +296,10 @@ public static partial class WebGalleryScanner
 
         var limitReached = !stopped && !challenged && pagesRead >= options.MaxPages && (photoPages.Count > 0 || listPages.Count > 0);
         var photos = Choose(found, order, replaced, pagesWith, pagesRead);
+        // Never another photo's picture either (a "next" link leads to the next photo's page).
         var siteImages = pagesWith.Where(p => p.Value > 1).Select(p => p.Key)
-            .Concat(onPhotoPages.Where(p => p.Value > 1).Select(p => p.Key)).ToHashSet();
+            .Concat(onPhotoPages.Where(p => p.Value > 1).Select(p => p.Key))
+            .Concat(photos.SelectMany(p => new[] { p.Url, p.Preview })).ToHashSet();
         return new WebScanResult(start, title, photos, pagesRead, failed, otherSite, robots, limitReached, stopped, challenged)
         {
             ChallengeAddress = challengeAt,
@@ -304,22 +314,37 @@ public static partial class WebGalleryScanner
     public static async Task<(WebPhoto Photo, WebFetchFailure Failure)> FindLargePhotoAsync(
         WebSiteClient client, WebPhoto photo, IReadOnlySet<Uri> siteImages, CancellationToken cancellationToken = default)
     {
-        if (photo.PhotoPage is not { } address)
-            return (photo, WebFetchFailure.None);
-        var result = await client.GetAsync(address, image: false, cancellationToken).ConfigureAwait(false);
-        if (result.Failure == WebFetchFailure.Challenge)
-            return (photo, WebFetchFailure.Challenge);
-        if (result.Succeeded && WebSiteClient.ImageExtension(result.Body) is not null)
-            return (photo with { Url = result.Address, PhotoPage = null }, WebFetchFailure.None);
-        if (!result.Succeeded || !result.IsHtml)
-            return (photo with { PhotoPage = null }, result.Failure);
-        var page = WebPageReader.Read(result.Text, result.Address);
-        var images = page.Images.Where(i => !i.IsTiny).ToList();
-        if (MainImage(images, [], photo.Preview, siteImages.Contains) is { } main && client.IsSiteImage(main.Url) && main.Url != photo.Preview)
-            return (photo with { Url = main.Url, Width = main.Width, Height = main.Height, PhotoPage = null,
-                                 Caption = photo.Caption ?? main.Caption ?? WebPageReader.CaptionText(page.PhotoTitle) },
-                    WebFetchFailure.None);
-        return (photo with { PhotoPage = null }, WebFetchFailure.None);
+        // A page may lead on to one with the photo in better quality, and that one on again: at most three pages.
+        var seen = new HashSet<Uri>();
+        var failure = WebFetchFailure.None;
+        for (var hop = 0; hop < 3 && photo.PhotoPage is { } address && seen.Add(address); hop++)
+        {
+            var result = await client.GetAsync(address, image: false, cancellationToken).ConfigureAwait(false);
+            if (result.Failure == WebFetchFailure.Challenge)
+                return (photo, WebFetchFailure.Challenge);
+            if (result.Succeeded && WebSiteClient.ImageExtension(result.Body) is not null)
+                return (photo with { Url = result.Address, PhotoPage = null }, WebFetchFailure.None);
+            if (!result.Succeeded || !result.IsHtml)
+            {
+                failure = result.Failure;
+                break;
+            }
+            var page = WebPageReader.Read(result.Text, result.Address);
+            var images = page.Images.Where(i => !i.IsTiny).ToList();
+            bool Taken(Uri url) => siteImages.Contains(url) || url == photo.Url;
+            if (MainImage(images, [], photo.Preview, Taken) is not { } main || !client.IsSiteImage(main.Url) || main.Url == photo.Preview || Taken(main.Url))
+                break;
+            var next = new[] { images.FirstOrDefault(i => i.Url == main.Url || i.LinksTo == main.Url)?.LinksTo }
+                .Concat(page.BetterLinks)
+                .FirstOrDefault(l => l is not null && !WebPageReader.IsImageFile(l) && client.IsOnSite(l) && !WebSiteClient.IsWallAddress(l) &&
+                                     !seen.Contains(l) && l != page.Address);
+            photo = photo with
+            {
+                Url = main.Url, Width = main.Width ?? photo.Width, Height = main.Height ?? photo.Height, PhotoPage = next,
+                Caption = photo.Caption ?? main.Caption ?? WebPageReader.CaptionText(page.PhotoTitle),
+            };
+        }
+        return (photo with { PhotoPage = null }, failure);
     }
 
     // The photo a photo page shows, by points: a picture no other photo page has, named like its preview, linked

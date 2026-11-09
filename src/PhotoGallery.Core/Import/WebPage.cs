@@ -20,7 +20,12 @@ public sealed record WebPageImage(Uri Url, Uri? LinksTo = null, int? Width = nul
 
 /// <summary>What a web page holds for the website import: its title, images and links.</summary>
 /// <param name="PhotoTitle">The title the page gives its picture (og:title), else its first heading.</param>
-public sealed record WebPage(Uri Address, string? Title, IReadOnlyList<WebPageImage> Images, IReadOnlyList<Uri> Links, string? PhotoTitle = null);
+/// <param name="BetterLinks">Links that promise the picture in better quality ("Click for better quality", "Original
+/// size", "Download"…), by their text or title.</param>
+public sealed record WebPage(Uri Address, string? Title, IReadOnlyList<WebPageImage> Images, IReadOnlyList<Uri> Links, string? PhotoTitle = null)
+{
+    public IReadOnlyList<Uri> BetterLinks { get; init; } = [];
+}
 
 /// <summary>
 /// Reads the images and links out of a web page's HTML (F-8). Forgiving on purpose: personal galleries are often
@@ -49,6 +54,8 @@ public static partial class WebPageReader
         var images = new List<WebPageImage>();
         var links = new List<Uri>();
         var anchors = new Stack<(Uri? Target, string? Title)>();
+        var anchorStart = 0;
+        var betterLinks = new List<Uri>();
         var seenLinks = new HashSet<Uri>();
 
         // Comments are left out; scripts and styles are looked at only for image addresses, after the tags.
@@ -68,7 +75,12 @@ public static partial class WebPageReader
             if (closing)
             {
                 if (name == "a" && anchors.Count > 0)
-                    anchors.Pop();
+                {
+                    var (closed, closedTitle) = anchors.Pop();
+                    var words = Clean(withoutScripts[anchorStart..tag.Index]) + " " + closedTitle;
+                    if (closed is not null && !IsImageFile(closed) && PromisesBetter(words) && !betterLinks.Contains(closed))
+                        betterLinks.Add(closed);
+                }
                 continue;
             }
             var attributes = Attributes(tag.Groups[3].Value);
@@ -96,7 +108,8 @@ public static partial class WebPageReader
                     if (anchors.Count > 0)
                         anchors.Pop();
                     var linkTitle = CaptionText(attributes.GetValueOrDefault("title") ?? attributes.GetValueOrDefault("data-title") ?? attributes.GetValueOrDefault("data-caption"));
-                    anchors.Push((target, linkTitle));
+                    anchors.Push((target, linkTitle ?? attributes.GetValueOrDefault("title")));
+                    anchorStart = tag.Index + tag.Length;
                     if (target is not null && IsImageFile(target))
                         images.Add(new WebPageImage(target, Caption: linkTitle));
                     else
@@ -170,7 +183,10 @@ public static partial class WebPageReader
                 images.Add(new WebPageImage(url));
         }
 
-        return new WebPage(address, title, images.Where(i => i.Url.Scheme is "http" or "https").ToList(), links, ogTitle ?? heading);
+        return new WebPage(address, title, images.Where(i => i.Url.Scheme is "http" or "https").ToList(), links, ogTitle ?? heading)
+        {
+            BetterLinks = betterLinks,
+        };
     }
 
     /// <summary>The address <paramref name="value"/> means on a page at <paramref name="baseUri"/>; null for anything but a web address.</summary>
@@ -239,6 +255,12 @@ public static partial class WebPageReader
 
     private static int? Number(string? value) =>
         value is not null && int.TryParse(value.Trim().TrimEnd('x', 'p').Trim(), out var n) && n > 0 ? n : null;
+
+    // "Click for better quality", "Full size", "Original", "Download", "Größere Ansicht"…
+    private static bool PromisesBetter(string text) => BetterWords().IsMatch(text);
+
+    [GeneratedRegex(@"\b(better|higher|high|full|best)[- ]?(quality|resolution|res|size|version)\b|\b(original|full[- ]?size|fullsize|larger|enlarge|zoom|download|hd)\b|bessere[nr]? qualität|voller? größe|originalgröße|größere ansicht|vergrößern|herunterladen", RegexOptions.IgnoreCase)]
+    private static partial Regex BetterWords();
 
     private static string? Clean(string text)
     {

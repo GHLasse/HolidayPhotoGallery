@@ -500,6 +500,21 @@ public sealed partial class MainWindow
         tile.Children.Add(name);
         ToolTipService.SetToolTip(tile, photo.Caption is null ? photo.Url.AbsoluteUri : $"{photo.Caption}{Environment.NewLine}{photo.Url.AbsoluteUri}");
         AutomationProperties.SetName(tile, photo.Name);
+
+        // Right-click: the photo's page or picture in the browser, to see what the site shows.
+        WebPhoto Current() => tile.Tag as WebPhoto ?? photo;
+        var openPage = new MenuFlyoutItem { Text = Tr("Open the photo’s page in the browser"), Icon = new FontIcon { Glyph = GlobeGlyph } };
+        openPage.Click += async (_, _) => await Launcher.LaunchUriAsync(Current().PhotoPage ?? Current().FoundOn);
+        var openPicture = new MenuFlyoutItem { Text = Tr("Open the picture in the browser"), Icon = new FontIcon { Glyph = "\uEB9F" } };
+        openPicture.Click += async (_, _) => await Launcher.LaunchUriAsync(Current().Url);
+        var copy = new MenuFlyoutItem { Text = Tr("Copy the picture’s address"), Icon = new FontIcon { Glyph = "\uE8C8" } };
+        copy.Click += (_, _) =>
+        {
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(Current().Url.AbsoluteUri);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+        };
+        tile.ContextFlyout = new MenuFlyout { Items = { openPage, openPicture, copy } };
         return tile;
     }
 
