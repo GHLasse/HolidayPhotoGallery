@@ -1569,7 +1569,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                           Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten,
                                           Look? look, int lookStrength, IReadOnlyList<RetouchStroke> strokes,
                                           IReadOnlyList<BeautyFace> faces, BeautyParts beautyParts, bool asJpeg,
-                                          bool asCopy = false)
+                                          bool asCopy = false, int noiseStrength = 0)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1590,10 +1590,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var colourProfile = (await _photoEditor.InspectAsync(path, extension)).ColourProfile;
             var image = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue, keepColours: colourProfile);
             var (fullWidth, fullHeight) = (image.Width, image.Height);
+            // The grain the model took out for the Edit pane (worked out now if it isn't yet), before anything else (E-12).
+            DenoisedPhoto? denoised = null;
+            if (noiseStrength > 0)
+            {
+                denoised = await DenoiseAsync(path, new Progress<double>(p => StatusText = Tr("Reducing noise… {0:P0}", p)));
+                StatusText = Tr("Saving the edit of {0}…", item.FileName);
+                if (denoised.Noisy.Width != fullWidth || denoised.Noisy.Height != fullHeight)
+                    denoised = null;
+            }
             FaceBox? kept = null;
             var eraser = strokes.Any(k => k.Tool == RetouchTool.Erase) ? await Task.Run(() => LoadEraser()) : null;
             image = await Task.Run(() =>
             {
+                if (denoised is not null)
+                    NoiseReduction.Apply(image.Pixels, denoised.Noisy.Pixels, denoised.Clean, noiseStrength);
                 // Retouching first, on the photo as it was, where the strokes were placed (E-11).
                 Retouch.Apply(image.Pixels, image.Width, image.Height, strokes, eraser);
                 // Beauty too, on the faces where they were found (E-10).
