@@ -68,7 +68,7 @@ public sealed partial class MainViewModel
         await AfterTransferAsync();
     }
 
-    /// <summary>A copy of each photo next to it, as IMG_1 (2).jpg, with its details (Ctrl+D).</summary>
+    /// <summary>"Make a copy" (E-5): an unedited copy of each photo next to it, as IMG_1 (copy).jpg, with its details (Ctrl+D).</summary>
     public async Task DuplicateAsync(IReadOnlyList<PhotoItemViewModel> items)
     {
         if (items.Count == 0)
@@ -89,7 +89,7 @@ public sealed partial class MainViewModel
                 var photo = item.Photo;
                 try
                 {
-                    await Task.Run(() => _index.Upsert([photo.MovedTo(PhotoMover.Transfer(photo.Path, photo.Folder, copy: true))]));
+                    await Task.Run(() => _index.Upsert([photo.MovedTo(PhotoMover.MakeCopy(photo.Path))]));
                     done++;
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
