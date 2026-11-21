@@ -83,6 +83,7 @@ public sealed partial class MainWindow
             list.Add(new(Tr("Show or hide the Edit pane"), "\uE70F", Tr("View"), ToggleViewerEdit, "E"));
             list.Add(new(Tr("Remove spots"), "\uE7E6", Tr("Edit"), () => ToggleRetouchTool(PhotoGallery.Core.Editing.RetouchTool.Spot), "H"));
             list.Add(new(Tr("Magic eraser"), "\uE75C", Tr("Edit"), () => ToggleRetouchTool(PhotoGallery.Core.Editing.RetouchTool.Erase), "Shift+H"));
+            list.Add(new(Tr("Red eye"), "\uE7B3", Tr("Edit"), () => ToggleRetouchTool(PhotoGallery.Core.Editing.RetouchTool.RedEye), "J"));
             list.Add(new(Tr("Dim the room around the photo"), "\uE708", Tr("View"), CycleViewerLights, "L"));
         }
         else

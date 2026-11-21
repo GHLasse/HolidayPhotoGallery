@@ -1,6 +1,6 @@
 namespace PhotoGallery.Core.Editing;
 
-/// <summary>The two retouch tools of the Edit pane (E-11).</summary>
+/// <summary>The retouch tools of the Edit pane (E-11, E-15).</summary>
 public enum RetouchTool
 {
     /// <summary>Blemish touch-up: a click or a short stroke over a spot, healed from matching skin or background nearby.</summary>
@@ -8,15 +8,25 @@ public enum RetouchTool
 
     /// <summary>Magic eraser: paint over what should go, and the AI model fills it with matching background.</summary>
     Erase,
+
+    /// <summary>Red eye: a click on an eye turns the red glow from the flash back into a dark pupil (E-15).</summary>
+    RedEye,
+
+    /// <summary>Animal eyeshine: like red eye, for the yellow, green, white or red glow in animals' eyes (E-15).</summary>
+    Eyeshine,
 }
 
 /// <summary>
 /// One brush stroke: the points it went through as fractions (0-1) of the upright photo's width and height, and
 /// the brush radius as a fraction of the photo's longer side, so it applies to the preview and the full-size photo
-/// alike.
+/// alike. <paramref name="Iris"/> is for the eye tools: the colour given back to an iris the flash turned red.
 /// </summary>
-public sealed record RetouchStroke(RetouchTool Tool, IReadOnlyList<(double X, double Y)> Points, double Radius)
+public sealed record RetouchStroke(RetouchTool Tool, IReadOnlyList<(double X, double Y)> Points, double Radius,
+                                   EyeColour Iris = EyeColour.Auto)
 {
+    /// <summary>One of the eye tools, which fix the eye under the click instead of painting.</summary>
+    public bool ForEyes => Tool is RetouchTool.RedEye or RetouchTool.Eyeshine;
+
     /// <summary>The brush radius in pixels on a picture of this size.</summary>
     public double RadiusIn(int width, int height) => Math.Max(1, Radius * Math.Max(width, height));
 }
@@ -324,18 +334,34 @@ public static class Retouch
 
     /// <summary>
     /// Applies the strokes in order: spots are healed here, erased parts go to <paramref name="erase"/> (the AI
-    /// model; strokes are skipped without one).
+    /// model; strokes are skipped without one), eyes are fixed where the glow is found. Returns how many strokes
+    /// changed the picture: an eye stroke where no glowing eye was found changes nothing.
     /// </summary>
-    public static void Apply(byte[] bgra, int width, int height, IEnumerable<RetouchStroke> strokes, Eraser? erase,
-                             CancellationToken cancellationToken = default)
+    public static int Apply(byte[] bgra, int width, int height, IEnumerable<RetouchStroke> strokes, Eraser? erase,
+                            CancellationToken cancellationToken = default)
     {
+        var changed = 0;
         foreach (var stroke in strokes)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (stroke.Tool == RetouchTool.Spot)
-                Heal(bgra, width, height, Mask(stroke, width, height, grow: 1));
-            else
-                erase?.Erase(bgra, width, height, Mask(stroke, width, height));
+            switch (stroke.Tool)
+            {
+                case RetouchTool.Spot:
+                    Heal(bgra, width, height, Mask(stroke, width, height, grow: 1));
+                    changed++;
+                    break;
+                case RetouchTool.Erase when erase is not null:
+                    erase.Erase(bgra, width, height, Mask(stroke, width, height));
+                    changed++;
+                    break;
+                case RetouchTool.RedEye or RetouchTool.Eyeshine when stroke.Points.Count > 0:
+                    // A short drag counts as a click in its middle.
+                    var (x, y) = (stroke.Points.Average(p => p.X) * width, stroke.Points.Average(p => p.Y) * height);
+                    if (EyeFix.Fix(bgra, width, height, x, y, stroke.RadiusIn(width, height), stroke.Tool == RetouchTool.Eyeshine, stroke.Iris))
+                        changed++;
+                    break;
+            }
         }
+        return changed;
     }
 }
