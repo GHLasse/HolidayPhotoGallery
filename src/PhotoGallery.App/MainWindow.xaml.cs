@@ -1842,7 +1842,7 @@ public sealed partial class MainWindow : Window
         {
             OnContent = Tr("On"),
             OffContent = Tr("Off"),
-            Header = Tr("Use only the processor for AI upscaling and the magic eraser"),
+            Header = Tr("Use only the processor for AI upscaling, the magic eraser and noise reduction"),
             IsOn = ViewModel.UpscaleOnProcessorOnly,
             Margin = new Thickness(0, 12, 0, 0),
         };
@@ -2238,7 +2238,7 @@ public sealed partial class MainWindow : Window
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
                                                   ChosenLook, _lookStrength, _strokes.ToList(),
                                                   ChosenLook is { Beauty: true } ? _beautyFaces ?? [] : [], ViewModel.BeautyParts,
-                                                  asJpeg: asJpeg, asCopy: asCopy);
+                                                  asJpeg: asJpeg, asCopy: asCopy, noiseStrength: _noiseStrength);
         ViewerProgress.IsActive = false;
         if (saved)
         {

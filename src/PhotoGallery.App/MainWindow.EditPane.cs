@@ -30,7 +30,7 @@ public sealed partial class MainWindow
 
     /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
     private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01 || _lookKey is not null
-                                    || _strokes.Count > 0;
+                                    || _strokes.Count > 0 || _noiseStrength > 0;
 
     private Look? ChosenLook => Looks.Find(_lookKey);
 
@@ -47,7 +47,7 @@ public sealed partial class MainWindow
                 ArrangeLookButtons();
         };
         SetUpRetouch();
-        foreach (var slider in EditSliders().Append(StraightenSlider))
+        foreach (var slider in EditSliders().Append(StraightenSlider).Append(NoiseSlider))
         {
             // handledEventsToo: the slider's thumb takes the pointer for itself.
             slider.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler((s, _) => ((Slider)s).Value = 0), true);
@@ -126,6 +126,8 @@ public sealed partial class MainWindow
         SaturationSlider.Value = _adjustments.Saturation;
         WarmthSlider.Value = _adjustments.Warmth;
         StraightenSlider.Value = _straighten;
+        NoiseSlider.Value = _noiseStrength;
+        ShowSliderValue(NoiseValue, _noiseStrength, $"{_noiseStrength}");
         foreach (var button in LookButtons())
             button.IsChecked = (string?)button.Tag == _lookKey;
         LookStrengthSlider.Value = _lookStrength;
@@ -484,6 +486,7 @@ public sealed partial class MainWindow
         _straighten = 0;
         _lookKey = null;
         _lookStrength = 100;
+        _noiseStrength = 0;
         _previewBase = null;
         ResetRetouch();
     }
@@ -514,6 +517,7 @@ public sealed partial class MainWindow
                 var angle = StraightenBeforeFlip;
                 var (look, strength) = (ChosenLook, _lookStrength);
                 var (faces, beautyParts) = (_beautyFaces, ViewModel.BeautyParts);
+                var noiseStrength = _noiseStrength;
                 DecodedImage shown;
                 if (before || (curve is null && !HasPixelChanges))
                     shown = pixels;
@@ -521,7 +525,10 @@ public sealed partial class MainWindow
                 {
                     // With the retouch strokes so far (MainWindow.Retouch.cs).
                     var source = _retouched ?? (_previewBase ??= await Task.Run(() => Smaller(pixels)));
-                    shown = await Task.Run(() => Edited(source, curve, look, strength, adjustments, flipH, flipV, angle, faces, beautyParts));
+                    // The grain at the preview's size, once the model has taken it out (MainWindow.Denoise.cs).
+                    var grain = noiseStrength > 0 ? await NoiseLayerAsync(pixels, source.Width, source.Height) : null;
+                    shown = await Task.Run(() => Edited(source, curve, look, strength, adjustments, flipH, flipV, angle, faces, beautyParts,
+                                                        grain, noiseStrength));
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels))
                     return;
@@ -548,13 +555,21 @@ public sealed partial class MainWindow
     /// <summary>A copy of the picture with the edits applied, in the order Save applies them.</summary>
     internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Look? look, int lookStrength, Adjustments adjustments,
                                         bool flipHorizontal, bool flipVertical, double straighten,
-                                        IReadOnlyList<BeautyFace>? faces = null, BeautyParts beautyParts = BeautyParts.None)
+                                        IReadOnlyList<BeautyFace>? faces = null, BeautyParts beautyParts = BeautyParts.None,
+                                        NoiseLayer? grain = null, int noiseStrength = 0)
     {
-        // Beauty works on the faces where they are on the photo, so before it is straightened.
+        // The grain goes first, as Save takes it out of the photo before anything else (E-12).
         var source = image;
-        if (look is { Beauty: true } && faces is { Count: > 0 } && beautyParts != BeautyParts.None)
+        if (grain is not null && noiseStrength > 0)
         {
             source = image with { Pixels = (byte[])image.Pixels.Clone() };
+            NoiseReduction.Apply(source.Pixels, grain.Noisy, grain.Clean, noiseStrength);
+        }
+        // Beauty works on the faces where they are on the photo, so before it is straightened.
+        if (look is { Beauty: true } && faces is { Count: > 0 } && beautyParts != BeautyParts.None)
+        {
+            if (ReferenceEquals(source, image))
+                source = image with { Pixels = (byte[])image.Pixels.Clone() };
             Beauty.Apply(source.Pixels, source.Width, source.Height, faces, lookStrength, beautyParts);
         }
         // Straightening makes a new picture; otherwise the viewer's own is copied, never changed.
