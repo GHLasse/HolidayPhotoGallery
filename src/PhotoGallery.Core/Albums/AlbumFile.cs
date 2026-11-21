@@ -62,6 +62,34 @@ public static class AlbumFile
 
     public static bool IsAlbum(string folder) => File.Exists(PathIn(folder));
 
+    /// <summary>
+    /// The album a photo belongs to: the nearest folder at or above the photo's own folder that is an album (an
+    /// album shows its subfolders' photos too), or null when it is in none.
+    /// </summary>
+    public static string? AlbumOf(string photoPath)
+    {
+        for (var folder = Path.GetDirectoryName(photoPath); !string.IsNullOrEmpty(folder); folder = Path.GetDirectoryName(folder))
+        {
+            if (IsAlbum(folder))
+                return folder;
+        }
+        return null;
+    }
+
+    /// <summary>The album all the photos belong to, or null when they are in none or in different albums.</summary>
+    public static string? AlbumOfAll(IEnumerable<string> photoPaths)
+    {
+        string? album = null;
+        foreach (var folder in photoPaths.Select(Path.GetDirectoryName).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var own = folder is null ? null : AlbumOf(Path.Combine(folder, "_"));
+            if (own is null || (album is not null && !string.Equals(album, own, StringComparison.OrdinalIgnoreCase)))
+                return null;
+            album = own;
+        }
+        return album;
+    }
+
     /// <summary>A photo used as an album's cover was renamed or moved: the album follows it.</summary>
     public static void FollowCover(string oldPath, string newPath)
     {

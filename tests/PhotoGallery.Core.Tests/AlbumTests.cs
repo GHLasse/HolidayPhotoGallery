@@ -63,6 +63,27 @@ public sealed class AlbumTests : IDisposable
     }
 
     [Fact]
+    public void A_photo_belongs_to_the_nearest_album_above_it()
+    {
+        var trip = Folder("2024 Italy");
+        var day = Folder("2024 Italy/day1/Rome");
+        Folder("Loose");
+        AlbumFile.Write(trip, new AlbumInfo());
+
+        Assert.Equal(trip, AlbumFile.AlbumOf(Path.Combine(trip, "a.jpg")));
+        Assert.Equal(trip, AlbumFile.AlbumOf(Path.Combine(day, "b.jpg")));
+        Assert.Null(AlbumFile.AlbumOf(Path.Combine(_photos.Path, "Loose", "c.jpg")));
+
+        Assert.Equal(trip, AlbumFile.AlbumOfAll([Path.Combine(trip, "a.jpg"), Path.Combine(day, "b.jpg")]));
+        Assert.Null(AlbumFile.AlbumOfAll([Path.Combine(trip, "a.jpg"), Path.Combine(_photos.Path, "Loose", "c.jpg")]));
+        Assert.Null(AlbumFile.AlbumOfAll([]));
+
+        AlbumFile.Write(day, new AlbumInfo());
+        Assert.Equal(day, AlbumFile.AlbumOf(Path.Combine(day, "b.jpg")));
+        Assert.Null(AlbumFile.AlbumOfAll([Path.Combine(trip, "a.jpg"), Path.Combine(day, "b.jpg")]));
+    }
+
+    [Fact]
     public void Albums_are_found_however_deep_they_sit_and_hidden_folders_are_skipped()
     {
         AlbumFile.Write(Folder("Trips/2023 Norway"), new AlbumInfo());
