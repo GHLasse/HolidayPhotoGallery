@@ -31,6 +31,7 @@ public sealed partial class MainWindow
         ("YuNet, SFace (OpenCV Zoo)", Tr("Finding and recognising faces"), "MIT, Apache 2.0", "https://github.com/opencv/opencv_zoo"),
         ("Real-ESRGAN by Xintao Wang et al.", Tr("AI upscaling when repairing photos, in the versions from Qualcomm AI Hub"), "BSD 3-Clause", "https://github.com/xinntao/Real-ESRGAN"),
         ("Big-LaMa by Roman Suvorov et al. (Samsung AI Center)", Tr("The magic eraser, in the ONNX version by Carve"), "Apache 2.0", "https://github.com/advimman/lama"),
+        ("SCUNet by Kai Zhang et al. (ETH Zürich)", Tr("Reduce noise in the Edit pane, in the ONNX version by Heliosoph"), "Apache 2.0", "https://github.com/cszn/SCUNet"),
         ("Leaflet, MapLibre GL JS", Tr("The map"), "BSD 2-Clause, BSD 3-Clause", "https://leafletjs.com"),
         ("OpenStreetMap", Tr("Map data, © OpenStreetMap contributors"), "ODbL", "https://www.openstreetmap.org/copyright"),
         ("OpenFreeMap", Tr("Map tiles"), "MIT, ODbL", "https://openfreemap.org"),

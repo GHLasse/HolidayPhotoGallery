@@ -144,8 +144,8 @@ public sealed partial class MainWindow
             // Organise
             new() { Label = Tr("Rename…"), Glyph = "\uE8AC", Group = CommandGroup.Organise, Keys = "F2", Enabled = Any, Gated = true, InViewer = false,
                     Tip = Tr("Rename the selected photos with a name pattern such as date and counter"), Run = () => Do(RenamePhotos_Click) },
-            new() { Label = Tr("Duplicate"), Also = Tr("copy"), Glyph = AppIcons.Duplicate, Group = CommandGroup.Organise, Keys = "Ctrl+D", Enabled = Any, Gated = true,
-                    Tip = Tr("Make a copy of each photo next to it, with all its details"), Run = () => _ = DuplicateAsync() },
+            new() { Label = Tr("Make a copy"), Also = Tr("duplicate"), Glyph = AppIcons.Duplicate, Group = CommandGroup.Organise, Keys = "Ctrl+D", Enabled = Any, Gated = true,
+                    Tip = Tr("Make an unedited copy of each photo next to it, named “(copy)”, with all its details"), Run = () => _ = DuplicateAsync() },
             new() { Label = Tr("Copy files"), Glyph = "\uE8C8", Group = CommandGroup.Organise, Keys = "Ctrl+C", Enabled = Any,
                     Tip = Tr("Copy the photo files, to paste them in File Explorer, another app or another folder here"), Run = () => _ = CopyFilesAsync() },
             new() { Label = Tr("Paste files"), Glyph = "\uE77F", Group = CommandGroup.Organise, Keys = "Ctrl+V", Gated = true, InViewer = false,

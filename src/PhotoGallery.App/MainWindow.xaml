@@ -1456,6 +1456,21 @@
                         <TextBlock x:Name="RetouchHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
 
+                    <!-- Noise reduction (E-12, MainWindow.Denoise.cs): an AI model takes the grain out once, the slider says how much of it goes. -->
+                    <TextBlock Text="{local:Loc Text='Noise'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <Slider x:Name="NoiseSlider" Minimum="0" Maximum="100" StepFrequency="1" ValueChanged="NoiseSlider_ValueChanged"
+                            AutomationProperties.Name="{local:Loc Text='Reduce noise'}"
+                            ToolTipService.ToolTip="{local:Loc Text='Takes the grain out of night and indoor shots. Keep it low on faces so skin doesn’t look waxy.'}">
+                        <Slider.Header>
+                            <Grid>
+                                <TextBlock Text="{local:Loc Text='Reduce noise'}" />
+                                <TextBlock x:Name="NoiseValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Slider.Header>
+                    </Slider>
+                    <TextBlock x:Name="NoiseHint" TextWrapping="Wrap" FontSize="12" Visibility="Collapsed"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
                     <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06).
                          Each shows its value beside its name, in the palette colour once it is moved. -->
                     <Expander x:Name="EditSlidersExpander" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False"

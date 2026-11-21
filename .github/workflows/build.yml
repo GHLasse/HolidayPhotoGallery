@@ -142,6 +142,25 @@ jobs:
           [ -f "$dir/big-lama.onnx" ] || curl -sSfL --retry 3 -o "$dir/big-lama.onnx" https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx
           echo "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6  $dir/big-lama.onnx" | sha256sum -c
           echo "PHOTOGALLERY_ERASE_MODEL=$dir" >> "$GITHUB_ENV"
+      # The noise reduction model (SCUNet, about 77 MB), so the tests take grain out with it.
+      - name: Cache noise reduction model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/denoise-model
+          key: denoise-model-scunet-color-real-psnr-6d11417e
+      - name: Download noise reduction model
+        run: |
+          dir="$RUNNER_TEMP/denoise-model"
+          mkdir -p "$dir"
+          # The same revision and hashes as DenoiseModel.cs.
+          base=https://huggingface.co/Heliosoph/scunet-onnx/resolve/6d11417ee2fbcc73783c502a238ac115097754fe
+          for f in scunet_color_real_psnr.onnx scunet_color_real_psnr.onnx.data; do
+            [ -f "$dir/$f" ] || curl -sSfL --retry 3 -o "$dir/$f" "$base/$f"
+          done
+          printf '%s  %s\n' \
+            231be201ab413dbc999d7951caa9844846b93a12a40a41e037d6b5888ed4e88c "$dir/scunet_color_real_psnr.onnx" \
+            98825ea1210b641c71e5f052f582c70c49fd44b35387ebe2c034268c17df3feb "$dir/scunet_color_real_psnr.onnx.data" | sha256sum -c
+          echo "PHOTOGALLERY_DENOISE_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 
