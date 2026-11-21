@@ -139,7 +139,8 @@ public sealed partial class MainWindow
 
     private void IrisColour_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (RetouchOptions is not null)
+        // The first selection comes while the window is still being built, before the brush slider and hint exist.
+        if (RetouchHint is not null && BrushSizeSlider is not null)
             SyncRetouch();
     }
 
