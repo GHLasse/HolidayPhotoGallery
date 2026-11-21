@@ -688,7 +688,7 @@ public sealed partial class MainWindow : Window
             ("F2", Tr("Rename the selected photos")),
             ("Ctrl+C", Tr("Copy the photo files, to paste them in File Explorer or another folder")),
             ("Ctrl+V", Tr("Paste copied photo files into the folder shown")),
-            ("Ctrl+D", Tr("Duplicate the selected photos")),
+            ("Ctrl+D", Tr("Make a copy of the selected photos")),
             ("Del", Tr("Move the selected photos to the Recycle Bin (asks first)")),
             ("Ctrl+I", Tr("Import from a phone, camera or SD card")),
             ("F5", Tr("Look for new, changed and deleted photos")),

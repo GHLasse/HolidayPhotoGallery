@@ -50,6 +50,43 @@ public class PhotoMoverTests
         Assert.False(marks.ContainsKey(copy));
         Assert.True(PhotoMover.IsIn(copy, to));
     }
+
+    [Fact]
+    public void Make_a_copy_puts_an_unedited_copy_next_to_the_photo()
+    {
+        using var temp = new TempFolder();
+        var photo = Path.Combine(temp.Path, "a.jpg");
+        File.WriteAllBytes(photo, [1]);
+        EditHistory.BackUp(photo);
+        File.WriteAllBytes(photo, [2]);
+        File.WriteAllBytes(Path.Combine(temp.Path, "a.mov"), [7]);
+
+        var first = PhotoMover.MakeCopy(photo);
+        var second = PhotoMover.MakeCopy(photo);
+
+        Assert.Equal(Path.Combine(temp.Path, "a (copy).jpg"), first);
+        Assert.Equal(Path.Combine(temp.Path, "a (copy 2).jpg"), second);
+        Assert.Equal([2], File.ReadAllBytes(photo));
+        Assert.Equal([2], File.ReadAllBytes(first));
+        Assert.Equal([7], File.ReadAllBytes(Path.Combine(temp.Path, "a (copy).mov")));
+        // The copy can still go back to the original, and the photo keeps its own history.
+        Assert.Equal(1, EditHistory.EditCount(photo));
+        Assert.Equal(first, EditHistory.Revert(first));
+        Assert.Equal([1], File.ReadAllBytes(first));
+        Assert.Equal([2], File.ReadAllBytes(photo));
+    }
+
+    [Fact]
+    public void Labelled_names_skip_names_whose_live_video_is_taken()
+    {
+        using var temp = new TempFolder();
+        var photo = Path.Combine(temp.Path, "b.heic");
+        File.WriteAllBytes(photo, [1]);
+        File.WriteAllBytes(Path.Combine(temp.Path, "b.mov"), [1]);
+        File.WriteAllBytes(Path.Combine(temp.Path, "b (edited).mov"), [1]);
+
+        Assert.Equal(Path.Combine(temp.Path, "b (edited 2).jpg"), PhotoEditService.EditedCopyPath(photo, ".jpg"));
+    }
 }
 
 public class PhotoIndexMoveTests

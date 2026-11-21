@@ -10,9 +10,33 @@ namespace PhotoGallery.Core.Library;
 public static class PhotoMover
 {
     /// <summary>Moves or copies the photo into the folder and returns its new path; a name already taken there gets " (2)" and so on.</summary>
-    public static string Transfer(string path, string folder, bool copy)
+    public static string Transfer(string path, string folder, bool copy) => TransferTo(path, FreeName(folder, Path.GetFileName(path)), copy);
+
+    /// <summary>
+    /// "Make a copy" (E-5): duplicates the photo unedited next to it as "name (copy).ext", then "name (copy 2).ext" and so
+    /// on, with its details, edit backups, sidecar and Live Photo video. Returns the copy's path.
+    /// </summary>
+    public static string MakeCopy(string path) => TransferTo(path, LabelledName(path, "copy", Path.GetExtension(path)), copy: true);
+
+    /// <summary>
+    /// A free name next to the photo with a label in brackets: "name (label).ext", then "name (label 2).ext" and so on,
+    /// so no file is ever overwritten. A Live Photo's video under the new name must be free too.
+    /// </summary>
+    public static string LabelledName(string path, string label, string extension)
     {
-        var target = FreeName(folder, Path.GetFileName(path));
+        var folder = Path.GetDirectoryName(path) ?? "";
+        var name = Path.GetFileNameWithoutExtension(path);
+        var video = SupportedFormats.CompanionVideoOf(path) is { } v ? Path.GetExtension(v) : null;
+        for (var n = 1; ; n++)
+        {
+            var candidate = Path.Combine(folder, n == 1 ? $"{name} ({label}){extension}" : $"{name} ({label} {n}){extension}");
+            if (!File.Exists(candidate) && (video is null || !File.Exists(Path.ChangeExtension(candidate, video))))
+                return candidate;
+        }
+    }
+
+    private static string TransferTo(string path, string target, bool copy)
+    {
         if (copy)
         {
             // A copy is a new file to Windows: it keeps the photo's creation date (D-4), as a move does.

@@ -105,17 +105,7 @@ public sealed class PhotoEditService(PhotoMetadataService metadata)
     /// Where an edit saved as a copy goes: next to the photo as "name (edited).ext", then "name (edited 2).ext" and
     /// so on, so no file is ever overwritten. <paramref name="extension"/> is the format of the copy.
     /// </summary>
-    public static string EditedCopyPath(string path, string extension)
-    {
-        var folder = Path.GetDirectoryName(path) ?? "";
-        var name = Path.GetFileNameWithoutExtension(path);
-        for (var n = 1; ; n++)
-        {
-            var candidate = Path.Combine(folder, n == 1 ? $"{name} (edited){extension}" : $"{name} (edited {n}){extension}");
-            if (!File.Exists(candidate))
-                return candidate;
-        }
-    }
+    public static string EditedCopyPath(string path, string extension) => Library.PhotoMover.LabelledName(path, "edited", extension);
 
     /// <summary>
     /// The edited photo is upright (orientation 1) and maybe cropped, so the people's boxes are turned and
