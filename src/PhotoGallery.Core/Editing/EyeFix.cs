@@ -240,9 +240,9 @@ public static class EyeFix
         var pupilRadius = double.MaxValue;
         var irisColour = (R: 0.0, G: 0.0, B: 0.0);
         // A colour picked by hand says the iris is under the red too.
-        if (!animal && (CoversIris(bgra, width, height, x0 + cx, y0 + cy, patchRadius, out var intact) || iris != EyeColour.Auto))
+        if (!animal && (CoversIris(bgra, width, height, x0 + cx, y0 + cy, patchRadius, peak, out var intact) || iris != EyeColour.Auto))
         {
-            pupilRadius = patchRadius * 0.5;
+            pupilRadius = patchRadius * 0.42;
             irisColour = IrisColour(iris, intact);
         }
 
@@ -323,6 +323,7 @@ public static class EyeFix
                 changed = true;
                 continue;
             }
+            var original = 0.299 * r + 0.587 * g + 0.114 * b;
             if (!animal && inside[i] && score[i] > 0)
             {
                 // Just outside the fix, red fringes lose their red cast, so no pink rim is left around the pupil.
@@ -331,8 +332,9 @@ public static class EyeFix
                              * (Distance(x, y, cx, cy) < patchRadius ? 1 : Smooth(r, dimmest * 0.8, dimmest * 1.1));
                 if (fringe > 0)
                 {
-                    r = Byte(Lerp(r, Math.Max(g, b), fringe));
-                    bgra[o + 2] = r;
+                    // Towards grey of the same brightness, so the fringe doesn't turn into a dark outline.
+                    (r, g, b) = (Byte(Lerp(r, original, fringe)), Byte(Lerp(g, original, fringe)), Byte(Lerp(b, original, fringe)));
+                    (bgra[o + 2], bgra[o + 1], bgra[o]) = (r, g, b);
                     changed = true;
                 }
             }
@@ -356,11 +358,18 @@ public static class EyeFix
                 (nr, ng, nb) = (pupil, pupil, pupil);
                 if (pupilRadius < double.MaxValue)
                 {
-                    // From pupil to iris over a pixel or so, the iris a little darker at its rim, as real ones are.
-                    var k = Smooth(d, pupilRadius - soft, pupilRadius + soft);
-                    var rim = 1 - 0.3 * Smooth(d / patchRadius, 0.75, 1.05);
-                    var shade = rim * (0.85 + 0.15 * texture);
-                    (nr, ng, nb) = (Lerp(nr, irisColour.R * shade, k), Lerp(ng, irisColour.G * shade, k), Lerp(nb, irisColour.B * shade, k));
+                    // The whole iris was red: it keeps the photo's own light and shade, only without the red, tinted
+                    // with the iris colour. The pupil in its middle
+                    // is darker, not black, and fades in softly; a hard dark disc looks painted on.
+                    var light = original * 1.15;
+                    var tint = Math.Max(1, (irisColour.R + irisColour.G + irisColour.B) / 3);
+                    // The colour fades out towards the edge, where the patch blends into lids and the white of the eye.
+                    var colour = 0.7 * (1 - Smooth(d / patchRadius, 0.7, 1.05));
+                    double Tinted(double c) => light * (1 + (c / tint - 1) * colour);
+                    var (ir, ig, ib) = (Tinted(irisColour.R), Tinted(irisColour.G), Tinted(irisColour.B));
+                    var k = Smooth(d, pupilRadius - 1.5 * soft, pupilRadius + 1.5 * soft);
+                    var dark = Math.Min(light * 0.5, 45);
+                    (nr, ng, nb) = (Lerp(dark, ir, k), Lerp(dark, ig, k), Lerp(dark, ib, k));
                 }
             }
             bgra[o + 2] = Byte(Lerp(r, nr, alpha));
@@ -481,13 +490,14 @@ public static class EyeFix
         return max > 150 && (max - min) < max * 0.2;
     }
 
-    // Looks at a ring just outside the patch: a good part of it the white of the eye means the patch is the whole
+    // Looks at a ring just outside the patch: some of it the white of the eye means the patch is the whole
     // iris. The coloured pixels of the ring are what may be left of the real iris.
-    private static bool CoversIris(byte[] bgra, int width, int height, double cx, double cy, double patchRadius,
+    // The white of the eye is judged against the glow, since a whole photo can have a colour cast and be dim.
+    private static bool CoversIris(byte[] bgra, int width, int height, double cx, double cy, double patchRadius, int glow,
                                    out List<(byte R, byte G, byte B)> intact)
     {
         intact = [];
-        var (inner, outer) = (patchRadius * 1.15, Math.Max(patchRadius * 1.5, patchRadius + 1.5));
+        var (inner, outer) = (patchRadius * 1.1, Math.Max(patchRadius * 1.6, patchRadius + 1.5));
         var (total, white) = (0, 0);
         for (var y = (int)Math.Floor(cy - outer); y <= (int)Math.Ceiling(cy + outer); y++)
         {
@@ -503,13 +513,21 @@ public static class EyeFix
                 if (Redness(r, g, b) >= 0.3f)
                     continue;
                 total++;
-                if (Sclera(r, g, b))
+                if (Sclera(r, g, b) || WhiteBesideGlow(r, g, b, glow))
                     white++;
                 else if (Math.Max(r, Math.Max(g, b)) is >= 30 and <= 220)
                     intact.Add((r, g, b));
             }
         }
-        return total >= 6 && white >= total * 0.3;
+        return total >= 6 && white >= total * 0.1;
+    }
+
+    // Brighter than the red glow itself and only a little coloured: the white of the eye in a dim or tinted photo.
+    private static bool WhiteBesideGlow(byte r, byte g, byte b, int glow)
+    {
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        return max >= 110 && max >= glow * 0.95 && (max - min) < max * 0.3;
     }
 
     // The iris colour: the one chosen, or the colour of what is left of the real iris when it is clearly blue, green
