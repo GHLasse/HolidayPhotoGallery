@@ -1126,8 +1126,16 @@ public sealed partial class MainWindow : Window
     // selected and scrolled to once the folder's photos are in.
     private void MapPhotoShown(string path)
     {
-        if (Path.GetDirectoryName(path) is not { } folder)
-            return;
+        if (Path.GetDirectoryName(path) is { } folder)
+            RevealInFolder(path, folder);
+    }
+
+    /// <summary>
+    /// The Library with <paramref name="folder"/> open (a photo's folder, or its album) and the photo selected,
+    /// e.g. from All photos, a date or a search (Lasse, 2026-11-21).
+    /// </summary>
+    private void RevealInFolder(string path, string folder)
+    {
         _revealPath = path;
         ShowWorkspace(Workspace.Library);
         ClearBrowseTrees();

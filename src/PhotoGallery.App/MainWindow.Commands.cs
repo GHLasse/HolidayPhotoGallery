@@ -164,9 +164,34 @@ public sealed partial class MainWindow
                     Run = () => Do(UseAsAlbumCover_Click) },
             new() { Label = Tr("Move to the Recycle Bin…"), Also = Tr("delete remove trash"), Glyph = "\uE74D", Group = CommandGroup.Organise, Keys = "Del", Enabled = Any, Gated = true,
                     Tip = Tr("Move the selected photos to the Recycle Bin, from where they can be restored"), Run = () => _ = RecycleSelectedAsync() },
+            new() { Label = Tr("Go to its folder"), Also = Tr("jump open folder"), Glyph = "\uE8DA", Group = CommandGroup.Organise, Enabled = p => One(p) && !IsShownFolder(Path.GetDirectoryName(p[0].Path)),
+                    InViewer = false,
+                    LabelFor = p => p.Count == 1 && Path.GetDirectoryName(p[0].Path) is { } folder
+                        ? Tr("Go to folder “{0}”", Path.GetFileName(folder)) : Tr("Go to its folder"),
+                    Tip = Tr("Show the photo in its folder, here in the app"),
+                    Run = () => GoToFolder(album: false) },
+            new() { Label = Tr("Go to its album"), Also = Tr("jump open album"), Glyph = "\uE8F1", Group = CommandGroup.Organise, InViewer = false,
+                    Enabled = p => One(p) && ViewModel.FindAlbumFor(p[0].Path) is { } album && !IsShownFolder(album) &&
+                                   !string.Equals(album, Path.GetDirectoryName(p[0].Path), StringComparison.OrdinalIgnoreCase),
+                    LabelFor = p => p.Count == 1 && ViewModel.FindAlbumFor(p[0].Path) is { } album
+                        ? Tr("Go to album “{0}”", ViewModel.CurrentAlbumName(album)) : Tr("Go to its album"),
+                    Tip = Tr("Show the photo in the album it belongs to"),
+                    Run = () => GoToFolder(album: true) },
             new() { Label = Tr("Show in folder"), Glyph = "\uE838", Group = CommandGroup.Organise, Enabled = One,
                     Tip = Tr("Open the folder in File Explorer with the photo selected"), Run = () => Do(ShowInFolderMenu_Click) },
         ];
+    }
+
+    private bool IsShownFolder(string? folder) =>
+        folder is not null && string.Equals(ViewModel.SelectedFolder?.FullPath, folder, StringComparison.OrdinalIgnoreCase);
+
+    private void GoToFolder(bool album)
+    {
+        if (SelectedPhotos is not [var item])
+            return;
+        var folder = album ? ViewModel.FindAlbumFor(item.Path) : Path.GetDirectoryName(item.Path);
+        if (folder is not null)
+            RevealInFolder(item.Path, folder);
     }
 
     // A mark from a menu works like its key: in the viewer on the photo shown (and moves on with auto-advance).

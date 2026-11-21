@@ -51,6 +51,39 @@ public sealed class FaceAnalyzerTests
         Assert.Equal(300, kept[1].X);
     }
 
+    // Eyes, nose and mouth of an upright 100 px face at (0, 0).
+    private static readonly float[] Upright = [30, 40, 70, 40, 50, 60, 35, 80, 65, 80];
+
+    [Fact]
+    public void Knows_the_layout_of_a_face()
+    {
+        Assert.True(FaceAnalyzer.HasFaceLayout(new(0.7f, 0, 0, 100, 100, Upright)));
+        // Tilted by 90 degrees (someone lying down) is still a face.
+        float[] tilted = [.. Enumerable.Range(0, 5).SelectMany(n => new[] { 100 - Upright[2 * n + 1], Upright[2 * n] })];
+        Assert.True(FaceAnalyzer.HasFaceLayout(new(0.7f, 0, 0, 100, 100, tilted)));
+        // Nose below the mouth, eyes on top of each other, mouth beside the eyes: not a face.
+        Assert.False(FaceAnalyzer.HasFaceLayout(new(0.7f, 0, 0, 100, 100, [30, 40, 70, 40, 50, 95, 35, 80, 65, 80])));
+        Assert.False(FaceAnalyzer.HasFaceLayout(new(0.7f, 0, 0, 100, 100, [50, 30, 52, 40, 50, 60, 35, 80, 65, 80])));
+        Assert.False(FaceAnalyzer.HasFaceLayout(new(0.7f, 0, 0, 100, 100, [30, 40, 70, 40, 75, 42, 85, 38, 90, 45])));
+    }
+
+    [Fact]
+    public void Keeps_a_doubtful_face_only_when_a_second_look_finds_it_too()
+    {
+        // Sure: kept on its own. Likely (blurry, eyes closed): only with a second look from another pass.
+        var sure = new FaceAnalyzer.Candidate(0.85f, 0, 0, 100, 100, Upright, 0);
+        var alone = new FaceAnalyzer.Candidate(0.7f, 300, 0, 100, 100, Upright.Select((v, i) => i % 2 == 0 ? v + 300 : v).ToArray(), 0);
+        var seenTwice = new FaceAnalyzer.Candidate(0.7f, 600, 0, 100, 100, Upright.Select((v, i) => i % 2 == 0 ? v + 600 : v).ToArray(), 0);
+        var mirrored = seenTwice with { Score = 0.5f, X = 605, Pass = 1 };
+        var samePass = alone with { Score = 0.5f, X = 305 };
+        var tiny = new FaceAnalyzer.Candidate(0.7f, 900, 0, 30, 30, [909, 12, 921, 12, 915, 18, 910, 24, 920, 24], 0);
+        var tinyAgain = tiny with { Pass = 1 };
+
+        var kept = FaceAnalyzer.Believable([sure, alone, seenTwice, mirrored, samePass, tiny, tinyAgain]);
+
+        Assert.Equal([sure, seenTwice], kept);
+    }
+
     // Portraits from the face_recognition project's examples, downloaded next to the models by CI.
     [FaceModelFact]
     public void Tells_people_apart_and_recognises_them_in_other_photos()
@@ -90,6 +123,35 @@ public sealed class FaceAnalyzerTests
         var face = Assert.Single(analyzer.Analyze(scene, sw, sh));
         Assert.InRange(face.Box.X, 900.0 / sw, 1);
         Assert.InRange(FaceAnalyzer.Similarity(reference.Embedding, face.Embedding), FaceAnalyzer.SamePerson, 1);
+    }
+
+    [FaceModelFact]
+    public void Finds_faces_in_a_blurry_photo()
+    {
+        using var analyzer = FaceAnalyzer.Load(FaceModelFactAttribute.Folder!);
+        var sharp = Analyze(analyzer, "two_people.jpg").OrderBy(f => f.Box.X).ToList();
+
+        // Shaken or out of focus: the same photo blurred, small and soft as from an old compact camera.
+        var image = TestImages.Decode(Path.Combine(FaceModelFactAttribute.Folder!, "two_people.jpg"))!.Value;
+        var (w, h) = (image.Width / 3, image.Height / 3);
+        var small = ImageMath.Resize(image.Pixels, image.Width, image.Height, w, h);
+        var blurry = ImageMath.Resize(ImageMath.Resize(small, w, h, w / 4, h / 4), w / 4, h / 4, w, h);
+        var faces = analyzer.Analyze(blurry, w, h).OrderBy(f => f.Box.X).ToList();
+
+        Assert.Equal(2, faces.Count);
+        for (var i = 0; i < 2; i++)
+            Assert.True(faces[i].Box.IoU(sharp[i].Box) > 0.5);
+    }
+
+    [FaceModelFact]
+    public void Mirrored_look_finds_the_face_in_the_same_place()
+    {
+        using var analyzer = FaceAnalyzer.Load(FaceModelFactAttribute.Folder!);
+        var face = Assert.Single(Analyze(analyzer, "obama.jpg"));
+        // Eyes and mouth corners stay on their own sides after the mirrored look.
+        Assert.True(face.Points[0].X < face.Points[1].X);
+        Assert.True(face.Points[3].X < face.Points[4].X);
+        Assert.True(face.Points[0].Y < face.Points[3].Y);
     }
 
     private static IReadOnlyList<DetectedFace> Analyze(FaceAnalyzer analyzer, string file)
