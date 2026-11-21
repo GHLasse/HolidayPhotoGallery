@@ -28,7 +28,7 @@ for f in (root / "src").rglob("*.xaml"):
         continue
     texts.update(unescape_xaml(m) for m in XAML.findall(f.read_text(encoding="utf-8")))
 
-keys = sorted(texts, key=str.casefold)
+keys = sorted(texts, key=lambda s: (s.casefold(), s))  # the same order on every run
 template = {"code": "", "name": "", "rightToLeft": False, "texts": {k: "" for k in keys}}
 (languages / "template.json").write_text(json.dumps(template, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

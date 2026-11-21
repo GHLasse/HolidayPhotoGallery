@@ -1125,9 +1125,19 @@
                             </StackPanel>
                         </Button>
                     </StackPanel>
-                    <TextBlock Text="{x:Bind ViewModel.Editor.Folder, Mode=OneWay}" TextWrapping="Wrap"
-                               Visibility="{x:Bind local:Ui.VisibleIfText(ViewModel.Editor.Folder), Mode=OneWay}" IsTextSelectionEnabled="True"
+                    <!-- The folder and album the photos are in, as links that open them in the Library with the photos
+                         selected (Lasse 2026-11-21: from All photos there was no way to the trip a photo is in). -->
+                    <HyperlinkButton Padding="0" Click="GoToFolder_Click" Visibility="{x:Bind ViewModel.Editor.IsOneFolder, Mode=OneWay}"
+                                     ToolTipService.ToolTip="{local:Loc Text='Show the folder the photo is in, with the photo selected (Ctrl+Shift+F)'}">
+                        <TextBlock Text="{x:Bind ViewModel.Editor.Folder, Mode=OneWay}" TextWrapping="Wrap" />
+                    </HyperlinkButton>
+                    <TextBlock Text="{x:Bind ViewModel.Editor.FolderCount, Mode=OneWay}" TextWrapping="Wrap"
+                               Visibility="{x:Bind local:Ui.VisibleIfText(ViewModel.Editor.FolderCount), Mode=OneWay}" IsTextSelectionEnabled="True"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <HyperlinkButton Padding="0" Click="GoToAlbum_Click" Visibility="{x:Bind ViewModel.Editor.HasAlbum, Mode=OneWay}"
+                                     ToolTipService.ToolTip="{local:Loc Text='Show the album the photo belongs to, with the photo selected (Ctrl+Shift+A)'}">
+                        <TextBlock Text="{x:Bind ViewModel.Editor.AlbumText, Mode=OneWay}" TextWrapping="Wrap" />
+                    </HyperlinkButton>
                 </StackPanel>
                 <!-- Camera, lens, exposure and author, read from the file when opened; which ones in Settings › App. -->
                 <Expander x:Name="MoreDetailsExpander" Header="{local:Loc Text='More details'}"
@@ -1270,7 +1280,7 @@
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                     <!-- Wraps when the pane is narrow or the words are long (German). -->
                     <controls:WrapPanel Spacing="8">
-                        <Button Content="{local:Loc Text='Show in folder'}" Click="ShowInFolder_Click" IsEnabled="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}" />
+                        <Button Content="{local:Loc Text='Show in File Explorer'}" Click="ShowInFolder_Click" IsEnabled="{x:Bind ViewModel.Editor.IsSingle, Mode=OneWay}" />
                     </controls:WrapPanel>
                     <TextBlock Text="{local:Loc Text='Changes are saved as you make them: stars and tags at once, text when you leave the field or press Enter.'}"
                                TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
