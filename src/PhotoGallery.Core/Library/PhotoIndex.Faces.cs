@@ -219,6 +219,39 @@ public sealed partial class PhotoIndex
     }
 
     /// <summary>
+    /// Who is named on the photos directly in <paramref name="folder"/>: on how many photos each person is,
+    /// and how many of its photos have anyone named. Helps to suggest the people of a trip or event first.
+    /// </summary>
+    public (IReadOnlyDictionary<string, int> People, int PhotosWithPeople) GetPeopleInFolder(string folder)
+    {
+        lock (_lock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT p.path, pp.name FROM photo_people pp JOIN photos p ON p.id = pp.photo_id
+                WHERE p.path LIKE $prefix ESCAPE '\';
+                """;
+            var prefix = folder.TrimEnd('/', '\\');
+            cmd.Parameters.AddWithValue("$prefix", prefix.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%");
+            var people = new Dictionary<string, HashSet<string>>(StringComparer.CurrentCultureIgnoreCase);
+            var photos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var path = reader.GetString(0);
+                if (!string.Equals(Path.GetDirectoryName(path)?.TrimEnd('/', '\\'), prefix, StringComparison.OrdinalIgnoreCase))
+                    continue; // a subfolder, or a folder whose name only starts the same
+                var name = reader.GetString(1).Trim();
+                if (!people.TryGetValue(name, out var on))
+                    people[name] = on = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                on.Add(path);
+                photos.Add(path);
+            }
+            return (people.ToDictionary(p => p.Key, p => p.Value.Count, StringComparer.CurrentCultureIgnoreCase), photos.Count);
+        }
+    }
+
+    /// <summary>
     /// The person's face on their most recent photo (by date taken) that marks the face, not the whole photo:
     /// the face finder's thumbnail when it has one, otherwise the box to cut the face from the photo.
     /// </summary>

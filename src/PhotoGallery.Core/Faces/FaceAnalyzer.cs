@@ -34,7 +34,14 @@ public sealed class FaceAnalyzer : IDisposable
 
     private const int DetectorSize = 640;
     private const int AlignedSize = 112;
-    private const float MinScore = 0.8f;
+    // Faces the detector is this sure of are kept as they are.
+    internal const float SureScore = 0.8f;
+    // Blurry faces and closed eyes often score lower (Lasse, 2026-11-21). They are kept from here on when a
+    // second look (the photo mirrored, or a quarter of it) finds the same face, the eyes, nose and mouth sit
+    // where a face has them, and the face is not tiny, so stray patterns don't become faces.
+    internal const float LikelyScore = 0.6f;
+    private const float SecondLookScore = 0.45f;
+    private const int MinLikelyFacePixels = 40;
     // Smaller faces (in the decoded photo) are too blurry to recognise reliably.
     private const int MinFacePixels = 28;
 
@@ -84,18 +91,26 @@ public sealed class FaceAnalyzer : IDisposable
     /// <summary>Finds and describes the faces on an upright photo given as 8-bit BGRA pixels.</summary>
     public IReadOnlyList<DetectedFace> Analyze(byte[] bgra, int width, int height)
     {
-        var found = Detect(bgra, width, height, 0, 0, width, height);
+        // Each part is also looked at mirrored: the detector is not symmetric, so a doubtful face gets a
+        // second chance, and a face found both ways is very likely real.
+        var found = new List<Candidate>();
+        var pass = 0;
+        found.AddRange(Detect(bgra, width, height, 0, 0, width, height, false, pass++));
+        found.AddRange(Detect(bgra, width, height, 0, 0, width, height, true, pass++));
         if (Math.Max(width, height) > DetectorSize * 1.4)
         {
             // Four quarters, each 60 % of the photo's width and height, so a face on a seam is whole in one of them.
             var tileW = (int)(width * 0.6);
             var tileH = (int)(height * 0.6);
             foreach (var (x, y) in new[] { (0, 0), (width - tileW, 0), (0, height - tileH), (width - tileW, height - tileH) })
-                found.AddRange(Detect(bgra, width, height, x, y, tileW, tileH));
+            {
+                found.AddRange(Detect(bgra, width, height, x, y, tileW, tileH, false, pass++));
+                found.AddRange(Detect(bgra, width, height, x, y, tileW, tileH, true, pass++));
+            }
         }
 
         var faces = new List<DetectedFace>();
-        foreach (var face in Suppress(found))
+        foreach (var face in Suppress(Believable(found)))
         {
             if (face.Width < MinFacePixels || face.Height < MinFacePixels)
                 continue;
@@ -106,13 +121,14 @@ public sealed class FaceAnalyzer : IDisposable
         return faces;
     }
 
-    internal sealed record Candidate(float Score, float X, float Y, float Width, float Height, float[] Landmarks)
+    /// <param name="Pass">Which look at the photo found it (a part, straight or mirrored).</param>
+    internal sealed record Candidate(float Score, float X, float Y, float Width, float Height, float[] Landmarks, int Pass = 0)
     {
         public FaceBox Box => new(X, Y, Width, Height);
     }
 
     /// <summary>Runs the detector on one part of the photo; boxes and landmarks are in the photo's pixels.</summary>
-    private List<Candidate> Detect(byte[] bgra, int width, int height, int left, int top, int partW, int partH)
+    private List<Candidate> Detect(byte[] bgra, int width, int height, int left, int top, int partW, int partH, bool mirrored, int pass)
     {
         var scale = (float)DetectorSize / Math.Max(partW, partH);
         // YuNet takes BGR values from 0 to 255; the part is scaled to fit and the rest left black.
@@ -124,7 +140,8 @@ public sealed class FaceAnalyzer : IDisposable
         {
             for (var x = 0; x < outW; x++)
             {
-                var (b, g, r) = Sample(bgra, width, height, left + (x + 0.5f) / scale - 0.5f, top + (y + 0.5f) / scale - 0.5f, 1 / scale);
+                var sx = mirrored ? outW - 1 - x : x;
+                var (b, g, r) = Sample(bgra, width, height, left + (sx + 0.5f) / scale - 0.5f, top + (y + 0.5f) / scale - 0.5f, 1 / scale);
                 var i = y * DetectorSize + x;
                 input[i] = b;
                 input[plane + i] = g;
@@ -146,7 +163,7 @@ public sealed class FaceAnalyzer : IDisposable
             for (var i = 0; i < cls.Length; i++)
             {
                 var score = MathF.Sqrt(Math.Clamp(cls[i], 0, 1) * Math.Clamp(obj[i], 0, 1));
-                if (score < MinScore)
+                if (score < SecondLookScore)
                     continue;
                 var row = i / cols;
                 var col = i % cols;
@@ -160,10 +177,55 @@ public sealed class FaceAnalyzer : IDisposable
                     landmarks[2 * n] = left + (col + kps[i * 10 + 2 * n]) * stride / scale;
                     landmarks[2 * n + 1] = top + (row + kps[i * 10 + 2 * n + 1]) * stride / scale;
                 }
-                found.Add(new Candidate(score, left + (cx - w / 2) / scale, top + (cy - h / 2) / scale, w / scale, h / scale, landmarks));
+                var boxX = cx - w / 2;
+                if (mirrored)
+                {
+                    // Back to the photo's side; the mirrored right eye is the left one, and so on.
+                    boxX = outW - boxX - w;
+                    for (var n = 0; n < 5; n++)
+                        landmarks[2 * n] = left + (outW - (col + kps[i * 10 + 2 * n]) * stride) / scale;
+                    (landmarks[0], landmarks[2]) = (landmarks[2], landmarks[0]);
+                    (landmarks[1], landmarks[3]) = (landmarks[3], landmarks[1]);
+                    (landmarks[6], landmarks[8]) = (landmarks[8], landmarks[6]);
+                    (landmarks[7], landmarks[9]) = (landmarks[9], landmarks[7]);
+                }
+                found.Add(new Candidate(score, left + boxX / scale, top + (cy - h / 2) / scale, w / scale, h / scale, landmarks, pass));
             }
         }
         return found;
+    }
+
+    /// <summary>
+    /// The detections that are believable faces: sure ones, and likely ones (blurry, eyes closed) that another
+    /// look at the photo found too, have a face's layout and are not tiny. Weaker ones only serve as that
+    /// second look.
+    /// </summary>
+    internal static List<Candidate> Believable(IReadOnlyList<Candidate> candidates) =>
+        candidates.Where(c => c.Score >= SureScore ||
+                              (c.Score >= LikelyScore && c.Width >= MinLikelyFacePixels && c.Height >= MinLikelyFacePixels &&
+                               HasFaceLayout(c) &&
+                               candidates.Any(o => o.Pass != c.Pass && o.Box.IoU(c.Box) > 0.4)))
+                  .ToList();
+
+    /// <summary>Whether the eyes, nose and mouth sit where they do on a face, roughly upright or tilted.</summary>
+    internal static bool HasFaceLayout(Candidate c)
+    {
+        var l = c.Landmarks;
+        double eyeX = l[2] - l[0], eyeY = l[3] - l[1];
+        var eyes = Math.Sqrt(eyeX * eyeX + eyeY * eyeY);
+        if (eyes < 0.2 * c.Width || eyes > 0.75 * c.Width)
+            return false;
+        // Along the face, from between the eyes towards the mouth.
+        double midX = (l[0] + l[2]) / 2, midY = (l[1] + l[3]) / 2;
+        double mouthX = (l[6] + l[8]) / 2 - midX, mouthY = (l[7] + l[9]) / 2 - midY;
+        var down = Math.Sqrt(mouthX * mouthX + mouthY * mouthY);
+        if (down < 0.5 * eyes || down > 2 * eyes)
+            return false;
+        // The face's down direction is about at right angles to the eyes, and the nose lies between eyes and mouth.
+        if (Math.Abs(eyeX * mouthX + eyeY * mouthY) > 0.5 * eyes * down)
+            return false;
+        var nose = ((l[4] - midX) * mouthX + (l[5] - midY) * mouthY) / (down * down);
+        return nose > 0.1 && nose < 1;
     }
 
     /// <summary>Keeps the surest of overlapping detections, including a part of a face found inside a whole one.</summary>

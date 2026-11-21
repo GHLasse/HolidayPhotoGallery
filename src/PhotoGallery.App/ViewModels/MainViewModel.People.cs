@@ -399,19 +399,82 @@ public sealed partial class MainViewModel
 
     public Task<bool> IsFaceScannedAsync(string path) => Task.Run(() => _index.GetFaceScanned([path]).Count > 0);
 
-    /// <summary>Who an unnamed face probably is, from the faces already named.</summary>
-    public async Task<NameSuggestion?> SuggestAsync(FoundFace face)
+    /// <summary>
+    /// Who an unnamed face probably is, from the faces already named, preferring the people tagged on the
+    /// photo (<paramref name="taggedWithoutFace"/>) and those often named in its folder.
+    /// </summary>
+    public async Task<NameSuggestion?> SuggestAsync(FoundFace face, IReadOnlyCollection<string> taggedWithoutFace)
     {
         var matcher = await GetMatcherAsync();
-        return matcher.Suggest(face.Embedding, face.Rejected);
+        return matcher.Suggest(face.Embedding, face.Rejected, await HintsAsync(face, taggedWithoutFace));
     }
+
+    /// <summary>The names to offer for a face when typing, most likely first.</summary>
+    public async Task<IReadOnlyList<string>> LikelyNamesAsync(FoundFace face, IReadOnlyCollection<string> taggedWithoutFace, int count = 6)
+    {
+        var matcher = await GetMatcherAsync();
+        var hints = await HintsAsync(face, taggedWithoutFace);
+        return [.. matcher.Rank(face.Embedding, face.Rejected, hints, count).Select(s => s.Name)];
+    }
+
+    private async Task<SuggestionHints> HintsAsync(FoundFace face, IReadOnlyCollection<string> taggedWithoutFace)
+    {
+        var onOtherFaces = (await GetFacesAsync(face.Path)).Where(f => f.Id != face.Id && f.Person is not null).Select(f => f.Person!).ToList();
+        var folder = Path.GetDirectoryName(face.Path) ?? "";
+        if (!_folderPeople.TryGetValue(folder, out var inFolder))
+        {
+            inFolder = await Task.Run(() =>
+            {
+                var (people, photos) = _index.GetPeopleInFolder(folder);
+                return (IReadOnlyDictionary<string, double>)people.ToDictionary(p => p.Key, p => (double)p.Value / Math.Max(1, photos),
+                                                                                StringComparer.CurrentCultureIgnoreCase);
+            });
+            _folderPeople[folder] = inFolder;
+        }
+        return new SuggestionHints(taggedWithoutFace, onOtherFaces, inFolder);
+    }
+
+    // Who is named in each folder, for suggestions; forgotten with the matcher when names change.
+    private readonly Dictionary<string, IReadOnlyDictionary<string, double>> _folderPeople = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The unnamed faces in the library that look like this one, most alike first, e.g. the other shop
+    /// window dummies when one is hidden (Lasse, 2026-11-21). The face itself is not included.
+    /// </summary>
+    public async Task<IReadOnlyList<FoundFace>> FindSimilarUnnamedFacesAsync(FoundFace face)
+    {
+        IsBusy = true;
+        StatusText = Tr("Looking for faces like this one…");
+        try
+        {
+            return await Task.Run(() => (IReadOnlyList<FoundFace>)_index.GetAllFaces(withThumbnails: true)
+                .Where(f => f.Id != face.Id && f.Person is null)
+                .Select(f => (Face: f, Similarity: FaceAnalyzer.Similarity(f.Embedding, face.Embedding)))
+                .Where(m => m.Similarity >= SimilarToHide)
+                .OrderByDescending(m => m.Similarity)
+                .Select(m => m.Face)
+                .ToList());
+        }
+        finally
+        {
+            IsBusy = false;
+            StatusText = _countText;
+        }
+    }
+
+    // A bit below "same person": the faces are shown to check before they are hidden.
+    private const double SimilarToHide = FaceAnalyzer.SamePerson - 0.05;
 
     private async Task<FaceMatcher> GetMatcherAsync() =>
         _matcher ??= await Task.Run(() => new FaceMatcher(_index.GetAllFaces()
             .Where(f => f.Person is not null)
             .Select(f => (f.Person!, f.Embedding))));
 
-    private void ForgetMatcher() => _matcher = null;
+    private void ForgetMatcher()
+    {
+        _matcher = null;
+        _folderPeople.Clear();
+    }
 
     /// <summary>
     /// The unnamed faces of the library in groups that look like the same person, biggest group first,
@@ -746,13 +809,21 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Hides faces that are not worth naming; they stay out of suggestions and groups.</summary>
-    public async Task IgnoreFacesAsync(IEnumerable<FoundFace> faces)
+    public async Task IgnoreFacesAsync(IEnumerable<FoundFace> faces, bool withUndo = false)
     {
         var ids = faces.Select(f => f.Id).ToList();
+        await SetIgnoredAsync(ids, true);
+        // Several faces at once are easy to hide by mistake, so they can be brought back from the banner.
+        if (withUndo && ids.Count > 1)
+            Inform(Tr("Hid {0} faces", ids.Count), () => SetIgnoredAsync(ids, false));
+    }
+
+    private async Task SetIgnoredAsync(IReadOnlyList<long> ids, bool ignored)
+    {
         await Task.Run(() =>
         {
             foreach (var id in ids)
-                _index.IgnoreFace(id);
+                _index.IgnoreFace(id, ignored);
         });
         ForgetMatcher();
         FacesChanged?.Invoke();
