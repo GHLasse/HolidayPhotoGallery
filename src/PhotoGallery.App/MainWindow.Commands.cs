@@ -164,7 +164,14 @@ public sealed partial class MainWindow
                     Run = () => Do(UseAsAlbumCover_Click) },
             new() { Label = Tr("Move to the Recycle Bin…"), Also = Tr("delete remove trash"), Glyph = "\uE74D", Group = CommandGroup.Organise, Keys = "Del", Enabled = Any, Gated = true,
                     Tip = Tr("Move the selected photos to the Recycle Bin, from where they can be restored"), Run = () => _ = RecycleSelectedAsync() },
-            new() { Label = Tr("Show in folder"), Glyph = "\uE838", Group = CommandGroup.Organise, Enabled = One,
+            new() { Label = Tr("Go to folder"), Also = Tr("trip show where jump open folder"), Glyph = "\uE8B7", Group = CommandGroup.Organise,
+                    Keys = "Ctrl+Shift+F", Enabled = p => FolderOfAll(p) is not null,
+                    Tip = Tr("Show the folder the photo is in, with the photo selected"), Run = () => GoToFolder(CommandTargets()) },
+            new() { Label = Tr("Go to album"), Also = Tr("trip show where jump open album"), Glyph = "\uE8F1", Group = CommandGroup.Organise,
+                    Keys = "Ctrl+Shift+A", Enabled = p => AlbumOfAll(p) is not null,
+                    LabelFor = p => AlbumOfAll(p) is { } album ? Tr("Go to album “{0}”", MetadataEditorViewModel.AlbumName(album)) : Tr("Go to album"),
+                    Tip = Tr("Show the album the photo belongs to, with the photo selected"), Run = () => GoToAlbum(CommandTargets()) },
+            new() { Label = Tr("Show in File Explorer"), Glyph = "\uE838", Group = CommandGroup.Organise, Enabled = One,
                     Tip = Tr("Open the folder in File Explorer with the photo selected"), Run = () => Do(ShowInFolderMenu_Click) },
         ];
     }
@@ -401,7 +408,7 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// The keys of the command list that are not single letters (those are in Root_KeyDown): Ctrl+C, Ctrl+V,
-    /// Ctrl+D, Ctrl+Z, Ctrl+Shift+D, Ctrl+I, Ctrl+K, Ctrl+1–3, Del and F5, and in the viewer R, Ctrl+U and the rotate keys.
+    /// Ctrl+D, Ctrl+Z, Ctrl+Shift+D, Ctrl+Shift+F, Ctrl+Shift+A, Ctrl+I, Ctrl+K, Ctrl+1–3, Del and F5, and in the viewer R, Ctrl+U and the rotate keys.
     /// True when the key was used. Typing in a box keeps its own Ctrl+C and Ctrl+V.
     /// </summary>
     private bool HandleCommandKeys(KeyRoutedEventArgs e)
@@ -430,6 +437,8 @@ public sealed partial class MainWindow
             (true, false, VirtualKey.Z) when viewer && HasEditSteps => () => UndoEditStep(),
             (true, false, VirtualKey.Z) when !viewer || !IsEditing => () => _ = UndoAsync(),
             (true, true, VirtualKey.D) => () => ShiftDates_Click(this, new RoutedEventArgs()),
+            (true, true, VirtualKey.F) => () => GoToFolder(CommandTargets()),
+            (true, true, VirtualKey.A) => () => GoToAlbum(CommandTargets()),
             (true, false, VirtualKey.I) when !viewer => () => Import_Click(this, new RoutedEventArgs()),
             (true, false, VirtualKey.Number1 or VirtualKey.NumberPad1) when !viewer => () => ShowWorkspace(Workspace.Library),
             (true, false, VirtualKey.Number2 or VirtualKey.NumberPad2) when !viewer => () => ShowWorkspace(Workspace.Map),

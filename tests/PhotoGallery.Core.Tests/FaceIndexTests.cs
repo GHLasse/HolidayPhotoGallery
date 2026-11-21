@@ -150,6 +150,54 @@ public sealed class FaceIndexTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_people_who_were_there_are_suggested_first()
+    {
+        // The brother looks a little more alike, but the trip's photos are all of Anna and Lasse.
+        var matcher = new FaceMatcher([("Brother", Vector(1, 0.6f, 0)), ("Anna", Vector(1, 0, 0.75f)), ("Lasse", Vector(0, 0, 1))]);
+        var face = Vector(1, 0.35f, 0.3f);
+        Assert.Equal("Brother", matcher.Suggest(face)?.Name);
+
+        var trip = new SuggestionHints([], [], new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase) { ["anna"] = 0.8, ["Lasse"] = 0.9 });
+        Assert.Equal("Anna", matcher.Suggest(face, null, trip)?.Name);
+
+        // Tagged on the photo without a marked face counts even more; someone on another face is left out.
+        var tagged = new SuggestionHints(["Lasse"], ["Anna"], trip.InFolder);
+        var ranked = matcher.Rank(face, null, tagged, 5).Select(r => r.Name).ToList();
+        Assert.Equal(["Brother", "Lasse"], ranked);
+        var lasseAlike = Vector(0.5f, 0.3f, 0.8f);
+        Assert.Equal("Anna", matcher.Suggest(lasseAlike)?.Name);
+        Assert.Equal("Lasse", matcher.Suggest(lasseAlike, null, tagged)?.Name);
+
+        // A person tagged only in another program (no face to compare) is still offered to pick.
+        var other = new SuggestionHints(["Grandma"], [], new Dictionary<string, double>());
+        Assert.Contains("Grandma", matcher.Rank(face, null, other, 5).Select(r => r.Name));
+        Assert.NotEqual("Grandma", matcher.Suggest(face, null, other)?.Name);
+    }
+
+    [Fact]
+    public void Counts_the_people_of_a_folder_without_its_subfolders()
+    {
+        var face = new FaceBox(0.1, 0.1, 0.2, 0.2);
+        var trip = Path.Combine(_photos.Path, "Trip");
+        IndexedPhoto Photo(string folder, string name, params string[] people) =>
+            new() { Path = Path.Combine(folder, name), Folder = folder, People = [.. people.Select(p => new PersonTag(p, face))] };
+        _index!.Upsert([
+            Photo(trip, "a.jpg", "Anna", "Lasse"),
+            Photo(trip, "b.jpg", "Anna"),
+            Photo(trip, "c.jpg"),
+            Photo(Path.Combine(trip, "Day 2"), "d.jpg", "Brother"),
+            Photo(trip + " 2", "e.jpg", "Brother"),
+        ]);
+
+        var (people, photos) = _index.GetPeopleInFolder(trip);
+
+        Assert.Equal(2, photos);
+        Assert.Equal(2, people["anna"]);
+        Assert.Equal(1, people["Lasse"]);
+        Assert.False(people.ContainsKey("Brother"));
+    }
+
+    [Fact]
     public void A_person_named_on_many_photos_is_recognised_from_the_latest_ones_too()
     {
         // 300 faces of Anna looking one way, then her newest faces looking another way.

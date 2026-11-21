@@ -658,6 +658,8 @@ public sealed partial class MainWindow : Window
             ("L", Tr("Dim the room around the photo in the viewer (press again for black)")),
             ("F11", Tr("Full screen")),
             ("Ctrl+E  Ctrl+F", Tr("Search")),
+            ("Ctrl+Shift+F", Tr("Go to the folder of the selected photos, with them selected")),
+            ("Ctrl+Shift+A", Tr("Go to the album of the selected photos, with them selected")),
         ]),
         (Tr("Mark"),
         [
@@ -1127,29 +1129,12 @@ public sealed partial class MainWindow : Window
             OpenViewer(item, items);
     }
 
-    private string? _revealPath;
-
     // "Show in library" in a photo's bubble on the map: the Library with the photo's folder open, the photo
-    // selected and scrolled to once the folder's photos are in.
+    // selected and scrolled to once the folder's photos are in (MainWindow.GoTo.cs).
     private void MapPhotoShown(string path)
     {
-        if (Path.GetDirectoryName(path) is not { } folder)
-            return;
-        _revealPath = path;
-        ShowWorkspace(Workspace.Library);
-        ClearBrowseTrees();
-        ViewModel.ShowFolder(folder);
-    }
-
-    private void RevealPendingPhoto()
-    {
-        if (_revealPath is not { } path ||
-            ViewModel.Photos.FirstOrDefault(p => string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)) is not { } item)
-            return;
-        _revealPath = null;
-        PhotoGrid.SelectedItems.Clear();
-        PhotoGrid.SelectedItem = item;
-        PhotoGrid.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
+        if (Path.GetDirectoryName(path) is { } folder)
+            Reveal(folder, [path]);
     }
 
     private void MapPhotoClicked(string path, bool addToSelection)

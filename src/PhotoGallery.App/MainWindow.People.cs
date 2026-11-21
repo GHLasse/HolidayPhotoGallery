@@ -15,6 +15,10 @@ public sealed partial class MainWindow
 {
     private const double FaceSize = 48;
     private int _peopleVersion;
+    // Faces where "No" was said to the suggestion (or "Someone else"): they get a box to type the name in,
+    // with the next most likely people to pick, instead of one wrong suggestion after another (Lasse, 2026-11-21).
+    private readonly HashSet<long> _typingFaces = [];
+    private long? _focusNameBoxOf;
 
     private async void FindPeople_Click(object sender, RoutedEventArgs e)
     {
@@ -126,9 +130,15 @@ public sealed partial class MainWindow
         var pictures = new List<byte[]?>();
         foreach (var person in withoutFace)
             pictures.Add(await ViewModel.GetPersonPictureAsync(item, person));
+        // Who is tagged on the photo without a marked face is most likely one of the unnamed faces.
+        var tagged = withoutFace.Select(p => p.Name).ToList();
         var suggestions = new Dictionary<long, NameSuggestion?>();
+        var likely = new Dictionary<long, IReadOnlyList<string>>();
         foreach (var face in faces.Where(f => f.Person is null))
-            suggestions[face.Id] = await ViewModel.SuggestAsync(face);
+        {
+            suggestions[face.Id] = _typingFaces.Contains(face.Id) ? null : await ViewModel.SuggestAsync(face, tagged);
+            likely[face.Id] = await ViewModel.LikelyNamesAsync(face, tagged);
+        }
         if (version != _peopleVersion)
             return; // Another photo was selected meanwhile.
 
@@ -136,8 +146,27 @@ public sealed partial class MainWindow
         // next control down: the Date taken box, where a rating key typed a digit into the date (Lasse, 2026-11-07).
         var hadFocus = FocusIsIn(PeopleSection);
         PeopleList.Children.Clear();
+        AutoSuggestBox? focusBox = null;
         foreach (var face in faces)
-            PeopleList.Children.Add(FaceRow(face, suggestions.GetValueOrDefault(face.Id)));
+        {
+            PeopleList.Children.Add(FaceRow(face, suggestions.GetValueOrDefault(face.Id), likely.GetValueOrDefault(face.Id) ?? [], out var box));
+            if (box is not null && face.Id == _focusNameBoxOf)
+                focusBox = box;
+        }
+        _focusNameBoxOf = null;
+        // Faces that are not people (shop window dummies, posters) are hidden together, with an undo.
+        var unnamed = faces.Where(f => f.Person is null).ToList();
+        if (unnamed.Count > 1)
+        {
+            var hideAll = new HyperlinkButton { Content = Tr("Hide the {0} unnamed faces", unnamed.Count), Padding = new Thickness(4, 2, 4, 2) };
+            ToolTipService.SetToolTip(hideAll, Tr("None of them is someone to name: hide them all"));
+            hideAll.Click += async (_, _) =>
+            {
+                FocusPhoto();
+                await ViewModel.IgnoreFacesAsync(unnamed, withUndo: true);
+            };
+            PeopleList.Children.Add(hideAll);
+        }
 
         for (var i = 0; i < withoutFace.Count; i++)
             PeopleList.Children.Add(PersonRow(item, withoutFace[i], pictures[i]));
@@ -164,14 +193,21 @@ public sealed partial class MainWindow
             : looked && faces.Count == 0 && withoutFace.Count == 0 ? Tr("No faces were found in this photo.") : "";
         PeopleHint.Visibility = PeopleHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         PeopleSection.Visibility = Visibility.Visible;
-        if (hadFocus)
+        if (focusBox is not null)
+        {
+            // Straight on to the name after "No": the most likely other people are listed to pick.
+            focusBox.Focus(FocusState.Programmatic);
+            focusBox.IsSuggestionListOpen = true;
+        }
+        else if (hadFocus)
             FocusPhoto();
     }
 
-    private UIElement FaceRow(FoundFace face, NameSuggestion? suggestion)
+    private UIElement FaceRow(FoundFace face, NameSuggestion? suggestion, IReadOnlyList<string> likely, out AutoSuggestBox? nameBox)
     {
         UIElement content;
         UIElement? action = null;
+        nameBox = null;
         if (face.Person is { } name)
         {
             content = Label(name);
@@ -180,24 +216,137 @@ public sealed partial class MainWindow
         else if (suggestion is not null)
         {
             var yes = IconButton("", Tr("Yes, this is {0}", suggestion.Name), async () => await ViewModel.NameFacesAsync([face], suggestion.Name));
-            var no = IconButton("", Tr("No, this is not {0}", suggestion.Name), async () => await ViewModel.RejectSuggestionAsync(face, suggestion.Name));
+            var no = IconButton("", Tr("No, this is not {0}", suggestion.Name), async () =>
+            {
+                _typingFaces.Add(face.Id);
+                _focusNameBoxOf = face.Id;
+                await ViewModel.RejectSuggestionAsync(face, suggestion.Name);
+            });
             content = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 4,
                 Children = { Label(Tr("{0}?", suggestion.Name)), yes, no },
             };
+            action = FaceMenuButton(face);
         }
         else
         {
-            content = NameBox(async name =>
+            nameBox = NameBox(async name =>
             {
                 FocusPhoto();
+                _typingFaces.Remove(face.Id);
                 await ViewModel.NameFacesAsync([face], name);
-            });
-            action = IconButton("", Tr("Not someone to name: hide this face"), async () => await ViewModel.IgnoreFacesAsync([face]));
+            }, likely);
+            content = nameBox;
+            action = HideFaceButton(face);
         }
         return Row(FacePicture(face.Thumbnail, FaceSize), content, action);
+    }
+
+    /// <summary>Hides the face with one click; its menu hides the faces that look like it too.</summary>
+    private SplitButton HideFaceButton(FoundFace face)
+    {
+        var button = new SplitButton { Content = new FontIcon { Glyph = "", FontSize = 12 }, Padding = new Thickness(8, 6, 8, 6) };
+        var tip = Tr("Not someone to name: hide this face");
+        ToolTipService.SetToolTip(button, tip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, tip);
+        button.Click += async (_, _) =>
+        {
+            FocusPhoto();
+            await ViewModel.IgnoreFacesAsync([face]);
+        };
+        var menu = new MenuFlyout();
+        menu.Items.Add(FaceMenuItem(Tr("Hide this face and similar ones…"), async () => await HideSimilarFacesAsync(face)));
+        button.Flyout = menu;
+        return button;
+    }
+
+    /// <summary>More for a face with a suggestion: type someone else, or hide it (and the faces like it).</summary>
+    private Button FaceMenuButton(FoundFace face)
+    {
+        var menu = new MenuFlyout();
+        menu.Items.Add(FaceMenuItem(Tr("Someone else…"), () =>
+        {
+            _typingFaces.Add(face.Id);
+            _focusNameBoxOf = face.Id;
+            return RefreshPeoplePanelAsync();
+        }));
+        menu.Items.Add(FaceMenuItem(Tr("Not someone to name: hide this face"), async () => await ViewModel.IgnoreFacesAsync([face])));
+        menu.Items.Add(FaceMenuItem(Tr("Hide this face and similar ones…"), async () => await HideSimilarFacesAsync(face)));
+        var button = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, Padding = new Thickness(8, 6, 8, 6), Flyout = menu };
+        var tip = Tr("Someone else, or hide this face");
+        ToolTipService.SetToolTip(button, tip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, tip);
+        return button;
+    }
+
+    private MenuFlyoutItem FaceMenuItem(string text, Func<Task> click)
+    {
+        var item = new MenuFlyoutItem { Text = text };
+        item.Click += async (_, _) =>
+        {
+            FocusPhoto();
+            await click();
+        };
+        return item;
+    }
+
+    /// <summary>
+    /// Hides a face and the unnamed faces that look like it, e.g. all the shop window dummies of a trip
+    /// (Lasse, 2026-11-21). The faces are shown first, so any real person among them can be left out.
+    /// </summary>
+    private async Task HideSimilarFacesAsync(FoundFace face)
+    {
+        var similar = await ViewModel.FindSimilarUnnamedFacesAsync(face);
+        if (similar.Count == 0)
+        {
+            await ViewModel.IgnoreFacesAsync([face]);
+            ViewModel.Inform(Tr("No other unnamed face looks like this one. This face is hidden."));
+            return;
+        }
+        const int Shown = 80;
+        var grid = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 68, ItemHeight = 68, MaximumRowsOrColumns = 8 };
+        var toggles = new List<(FaceChoice Choice, FoundFace Face)>();
+        foreach (var f in similar.Prepend(face).Take(Shown))
+        {
+            var choice = new FaceChoice(FacePicture(f.Thumbnail, 56));
+            ToolTipService.SetToolTip(choice.Element, PhotoToolTip(f.Path));
+            grid.Children.Add(choice.Element);
+            toggles.Add((choice, f));
+        }
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Hide faces like this one"),
+            Content = new ScrollViewer
+            {
+                MaxHeight = 560,
+                Content = new StackPanel
+                {
+                    Spacing = 12,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = Tr("{0} unnamed face(s) look like it, most alike first. Click a face to keep it.", similar.Count) +
+                                   (similar.Count + 1 > Shown ? " " + Tr("Only the {0} most alike are shown.", Shown) : ""),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                        grid,
+                    },
+                },
+            },
+            PrimaryButtonText = Tr("Hide them"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        dialog.Resources["ContentDialogMaxWidth"] = 720.0;
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return;
+        var chosen = toggles.Where(t => t.Choice.IsChosen).Select(t => t.Face).ToList();
+        if (chosen.Count > 0)
+            await ViewModel.IgnoreFacesAsync(chosen, withUndo: true);
     }
 
     private UIElement PersonRow(PhotoItemViewModel item, PersonTag person, byte[]? picture) =>
@@ -250,18 +399,33 @@ public sealed partial class MainWindow
     }
 
     /// <summary>A box to type a name in, offering the names already used in the library.</summary>
-    private AutoSuggestBox NameBox(Func<string, Task> submit)
+    /// <param name="likely">The people it most likely is, listed first and shown as soon as the box gets the focus.</param>
+    private AutoSuggestBox NameBox(Func<string, Task> submit, IReadOnlyList<string>? likely = null)
     {
+        likely ??= [];
         var box = new AutoSuggestBox { PlaceholderText = Tr("Who is this?"), HorizontalAlignment = HorizontalAlignment.Stretch };
         PrepareSuggestions(box);
+        IReadOnlyList<string> Matching(string text) => text.Length == 0
+            ? likely
+            : likely.Concat(ViewModel.KnownNames)
+                .Where(n => n.Contains(text, StringComparison.CurrentCultureIgnoreCase))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase).Take(8).ToList();
+        if (likely.Count > 0)
+        {
+            box.GotFocus += (sender, _) =>
+            {
+                var b = (AutoSuggestBox)sender;
+                if (b.Text.Trim().Length > 0)
+                    return;
+                ShowSuggestions(b, likely);
+                b.IsSuggestionListOpen = true;
+            };
+        }
         box.TextChanged += (sender, args) =>
         {
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
                 return;
-            var text = sender.Text.Trim();
-            ShowSuggestions(sender, text.Length == 0
-                ? []
-                : ViewModel.KnownNames.Where(n => n.Contains(text, StringComparison.CurrentCultureIgnoreCase)).Take(8).ToList());
+            ShowSuggestions(sender, Matching(sender.Text.Trim()));
         };
         box.SuggestionChosen += (sender, args) => sender.Text = args.SelectedItem as string ?? sender.Text;
         box.QuerySubmitted += async (sender, args) =>

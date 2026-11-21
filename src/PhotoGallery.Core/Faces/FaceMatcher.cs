@@ -4,6 +4,19 @@ namespace PhotoGallery.Core.Faces;
 public sealed record NameSuggestion(string Name, double Similarity);
 
 /// <summary>
+/// What is known around a face besides how it looks, so the people who were there come first (Lasse,
+/// 2026-11-21: on a trip with two people, their brothers should not keep being suggested).
+/// </summary>
+/// <param name="TaggedWithoutFace">People named on the photo whose face is not marked yet.</param>
+/// <param name="OnOtherFaces">People already given to another face on the photo: nobody is on a photo twice.</param>
+/// <param name="InFolder">People named on the folder's photos, with the share of those photos they are on (0 to 1).</param>
+public sealed record SuggestionHints(IReadOnlyCollection<string> TaggedWithoutFace, IReadOnlyCollection<string> OnOtherFaces,
+                                     IReadOnlyDictionary<string, double> InFolder)
+{
+    public static readonly SuggestionHints None = new([], [], new Dictionary<string, double>());
+}
+
+/// <summary>
 /// Suggests who an unnamed face is by comparing it with the faces already named, and groups unnamed
 /// faces that look like the same person so they can be named together.
 /// </summary>
@@ -19,6 +32,10 @@ public sealed class FaceMatcher
     // name to confirm (Lasse, 2026-11-02); below this they are most likely a stranger.
     public const double LikelyPerson = 0.25;
 
+    // How much being named on the photo, or being on many of the folder's photos, counts next to looking alike.
+    internal const double TaggedBonus = 0.15;
+    internal const double FolderBonus = 0.1;
+
     // Enough of a group's faces to tell who it is without comparing thousands.
     private const int GroupSample = 12;
 
@@ -32,6 +49,51 @@ public sealed class FaceMatcher
     }
 
     public bool IsEmpty => _people.Count == 0;
+
+    /// <summary>
+    /// The person this face most likely is, or null when nobody is alike enough. With hints, the people who
+    /// were there are preferred: someone tagged on the photo or often in the folder wins over someone who
+    /// looks a little more alike, and may be suggested when only "might be" alike.
+    /// </summary>
+    public NameSuggestion? Suggest(float[] embedding, IEnumerable<string>? notThese, SuggestionHints hints) =>
+        Rank(embedding, notThese, hints, 1, onlyLikely: true).FirstOrDefault();
+
+    /// <summary>
+    /// The people this face may be, most likely first: everyone named who looks at least a bit alike, and the
+    /// people tagged on the photo or named in its folder, so the right name is a click away.
+    /// </summary>
+    public IReadOnlyList<NameSuggestion> Rank(float[] embedding, IEnumerable<string>? notThese, SuggestionHints hints, int count,
+                                             bool onlyLikely = false)
+    {
+        var skip = new HashSet<string>(notThese ?? [], StringComparer.CurrentCultureIgnoreCase);
+        skip.UnionWith(hints.OnOtherFaces.Select(n => n.Trim()));
+        var tagged = new HashSet<string>(hints.TaggedWithoutFace.Select(n => n.Trim()), StringComparer.CurrentCultureIgnoreCase);
+        var candidates = new Dictionary<string, (double Similarity, double Score)>(StringComparer.CurrentCultureIgnoreCase);
+        double Bonus(string name) => (tagged.Contains(name) ? TaggedBonus : 0) + FolderBonus * Math.Clamp(hints.InFolder.GetValueOrDefault(name), 0, 1);
+        foreach (var (name, faces) in _people)
+        {
+            if (skip.Contains(name))
+                continue;
+            var similarity = double.MinValue;
+            foreach (var face in faces)
+                similarity = Math.Max(similarity, Dot(face, embedding));
+            var score = similarity + Bonus(name);
+            var likely = similarity >= FaceAnalyzer.SamePerson || (similarity >= LikelyPerson && score >= FaceAnalyzer.SamePerson);
+            if (onlyLikely ? likely : similarity >= LikelyPerson / 2 || Bonus(name) > 0)
+                candidates[name] = (similarity, score);
+        }
+        if (!onlyLikely)
+        {
+            // People tagged or named nearby with no face to compare yet (e.g. tagged in another program).
+            foreach (var name in tagged.Concat(hints.InFolder.Keys).Select(n => n.Trim()))
+            {
+                if (!skip.Contains(name) && !candidates.ContainsKey(name))
+                    candidates[name] = (0, Bonus(name));
+            }
+        }
+        return candidates.OrderByDescending(c => c.Value.Score).ThenByDescending(c => c.Value.Similarity)
+            .Take(count).Select(c => new NameSuggestion(c.Key, c.Value.Similarity)).ToList();
+    }
 
     /// <summary>The person this face most likely is, or null when nobody is alike enough.</summary>
     public NameSuggestion? Suggest(float[] embedding, IEnumerable<string>? notThese = null)
