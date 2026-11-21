@@ -25,6 +25,9 @@ public sealed class MetadataEditorViewModel : ObservableObject
     private string _details = "";
     private string _position = "";
     private string _folder = "";
+    private bool _isOneFolder;
+    private string? _albumFolder;
+    private string _albumText = "";
     private bool _canLookUpPlace;
     private string _captionPlaceholder = Tr("Add a caption");
     private string? _validationError;
@@ -49,7 +52,45 @@ public sealed class MetadataEditorViewModel : ObservableObject
     /// </summary>
     public string Position { get => _position; private set => SetProperty(ref _position, value); }
 
-    public string Folder { get => _folder; private set => SetProperty(ref _folder, value); }
+    public string Folder
+    {
+        get => _folder;
+        private set
+        {
+            if (SetProperty(ref _folder, value))
+                OnPropertyChanged(nameof(FolderCount));
+        }
+    }
+
+    /// <summary>All selected photos are in one folder, so the folder link can open it with them selected.</summary>
+    public bool IsOneFolder
+    {
+        get => _isOneFolder;
+        private set
+        {
+            if (SetProperty(ref _isOneFolder, value))
+                OnPropertyChanged(nameof(FolderCount));
+        }
+    }
+
+    /// <summary>"In 3 folders" when the photos are in several, shown as plain text instead of the folder link.</summary>
+    public string FolderCount => _isOneFolder ? "" : _folder;
+
+    /// <summary>The album all selected photos belong to, or null.</summary>
+    public string? AlbumFolder
+    {
+        get => _albumFolder;
+        private set
+        {
+            if (SetProperty(ref _albumFolder, value))
+                OnPropertyChanged(nameof(HasAlbum));
+        }
+    }
+
+    public bool HasAlbum => _albumFolder is not null;
+
+    /// <summary>"Album: Italy 2024", the link to the album the photos are in.</summary>
+    public string AlbumText { get => _albumText; private set => SetProperty(ref _albumText, value); }
 
     /// <summary>A selected photo with a GPS position but no place names yet.</summary>
     public bool CanLookUpPlace { get => _canLookUpPlace; private set => SetProperty(ref _canLookUpPlace, value); }
@@ -354,6 +395,7 @@ public sealed class MetadataEditorViewModel : ObservableObject
     // One photo: its own details. Several: what they have in common (SelectionSummary).
     private void Describe(IReadOnlyList<Core.Library.IndexedPhoto> photos)
     {
+        DescribePlace(photos);
         if (photos is [var photo])
         {
             Position = photo.Location is { } at ? Core.Library.SelectionSummary.FormatPosition(at) : "";
@@ -368,6 +410,19 @@ public sealed class MetadataEditorViewModel : ObservableObject
         Folder = common.Folder;
         Details = common.Details;
     }
+
+    // Which folder and album the photos are in, for the links that open them in the Library (from All photos,
+    // a search or a month, the trip a photo belongs to is one click away; Lasse 2026-11-21).
+    private void DescribePlace(IReadOnlyList<Core.Library.IndexedPhoto> photos)
+    {
+        var folders = photos.Select(p => p.Folder).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        IsOneFolder = folders.Count == 1;
+        AlbumFolder = Core.Albums.AlbumFile.AlbumOfAll(photos.Select(p => p.Path));
+        AlbumText = AlbumFolder is { } shown ? Tr("Album: {0}", AlbumName(shown)) : "";
+    }
+
+    public static string AlbumName(string folder) =>
+        Core.Albums.AlbumFile.Read(folder)?.Name is { Length: > 0 } name ? name : Core.Albums.Album.DefaultName(folder);
 
     private static string Describe(Core.Library.IndexedPhoto photo)
     {

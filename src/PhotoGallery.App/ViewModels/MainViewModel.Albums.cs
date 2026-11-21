@@ -124,8 +124,7 @@ public sealed partial class MainViewModel
         SelectedFolder = new FolderNodeViewModel(album.Folder, isRoot: false);
     }
 
-    private static string AlbumName(string folder) =>
-        AlbumFile.Read(folder)?.Name is { Length: > 0 } name ? name : Album.DefaultName(folder);
+    private static string AlbumName(string folder) => MetadataEditorViewModel.AlbumName(folder);
 
     public string CurrentAlbumName(string folder) => AlbumName(folder);
 
