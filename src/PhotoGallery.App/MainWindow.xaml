@@ -1420,8 +1420,37 @@
                                 <TextBlock Text="{local:Loc Text='Magic eraser'}" />
                             </StackPanel>
                         </ToggleButton>
+                        <!-- E-15: red eye, and animals' eyeshine; only the glowing pupil changes (Core/Editing/EyeFix.cs). -->
+                        <ToggleButton x:Name="RetouchEyeButton" Click="RetouchTool_Click"
+                                      ToolTipService.ToolTip="{local:Loc Text='Fix eyes the flash turned red, or yellow, green or white in animals: click on an eye (J)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7B3;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Red eye'}" />
+                            </StackPanel>
+                        </ToggleButton>
                     </controls:WrapPanel>
                     <StackPanel x:Name="RetouchOptions" Spacing="6" Visibility="Collapsed">
+                        <StackPanel x:Name="EyeOptions" Spacing="6" Visibility="Collapsed">
+                            <Button x:Name="FindRedEyesButton" Click="FindRedEyes_Click" HorizontalAlignment="Stretch"
+                                    ToolTipService.ToolTip="{local:Loc Text='Finds the faces on the photo and fixes the eyes that are red'}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE721;" FontSize="14" />
+                                    <TextBlock Text="{local:Loc Text='Find red eyes'}" />
+                                </StackPanel>
+                            </Button>
+                            <CheckBox x:Name="AnimalEyesCheck" Content="{local:Loc Text='Animal eyes'}" Click="EyeOption_Changed"
+                                      ToolTipService.ToolTip="{local:Loc Text='For the yellow, green, white or red glow in the eyes of dogs, cats, deer and other animals'}" />
+                            <ComboBox x:Name="IrisColourBox" Header="{local:Loc Text='Colour of the iris'}" SelectedIndex="0" HorizontalAlignment="Stretch"
+                                      SelectionChanged="IrisColour_SelectionChanged"
+                                      ToolTipService.ToolTip="{local:Loc Text='Used where the red covers the whole coloured part of the eye. Automatic keeps the colour that is left, or uses a dark neutral shade.'}">
+                                <ComboBoxItem Content="{local:Loc Text='Automatic'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Blue'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Green'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Hazel'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Brown'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Grey'}" />
+                            </ComboBox>
+                        </StackPanel>
                         <Slider x:Name="BrushSizeSlider" Header="{local:Loc Text='Brush size'}" Minimum="6" Maximum="200" StepFrequency="1"
                                 Value="40" ValueChanged="BrushSize_ValueChanged" />
                         <TextBlock x:Name="RetouchHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

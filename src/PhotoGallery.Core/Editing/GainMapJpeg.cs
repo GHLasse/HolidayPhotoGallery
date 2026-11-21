@@ -155,8 +155,9 @@ public static class GainMapJpeg
 
         var (bgra, width, height) = ImageMath.Upright(pixels, info.Width, info.Height, orientation);
         if (geometry.Strokes is { Count: > 0 } strokes)
-            // The AI eraser is for photos; on the gain map, healing blends the brightness of the surroundings in.
-            Retouch.Apply(bgra, width, height, strokes.Select(s => s with { Tool = RetouchTool.Spot }), erase: null);
+            // The AI eraser is for photos; on the gain map, healing blends the brightness of the surroundings in. Fixed
+            // eyes keep the gain map as it was: it only brightens, and the pupil is dark now.
+            Retouch.Apply(bgra, width, height, strokes.Where(s => !s.ForEyes).Select(s => s with { Tool = RetouchTool.Spot }), erase: null);
         if (Math.Abs(geometry.Straighten) >= 0.01)
             (bgra, width, height) = Straighten.Apply(bgra, width, height, geometry.Straighten);
         if (geometry.Crop is { } c)

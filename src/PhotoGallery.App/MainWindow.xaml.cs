@@ -513,6 +513,12 @@ public sealed partial class MainWindow : Window
                 ToggleRetouchTool(IsDown(VirtualKey.Shift) ? RetouchTool.Erase : RetouchTool.Spot);
                 return;
             }
+            if (e.Key == VirtualKey.J && _viewerPixels is not null)
+            {
+                e.Handled = true;
+                ToggleRetouchTool(RetouchTool.RedEye);
+                return;
+            }
             if (ViewerItem is not { } item || IsEditing)
                 return;
             if (stars >= 0)
@@ -666,6 +672,7 @@ public sealed partial class MainWindow : Window
             ("Ctrl+,  Ctrl+.", Tr("Rotate left or right")),
             ("E", Tr("Show or hide the Edit pane in the viewer: quick fixes, crop, light and colour")),
             ("H", Tr("Remove spots in the viewer; Shift+H the magic eraser")),
+            ("J", Tr("Fix red eyes in the viewer")),
             ("[ ]  - +", Tr("Make the retouch brush smaller or larger")),
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
@@ -1543,7 +1550,8 @@ public sealed partial class MainWindow : Window
         if (_cropping)
         {
             // The crop frame takes the pointer again from the retouch brush.
-            RetouchSpotButton.IsChecked = RetouchEraseButton.IsChecked = false;
+            foreach (var button in RetouchButtons)
+                button.IsChecked = false;
             SyncRetouch();
         }
         ViewerCanvas.Ratio = SelectedCropRatio();
