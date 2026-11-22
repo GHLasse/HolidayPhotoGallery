@@ -1522,6 +1522,7 @@
     "Windows no longer offers {0} for {1} files. Choose the app again in Settings › Editing.": "Windows ya no ofrece {0} para archivos {1}. Vuelve a elegir la aplicación en Configuración › Edición.",
     "Windows refused access to the app's folder.": "Windows denegó el acceso a la carpeta de la aplicación.",
     "With the best-quality model this takes about {0} on this PC ({1}); the fast model takes about a tenth of that. Choose Fast, or press Next again to wait.": "Con el modelo de máxima calidad esto tarda unos {0} en este PC ({1}); el modelo rápido tarda una décima parte. Elige Rápido o pulsa Siguiente de nuevo para esperar.",
+    "Working…": "Procesando…",
     "Write all place names in {0}": "Escribir todos los nombres de lugares en {0}",
     "Write all place names in {0}…": "Escribir todos los nombres de lugares en {0}…",
     "Write the edit into the photo": "Escribir la edición en la foto",

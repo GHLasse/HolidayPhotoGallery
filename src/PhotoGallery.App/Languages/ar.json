@@ -1522,6 +1522,7 @@
     "Windows no longer offers {0} for {1} files. Choose the app again in Settings › Editing.": "لم يعد Windows يقترح {0} لملفات {1}. اختر التطبيق مرة أخرى في الإعدادات › التحرير.",
     "Windows refused access to the app's folder.": "رفض Windows الوصول إلى مجلد التطبيق.",
     "With the best-quality model this takes about {0} on this PC ({1}); the fast model takes about a tenth of that. Choose Fast, or press Next again to wait.": "يستغرق ذلك بنموذج أفضل جودة نحو {0} على هذا الحاسوب ({1})؛ ويستغرق النموذج السريع نحو عُشر ذلك. اختر «سريع»، أو اضغط «التالي» مرة أخرى للانتظار.",
+    "Working…": "جارٍ العمل…",
     "Write all place names in {0}": "كتابة كل أسماء الأماكن باللغة {0}",
     "Write all place names in {0}…": "كتابة كل أسماء الأماكن باللغة {0}…",
     "Write the edit into the photo": "كتابة التعديل في الصورة",

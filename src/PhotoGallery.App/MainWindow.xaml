@@ -1831,7 +1831,7 @@
             <!-- Videos play here instead (F-4), with Windows' own play, seek and volume controls. -->
             <MediaPlayerElement x:Name="ViewerVideo" Grid.Row="1" Margin="56,0,56,16" Visibility="Collapsed"
                                 AreTransportControlsEnabled="True" AutoPlay="True" Stretch="Uniform" />
-            <ProgressRing x:Name="ViewerProgress" Grid.Row="1" IsActive="False" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+            <controls:BusyPlane x:Name="ViewerProgress" Grid.Row="1" />
             <TextBlock x:Name="ViewerError" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="480" />
             <Button x:Name="ViewerPreviousButton" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8" Click="ViewerPrevious_Click" ToolTipService.ToolTip="{local:Loc Text='Previous (Left arrow)'}">
                 <SymbolIcon Symbol="Back" />
