@@ -1432,10 +1432,10 @@
                     <StackPanel x:Name="RetouchOptions" Spacing="6" Visibility="Collapsed">
                         <StackPanel x:Name="EyeOptions" Spacing="6" Visibility="Collapsed">
                             <Button x:Name="FindRedEyesButton" Click="FindRedEyes_Click" HorizontalAlignment="Stretch"
-                                    ToolTipService.ToolTip="{local:Loc Text='Finds the faces on the photo and fixes the eyes that are red'}">
+                                    ToolTipService.ToolTip="{local:Loc Text='Finds the faces on the photo and fixes the eyes that are red; one Undo takes them all back'}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE721;" FontSize="14" />
-                                    <TextBlock Text="{local:Loc Text='Find red eyes'}" />
+                                    <FontIcon x:Name="FindRedEyesIcon" Glyph="&#xE721;" FontSize="14" />
+                                    <TextBlock x:Name="FindRedEyesText" Text="{local:Loc Text='Find red eyes'}" />
                                 </StackPanel>
                             </Button>
                             <CheckBox x:Name="AnimalEyesCheck" Content="{local:Loc Text='Animal eyes'}" Click="EyeOption_Changed"

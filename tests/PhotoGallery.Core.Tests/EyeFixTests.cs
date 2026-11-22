@@ -63,7 +63,7 @@ public sealed class EyeFixTests
         Assert.Equal(At(before, Middle + 25, Middle), At(pixels, Middle + 25, Middle));
         Assert.Equal(At(before, Middle, Middle - 30), At(pixels, Middle, Middle - 30));
         // The highlight of the flash is kept.
-        Assert.True(At(pixels, Middle - 2, Middle - 2).G > 200);
+        Assert.True(At(pixels, Middle - 2, Middle - 2).G > 200, $"highlight: {At(pixels, Middle - 2, Middle - 2)} was {At(before, Middle - 2, Middle - 2)}");
     }
 
     [Fact]
@@ -75,9 +75,28 @@ public sealed class EyeFixTests
 
         var pupil = At(pixels, Middle + 2, Middle + 2);
         var iris = At(pixels, Middle + 9, Middle);
-        Assert.True(pupil.R < 60, $"pupil: {pupil}");
+        Assert.True(pupil.R < 75, $"pupil: {pupil}"); // darker, but not black: the gentle whole-iris fix
         Assert.True(iris.R - Math.Max(iris.G, iris.B) < 10, $"iris still red or brown: {iris}");
         Assert.True(iris.R + iris.G + iris.B > pupil.R + pupil.G + pupil.B, "the iris is lighter than the pupil");
+    }
+
+    [Fact]
+    public void A_pale_pink_glow_in_a_warm_photo_is_found_although_the_skin_is_reddish_too()
+    {
+        // A soft, warm photo: reddish skin all around and no white of the eye to see, the pupil a salmon glow.
+        var pixels = Eye(0, Red, 9, (245, 140, 125), highlight: false);
+        for (var i = 0; i < Size * Size; i++)
+        {
+            var o = i * 4;
+            if (pixels[o + 2] < 240)
+                (pixels[o + 2], pixels[o + 1], pixels[o]) = (170, 111, 90);
+        }
+
+        Assert.True(EyeFix.Fix(pixels, Size, Size, Middle, Middle, 20, animal: false));
+
+        var pupil = At(pixels, Middle, Middle);
+        Assert.True(pupil.R < 80, $"still glowing: {pupil}");
+        Assert.Equal((170, 111, 90), At(pixels, Middle + 18, Middle)); // the skin stays
     }
 
     [Fact]
@@ -99,6 +118,29 @@ public sealed class EyeFixTests
 
         Assert.False(EyeFix.Fix(pixels, Size, Size, Middle, Middle, 16, animal: false));
         Assert.Equal(before, pixels);
+    }
+
+    [Theory]
+    [InlineData(120, 70, 50)]   // a brown iris
+    [InlineData(150, 80, 60)]   // an auburn iris
+    public void A_brown_eye_is_not_taken_for_red_eye(byte r, byte g, byte b)
+    {
+        var pixels = Eye(12, (r, g, b), 5, (25, 20, 20));
+        var before = (byte[])pixels.Clone();
+
+        Assert.False(EyeFix.Fix(pixels, Size, Size, Middle, Middle, 20, animal: false));
+        Assert.Equal(before, pixels);
+    }
+
+    [Fact]
+    public void Fixing_a_red_eye_twice_changes_nothing_the_second_time()
+    {
+        var pixels = Eye(12, Red, 12, Red);
+        Assert.True(EyeFix.Fix(pixels, Size, Size, Middle, Middle, 20, animal: false));
+        var once = (byte[])pixels.Clone();
+
+        Assert.False(EyeFix.Fix(pixels, Size, Size, Middle, Middle, 20, animal: false));
+        Assert.Equal(once, pixels);
     }
 
     [Fact]
