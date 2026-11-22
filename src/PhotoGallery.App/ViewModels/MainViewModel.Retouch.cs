@@ -68,17 +68,31 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
-    /// The faces on the shown photo for the Beauty look, as fractions of the upright photo: found afresh with the face
-    /// detector when its model is there (which also finds the eyes and mouth), otherwise the faces the index knows.
+    /// The faces on the shown photo for the Beauty look and Find red eyes, as fractions of the upright photo. With the
+    /// face detector's model, the faces the People scan already found are only looked at closely for their eyes and
+    /// mouth, which is quick even on a group photo; a photo not scanned yet is searched as a whole. Without the model,
+    /// the faces the index knows are used as they are.
     /// </summary>
     public async Task<IReadOnlyList<BeautyFace>> FindBeautyFacesAsync(PhotoItemViewModel item, DecodedImage pixels)
     {
+        var orientation = item.Photo.Orientation;
+        var known = await GetFacesAsync(item.Path);
         if (IsFaceModelInstalled)
         {
             try
             {
                 var found = await Task.Run(() =>
                 {
+                    if (known.Count > 0)
+                    {
+                        lock (_beautyGate)
+                        {
+                            _beautyAnalyzer ??= FaceAnalyzer.Load(FaceModelFolder);
+                            var located = _beautyAnalyzer.Locate(pixels.Pixels, pixels.Width, pixels.Height, known.Select(f => f.Box.ToUpright(orientation)));
+                            if (located.Count > 0)
+                                return (IReadOnlyList<BeautyFace>)located.Select(f => new BeautyFace(f.Box, f.Points)).ToList();
+                        }
+                    }
                     var scale = Math.Min(1.0, (double)FaceAnalyzer.ImageSize / Math.Max(pixels.Width, pixels.Height));
                     var (w, h) = (Math.Max(1, (int)Math.Round(pixels.Width * scale)), Math.Max(1, (int)Math.Round(pixels.Height * scale)));
                     var small = scale < 1 ? ImageMath.Resize(pixels.Pixels, pixels.Width, pixels.Height, w, h) : pixels.Pixels;
@@ -97,8 +111,6 @@ public sealed partial class MainViewModel
                 // The faces the index knows are used instead.
             }
         }
-        var orientation = item.Photo.Orientation;
-        var known = await GetFacesAsync(item.Path);
         return known.Where(f => !f.Ignored).Select(f => BeautyFace.FromBox(f.Box.ToUpright(orientation))).ToList();
     }
 }

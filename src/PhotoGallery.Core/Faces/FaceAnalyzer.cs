@@ -121,6 +121,37 @@ public sealed class FaceAnalyzer : IDisposable
         return faces;
     }
 
+    /// <summary>
+    /// Finds the eyes, nose and mouth of faces that are already known, for example from the People scan, by looking
+    /// only around each box once. Much quicker than <see cref="Analyze"/>, which searches the whole photo several
+    /// times and describes each face; the faces come back without a description (an empty embedding).
+    /// </summary>
+    public IReadOnlyList<DetectedFace> Locate(byte[] bgra, int width, int height, IEnumerable<FaceBox> known)
+    {
+        var faces = new List<DetectedFace>();
+        foreach (var box in known)
+        {
+            var (cx, cy) = ((box.X + box.Width / 2) * width, (box.Y + box.Height / 2) * height);
+            // Room around the face, so a loose or tight box from another program still holds the whole face.
+            var side = Math.Max(64, Math.Max(box.Width * width, box.Height * height) * 2.2);
+            var left = (int)Math.Clamp(cx - side / 2, 0, Math.Max(0, width - 1));
+            var top = (int)Math.Clamp(cy - side / 2, 0, Math.Max(0, height - 1));
+            var (partW, partH) = (Math.Min((int)side, width - left), Math.Min((int)side, height - top));
+            if (partW < MinFacePixels || partH < MinFacePixels)
+                continue;
+            var best = Detect(bgra, width, height, left, top, partW, partH, false, 0)
+                .Where(c => c.Score >= LikelyScore)
+                .OrderBy(c => Math.Pow(c.X + c.Width / 2 - cx, 2) + Math.Pow(c.Y + c.Height / 2 - cy, 2))
+                .FirstOrDefault();
+            if (best is null)
+                continue;
+            var found = new FaceBox((double)best.X / width, (double)best.Y / height, (double)best.Width / width, (double)best.Height / height).Clamp();
+            var points = Enumerable.Range(0, 5).Select(n => ((double)best.Landmarks[2 * n] / width, (double)best.Landmarks[2 * n + 1] / height)).ToList();
+            faces.Add(new DetectedFace(found, best.Score, []) { Points = points });
+        }
+        return faces;
+    }
+
     /// <param name="Pass">Which look at the photo found it (a part, straight or mirrored).</param>
     internal sealed record Candidate(float Score, float X, float Y, float Width, float Height, float[] Landmarks, int Pass = 0)
     {
