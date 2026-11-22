@@ -217,6 +217,33 @@ public sealed class PhotoMetadataServiceTests : IAsyncLifetime
     }
 
     [ExifToolFact]
+    public async Task Rotating_moves_the_modified_date_on_so_Windows_renews_its_thumbnail()
+    {
+        // Windows keeps thumbnails by file and modified date: a rotation that kept the old date left the
+        // thumbnail from before the turn in the grid after every restart.
+        var path = _temp.CopySample(".jpg");
+        var stamp = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, stamp);
+
+        await Service.WriteAsync(path, new MetadataChanges { Orientation = 6 });
+
+        Assert.NotEqual(stamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [ExifToolFact]
+    public async Task Rotating_removes_a_disagreeing_xmp_orientation()
+    {
+        var path = _temp.CopySample(".jpg");
+        await _exifTool!.RunAsync(["-overwrite_original", "-XMP-tiff:Orientation#=8", path]);
+
+        await Service.WriteAsync(path, new MetadataChanges { Orientation = 6 });
+
+        Assert.Equal("6", (await _exifTool!.RunAsync(["-s3", "-IFD0:Orientation#", path])).Output.Trim());
+        Assert.Equal("", (await _exifTool!.RunAsync(["-s3", "-XMP-tiff:Orientation#", path])).Output.Trim());
+        Assert.Equal(6, (await Service.ReadAsync(path)).Orientation);
+    }
+
+    [ExifToolFact]
     public async Task Rotating_a_jpeg_changes_only_the_orientation_tag()
     {
         var path = _temp.CopySample(".jpg");

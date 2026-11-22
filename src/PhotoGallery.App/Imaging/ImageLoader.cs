@@ -33,6 +33,28 @@ public static class ImageLoader
         return bitmap is null ? null : await ToImageSourceAsync(bitmap);
     }
 
+    /// <summary>
+    /// A photo's thumbnail for the grid: Windows' cached one, unless its shape shows it is turned the wrong way
+    /// (landscape for a portrait photo or the other way round), then the file itself is decoded. Windows can hold
+    /// a thumbnail from before a rotation, and a photo turned by another program can carry an embedded preview
+    /// that was never turned with it.
+    /// </summary>
+    /// <param name="width">The photo's stored width from the index, before its orientation.</param>
+    /// <param name="height">The photo's stored height from the index, before its orientation.</param>
+    public static async Task<ImageSource?> LoadPhotoThumbnailAsync(string path, uint size, int? width, int? height, int orientation)
+    {
+        var bitmap = await Task.Run(async () =>
+        {
+            var shell = await ReadShellThumbnailAsync(path, size).WaitAsync(ShellTimeout);
+            if (shell is null || !PhotoGallery.Core.SupportedFormats.CanRotateLosslessly(path) ||
+                !PhotoGallery.Core.Metadata.Orientation.PreviewLooksTurned(shell.PixelWidth, shell.PixelHeight, width, height, orientation))
+                return shell;
+            shell.Dispose();
+            return await DecodeBitmapAsync(path, size);
+        }).WaitAsync(ShellTimeout + DecodeTimeout);
+        return bitmap is null ? null : await ToImageSourceAsync(bitmap);
+    }
+
     /// <summary>The same thumbnail as a JPEG file's bytes, e.g. for the map's web page; null when Windows has none.</summary>
     public static Task<byte[]?> LoadShellThumbnailJpegAsync(string path, uint size) => Task.Run(async () =>
     {

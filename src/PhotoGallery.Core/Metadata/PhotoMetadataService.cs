@@ -600,6 +600,12 @@ public sealed class PhotoMetadataService(ExifToolProcess exifTool)
             if (!SupportedFormats.CanRotateLosslessly(path))
                 throw new NotSupportedException(Tr("Rotating {0} files is not supported yet.", Path.GetExtension(path)));
             args.Add($"-IFD0:Orientation#={Orientation.Normalize(orientation)}");
+            // An older copy in XMP could disagree with the new turn, and some programs read that one first.
+            args.Add("-XMP-tiff:Orientation=");
+            // The photo looks different now, so its modified date moves on, as when Windows Explorer rotates it.
+            // Windows keeps its thumbnails by file and modified date: with the old date it would go on showing
+            // the thumbnail from before the turn, even after the app is restarted.
+            args.Remove("-P");
         }
 
         if (changes.RemoveLocation)
