@@ -140,6 +140,13 @@ public static class EyeFix
         if (seed < 0 || peak < 90)
             return false;
         var dimmest = peak * 0.55;
+        if (animal && brightness.Count > 0)
+        {
+            // A glow on light skin (a person's eyeshine) is only a little brighter than the face: it ends half way
+            // between the face's brightness and its own, not at half its own.
+            var middle = brightness[brightness.Count / 2];
+            dimmest = Math.Max(dimmest, Math.Min(middle + (peak - middle) * 0.5, peak * 0.85));
+        }
         var patch = new bool[n];
         var queue = new Queue<int>();
         patch[seed] = true;
@@ -466,7 +473,7 @@ public static class EyeFix
             if (animal)
             {
                 // Inside: a dark pupil in the shade of the fur around it. The soft rim outside: the colour around.
-                var dark = 0.32 * (0.85 + 0.15 * texture);
+                var dark = 0.4 * (0.85 + 0.15 * texture);
                 var k = Math.Min(1, core[i] / Math.Max(alpha, 1e-3));
                 (nr, ng, nb) = (Lerp(aroundR, aroundR * dark, k), Lerp(aroundG, aroundG * dark, k), Lerp(aroundB, aroundB * dark, k));
             }

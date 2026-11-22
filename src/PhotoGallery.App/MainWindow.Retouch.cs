@@ -102,7 +102,7 @@ public sealed partial class MainWindow
         RetouchHint.Text = tool switch
         {
             RetouchTool.RedEye => Tr("Click on the middle of a red eye, with a brush about as large as the eye. Only the red part changes; the colour of the eye stays."),
-            RetouchTool.Eyeshine => Tr("Click on the middle of a glowing animal eye, with a brush about as large as the eye."),
+            RetouchTool.Eyeshine => Tr("Click on the middle of a glowing eye, with a brush about as large as the eye."),
             RetouchTool.Spot => Tr("Click on a spot or brush over it; a brush a little larger than the spot works best. Zoom in with the mouse wheel for small spots."),
             RetouchTool.Erase => Tr("Paint over what should go, with a little to spare around it. Large areas may look smudged; several smaller strokes often work better."),
             _ => "",
@@ -286,7 +286,7 @@ public sealed partial class MainWindow
                 {
                     // No glowing eye there: nothing to undo, and a click is told why nothing happened.
                     ViewModel.Inform(stroke.Tool == RetouchTool.RedEye
-                            ? Tr("No red eye was found there. Click on the middle of the eye; for animals, tick Animal eyes.")
+                            ? Tr("No red eye was found there. Click on the middle of the eye; for an eye that glows yellow or white, tick Yellow or white glow.")
                             : Tr("No glowing eye was found there. Click on the middle of the eye."));
                     ViewerCanvas.FinishWorking(working);
                     continue;
