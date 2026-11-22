@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The busy sign in the middle of the viewer: the plane from the app icon circling on a small frosted
+     plate, so it stays visible on light, dark and colourful photos alike. See BusyPlane.xaml.cs. -->
+<UserControl
+    x:Class="PhotoGallery.App.Controls.BusyPlane"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PhotoGallery.App"
+    HorizontalAlignment="Center" VerticalAlignment="Center"
+    IsHitTestVisible="False" IsTabStop="False" Visibility="Collapsed">
+
+    <UserControl.Resources>
+        <Storyboard x:Name="OrbitStoryboard" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="Orbit" Storyboard.TargetProperty="Angle"
+                             From="0" To="360" Duration="0:0:1.8" />
+        </Storyboard>
+    </UserControl.Resources>
+
+    <!-- Wider than the plate so the label under it (animations off) is never cut off. -->
+    <Grid Width="240" Height="64">
+        <Border x:Name="Plate" Width="64" Height="64" CornerRadius="32"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <Canvas Width="48" Height="48">
+                <!-- The full flight path, faint, so the circle reads even when the plane stands still. -->
+                <Ellipse Canvas.Left="9" Canvas.Top="9" Width="30" Height="30" StrokeThickness="2"
+                         Stroke="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.18" />
+                <Canvas Width="48" Height="48">
+                    <Canvas.RenderTransform>
+                        <RotateTransform x:Name="Orbit" CenterX="24" CenterY="24" />
+                    </Canvas.RenderTransform>
+                    <!-- Contrail behind the plane, fading out. -->
+                    <Path Data="M24,9 A15,15 0 0 0 9.5,20.1" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Stroke="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.75" />
+                    <Path Data="M9.5,20.1 A15,15 0 0 0 11,31.5" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Stroke="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.3" />
+                    <!-- The plane from the app icon (24 x 24, nose up), turned to fly clockwise along the circle. -->
+                    <Path Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                          Data="M12,1.5 C12.8,1.5 13.4,2.5 13.4,3.8 V9 L22,14.2 V16 L13.4,13.4 V19 L15.8,20.8 V22.5 L12,21.4 L8.2,22.5 V20.8 L10.6,19 V13.4 L2,16 V14.2 L10.6,9 V3.8 C10.6,2.5 11.2,1.5 12,1.5 Z">
+                        <Path.RenderTransform>
+                            <CompositeTransform CenterX="12" CenterY="12" ScaleX="0.9" ScaleY="0.9" Rotation="90"
+                                                TranslateX="12" TranslateY="-3" />
+                        </Path.RenderTransform>
+                    </Path>
+                </Canvas>
+            </Canvas>
+        </Border>
+        <!-- With Windows animations off the plane stands still, so a word says the app is still busy. -->
+        <Border x:Name="StillLabel" HorizontalAlignment="Center" VerticalAlignment="Bottom" Visibility="Collapsed"
+                Padding="10,2" CornerRadius="10"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <Border.RenderTransform>
+                <TranslateTransform Y="30" />
+            </Border.RenderTransform>
+            <TextBlock Text="{local:Loc Text='Working…'}" Style="{ThemeResource CaptionTextBlockStyle}" FontWeight="SemiBold" />
+        </Border>
+    </Grid>
+</UserControl>

@@ -1522,6 +1522,7 @@
     "Windows no longer offers {0} for {1} files. Choose the app again in Settings › Editing.": "Windows 不再为 {1} 文件提供 {0}。请在“设置 › 编辑”中重新选择应用。",
     "Windows refused access to the app's folder.": "Windows 拒绝访问应用的文件夹。",
     "With the best-quality model this takes about {0} on this PC ({1}); the fast model takes about a tenth of that. Choose Fast, or press Next again to wait.": "使用最佳质量模型，这在这台电脑上大约需要 {0}（{1}）；快速模型大约只需十分之一。请选择“快速”，或再次按“下一步”等待。",
+    "Working…": "正在处理…",
     "Write all place names in {0}": "以{0}写入所有地名",
     "Write all place names in {0}…": "以{0}写入所有地名…",
     "Write the edit into the photo": "将编辑写入照片",
