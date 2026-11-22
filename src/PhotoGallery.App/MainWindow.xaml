@@ -1422,7 +1422,7 @@
                         </ToggleButton>
                         <!-- E-15: red eye, and animals' eyeshine; only the glowing pupil changes (Core/Editing/EyeFix.cs). -->
                         <ToggleButton x:Name="RetouchEyeButton" Click="RetouchTool_Click"
-                                      ToolTipService.ToolTip="{local:Loc Text='Fix eyes the flash turned red, or yellow, green or white in animals: click on an eye (J)'}">
+                                      ToolTipService.ToolTip="{local:Loc Text='Fix eyes the flash turned red, yellow, green or white: click on an eye (J)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE7B3;" FontSize="16" />
                                 <TextBlock Text="{local:Loc Text='Red eye'}" />
@@ -1438,8 +1438,8 @@
                                     <TextBlock x:Name="FindRedEyesText" Text="{local:Loc Text='Find red eyes'}" />
                                 </StackPanel>
                             </Button>
-                            <CheckBox x:Name="AnimalEyesCheck" Content="{local:Loc Text='Animal eyes'}" Click="EyeOption_Changed"
-                                      ToolTipService.ToolTip="{local:Loc Text='For the yellow, green, white or red glow in the eyes of dogs, cats, deer and other animals'}" />
+                            <CheckBox x:Name="AnimalEyesCheck" Content="{local:Loc Text='Yellow or white glow'}" Click="EyeOption_Changed"
+                                      ToolTipService.ToolTip="{local:Loc Text='For eyes that glow yellow, green or white instead of red, as in animals and sometimes in people'}" />
                             <ComboBox x:Name="IrisColourBox" Header="{local:Loc Text='Colour of the iris'}" SelectedIndex="0" HorizontalAlignment="Stretch"
                                       SelectionChanged="IrisColour_SelectionChanged"
                                       ToolTipService.ToolTip="{local:Loc Text='Used where the red covers the whole coloured part of the eye. Automatic keeps the colour that is left, or uses a dark neutral shade.'}">
