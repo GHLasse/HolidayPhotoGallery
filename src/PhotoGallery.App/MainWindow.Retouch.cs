@@ -184,9 +184,9 @@ public sealed partial class MainWindow
             {
                 var (left, right) = (face.Points[0], face.Points[1]);
                 var apart = Math.Sqrt(Math.Pow((right.X - left.X) * pixels.Width, 2) + Math.Pow((right.Y - left.Y) * pixels.Height, 2));
-                // An iris is about 0.09 of the distance between the eyes across its half; the red is never larger
-                // (at most 0.7 of this circle), and there is room for the detector's eye point to be a little off.
-                var radius = apart * 0.14 / Math.Max(pixels.Width, pixels.Height);
+                // An iris is about 0.09 of the distance between the eyes across its half; the red is never taken larger
+                // (0.6 of this circle), and there is room for the detector’s eye point to be a little off.
+                var radius = apart * 0.16 / Math.Max(pixels.Width, pixels.Height);
                 eyes.Add(new RetouchStroke(RetouchTool.RedEye, [left], radius, iris));
                 eyes.Add(new RetouchStroke(RetouchTool.RedEye, [right], radius, iris));
             }

@@ -100,6 +100,25 @@ public sealed class EyeFixTests
     }
 
     [Fact]
+    public void A_dull_red_eye_in_a_blurred_group_photo_is_found_and_stays_inside_the_eye()
+    {
+        // A small, dull red that hardly stands out, with reddish skin all around, as in a soft group photo.
+        var pixels = Eye(9, (180, 80, 82), 9, (180, 80, 82), highlight: false);
+        for (var i = 0; i < Size * Size; i++)
+        {
+            var o = i * 4;
+            if (pixels[o + 2] is > 200 and < 225 && pixels[o + 1] < 180)
+                (pixels[o + 2], pixels[o + 1], pixels[o]) = (150, 95, 85);
+        }
+
+        Assert.True(EyeFix.Fix(pixels, Size, Size, Middle, Middle, 22, animal: false));
+
+        var pupil = At(pixels, Middle, Middle);
+        Assert.True(pupil.R - Math.Max(pupil.G, pupil.B) < 15, $"still red: {pupil}");
+        Assert.Equal((150, 95, 85), At(pixels, Middle, Middle - 20)); // the skin above the eye keeps its colour
+    }
+
+    [Fact]
     public void A_chosen_iris_colour_is_given_back()
     {
         var pixels = Eye(12, Red, 12, Red);

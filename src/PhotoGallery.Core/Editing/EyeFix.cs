@@ -247,6 +247,12 @@ public static class EyeFix
                 if (sw > 0)
                     (cx, cy) = (sx / sw, sy / sw);
             }
+            // The eye is where it was clicked or where the face finder put it: in a blurred photo a reddish lid
+            // crease next to the glow must not pull the middle away from the pupil.
+            var (wantX, wantY) = (centerX - x0, centerY - y0);
+            var shift = Distance(cx, cy, wantX, wantY);
+            if (shift > radius * 0.3)
+                (cx, cy) = (wantX + (cx - wantX) * radius * 0.3 / shift, wantY + (cy - wantY) * radius * 0.3 / shift);
             // The edge: where the glow, averaged around the circle, falls to 40% of what it is in the middle.
             var rings = (int)Math.Ceiling(patchRadius * 2.5) + 2;
             var (all, sum) = (new int[rings], new double[rings]);
@@ -271,8 +277,11 @@ public static class EyeFix
         }
 
         // Larger than the eye the circle was meant to hold: skin, lips or a red shirt, not an eye.
-        if (patchRadius > radius * 0.7 && !animal)
+        if (patchRadius > radius * 0.95 && !animal)
             return false;
+        // A blurred glow runs into the reddish skin around it: the pupil is never larger than this.
+        if (!animal)
+            patchRadius = Math.Min(patchRadius, radius * 0.6);
         // On people: is the white of the eye right around the patch? Then the red covers the whole iris, and only its
         // middle is the pupil. Animals' eyeshine fills the pupil, which can be nearly the whole eye.
         var intact = new List<(byte R, byte G, byte B)>();
@@ -311,9 +320,10 @@ public static class EyeFix
             var standsOut = 1.5 * (ratio / glowing - typicalRatio) + (red / glowing - typicalRed) / 255.0;
             // The flash lights the eye from inside: the glow is about as bright as what is around it. A brown iris is
             // as red as a soft red eye but much darker than the white of the eye and the skin beside it.
-            var bright = red / glowing >= typicalRed * 0.8;
+            // A strongly red glow is a red eye even when the white of the eye beside it is much brighter.
+            var bright = red / glowing >= typicalRed * 0.8 || ratio / glowing >= 0.5;
             // The white of the eye beside it is good evidence by itself, so a small, soft red eye needs less contrast.
-            return bright && filled >= inDisc * 0.55 && beyond <= glowing * 0.25 && standsOut >= (coversIris ? 0.2 : 0.3);
+            return bright && filled >= inDisc * 0.45 && beyond <= glowing * 0.25 && standsOut >= (coversIris ? 0.15 : 0.26);
         }
 
         var pupilRadius = double.MaxValue;
@@ -346,7 +356,7 @@ public static class EyeFix
             var d = Distance(i % bw + 0.5, i / bw + 0.5, cx, cy);
             var disc = 1 - Smooth(d, patchRadius - 0.5, patchRadius + soft);
             var strict = Smooth(d, patchRadius * 0.6, patchRadius * 0.9);
-            amount[i] = disc * Smooth(score[i], 0.08, 0.4)
+            amount[i] = disc * Smooth(score[i], 0.2, 0.5)
                         * Smooth(Glow(bgra, o, animal), dimmest * Lerp(0.7, 0.95, strict), dimmest * Lerp(1.0, 1.2, strict));
         }
         if (animal)
@@ -427,7 +437,8 @@ public static class EyeFix
             {
                 // Just outside the fix, red fringes lose their red cast, so no pink rim is left around the pupil.
                 // Dark lashes and lid shadows outside the pupil, red as they may be, are not fringe.
-                var fringe = score[i] * (1 - Smooth(Distance(x, y, cx, cy), patchRadius + soft, patchRadius + 2.5 * soft))
+                // Only clearly red pixels: reddish skin around a blurred eye must keep its colour, not turn grey.
+                var fringe = Smooth(score[i], 0.3, 0.7) * (1 - Smooth(Distance(x, y, cx, cy), patchRadius + 0.5 * soft, patchRadius + 1.5 * soft))
                              * (Distance(x, y, cx, cy) < patchRadius ? 1 : Smooth(r, dimmest * 0.8, dimmest * 1.1));
                 if (fringe > 0)
                 {
