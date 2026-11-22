@@ -342,7 +342,10 @@ public sealed class PhotoItemViewModel(IndexedPhoto photo) : ObservableObject
                 }
                 try
                 {
-                    item.Thumbnail = await ImageLoader.LoadShellThumbnailAsync(item.Path, ThumbnailSize);
+                    item.Thumbnail = item.IsVideo
+                        ? await ImageLoader.LoadShellThumbnailAsync(item.Path, ThumbnailSize)
+                        : await ImageLoader.LoadPhotoThumbnailAsync(item.Path, ThumbnailSize, item.Photo.Width, item.Photo.Height,
+                                                                    item.Photo.Orientation);
                     item._failures = 0;
                     item.Keep();
                 }
