@@ -55,13 +55,42 @@ public static class EyeFix
                 inside[i] = true;
                 circle++;
                 var o = ((y0 + y) * width + x0 + x) * 4;
-                score[i] = Redness(bgra[o + 2], bgra[o + 1], bgra[o]);
                 if (animal)
                     brightness.Add(Math.Max(bgra[o + 2], Math.Max(bgra[o + 1], bgra[o])));
             }
         }
         if (circle < 9)
             return false;
+
+        // Red is judged against the rest of the circle: in a warm or flash-lit photo the skin is reddish too, so a
+        // pixel counts as glowing red only when it is clearly redder and brighter than what is typical around it.
+        var (ratios, reds) = (new List<double>(circle), new List<int>(circle));
+        for (var i = 0; i < n; i++)
+        {
+            if (!inside[i])
+                continue;
+            var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
+            ratios.Add(RedRatio(bgra[o + 2], bgra[o + 1], bgra[o]));
+            reds.Add(bgra[o + 2]);
+        }
+        ratios.Sort();
+        reds.Sort();
+        var (typicalRatio, typicalRed) = (ratios[(int)(circle * 0.4)], reds[(int)(circle * 0.4)]);
+        // A soft, pink or orange glow in a warm photo is hardly redder than the skin, but much brighter than the rest
+        // of the eye: bright and at least a little redder counts too.
+        var (dimRed, topRed) = (reds[circle / 10], reds[(int)(circle * 0.95)]);
+        var brightRed = topRed - dimRed >= 40 ? Math.Max(110, dimRed + (topRed - dimRed) * 0.5) : double.MaxValue;
+        for (var i = 0; i < n; i++)
+        {
+            if (!inside[i])
+                continue;
+            var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
+            var (r, g, b) = (bgra[o + 2], bgra[o + 1], bgra[o]);
+            score[i] = RelativeRedness(r, g, b, typicalRatio, typicalRed);
+            if (!animal && brightRed < double.MaxValue && r - Math.Max(g, b) >= 15 && RedRatio(r, g, b) >= 0.2)
+                score[i] = Math.Max(score[i], (float)(Smooth(r, brightRed - 15, brightRed + 15)
+                                                      * Smooth(RedRatio(r, g, b) - typicalRatio, 0.01, 0.04)));
+        }
 
         // Eyeshine glows: much brighter than the darker part of the eye and the fur around it, in any colour.
         if (animal)
@@ -197,8 +226,14 @@ public static class EyeFix
                 if (covered[i] && !patch[i])
                     weight[i] = 1; // the flash's highlight in the middle
                 else if (inside[i])
-                    weight[i] = Smooth(score[i], 0.08, 0.4)
-                                * Smooth(Glow(bgra, ((y0 + i / bw) * width + x0 + i % bw) * 4, animal), dimmest * 0.7, dimmest);
+                {
+                    var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
+                    weight[i] = Smooth(score[i], 0.08, 0.4) * Smooth(Glow(bgra, o, animal), dimmest * 0.7, dimmest);
+                    // Right next to the glow, pale pink that is much brighter than typical is the flash's highlight
+                    // smeared by a soft photo: part of the eye too.
+                    if (Distance(i % bw + 0.5, i / bw + 0.5, cx, cy) <= patchRadius * 1.3)
+                        weight[i] = Math.Max(weight[i], PaleGlow(bgra[o + 2], bgra[o + 1], bgra[o], typicalRatio, typicalRed));
+                }
             }
             for (var round = 0; round < 3; round++)
             {
@@ -212,7 +247,7 @@ public static class EyeFix
                 if (sw > 0)
                     (cx, cy) = (sx / sw, sy / sw);
             }
-            // The edge: where the glow, averaged around the circle, falls to half of what it is in the middle.
+            // The edge: where the glow, averaged around the circle, falls to 40% of what it is in the middle.
             var rings = (int)Math.Ceiling(patchRadius * 2.5) + 2;
             var (all, sum) = (new int[rings], new double[rings]);
             for (var i = 0; i < n; i++)
@@ -228,19 +263,63 @@ public static class EyeFix
             if (middle < 0.2)
                 return false;
             var edge = (double)Enumerable.Range(0, Math.Max(2, (int)patchRadius)).First(k => Mean(k) >= middle);
-            while (edge < rings - 1 && Mean((int)edge) >= middle * 0.5)
+            while (edge < rings - 1 && Mean((int)edge) >= middle * 0.4)
                 edge++;
             // Between the last ring above half and the first below it.
             var (above, below) = (Mean((int)edge - 1), Mean((int)edge));
-            patchRadius = edge - 1 + (above - middle * 0.5) / Math.Max(1e-6, above - below) + 0.5;
+            patchRadius = edge - 1 + (above - middle * 0.4) / Math.Max(1e-6, above - below) + 0.5;
         }
 
+        // Larger than the eye the circle was meant to hold: skin, lips or a red shirt, not an eye.
+        if (patchRadius > radius * 0.7 && !animal)
+            return false;
         // On people: is the white of the eye right around the patch? Then the red covers the whole iris, and only its
         // middle is the pupil. Animals' eyeshine fills the pupil, which can be nearly the whole eye.
+        var intact = new List<(byte R, byte G, byte B)>();
+        var coversIris = !animal && CoversIris(bgra, width, height, x0 + cx, y0 + cy, patchRadius, peak, out intact);
+        if (!animal && !LooksLikeRedEye())
+            return false;
+
+        // A red eye is a round glow that stands out from what is around it: lips, a red cheek or a red pattern are
+        // patchy, or hardly redder and brighter than the skin next to them.
+        bool LooksLikeRedEye()
+        {
+            int inDisc = 0, filled = 0, beyond = 0, glowing = 0;
+            double ratio = 0, red = 0;
+            for (var i = 0; i < n; i++)
+            {
+                if (!inside[i])
+                    continue;
+                var d = Distance(i % bw + 0.5, i / bw + 0.5, cx, cy);
+                if (d <= patchRadius)
+                {
+                    inDisc++;
+                    if (covered[i])
+                        filled++;
+                }
+                if (!patch[i])
+                    continue;
+                glowing++;
+                if (d > patchRadius * 1.3)
+                    beyond++;
+                var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
+                ratio += RedRatio(bgra[o + 2], bgra[o + 1], bgra[o]);
+                red += bgra[o + 2];
+            }
+            if (inDisc == 0 || glowing == 0)
+                return false;
+            var standsOut = 1.5 * (ratio / glowing - typicalRatio) + (red / glowing - typicalRed) / 255.0;
+            // The flash lights the eye from inside: the glow is about as bright as what is around it. A brown iris is
+            // as red as a soft red eye but much darker than the white of the eye and the skin beside it.
+            var bright = red / glowing >= typicalRed * 0.8;
+            // The white of the eye beside it is good evidence by itself, so a small, soft red eye needs less contrast.
+            return bright && filled >= inDisc * 0.55 && beyond <= glowing * 0.25 && standsOut >= (coversIris ? 0.2 : 0.3);
+        }
+
         var pupilRadius = double.MaxValue;
         var irisColour = (R: 0.0, G: 0.0, B: 0.0);
         // A colour picked by hand says the iris is under the red too.
-        if (!animal && (CoversIris(bgra, width, height, x0 + cx, y0 + cy, patchRadius, peak, out var intact) || iris != EyeColour.Auto))
+        if (!animal && (coversIris || iris != EyeColour.Auto))
         {
             pupilRadius = patchRadius * 0.42;
             irisColour = IrisColour(iris, intact);
@@ -251,8 +330,8 @@ public static class EyeFix
         // softened at the edge as much as the photo is soft, so a blurred glow doesn't leave a sharp dark cut-out.
         var amount = new double[n];
         var core = new double[n];
-        var feather = animal ? Math.Max(2, (int)Math.Round(patchRadius * 0.5)) : 0;
-        var soft = Math.Max(1.0, patchRadius * 0.2);
+        var feather = animal ? Math.Max(2, (int)Math.Round(patchRadius * 0.5)) : Math.Max(1, (int)Math.Round(patchRadius * 0.12));
+        var soft = Math.Max(1.0, patchRadius * 0.3);
         for (var i = 0; i < n; i++)
         {
             if (!inside[i])
@@ -270,11 +349,30 @@ public static class EyeFix
             amount[i] = disc * Smooth(score[i], 0.08, 0.4)
                         * Smooth(Glow(bgra, o, animal), dimmest * Lerp(0.7, 0.95, strict), dimmest * Lerp(1.0, 1.2, strict));
         }
-        if (feather > 0)
+        if (animal)
         {
             // The glow's halo around the patch goes too, faded out as softly as the glow itself.
             amount = Soften(Grow(amount, inside, bw, bh, feather), inside, bw, bh, feather);
             core = Soften(core, inside, bw, bh, Math.Max(1, feather / 2));
+        }
+        else
+        {
+            // A soft edge, a pixel or two wide, so the fixed pupil doesn't look cut out.
+            amount = Soften(Grow(amount, inside, bw, bh, feather), inside, bw, bh, feather);
+            // Inside the glow, what isn't the white highlight of the flash is glow too (a blurred photo smears the
+            // highlight into a pale pink that is hardly red).
+            for (var i = 0; i < n; i++)
+            {
+                if (!inside[i])
+                    continue;
+                var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
+                var (r, g, b) = (bgra[o + 2], bgra[o + 1], bgra[o]);
+                if (NearWhite(r, g, b))
+                    continue;
+                var disc = 1 - Smooth(Distance(i % bw + 0.5, i / bw + 0.5, cx, cy), patchRadius - soft, patchRadius + soft);
+                var part = covered[i] && !patch[i] ? 1 : PaleGlow(r, g, b, typicalRatio, typicalRed);
+                amount[i] = Math.Max(amount[i], disc * part);
+            }
         }
 
         // The colour around the glow: an animal's pupil takes a dark shade of it, and the glow's halo goes back to it.
@@ -313,7 +411,7 @@ public static class EyeFix
             var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
             var (r, g, b) = (bgra[o + 2], bgra[o + 1], bgra[o]);
             if (!animal && inside[i] && outside[i] == false && !patch[i]
-                && Distance(x, y, cx, cy) <= patchRadius)
+                && Distance(x, y, cx, cy) <= patchRadius && NearWhite(r, g, b))
             {
                 // The flash's highlight stays, without the pink the red around it gave it.
                 var grey = Math.Max(r, Math.Max(g, b)) * 0.9 + Math.Min(r, Math.Min(g, b)) * 0.1;
@@ -324,6 +422,7 @@ public static class EyeFix
                 continue;
             }
             var original = 0.299 * r + 0.587 * g + 0.114 * b;
+            var highlight = !animal && NearWhite(r, g, b);
             if (!animal && inside[i] && score[i] > 0)
             {
                 // Just outside the fix, red fringes lose their red cast, so no pink rim is left around the pupil.
@@ -339,8 +438,8 @@ public static class EyeFix
                 }
             }
             var alpha = amount[i];
-            if (alpha <= 0.002)
-                continue;
+            if (alpha <= 0.002 || highlight)
+                continue; // the flash's highlight stays, also where it touches the edge of the pupil
             var texture = Math.Clamp(Texture(r, g, b, animal) / textureMean, 0.6, 1.4);
             var d = Distance(x, y, cx, cy);
 
@@ -354,7 +453,8 @@ public static class EyeFix
             }
             else
             {
-                var pupil = Math.Min(55, Texture(r, g, b, animal) * 0.75);
+                // Nearly black, as a pupil is, with a little of the photo's texture so it doesn't look painted.
+                var pupil = Math.Min(45, 15 + 0.2 * Texture(r, g, b, animal));
                 (nr, ng, nb) = (pupil, pupil, pupil);
                 if (pupilRadius < double.MaxValue)
                 {
@@ -465,6 +565,23 @@ public static class EyeFix
         return a;
     }
 
+    private static double RedRatio(byte r, byte g, byte b) => r < 1 ? 0 : Math.Max(0, r - Math.Max(g, b)) / (double)r;
+
+    // Pale pink much brighter than typical and not less red: a soft photo's smeared highlight in a red eye, 0-1.
+    private static double PaleGlow(byte r, byte g, byte b, double typicalRatio, int typicalRed) =>
+        Smooth(r - typicalRed, 20, 50) * Smooth(RedRatio(r, g, b) - typicalRatio, -0.04, 0);
+
+    // How much redder and brighter than typical for the circle a pixel is, 0-1.
+    private static float RelativeRedness(byte r, byte g, byte b, double typicalRatio, int typicalRed)
+    {
+        if (r < 50 || r - Math.Max(g, b) < 15)
+            return 0;
+        // Redder than typical is a must (bright skin is only brighter); being brighter as well adds to it.
+        var redder = RedRatio(r, g, b) - typicalRatio;
+        var excess = 1.5 * redder + (r - typicalRed) / 255.0;
+        return (float)(Smooth(redder, 0.0, 0.08) * Smooth(excess, 0.1, 0.3));
+    }
+
     /// <summary>How red a pixel glows, 0-1: red well above green and blue, and not too dark. Skin stays below it.</summary>
     internal static float Redness(byte r, byte g, byte b)
     {
@@ -481,6 +598,14 @@ public static class EyeFix
     // The patch's own light and dark, without the glow: green and blue for red eye, a dimmed brightness for eyeshine.
     private static double Texture(byte r, byte g, byte b, bool animal) =>
         animal ? Math.Max(r, Math.Max(g, b)) * 0.12 + 12 : (g + b) / 2.0;
+
+    // The flash's highlight: nearly white.
+    private static bool NearWhite(byte r, byte g, byte b)
+    {
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        return min >= 170 && max - min < max * 0.3;
+    }
 
     // The white of the eye: bright and nearly without colour.
     private static bool Sclera(byte r, byte g, byte b)
@@ -527,7 +652,7 @@ public static class EyeFix
     {
         var max = Math.Max(r, Math.Max(g, b));
         var min = Math.Min(r, Math.Min(g, b));
-        return max >= 110 && max >= glow * 0.95 && (max - min) < max * 0.3;
+        return max >= 110 && max >= glow * 0.95 && (max - min) < max * 0.25;
     }
 
     // The iris colour: the one chosen, or the colour of what is left of the real iris when it is clearly blue, green

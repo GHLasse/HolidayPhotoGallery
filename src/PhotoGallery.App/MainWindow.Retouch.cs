@@ -22,11 +22,7 @@ public sealed partial class MainWindow
     private DecodedImage? _retouched;     // the preview photo with the strokes so far
     private bool _retouching;
     private int _retouchGeneration;       // counts resets, so a stroke still being worked out is dropped after one
-    private int _eyesLookedFor = -1;      // "Find red eyes": -1 when not running, else how many eyes it fixed so far
-    private bool _findingFaces;           // "Find red eyes" is still looking for the faces
-
-    // Strokes that come from "Find red eyes" instead of the brush have no shimmer on the canvas.
-    private const int FoundEye = -1;
+    private CancellationTokenSource? _findingEyes; // "Find red eyes" while it runs; clicking the button again stops it
 
     private RetouchTool? ChosenRetouchTool =>
         RetouchSpotButton.IsChecked == true ? RetouchTool.Spot
@@ -101,7 +97,8 @@ public sealed partial class MainWindow
         EyeOptions.Visibility = tool is RetouchTool.RedEye or RetouchTool.Eyeshine ? Visibility.Visible : Visibility.Collapsed;
         // Animals' faces aren't found by the face finder, and their iris is rarely under the glow.
         FindRedEyesButton.Visibility = IrisColourBox.Visibility = tool == RetouchTool.Eyeshine ? Visibility.Collapsed : Visibility.Visible;
-        FindRedEyesButton.IsEnabled = _eyesLookedFor < 0;
+        FindRedEyesText.Text = _findingEyes is null ? Tr("Find red eyes") : Tr("Stop");
+        FindRedEyesIcon.Glyph = _findingEyes is null ? "\uE721" : "\uE71A";
         RetouchHint.Text = tool switch
         {
             RetouchTool.RedEye => Tr("Click on the middle of a red eye, with a brush about as large as the eye. Only the red part changes; the colour of the eye stays."),
@@ -144,67 +141,105 @@ public sealed partial class MainWindow
             SyncRetouch();
     }
 
-    // "Find red eyes": the eyes of the faces on the photo, each fixed like a click on it; eyes that aren't red stay as
-    // they are.
+    // "Find red eyes": the eyes of the faces on the photo, each checked like a click on it; eyes that aren't red stay
+    // as they are. All eyes it fixes are one step, so one Undo takes them back. The hint says what it is doing, and
+    // the button stops it.
     private async void FindRedEyes_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewerPixels is not { } pixels || ViewerItem is not { } item || _eyesLookedFor >= 0)
+        if (_findingEyes is { } running)
+        {
+            running.Cancel();
             return;
-        _eyesLookedFor = 0;
-        SyncRetouch();
+        }
+        if (_viewerPixels is not { } pixels || ViewerItem is not { } item || _retouching)
+            return;
+        using var cancel = new CancellationTokenSource();
+        _findingEyes = cancel;
+        _retouching = true; // brush strokes wait until this is done
+        var generation = _retouchGeneration;
         ViewerProgress.IsActive = true;
-        _findingFaces = true;
-        IReadOnlyList<BeautyFace> faces;
+        SyncRetouch();
         try
         {
-            faces = ReferenceEquals(_beautyFacesFor, pixels) && _beautyFaces is { } known
-                ? known : await ViewModel.FindBeautyFacesAsync(item, pixels);
+            RetouchHint.Text = Tr("Looking for faces…");
+            IReadOnlyList<BeautyFace> faces;
+            if (ReferenceEquals(_beautyFacesFor, pixels) && _beautyFaces is { } known)
+                faces = known;
+            else
+            {
+                // Stop answers at once; the face finder finishes on its own in the background.
+                var finding = ViewModel.FindBeautyFacesAsync(item, pixels);
+                await Task.WhenAny(finding, Task.Delay(Timeout.Infinite, cancel.Token).ContinueWith(_ => { }, TaskScheduler.Default));
+                if (!finding.IsCompleted)
+                    return;
+                faces = await finding;
+                if (ReferenceEquals(pixels, _viewerPixels))
+                    (_beautyFaces, _beautyFacesFor) = (faces, pixels);
+            }
+            if (cancel.IsCancellationRequested || !ReferenceEquals(pixels, _viewerPixels) || generation != _retouchGeneration)
+                return;
+            var iris = ChosenIrisColour;
+            var eyes = new List<RetouchStroke>();
+            foreach (var face in faces.Where(f => f.Points.Count >= 2))
+            {
+                var (left, right) = (face.Points[0], face.Points[1]);
+                var apart = Math.Sqrt(Math.Pow((right.X - left.X) * pixels.Width, 2) + Math.Pow((right.Y - left.Y) * pixels.Height, 2));
+                // About the size of the eye opening: an iris is about a tenth of the distance between the eyes.
+                var radius = apart * 0.16 / Math.Max(pixels.Width, pixels.Height);
+                eyes.Add(new RetouchStroke(RetouchTool.RedEye, [left], radius, iris));
+                eyes.Add(new RetouchStroke(RetouchTool.RedEye, [right], radius, iris));
+            }
+            if (eyes.Count == 0)
+            {
+                ViewModel.Inform(Tr("No faces were found on this photo. Click on each red eye instead."));
+                return;
+            }
+
+            var source = _retouched ?? (_previewBase ??= await Task.Run(() => Smaller(pixels)));
+            var picture = source with { Pixels = (byte[])source.Pixels.Clone() };
+            var fixedEyes = new List<RetouchStroke>();
+            for (var k = 0; k < eyes.Count; k++)
+            {
+                if (cancel.IsCancellationRequested)
+                    return;
+                RetouchHint.Text = Tr("Checking eye {0} of {1}…", k + 1, eyes.Count);
+                var eye = eyes[k];
+                if (await Task.Run(() => Retouch.Apply(picture.Pixels, picture.Width, picture.Height, [eye], null)) > 0)
+                    fixedEyes.Add(eye);
+            }
+            if (cancel.IsCancellationRequested || !ReferenceEquals(pixels, _viewerPixels) || generation != _retouchGeneration)
+                return;
+            if (fixedEyes.Count == 0)
+            {
+                ViewModel.Inform(Tr("No red eyes were found. If an eye is still red, click on it."));
+                return;
+            }
+            // One step for all of them: Undo puts back the strokes and the picture from before.
+            var before = CaptureRetouch();
+            _retouched = picture;
+            _strokes.AddRange(fixedEyes);
+            _editSteps.Add(new EditStep("eyes", null, before));
+            EditBeforeButton.IsChecked = false;
+            UpdateEditBar();
+            RenderPreview();
+            var step = _editSteps[^1];
+            ViewModel.Inform(Tr("Fixed {0} red eye(s).", fixedEyes.Count), () =>
+            {
+                if (_editSteps.Count > 0 && ReferenceEquals(_editSteps[^1], step))
+                    UndoEditStep();
+                return Task.CompletedTask;
+            });
         }
         finally
         {
-            _findingFaces = false;
-            ViewerProgress.IsActive = _retouching;
-        }
-        if (!ReferenceEquals(pixels, _viewerPixels))
-        {
-            _eyesLookedFor = -1;
+            _findingEyes = null;
+            _retouching = false;
+            ViewerProgress.IsActive = false;
             SyncRetouch();
-            return;
+            // Brush strokes made meanwhile come next.
+            if (_strokesWaiting.Count > 0)
+                _ = RetouchWaitingStrokesAsync();
         }
-        var iris = ChosenIrisColour;
-        var eyes = 0;
-        foreach (var face in faces)
-        {
-            if (face.Points.Count < 2)
-                continue;
-            var (left, right) = (face.Points[0], face.Points[1]);
-            var apart = Math.Sqrt(Math.Pow((right.X - left.X) * pixels.Width, 2) + Math.Pow((right.Y - left.Y) * pixels.Height, 2));
-            var radius = apart * 0.25 / Math.Max(pixels.Width, pixels.Height);
-            foreach (var eye in new[] { left, right })
-            {
-                _strokesWaiting.Enqueue((new RetouchStroke(RetouchTool.RedEye, [eye], radius, iris), FoundEye));
-                eyes++;
-            }
-        }
-        if (eyes == 0)
-        {
-            _eyesLookedFor = -1;
-            SyncRetouch();
-            ViewModel.Inform(Tr("No faces were found on this photo. Click on each red eye instead."));
-            return;
-        }
-        await RetouchWaitingStrokesAsync();
-    }
-
-    // The end of "Find red eyes": one banner when nothing was red.
-    private void ReportFoundEyes()
-    {
-        if (_eyesLookedFor < 0 || _findingFaces)
-            return;
-        // Eyes still waiting belong to a photo no longer shown, or to a cancelled edit: nothing to report then.
-        if (_eyesLookedFor == 0 && !_strokesWaiting.Any(w => w.Working == FoundEye))
-            ViewModel.Inform(Tr("No red eyes were found. If an eye is still red, click on it."));
-        _eyesLookedFor = -1;
     }
 
     // The strokes are applied one after another; the eraser takes a moment, and further strokes wait their turn.
@@ -249,15 +284,12 @@ public sealed partial class MainWindow
                 if (changes == 0 && stroke.ForEyes)
                 {
                     // No glowing eye there: nothing to undo, and a click is told why nothing happened.
-                    if (working != FoundEye)
-                        ViewModel.Inform(stroke.Tool == RetouchTool.RedEye
+                    ViewModel.Inform(stroke.Tool == RetouchTool.RedEye
                             ? Tr("No red eye was found there. Click on the middle of the eye; for animals, tick Animal eyes.")
                             : Tr("No glowing eye was found there. Click on the middle of the eye."));
                     ViewerCanvas.FinishWorking(working);
                     continue;
                 }
-                if (working == FoundEye && _eyesLookedFor >= 0)
-                    _eyesLookedFor++;
                 _retouched = picture;
                 _strokes.Add(stroke);
                 _retouchUndo.Push((changed, before));
@@ -273,7 +305,6 @@ public sealed partial class MainWindow
         {
             _retouching = false;
             ViewerProgress.IsActive = false;
-            ReportFoundEyes();
             // Strokes still waiting belonged to a photo that is no longer shown, or to a cancelled edit.
             _strokesWaiting.Clear();
             ViewerCanvas.ClearWorking();
@@ -323,7 +354,7 @@ public sealed partial class MainWindow
         _strokesWaiting.Clear();
         ViewerCanvas.ClearWorking();
         _retouched = null;
-        _eyesLookedFor = -1;
+        _findingEyes?.Cancel();
         foreach (var button in RetouchButtons)
             button.IsChecked = false;
         SyncRetouch();
