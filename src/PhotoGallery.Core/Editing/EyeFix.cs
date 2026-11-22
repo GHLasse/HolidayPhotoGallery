@@ -326,6 +326,14 @@ public static class EyeFix
             return bright && filled >= inDisc * 0.45 && beyond <= glowing * 0.25 && standsOut >= (coversIris ? 0.15 : 0.26);
         }
 
+        // People, colour of the iris left to the app: the red is taken out of each pixel as far as it is red, and
+        // the middle darkened. The fix follows the photo's own edges, sharp in a sharp photo and soft in a blurred
+        // one, the highlight and a blue or green iris have no red and stay, and reddish skin and lids only lose a
+        // little of their red instead of getting a painted disc.
+        if (!animal && iris == EyeColour.Auto)
+            return TakeOutRed(bgra, width, x0, y0, bw, bh, inside, score, cx, cy, patchRadius, coversIris, typicalRatio,
+                              centerX - x0, centerY - y0, radius, typicalRed);
+
         var pupilRadius = double.MaxValue;
         var irisColour = (R: 0.0, G: 0.0, B: 0.0);
         // A colour picked by hand says the iris is under the red too.
@@ -583,6 +591,74 @@ public static class EyeFix
         Smooth(r - typicalRed, 20, 50) * Smooth(RedRatio(r, g, b) - typicalRatio, -0.04, 0);
 
     // How much redder and brighter than typical for the circle a pixel is, 0-1.
+    private static bool TakeOutRed(byte[] bgra, int width, int x0, int y0, int bw, int bh, bool[] inside, float[] score,
+                                   double cx, double cy, double patchRadius, bool wholeIris, double typicalRatio,
+                                   double circleX, double circleY, double radius, int typicalRed)
+    {
+        // How much each pixel is fixed: as far as it is redder than the skin around, near the glow. A pale pink glow
+        // (bright rather than red) counts by its score, but only where it is at least a little redder than the skin.
+        var weight = new double[bw * bh];
+        for (var i = 0; i < weight.Length; i++)
+        {
+            if (!inside[i])
+                continue;
+            var (x, y) = (i % bw + 0.5, i / bw + 0.5);
+            // Fades out softly past the edge of the glow, and before the edge of the circle it may look in.
+            var near = (1 - Smooth(Distance(x, y, cx, cy), patchRadius * 0.8, patchRadius * 1.8))
+                       * (1 - Smooth(Distance(x, y, circleX, circleY), radius * 0.6, radius * 0.95));
+            if (near <= 0)
+                continue;
+            var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
+            var (r, g, b) = (bgra[o + 2], bgra[o + 1], bgra[o]);
+            var redder = RedRatio(r, g, b) - typicalRatio;
+            var red = Math.Max(Smooth(redder, 0.03, 0.3), Smooth(score[i], 0.2, 0.7) * Smooth(redder, -0.02, 0.06));
+            // Pale pink right by the glow is the flash's highlight smeared by a soft photo: it loses its pink.
+            if (Distance(x, y, cx, cy) <= patchRadius * 1.3)
+                red = Math.Max(red, PaleGlow(r, g, b, typicalRatio, typicalRed));
+            weight[i] = near * red;
+        }
+        // Spread out a little, so the fix never has a hard edge and doesn't leave a red rim; inside it stays full.
+        var soft = Soften(weight, inside, bw, bh, Math.Max(1, (int)Math.Round(patchRadius * 0.15)));
+        for (var i = 0; i < weight.Length; i++)
+            weight[i] = Math.Max(weight[i], soft[i]);
+
+        var changed = false;
+        for (var i = 0; i < weight.Length; i++)
+        {
+            var w = weight[i];
+            if (!inside[i] || w <= 0.004)
+                continue;
+            var d = Distance(i % bw + 0.5, i / bw + 0.5, cx, cy);
+            var o = ((y0 + i / bw) * width + x0 + i % bw) * 4;
+            var (r, g, b) = (bgra[o + 2], bgra[o + 1], bgra[o]);
+            double nr, ng, nb, inner;
+            if (wholeIris)
+            {
+                // The whole iris was red: it keeps its own light and shade as grey (which looks right on any eye and
+                // never turns a blue eye brown), and only a pupil in the middle is darkened.
+                var grey = (0.299 * r + 0.587 * g + 0.114 * b + (g + b) / 2.0) / 2;
+                (nr, ng, nb) = (Lerp(r, grey, w), Lerp(g, Math.Max(g, grey * 0.97), w), Lerp(b, Math.Max(b, grey * 0.97), w));
+                inner = 1 - Smooth(d, patchRadius * 0.3, patchRadius * 0.6);
+            }
+            else
+            {
+                // Red becomes the level of green and blue, as a neutral grey: a red pupil turns dark, a pink glow
+                // grey without a green or cyan cast.
+                var level = (g + b) / 2.0;
+                (nr, ng, nb) = (Lerp(r, level, w), Lerp(g, level, w), Lerp(b, level, w));
+                inner = 1 - Smooth(d, patchRadius * 0.35, patchRadius * 1.0);
+            }
+            // The pupil is dark: the middle is darkened as far as it was glowing, fading out towards the edge.
+            // The flash's highlight (pale, hardly red) only loses its pink and stays bright.
+            var dark = 1 - 0.55 * w * inner * Smooth(Math.Max(nr, Math.Max(ng, nb)), 40, 120) * Smooth(RedRatio(r, g, b), 0.15, 0.35);
+            bgra[o + 2] = Byte(nr * dark);
+            bgra[o + 1] = Byte(ng * dark);
+            bgra[o] = Byte(nb * dark);
+            changed = true;
+        }
+        return changed;
+    }
+
     private static float RelativeRedness(byte r, byte g, byte b, double typicalRatio, int typicalRed)
     {
         if (r < 50 || r - Math.Max(g, b) < 15)
