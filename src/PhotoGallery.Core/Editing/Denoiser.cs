@@ -58,6 +58,11 @@ public sealed class Denoiser : IDisposable
             // DirectML needs these two.
             options.EnableMemoryPattern = false;
             options.ExecutionMode = ExecutionMode.ORT_SEQUENTIAL;
+            // The model takes any size; DirectML works best (and most reliably) on a graph with fixed sizes, and the
+            // app only ever gives it one tile at a time.
+            options.AddFreeDimensionOverrideByName("batch", 1);
+            options.AddFreeDimensionOverrideByName("height", Tile);
+            options.AddFreeDimensionOverrideByName("width", Tile);
             options.AppendExecutionProvider_DML(0);
         }
         else

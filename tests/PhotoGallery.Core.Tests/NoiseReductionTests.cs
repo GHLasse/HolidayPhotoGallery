@@ -146,3 +146,31 @@ public sealed class NoiseReductionTests
         public void Report(double value) => report(value);
     }
 }
+
+public sealed class GraphicsCardGuardTests
+{
+    [Fact]
+    public void A_run_that_never_ended_is_remembered_and_a_finished_one_is_not()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "guard-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var guard = new GraphicsCardGuard(folder, "denoise");
+            Assert.False(guard.EndedTheAppBefore);
+            using (guard.Running())
+                Assert.True(new GraphicsCardGuard(folder, "denoise").EndedTheAppBefore); // as the next start would see it
+            Assert.False(guard.EndedTheAppBefore);
+
+            _ = guard.Running(); // the app ends here, the mark stays
+            Assert.True(new GraphicsCardGuard(folder, "denoise").EndedTheAppBefore);
+            Assert.False(new GraphicsCardGuard(folder, "erase").EndedTheAppBefore);
+            guard.Forget();
+            Assert.False(guard.EndedTheAppBefore);
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+                Directory.Delete(folder, true);
+        }
+    }
+}
