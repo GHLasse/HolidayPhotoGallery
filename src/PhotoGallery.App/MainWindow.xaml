@@ -894,10 +894,10 @@
                         Content="{local:Loc Text='Clear filters'}" />
             </StackPanel>
             <!-- While the photos or albums load for the first time, instead of an empty view (U-9). -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+            <StackPanel Grid.Row="1" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center"
                         IsHitTestVisible="False" Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}">
-                <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" Width="20" Height="20" />
-                <TextBlock Text="{x:Bind ViewModel.LoadingText, Mode=OneWay}" VerticalAlignment="Center"
+                <controls:BusyPlane IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" ShowsStillLabel="False" />
+                <TextBlock Text="{x:Bind ViewModel.LoadingText, Mode=OneWay}" HorizontalAlignment="Center"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
             <!-- Album view: one tile per album, opened with a click. -->
@@ -1083,10 +1083,10 @@
                 </StackPanel>
             </ScrollViewer>
             <!-- While the library is still loading, instead of an empty page (U-9). -->
-            <StackPanel x:Name="PeopleLoading" Grid.Row="1" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+            <StackPanel x:Name="PeopleLoading" Grid.Row="1" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center"
                         IsHitTestVisible="False" Visibility="Collapsed">
-                <ProgressRing x:Name="PeopleLoadingRing" IsActive="False" Width="20" Height="20" />
-                <TextBlock Text="{local:Loc Text='Loading the people…'}" VerticalAlignment="Center"
+                <controls:BusyPlane x:Name="PeopleLoadingRing" ShowsStillLabel="False" />
+                <TextBlock Text="{local:Loc Text='Loading the people…'}" HorizontalAlignment="Center"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
         </Grid>
