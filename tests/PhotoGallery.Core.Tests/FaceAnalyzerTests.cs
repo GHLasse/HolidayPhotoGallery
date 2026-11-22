@@ -104,6 +104,30 @@ public sealed class FaceAnalyzerTests
     }
 
     [FaceModelFact]
+    public void Finds_the_eyes_of_faces_already_known_by_looking_only_around_their_boxes()
+    {
+        using var analyzer = FaceAnalyzer.Load(FaceModelFactAttribute.Folder!);
+        var image = TestImages.Decode(Path.Combine(FaceModelFactAttribute.Folder!, "two_people.jpg"))!.Value;
+        var both = analyzer.Analyze(image.Pixels, image.Width, image.Height).OrderBy(f => f.Box.X).ToList();
+        Assert.Equal(2, both.Count);
+
+        // Boxes as another program may have stored them: looser and a little off.
+        var loose = both.Select(f => new FaceBox(f.Box.X - f.Box.Width * 0.2, f.Box.Y - f.Box.Height * 0.1, f.Box.Width * 1.4, f.Box.Height * 1.3)).ToList();
+        var located = analyzer.Locate(image.Pixels, image.Width, image.Height, loose).OrderBy(f => f.Box.X).ToList();
+
+        Assert.Equal(2, located.Count);
+        for (var k = 0; k < 2; k++)
+        {
+            for (var n = 0; n < 2; n++)
+            {
+                var (want, got) = (both[k].Points[n], located[k].Points[n]);
+                var off = Math.Sqrt(Math.Pow((want.X - got.X) * image.Width, 2) + Math.Pow((want.Y - got.Y) * image.Height, 2));
+                Assert.True(off < both[k].Box.Width * image.Width * 0.05, $"face {k} eye {n} is {off:F1} px off");
+            }
+        }
+    }
+
+    [FaceModelFact]
     public void Finds_a_small_face_in_a_big_photo()
     {
         using var analyzer = FaceAnalyzer.Load(FaceModelFactAttribute.Folder!);
