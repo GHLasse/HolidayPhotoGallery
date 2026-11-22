@@ -15,6 +15,8 @@ public sealed partial class MainViewModel
     private static readonly string DenoiseModelFolder = DenoiseModel.DefaultFolder(DataFolder);
     private readonly Lock _denoiserGate = new();
     private Denoiser? _denoiser;
+    // A graphics driver can end the app inside DirectML; then the processor does the work from the next start on.
+    private static GraphicsCardGuard DenoiseGuard => new(Path.Combine(DataFolder, "Models"), DenoiseModel.Name);
     private (string Path, DateTime Written, Task<DenoisedPhoto> Work, CancellationTokenSource Cancel)? _denoising;
 
     public static bool IsDenoiseModelInstalled => DenoiseModel.IsInstalled(DenoiseModelFolder);
@@ -45,8 +47,18 @@ public sealed partial class MainViewModel
     private Denoiser LoadDenoiser()
     {
         lock (_denoiserGate)
-            return _denoiser ??= Denoiser.Load(DenoiseModel.ModelPath(DenoiseModelFolder), UpscaleOnProcessorOnly);
+        {
+            if (_denoiser is not null)
+                return _denoiser;
+            var processorOnly = UpscaleOnProcessorOnly || DenoiseGuard.EndedTheAppBefore;
+            using (processorOnly ? null : DenoiseGuard.Running())
+                _denoiser = Denoiser.Load(DenoiseModel.ModelPath(DenoiseModelFolder), processorOnly);
+            return _denoiser;
+        }
     }
+
+    /// <summary>True when noise reduction ended the app last time on the graphics card, so it now uses the processor.</summary>
+    public static bool DenoiseFellBackToProcessor => DenoiseGuard.EndedTheAppBefore;
 
     /// <summary>
     /// The photo with its grain taken out by the model, worked out once per photo (a run already going for it is
@@ -66,7 +78,13 @@ public sealed partial class MainViewModel
             var noisy = await ImageLoader.DecodePixelsAsync(path, uint.MaxValue, keepColours: colourProfile);
             cancel.Token.ThrowIfCancellationRequested();
             var denoiser = LoadDenoiser();
-            var clean = denoiser.Denoise(noisy.Pixels, noisy.Width, noisy.Height, progress, cancel.Token);
+            byte[] clean;
+            // One run at a time: DirectML can't take two at once on one model (a run being stopped ends at its next tile).
+            lock (_denoiserGate)
+            {
+                using (denoiser.OnGraphicsCard ? DenoiseGuard.Running() : null)
+                    clean = denoiser.Denoise(noisy.Pixels, noisy.Width, noisy.Height, progress, cancel.Token);
+            }
             return new DenoisedPhoto(noisy, clean);
         });
         _denoising = (path, written, work, cancel);

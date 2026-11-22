@@ -59,6 +59,8 @@ public sealed partial class MainViewModel
     {
         _settings.UpscaleOnProcessorOnly = processorOnly;
         _settings.Save(SettingsPath);
+        if (!processorOnly)
+            DenoiseGuard.Forget(); // the graphics card may be tried again
     }
 
     public static bool IsUpscaleModelInstalled(UpscaleQuality quality) =>
