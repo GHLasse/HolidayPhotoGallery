@@ -18,9 +18,11 @@
 
     <!-- Wider than the plate so the label under it (animations off) is never cut off. -->
     <Grid Width="240" Height="64">
-        <Border x:Name="Plate" Width="64" Height="64" CornerRadius="32"
+        <!-- The plate lets a hint of the photo through (90 % opaque, Lasse 2026-11-26); the plane on it stays solid. -->
+        <Border x:Name="Plate" Width="64" Height="64" CornerRadius="32" Opacity="0.9"
                 Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" />
+        <Grid Width="64" Height="64">
             <Canvas Width="48" Height="48">
                 <!-- The full flight path, faint, so the circle reads even when the plane stands still. -->
                 <Ellipse Canvas.Left="9" Canvas.Top="9" Width="30" Height="30" StrokeThickness="2"
@@ -44,7 +46,7 @@
                     </Path>
                 </Canvas>
             </Canvas>
-        </Border>
+        </Grid>
         <!-- With Windows animations off the plane stands still, so a word says the app is still busy. -->
         <Border x:Name="StillLabel" HorizontalAlignment="Center" VerticalAlignment="Bottom" Visibility="Collapsed"
                 Padding="10,2" CornerRadius="10"
