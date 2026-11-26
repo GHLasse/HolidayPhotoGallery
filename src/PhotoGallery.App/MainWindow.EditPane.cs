@@ -30,8 +30,7 @@ public sealed partial class MainWindow
 
     /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
     private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01 || _lookKey is not null
-                                    || _strokes.Count > 0 || _noiseStrength > 0
-                                    || _deblurStrength > 0 || _sharpenStrength > 0;
+                                    || _strokes.Count > 0 || _noiseStrength > 0 || _sharpenStrength > 0;
 
     private Look? ChosenLook => Looks.Find(_lookKey);
 
@@ -48,7 +47,7 @@ public sealed partial class MainWindow
                 ArrangeLookButtons();
         };
         SetUpRetouch();
-        foreach (var slider in EditSliders().Append(StraightenSlider).Append(NoiseSlider).Append(DeblurSlider).Append(SharpenSlider))
+        foreach (var slider in EditSliders().Append(StraightenSlider).Append(NoiseSlider).Append(SharpenSlider))
         {
             // handledEventsToo: the slider's thumb takes the pointer for itself.
             slider.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler((s, _) => ((Slider)s).Value = 0), true);
@@ -129,10 +128,12 @@ public sealed partial class MainWindow
         StraightenSlider.Value = _straighten;
         NoiseSlider.Value = _noiseStrength;
         ShowSliderValue(NoiseValue, _noiseStrength, $"{_noiseStrength}");
-        DeblurSlider.Value = _deblurStrength;
-        ShowSliderValue(DeblurValue, _deblurStrength, $"{_deblurStrength}");
+        NoiseAiButton.IsChecked = _noiseAi;
         SharpenSlider.Value = _sharpenStrength;
         ShowSliderValue(SharpenValue, _sharpenStrength, $"{_sharpenStrength}");
+        SharpenAiButton.IsChecked = _sharpenAi;
+        ShowNoiseProgress();
+        ShowDeblurProgress();
         foreach (var button in LookButtons())
             button.IsChecked = (string?)button.Tag == _lookKey;
         LookStrengthSlider.Value = _lookStrength;
@@ -492,9 +493,11 @@ public sealed partial class MainWindow
         _lookKey = null;
         _lookStrength = 100;
         _noiseStrength = 0;
-        _deblurStrength = 0;
+        _noiseAi = false;
         _sharpenStrength = 0;
+        _sharpenAi = false;
         _previewBase = null;
+        _quickNoiseFor = _quickNoised = null;
         ResetRetouch();
     }
 
@@ -524,8 +527,8 @@ public sealed partial class MainWindow
                 var angle = StraightenBeforeFlip;
                 var (look, strength) = (ChosenLook, _lookStrength);
                 var (faces, beautyParts) = (_beautyFaces, ViewModel.BeautyParts);
-                var noiseStrength = _noiseStrength;
-                var (deblurStrength, sharpenStrength) = (_deblurStrength, _sharpenStrength);
+                var (noiseStrength, quickNoiseStrength) = (AiNoiseStrength, QuickNoiseStrength);
+                var (deblurStrength, sharpenStrength) = (DeblurStrength, QuickSharpenStrength);
                 DecodedImage shown;
                 if (before || (curve is null && !HasPixelChanges))
                     shown = pixels;
@@ -533,6 +536,9 @@ public sealed partial class MainWindow
                 {
                     // With the retouch strokes so far (MainWindow.Retouch.cs).
                     var source = _retouched ?? (_previewBase ??= await Task.Run(() => Smaller(pixels)));
+                    // The fast noise reduction goes first, as in Save; kept, so other sliders don't wait for it again.
+                    if (quickNoiseStrength > 0)
+                        source = await QuickNoisedAsync(source, quickNoiseStrength);
                     // The grain at the preview's size, once the model has taken it out (MainWindow.Denoise.cs).
                     var grain = noiseStrength > 0 ? await NoiseLayerAsync(pixels, source.Width, source.Height) : null;
                     // The same for the blur (MainWindow.Deblur.cs).
@@ -569,7 +575,8 @@ public sealed partial class MainWindow
                                         ModelLayer? grain = null, int noiseStrength = 0,
                                         ModelLayer? blur = null, int deblurStrength = 0, int sharpenStrength = 0)
     {
-        // The grain and the blur go first, as Save takes them out of the photo before anything else (E-12, E-17).
+        // The grain and the blur go first, as Save takes them out of the photo before anything else (E-12, E-17). The
+        // fast noise reduction comes before them; the preview does it beforehand (QuickNoisedAsync).
         var source = image;
         if (grain is not null && noiseStrength > 0)
         {

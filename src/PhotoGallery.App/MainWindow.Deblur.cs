@@ -11,43 +11,23 @@ namespace PhotoGallery.App;
 /// <summary>The photo before and after an AI model, at the size of the preview it is mixed into.</summary>
 internal sealed record ModelLayer(int Width, int Height, byte[] Before, byte[] After);
 
-// "Sharpness" in the Edit pane (E-17). Remove blur works like Reduce noise: the first time the slider is moved for a
-// photo, the NAFNet model takes the shake out of the whole photo in the background; the slider then only says how much
-// of it is used, so moving it is instant. Save mixes the full-size result in before any other edit. Sharpen is a plain
-// unsharp mask, worked out on the spot, which Save applies last.
+// "Sharpen" in the Edit pane's quick fixes (E-17; Lasse, 2026-11-26): the slider is a plain unsharp mask, worked out
+// on the spot, which Save applies last. The AI switch beside it hands the job to the NAFNet model instead, which takes
+// camera shake out (it works like Reduce noise with AI: the first time for a photo the model takes the shake out of the
+// whole photo in the background with a progress bar; the slider then only says how much of it is used, so moving it
+// is instant). Save mixes the full-size result in before any other edit.
 public sealed partial class MainWindow
 {
-    private int _deblurStrength;               // 0 to 100; 0 is off
     private int _sharpenStrength;              // 0 to 100; 0 is off
+    private bool _sharpenAi;                   // the AI model takes the blur out, not the unsharp mask
     private DecodedImage? _deblurFor;          // the viewer picture the model was asked about
     private DeblurredPhoto? _deblurResult;     // its answer, once there
     private ModelLayer? _deblurLayer;          // the answer at the preview's size
-    private bool _askingForDeblurModel;
+    private bool _deblurRunning;
 
-    private async void DeblurSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
-    {
-        if (_syncingEditPane || _askingForDeblurModel || DeblurValue is null)
-            return;
-        if (_viewerPixels is null)
-        {
-            SetDeblurSlider(0);
-            return;
-        }
-        if (e.NewValue > 0 && !MainViewModel.IsDeblurModelInstalled)
-        {
-            _askingForDeblurModel = true;
-            var ready = await EnsureDeblurModelAsync();
-            _askingForDeblurModel = false;
-            if (!ready)
-            {
-                SetDeblurSlider(_deblurStrength);
-                return;
-            }
-        }
-        var value = (int)DeblurSlider.Value;
-        ChangeEdit("deblur", () => _deblurStrength = value);
-        ShowSliderValue(DeblurValue, _deblurStrength, $"{_deblurStrength}");
-    }
+    // What the preview and Save do with the slider: one of the two, never both.
+    private int DeblurStrength => _sharpenAi ? _sharpenStrength : 0;
+    private int QuickSharpenStrength => _sharpenAi ? 0 : _sharpenStrength;
 
     private void SharpenSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
@@ -61,14 +41,30 @@ public sealed partial class MainWindow
         var value = (int)SharpenSlider.Value;
         ChangeEdit("sharpen", () => _sharpenStrength = value);
         ShowSliderValue(SharpenValue, _sharpenStrength, $"{_sharpenStrength}");
+        ShowDeblurProgress();
     }
 
-    private void SetDeblurSlider(int value)
+    private async void SharpenAi_Click(object sender, RoutedEventArgs e)
     {
-        _syncingEditPane = true;
-        DeblurSlider.Value = value;
-        _syncingEditPane = false;
-        ShowSliderValue(DeblurValue, value, $"{value}");
+        var on = SharpenAiButton.IsChecked == true;
+        if (_viewerPixels is null)
+        {
+            SharpenAiButton.IsChecked = false;
+            return;
+        }
+        if (on && !await EnsureDeblurModelAsync())
+        {
+            SharpenAiButton.IsChecked = false;
+            return;
+        }
+        ChangeEdit("sharpen-ai", () =>
+        {
+            _sharpenAi = on;
+            if (on && _sharpenStrength == 0)
+                _sharpenStrength = AiStartStrength;
+        }, coalesce: false);
+        SetSharpenSlider(_sharpenStrength);
+        ShowDeblurProgress();
     }
 
     private void SetSharpenSlider(int value)
@@ -78,6 +74,10 @@ public sealed partial class MainWindow
         _syncingEditPane = false;
         ShowSliderValue(SharpenValue, value, $"{value}");
     }
+
+    /// <summary>The progress bar under the slider: only while the AI model is at work for a photo that uses it.</summary>
+    private void ShowDeblurProgress() =>
+        SharpenProgressPanel.Visibility = _deblurRunning && DeblurStrength > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
     /// The shown photo before and after the blur removal at the preview's size, or null while the model is still at
@@ -108,20 +108,25 @@ public sealed partial class MainWindow
     {
         if (ViewerItem is not { } item)
             return;
-        ShowDeblurHint(Tr("Taking out the blur…"));
-        ViewerProgress.IsActive = true;
+        _deblurRunning = true;
+        SharpenProgress.IsIndeterminate = true;
+        DeblurHint.Text = Tr("Taking out the blur…");
+        ShowDeblurProgress();
         try
         {
             var progress = new Progress<double>(p =>
             {
-                if (ReferenceEquals(pixels, _deblurFor))
-                    ShowDeblurHint(Tr("Taking out the blur… {0:P0}", p));
+                if (!ReferenceEquals(pixels, _deblurFor))
+                    return;
+                SharpenProgress.IsIndeterminate = false;
+                SharpenProgress.Value = p;
+                DeblurHint.Text = Tr("Taking out the blur… {0:P0}", p);
             });
             var result = await ViewModel.DeblurAsync(item.Path, progress);
             if (!ReferenceEquals(pixels, _deblurFor))
                 return;
             _deblurResult = result;
-            if (_deblurStrength > 0)
+            if (DeblurStrength > 0)
                 RenderPreview();
         }
         catch (OperationCanceledException)
@@ -133,7 +138,7 @@ public sealed partial class MainWindow
         {
             if (ReferenceEquals(pixels, _deblurFor))
             {
-                _deblurFor = null; // the next move of the slider tries again
+                _deblurFor = null; // the next preview tries again
                 ViewModel.ErrorMessage = Tr("The blur could not be removed: {0}", ex.Message);
             }
         }
@@ -141,16 +146,10 @@ public sealed partial class MainWindow
         {
             if (ReferenceEquals(pixels, _deblurFor) || _deblurFor is null)
             {
-                DeblurHint.Visibility = Visibility.Collapsed;
-                ViewerProgress.IsActive = false;
+                _deblurRunning = false;
+                ShowDeblurProgress();
             }
         }
-    }
-
-    private void ShowDeblurHint(string text)
-    {
-        DeblurHint.Text = text;
-        DeblurHint.Visibility = Visibility.Visible;
     }
 
     /// <summary>The blur removal model, downloaded after asking if it isn't yet. False when the user said no or the download failed.</summary>
@@ -161,8 +160,8 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = Tr("Download blur removal?"),
-            Content = Tr("Remove blur takes the shake out of photos taken at night or from a moving boat. It works on this PC, so no photo is sent anywhere.") + " " +
+            Title = Tr("Download AI blur removal?"),
+            Content = Tr("Remove blur with AI takes the shake out of photos taken at night or from a moving boat. It works on this PC, so no photo is sent anywhere.") + " " +
                       Tr("It needs an AI model (NAFNet) of about {0:N0} MB, which is downloaded once from GitHub and kept in the app's data folder.", DeblurModel.DownloadSize / 1_000_000),
             PrimaryButtonText = Tr("Download"),
             CloseButtonText = Tr("Cancel"),
