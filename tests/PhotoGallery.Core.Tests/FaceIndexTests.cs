@@ -74,6 +74,28 @@ public sealed class FaceIndexTests : IAsyncLifetime
         Assert.Equal(1, _index.CountUnnamedFaces());
     }
 
+    [Fact]
+    public void Hidden_faces_can_be_listed_and_brought_back()
+    {
+        var path = Path.Combine(_photos.Path, "a.jpg");
+        _index!.Upsert([new IndexedPhoto { Path = path, Folder = _photos.Path }]);
+        _index.SaveFaces(path, [new NewFace(new FaceBox(0.1, 0.1, 0.2, 0.2), 0.9f, Vector(1, 0), null),
+                                new NewFace(new FaceBox(0.4, 0.1, 0.2, 0.2), 0.9f, Vector(0, 1), null),
+                                new NewFace(new FaceBox(0.7, 0.1, 0.2, 0.2), 0.9f, Vector(1, 1), null)]);
+        Assert.Empty(_index.GetHiddenFaces());
+
+        var faces = _index.GetFaces(path);
+        _index.IgnoreFace(faces[0].Id);
+        _index.IgnoreFace(faces[2].Id);
+        // Newest found first, and only the hidden ones.
+        Assert.Equal([faces[2].Id, faces[0].Id], _index.GetHiddenFaces().Select(f => f.Id));
+        Assert.All(_index.GetHiddenFaces(), f => Assert.True(f.Ignored));
+
+        _index.IgnoreFace(faces[0].Id, ignored: false);
+        Assert.Equal(faces[2].Id, Assert.Single(_index.GetHiddenFaces()).Id);
+        Assert.Equal(2, _index.GetAllFaces().Count);
+    }
+
     [ExifToolFact]
     public async Task Found_faces_take_the_names_in_the_file_and_people_can_be_searched()
     {

@@ -1067,6 +1067,13 @@
                         <TextBlock Text="{local:Loc Text='Name the people found…'}" />
                     </StackPanel>
                 </Button>
+                <Button Click="HiddenFaces_Click" local:Busy.Gate="True"
+                        ToolTipService.ToolTip="{local:Loc Text='Look through the faces hidden from naming and bring back any hidden by mistake'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xED1A;" FontSize="14" />
+                        <TextBlock Text="{local:Loc Text='Hidden faces…'}" />
+                    </StackPanel>
+                </Button>
                 <ComboBox x:Name="PeopleSortCombo" MinWidth="170" SelectionChanged="PeopleSortCombo_SelectionChanged"
                           AutomationProperties.Name="{local:Loc Text='Order of the people'}"
                           ToolTipService.ToolTip="{local:Loc Text='Order of the people'}">
