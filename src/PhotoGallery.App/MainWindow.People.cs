@@ -197,7 +197,7 @@ public sealed partial class MainWindow
         {
             // Straight on to the name after "No": the most likely other people are listed to pick.
             focusBox.Focus(FocusState.Programmatic);
-            focusBox.IsSuggestionListOpen = true;
+            OpenNameList(focusBox);
         }
         else if (hadFocus)
             FocusPhoto();
@@ -400,44 +400,141 @@ public sealed partial class MainWindow
 
     /// <summary>A box to type a name in, offering the names already used in the library.</summary>
     /// <param name="likely">The people it most likely is, listed first and shown as soon as the box gets the focus.</param>
+    /// <remarks>
+    /// The names are listed right under the box, in the layout, not in the box's own popup. That popup opens above
+    /// the box when there is little room below (often in the info pane), and Windows puts its own word guesses
+    /// above the line being typed, so the two covered each other even with text prediction switched off (Lasse, 2026-11-26).
+    /// </remarks>
     private AutoSuggestBox NameBox(Func<string, Task> submit, IReadOnlyList<string>? likely = null)
     {
         likely ??= [];
         var box = new AutoSuggestBox { PlaceholderText = Tr("Who is this?"), HorizontalAlignment = HorizontalAlignment.Stretch };
-        PrepareSuggestions(box);
+        NoTextPrediction(box);
+        var list = new StackPanel { Spacing = 0, Margin = new Thickness(0, 2, 0, 0), Visibility = Visibility.Collapsed };
+        box.Description = list;
+        var names = new List<string>();
+        var highlighted = -1;
+
         IReadOnlyList<string> Matching(string text) => text.Length == 0
             ? likely
             : likely.Concat(ViewModel.KnownNames)
                 .Where(n => n.Contains(text, StringComparison.CurrentCultureIgnoreCase))
                 .Distinct(StringComparer.CurrentCultureIgnoreCase).Take(8).ToList();
-        if (likely.Count > 0)
+
+        void Highlight(int index)
         {
-            box.GotFocus += (sender, _) =>
+            highlighted = index;
+            for (var i = 0; i < list.Children.Count; i++)
             {
-                var b = (AutoSuggestBox)sender;
-                if (b.Text.Trim().Length > 0)
-                    return;
-                ShowSuggestions(b, likely);
-                b.IsSuggestionListOpen = true;
-            };
+                if (list.Children[i] is Button b)
+                    b.Background = i == index ? ThemeBrush("SubtleFillColorSecondaryBrush") : ThemeBrush("SubtleFillColorTransparentBrush");
+            }
         }
+
+        void Show(IReadOnlyList<string> items)
+        {
+            if (items.SequenceEqual(names) && list.Visibility == (items.Count > 0 ? Visibility.Visible : Visibility.Collapsed))
+                return;
+            names.Clear();
+            names.AddRange(items);
+            list.Children.Clear();
+            foreach (var name in items)
+            {
+                var item = new Button
+                {
+                    Content = new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis },
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Thickness(11, 5, 11, 6),
+                    BorderThickness = new Thickness(0),
+                    Background = ThemeBrush("SubtleFillColorTransparentBrush"),
+                    Foreground = ThemeBrush("TextFillColorPrimaryBrush"), // not the grey of the box's description
+                    // Clicking a name must not take the focus from the box: that would close the list first.
+                    AllowFocusOnInteraction = false,
+                    IsTabStop = false,
+                };
+                item.Click += async (_, _) => await Submit(name);
+                list.Children.Add(item);
+            }
+            highlighted = -1;
+            list.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        void Hide()
+        {
+            list.Visibility = Visibility.Collapsed;
+            highlighted = -1;
+        }
+
+        async Task Submit(string name)
+        {
+            name = name.Trim();
+            if (name.Length == 0)
+                return;
+            Hide();
+            box.Text = name;
+            box.IsEnabled = false;
+            await submit(name);
+            box.IsEnabled = true;
+        }
+
+        _openNameList.AddOrUpdate(box, () =>
+        {
+            if (box.Text.Trim().Length == 0)
+                Show(likely);
+        });
+        box.GotFocus += (_, _) =>
+        {
+            if (box.Text.Trim().Length == 0)
+                Show(likely);
+        };
+        box.LostFocus += (_, _) =>
+        {
+            // Wait a moment: the focus may only be moving inside the box.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!FocusIsIn(box))
+                    Hide();
+            });
+        };
         box.TextChanged += (sender, args) =>
         {
             if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
                 return;
-            ShowSuggestions(sender, Matching(sender.Text.Trim()));
+            Show(Matching(sender.Text.Trim()));
         };
-        box.SuggestionChosen += (sender, args) => sender.Text = args.SelectedItem as string ?? sender.Text;
-        box.QuerySubmitted += async (sender, args) =>
+        box.PreviewKeyDown += (_, e) =>
         {
-            var name = (args.ChosenSuggestion as string ?? args.QueryText).Trim();
-            if (name.Length == 0)
+            if (list.Visibility != Visibility.Visible || names.Count == 0)
                 return;
-            sender.IsEnabled = false;
-            await submit(name);
-            sender.IsEnabled = true;
+            switch (e.Key)
+            {
+                case Windows.System.VirtualKey.Down:
+                    Highlight(Math.Min(highlighted + 1, names.Count - 1));
+                    e.Handled = true;
+                    break;
+                case Windows.System.VirtualKey.Up:
+                    Highlight(Math.Max(highlighted - 1, -1));
+                    e.Handled = true;
+                    break;
+                case Windows.System.VirtualKey.Escape:
+                    Hide();
+                    e.Handled = true;
+                    break;
+            }
         };
+        box.QuerySubmitted += async (sender, args) =>
+            await Submit(highlighted >= 0 && highlighted < names.Count ? names[highlighted] : args.QueryText);
         return box;
+    }
+
+    /// <summary>Opens a name box's list of likely names (see <see cref="NameBox"/>).</summary>
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<AutoSuggestBox, Action> _openNameList = new();
+
+    private void OpenNameList(AutoSuggestBox box)
+    {
+        if (_openNameList.TryGetValue(box, out var open))
+            open();
     }
 
     /// <summary>A box to tag someone whose face was not found (e.g. seen from behind) on the photos.</summary>
