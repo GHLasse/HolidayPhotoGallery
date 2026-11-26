@@ -32,7 +32,7 @@ downloaded models). Nothing in that folder is sent anywhere.
 | The app's version | GitHub | When the app looks for updates (can be turned off in Settings). |
 | Downloads of the recognition models | Hugging Face, GitHub, Qualcomm AI Hub | Once, when you agree to the download. Each file is checked against its SHA-256. |
 
-Auto-tagging, face recognition, duplicate finding, quality hints, upscaling, the magic eraser and noise reduction run on your PC; no photo is sent
+Auto-tagging, face recognition, duplicate finding, quality hints, upscaling, the magic eraser, noise reduction and blur removal run on your PC; no photo is sent
 anywhere for them.
 
 ## How the app protects itself

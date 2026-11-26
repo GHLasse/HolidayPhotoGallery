@@ -8,9 +8,6 @@ using static PhotoGallery.Core.Localization.Strings;
 
 namespace PhotoGallery.App;
 
-/// <summary>The photo before and after the noise reduction model, at the size of the preview it is mixed into.</summary>
-internal sealed record NoiseLayer(int Width, int Height, byte[] Noisy, byte[] Clean);
-
 // "Reduce noise" in the Edit pane (E-12): the first time the slider is moved for a photo, the SCUNet model takes the
 // grain out of the whole photo in the background (it can take a while on the processor); the slider then only says
 // how much of it goes, so moving it is instant. Save mixes the full-size result in before any other edit.
@@ -19,7 +16,7 @@ public sealed partial class MainWindow
     private int _noiseStrength;              // 0 to 100; 0 is off
     private DecodedImage? _noiseFor;         // the viewer picture the model was asked about
     private DenoisedPhoto? _noiseResult;     // its answer, once there
-    private NoiseLayer? _noiseLayer;         // the answer at the preview's size
+    private ModelLayer? _noiseLayer;         // the answer at the preview's size
     private bool _askingForDenoiseModel;
 
     private async void NoiseSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -59,7 +56,7 @@ public sealed partial class MainWindow
     /// The grain of the shown photo at the preview's size, or null while the model is still at work (it is started
     /// here the first time; the preview is drawn again once it is done).
     /// </summary>
-    private async Task<NoiseLayer?> NoiseLayerAsync(DecodedImage pixels, int width, int height)
+    private async Task<ModelLayer?> NoiseLayerAsync(DecodedImage pixels, int width, int height)
     {
         if (!ReferenceEquals(_noiseFor, pixels))
         {
@@ -74,7 +71,7 @@ public sealed partial class MainWindow
         if (_noiseLayer is { } layer && layer.Width == width && layer.Height == height)
             return layer;
         var (noisy, clean) = (result.Noisy, result.Clean);
-        _noiseLayer = await Task.Run(() => new NoiseLayer(width, height,
+        _noiseLayer = await Task.Run(() => new ModelLayer(width, height,
             ImageMath.Resize(noisy.Pixels, noisy.Width, noisy.Height, width, height),
             ImageMath.Resize(clean, noisy.Width, noisy.Height, width, height)));
         return _noiseLayer;

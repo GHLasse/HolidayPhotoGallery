@@ -1478,6 +1478,32 @@
                     <TextBlock x:Name="NoiseHint" TextWrapping="Wrap" FontSize="12" Visibility="Collapsed"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
+                    <!-- Sharpness (E-17, MainWindow.Deblur.cs): Remove blur is an AI model that takes camera shake out once (the slider
+                         says how much of it is used); Sharpen is the light, instant unsharp mask. -->
+                    <TextBlock Text="{local:Loc Text='Sharpness'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <Slider x:Name="DeblurSlider" Minimum="0" Maximum="100" StepFrequency="1" ValueChanged="DeblurSlider_ValueChanged"
+                            AutomationProperties.Name="{local:Loc Text='Remove blur'}"
+                            ToolTipService.ToolTip="{local:Loc Text='Takes out the blur of a shaking hand or a moving boat, e.g. in night shots.'}">
+                        <Slider.Header>
+                            <Grid>
+                                <TextBlock Text="{local:Loc Text='Remove blur'}" />
+                                <TextBlock x:Name="DeblurValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Slider.Header>
+                    </Slider>
+                    <TextBlock x:Name="DeblurHint" TextWrapping="Wrap" FontSize="12" Visibility="Collapsed"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Slider x:Name="SharpenSlider" Minimum="0" Maximum="100" StepFrequency="1" ValueChanged="SharpenSlider_ValueChanged"
+                            AutomationProperties.Name="{local:Loc Text='Sharpen'}"
+                            ToolTipService.ToolTip="{local:Loc Text='Makes edges a little crisper. Best for photos that are only slightly soft.'}">
+                        <Slider.Header>
+                            <Grid>
+                                <TextBlock Text="{local:Loc Text='Sharpen'}" />
+                                <TextBlock x:Name="SharpenValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Slider.Header>
+                    </Slider>
+
                     <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06).
                          Each shows its value beside its name, in the palette colour once it is moved. -->
                     <Expander x:Name="EditSlidersExpander" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False"
