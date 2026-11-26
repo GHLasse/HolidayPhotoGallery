@@ -15,7 +15,7 @@ public sealed partial class MainWindow
     // What the edit was like just before a change, so Undo can put it back.
     private sealed record EditSnapshot(Adjustments Adjustments, bool FlipHorizontal, bool FlipVertical, double Straighten,
                                        string? LookKey, int LookStrength, bool AutoLight, bool Cropping, int CropRatio, bool CropTurned,
-                                       int NoiseStrength = 0, int DeblurStrength = 0, int SharpenStrength = 0);
+                                       int NoiseStrength = 0, bool NoiseAi = false, int SharpenStrength = 0, bool SharpenAi = false);
 
     // One step back: "stroke" takes back a retouch stroke, "reset" brings back what Reset dropped, anything else puts
     // the snapshot back. Kind also says which control made it, so a slider dragged in one go is one step.
@@ -34,7 +34,7 @@ public sealed partial class MainWindow
     private EditSnapshot CaptureEdit() =>
         new(_adjustments, _flipHorizontal, _flipVertical, _straighten, _lookKey, _lookStrength, _autoLight, _cropping,
             CropRatioCombo.SelectedIndex, CropTurnButton.IsChecked == true, _noiseStrength,
-            _deblurStrength, _sharpenStrength);
+            _noiseAi, _sharpenStrength, _sharpenAi);
 
     /// <summary>Notes the edit as it is now, before a change of the given kind.</summary>
     private void RecordEditStep(string kind, bool coalesce = true, (int Ratio, bool Turned)? cropShapeBefore = null)
@@ -99,8 +99,9 @@ public sealed partial class MainWindow
         _lookKey = before.LookKey;
         _lookStrength = before.LookStrength;
         _noiseStrength = before.NoiseStrength;
-        _deblurStrength = before.DeblurStrength;
+        _noiseAi = before.NoiseAi;
         _sharpenStrength = before.SharpenStrength;
+        _sharpenAi = before.SharpenAi;
         if (before.Cropping != _cropping)
             SetCropping(before.Cropping);
         if (_cropping && (CropRatioCombo.SelectedIndex != before.CropRatio || (CropTurnButton.IsChecked == true) != before.CropTurned))

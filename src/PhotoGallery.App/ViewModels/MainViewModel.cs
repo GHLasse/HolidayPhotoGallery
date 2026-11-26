@@ -1570,7 +1570,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                           Look? look, int lookStrength, IReadOnlyList<RetouchStroke> strokes,
                                           IReadOnlyList<BeautyFace> faces, BeautyParts beautyParts, bool asJpeg,
                                           bool asCopy = false, int noiseStrength = 0,
-                                          int deblurStrength = 0, int sharpenStrength = 0)
+                                          int deblurStrength = 0, int sharpenStrength = 0, int quickNoiseStrength = 0)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1613,6 +1613,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var eraser = strokes.Any(k => k.Tool == RetouchTool.Erase) ? await Task.Run(() => LoadEraser()) : null;
             image = await Task.Run(() =>
             {
+                // The fast noise reduction, or the AI model's (one or the other), first (E-12).
+                QuickNoiseReduction.Apply(image.Pixels, image.Width, image.Height, quickNoiseStrength);
                 if (denoised is not null)
                     NoiseReduction.Apply(image.Pixels, denoised.Noisy.Pixels, denoised.Clean, noiseStrength);
                 if (deblurred is not null)

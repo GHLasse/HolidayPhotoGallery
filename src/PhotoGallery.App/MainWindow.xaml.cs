@@ -2238,8 +2238,9 @@ public sealed partial class MainWindow : Window
         var saved = await ViewModel.SaveEditAsync(item, crop, curve, _adjustments, _flipHorizontal, _flipVertical, StraightenBeforeFlip,
                                                   ChosenLook, _lookStrength, _strokes.ToList(),
                                                   ChosenLook is { Beauty: true } ? _beautyFaces ?? [] : [], ViewModel.BeautyParts,
-                                                  asJpeg: asJpeg, asCopy: asCopy, noiseStrength: _noiseStrength,
-                                                  deblurStrength: _deblurStrength, sharpenStrength: _sharpenStrength);
+                                                  asJpeg: asJpeg, asCopy: asCopy, noiseStrength: AiNoiseStrength,
+                                                  deblurStrength: DeblurStrength, sharpenStrength: QuickSharpenStrength,
+                                                  quickNoiseStrength: QuickNoiseStrength);
         ViewerProgress.IsActive = false;
         if (saved)
         {
