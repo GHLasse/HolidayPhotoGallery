@@ -63,6 +63,7 @@ needed.
 - One-click looks (vivid, warm, matte, vintage, black and white and more) with a strength slider, including Beauty for portraits (smoother skin, brighter eyes, whiter teeth)
 - Remove spots and blemishes with a click, and erase people or things with the AI magic eraser, on your PC
 - Reduce noise in night and indoor shots with a local AI model, with a strength slider so skin keeps its texture
+- Remove the blur of a shaking hand or a moving boat with a local AI model, or sharpen slightly soft photos
 - Rotate JPEG, HEIC, PNG, WebP, TIFF and GIF
 - Undo the last edit or go back to the original; save in the original format or as JPEG
 
@@ -172,6 +173,7 @@ It builds on the work of others (Settings › Info lists the same):
 | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) by Xintao Wang et al. (versions from [Qualcomm AI Hub](https://huggingface.co/qualcomm)) | AI upscaling in the repair wizard | BSD 3-Clause |
 | Big-[LaMa](https://github.com/advimman/lama) by Roman Suvorov et al., Samsung AI Center ([ONNX version by Carve](https://huggingface.co/Carve/LaMa-ONNX)) | The magic eraser in the Edit pane | Apache 2.0 |
 | [SCUNet](https://github.com/cszn/SCUNet) by Kai Zhang et al., ETH Zürich ([ONNX version by Heliosoph](https://huggingface.co/Heliosoph/scunet-onnx)) | Reduce noise in the Edit pane | Apache 2.0 |
+| [NAFNet](https://github.com/megvii-research/NAFNet) by Liangyu Chen et al., Megvii ([ONNX version from OpenCV Zoo](https://github.com/opencv/opencv_zoo/tree/main/models/deblurring_nafnet)) | Remove blur in the Edit pane | MIT |
 | [Leaflet](https://leafletjs.com), [MapLibre GL JS](https://maplibre.org) | The map | BSD 2-Clause, BSD 3-Clause |
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | Map data, © OpenStreetMap contributors | ODbL |
 | [OpenFreeMap](https://openfreemap.org) | Map tiles | MIT, ODbL |

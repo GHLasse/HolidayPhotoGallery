@@ -30,7 +30,8 @@ public sealed partial class MainWindow
 
     /// <summary>Sliders, Enhance colours or a flip waiting to be saved.</summary>
     private bool HasPixelChanges => !_adjustments.IsNeutral || _flipHorizontal || _flipVertical || Math.Abs(_straighten) >= 0.01 || _lookKey is not null
-                                    || _strokes.Count > 0 || _noiseStrength > 0;
+                                    || _strokes.Count > 0 || _noiseStrength > 0
+                                    || _deblurStrength > 0 || _sharpenStrength > 0;
 
     private Look? ChosenLook => Looks.Find(_lookKey);
 
@@ -47,7 +48,7 @@ public sealed partial class MainWindow
                 ArrangeLookButtons();
         };
         SetUpRetouch();
-        foreach (var slider in EditSliders().Append(StraightenSlider).Append(NoiseSlider))
+        foreach (var slider in EditSliders().Append(StraightenSlider).Append(NoiseSlider).Append(DeblurSlider).Append(SharpenSlider))
         {
             // handledEventsToo: the slider's thumb takes the pointer for itself.
             slider.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler((s, _) => ((Slider)s).Value = 0), true);
@@ -128,6 +129,10 @@ public sealed partial class MainWindow
         StraightenSlider.Value = _straighten;
         NoiseSlider.Value = _noiseStrength;
         ShowSliderValue(NoiseValue, _noiseStrength, $"{_noiseStrength}");
+        DeblurSlider.Value = _deblurStrength;
+        ShowSliderValue(DeblurValue, _deblurStrength, $"{_deblurStrength}");
+        SharpenSlider.Value = _sharpenStrength;
+        ShowSliderValue(SharpenValue, _sharpenStrength, $"{_sharpenStrength}");
         foreach (var button in LookButtons())
             button.IsChecked = (string?)button.Tag == _lookKey;
         LookStrengthSlider.Value = _lookStrength;
@@ -487,6 +492,8 @@ public sealed partial class MainWindow
         _lookKey = null;
         _lookStrength = 100;
         _noiseStrength = 0;
+        _deblurStrength = 0;
+        _sharpenStrength = 0;
         _previewBase = null;
         ResetRetouch();
     }
@@ -518,6 +525,7 @@ public sealed partial class MainWindow
                 var (look, strength) = (ChosenLook, _lookStrength);
                 var (faces, beautyParts) = (_beautyFaces, ViewModel.BeautyParts);
                 var noiseStrength = _noiseStrength;
+                var (deblurStrength, sharpenStrength) = (_deblurStrength, _sharpenStrength);
                 DecodedImage shown;
                 if (before || (curve is null && !HasPixelChanges))
                     shown = pixels;
@@ -527,8 +535,10 @@ public sealed partial class MainWindow
                     var source = _retouched ?? (_previewBase ??= await Task.Run(() => Smaller(pixels)));
                     // The grain at the preview's size, once the model has taken it out (MainWindow.Denoise.cs).
                     var grain = noiseStrength > 0 ? await NoiseLayerAsync(pixels, source.Width, source.Height) : null;
+                    // The same for the blur (MainWindow.Deblur.cs).
+                    var blur = deblurStrength > 0 ? await DeblurLayerAsync(pixels, source.Width, source.Height) : null;
                     shown = await Task.Run(() => Edited(source, curve, look, strength, adjustments, flipH, flipV, angle, faces, beautyParts,
-                                                        grain, noiseStrength));
+                                                        grain, noiseStrength, blur, deblurStrength, sharpenStrength));
                 }
                 if (!ReferenceEquals(pixels, _viewerPixels))
                     return;
@@ -556,14 +566,21 @@ public sealed partial class MainWindow
     internal static DecodedImage Edited(DecodedImage image, byte[]? curve, Look? look, int lookStrength, Adjustments adjustments,
                                         bool flipHorizontal, bool flipVertical, double straighten,
                                         IReadOnlyList<BeautyFace>? faces = null, BeautyParts beautyParts = BeautyParts.None,
-                                        NoiseLayer? grain = null, int noiseStrength = 0)
+                                        ModelLayer? grain = null, int noiseStrength = 0,
+                                        ModelLayer? blur = null, int deblurStrength = 0, int sharpenStrength = 0)
     {
-        // The grain goes first, as Save takes it out of the photo before anything else (E-12).
+        // The grain and the blur go first, as Save takes them out of the photo before anything else (E-12, E-17).
         var source = image;
         if (grain is not null && noiseStrength > 0)
         {
             source = image with { Pixels = (byte[])image.Pixels.Clone() };
-            NoiseReduction.Apply(source.Pixels, grain.Noisy, grain.Clean, noiseStrength);
+            NoiseReduction.Apply(source.Pixels, grain.Before, grain.After, noiseStrength);
+        }
+        if (blur is not null && deblurStrength > 0)
+        {
+            if (ReferenceEquals(source, image))
+                source = image with { Pixels = (byte[])image.Pixels.Clone() };
+            BlurRemoval.Apply(source.Pixels, blur.Before, blur.After, deblurStrength);
         }
         // Beauty works on the faces where they are on the photo, so before it is straightened.
         if (look is { Beauty: true } && faces is { Count: > 0 } && beautyParts != BeautyParts.None)
@@ -581,6 +598,8 @@ public sealed partial class MainWindow
         if (look is not null)
             Looks.Apply(picture.Pixels, picture.Width, picture.Height, look, lookStrength);
         ImageAdjust.Apply(picture.Pixels, picture.Width, picture.Height, adjustments);
+        // Sharpening last, on the colours as they end up (E-17).
+        Sharpen.Apply(picture.Pixels, picture.Width, picture.Height, sharpenStrength);
         ImageAdjust.Flip(picture.Pixels, picture.Width, picture.Height, flipHorizontal, flipVertical);
         return picture;
     }

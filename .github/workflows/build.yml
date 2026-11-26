@@ -161,6 +161,21 @@ jobs:
             231be201ab413dbc999d7951caa9844846b93a12a40a41e037d6b5888ed4e88c "$dir/scunet_color_real_psnr.onnx" \
             98825ea1210b641c71e5f052f582c70c49fd44b35387ebe2c034268c17df3feb "$dir/scunet_color_real_psnr.onnx.data" | sha256sum -c
           echo "PHOTOGALLERY_DENOISE_MODEL=$dir" >> "$GITHUB_ENV"
+      # The blur removal model (NAFNet, about 92 MB) and a sharp photo to shake, so the tests take blur out with it.
+      - name: Cache blur removal model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/deblur-model
+          key: deblur-model-nafnet-48b10fa5
+      - name: Download blur removal model
+        run: |
+          dir="$RUNNER_TEMP/deblur-model"
+          mkdir -p "$dir"
+          # The same revision and hash as DeblurModel.cs.
+          [ -f "$dir/deblurring_nafnet_2025may.onnx" ] || curl -sSfL --retry 3 -o "$dir/deblurring_nafnet_2025may.onnx" https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/deblurring_nafnet/deblurring_nafnet_2025may.onnx
+          echo "07263f416febecce10193dd648e950b22e397cf521eedab1a114ef77b2bc9587  $dir/deblurring_nafnet_2025may.onnx" | sha256sum -c
+          [ -f "$dir/sharp.jpg" ] || curl -sSfL --retry 3 -o "$dir/sharp.jpg" https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/two_people.jpg
+          echo "PHOTOGALLERY_DEBLUR_MODEL=$dir" >> "$GITHUB_ENV"
       - name: Test core library
         run: dotnet test tests/PhotoGallery.Core.Tests --logger "console;verbosity=normal"
 

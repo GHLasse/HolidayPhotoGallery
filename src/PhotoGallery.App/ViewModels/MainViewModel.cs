@@ -1569,7 +1569,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                                           Adjustments adjustments, bool flipHorizontal, bool flipVertical, double straighten,
                                           Look? look, int lookStrength, IReadOnlyList<RetouchStroke> strokes,
                                           IReadOnlyList<BeautyFace> faces, BeautyParts beautyParts, bool asJpeg,
-                                          bool asCopy = false, int noiseStrength = 0)
+                                          bool asCopy = false, int noiseStrength = 0,
+                                          int deblurStrength = 0, int sharpenStrength = 0)
     {
         if (_photoEditor is null || _indexer is null)
             return false;
@@ -1599,12 +1600,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 if (denoised.Noisy.Width != fullWidth || denoised.Noisy.Height != fullHeight)
                     denoised = null;
             }
+            // The same for the blur (E-17).
+            DeblurredPhoto? deblurred = null;
+            if (deblurStrength > 0)
+            {
+                deblurred = await DeblurAsync(path, new Progress<double>(p => StatusText = Tr("Removing blur… {0:P0}", p)));
+                StatusText = Tr("Saving the edit of {0}…", item.FileName);
+                if (deblurred.Blurry.Width != fullWidth || deblurred.Blurry.Height != fullHeight)
+                    deblurred = null;
+            }
             FaceBox? kept = null;
             var eraser = strokes.Any(k => k.Tool == RetouchTool.Erase) ? await Task.Run(() => LoadEraser()) : null;
             image = await Task.Run(() =>
             {
                 if (denoised is not null)
                     NoiseReduction.Apply(image.Pixels, denoised.Noisy.Pixels, denoised.Clean, noiseStrength);
+                if (deblurred is not null)
+                    BlurRemoval.Apply(image.Pixels, deblurred.Blurry.Pixels, deblurred.Sharp, deblurStrength);
                 // Retouching first, on the photo as it was, where the strokes were placed (E-11).
                 Retouch.Apply(image.Pixels, image.Width, image.Height, strokes, eraser);
                 // Beauty too, on the faces where they were found (E-10).
@@ -1636,6 +1648,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 if (look is not null)
                     Looks.Apply(result.Pixels, result.Width, result.Height, look, lookStrength);
                 ImageAdjust.Apply(result.Pixels, result.Width, result.Height, adjustments);
+                // Sharpening last, on the colours as they end up (E-17).
+                Sharpen.Apply(result.Pixels, result.Width, result.Height, sharpenStrength);
                 ImageAdjust.Flip(result.Pixels, result.Width, result.Height, flipHorizontal, flipVertical);
                 return result;
             });
