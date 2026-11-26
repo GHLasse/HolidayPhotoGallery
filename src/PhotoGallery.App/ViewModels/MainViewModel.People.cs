@@ -818,6 +818,12 @@ public sealed partial class MainViewModel
             Inform(Tr("Hid {0} faces", ids.Count), () => SetIgnoredAsync(ids, false));
     }
 
+    /// <summary>Brings hidden faces back, so they are grouped and suggested again.</summary>
+    public Task UnhideFacesAsync(IEnumerable<FoundFace> faces) => SetIgnoredAsync([.. faces.Select(f => f.Id)], false);
+
+    /// <summary>The faces hidden as not worth naming, newest found first.</summary>
+    public Task<IReadOnlyList<FoundFace>> GetHiddenFacesAsync() => Task.Run(() => _index.GetHiddenFaces());
+
     private async Task SetIgnoredAsync(IReadOnlyList<long> ids, bool ignored)
     {
         await Task.Run(() =>

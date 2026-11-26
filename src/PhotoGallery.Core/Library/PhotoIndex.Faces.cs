@@ -114,6 +114,13 @@ public sealed partial class PhotoIndex
     /// <summary>Every face in the library that is not ignored, to suggest names and group unnamed faces.</summary>
     public IReadOnlyList<FoundFace> GetAllFaces(bool withThumbnails = false) => QueryFaces("f.ignored = 0", withThumbnails);
 
+    /// <summary>
+    /// The faces hidden as not worth naming (strangers, posters, things that are not faces), newest found
+    /// first, to look through and bring back any hidden by mistake.
+    /// </summary>
+    public IReadOnlyList<FoundFace> GetHiddenFaces(bool withThumbnails = true) =>
+        [.. QueryFaces("f.ignored = 1", withThumbnails).OrderByDescending(f => f.Id)];
+
     /// <summary>How many faces found in the library have no name yet (ignored faces don't count).</summary>
     public int CountUnnamedFaces()
     {

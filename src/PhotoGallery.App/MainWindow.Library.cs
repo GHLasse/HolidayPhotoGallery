@@ -47,6 +47,8 @@ public sealed partial class MainWindow
                 Tip: Tr("Find the people in your photos on this PC and name them")),
             new(unnamed > 0 ? Tr("Name the people found… ({0:N0} faces without a name)", unnamed) : Tr("Name the people found…"),
                 "\uE77B", () => Do(NamePeople_Click)),
+            new(Tr("Hidden faces…"), "\uED1A", () => _ = ShowHiddenFacesAsync(),
+                Tip: Tr("Look through the faces hidden from naming and bring back any hidden by mistake")),
             new(damaged > 0 ? Tr("Show damaged files ({0:N0})", damaged) : Tr("Show damaged files"), "\uE90F", ShowDamagedFiles,
                 Tip: Tr("Show only the photos whose file is damaged, to repair them"), Enabled: damaged > 0),
             new(Tr("Manage tags…"), "\uE8EC", () => _ = ShowSettingsAsync(tab: Tr("Tags")),

@@ -281,6 +281,131 @@ public sealed partial class MainWindow
         return button;
     }
 
+    /// <summary>"Select all" and "Deselect all" for a grid of faces to include or leave out.</summary>
+    private static StackPanel SelectAllRow(Func<IEnumerable<FaceChoice>> choices)
+    {
+        HyperlinkButton Link(string text, bool chosen)
+        {
+            var link = new HyperlinkButton { Content = text, Padding = new Thickness(4, 2, 4, 2) };
+            link.Click += (_, _) =>
+            {
+                foreach (var choice in choices())
+                    choice.SetChosen(chosen);
+            };
+            return link;
+        }
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Margin = new Thickness(-4, -8, 0, -4),
+            Children = { Link(Tr("Select all"), true), Link(Tr("Deselect all"), false) },
+        };
+    }
+
+    /// <summary>
+    /// The right-click menu of a face in the naming dialogs: name it as someone else on the spot, or hide
+    /// it from all suggestions when it is a stranger or not a face at all (Lasse, 2026-11-26).
+    /// </summary>
+    private MenuFlyout FaceChoiceMenu(FoundFace face, FrameworkElement target, Action<string> named, Action hidden)
+    {
+        var menu = new MenuFlyout();
+        var someoneElse = new MenuFlyoutItem { Text = Tr("Name as someone else…"), Icon = new FontIcon { Glyph = "\uE8FA" } };
+        someoneElse.Click += (_, _) =>
+        {
+            var flyout = new Flyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
+            var box = NameBox(name =>
+            {
+                flyout.Hide();
+                named(name);
+                return Task.CompletedTask;
+            });
+            box.Width = 260;
+            box.Header = Tr("Who is this?");
+            flyout.Content = box;
+            flyout.Opened += async (_, _) =>
+            {
+                box.Focus(FocusState.Programmatic);
+                // The people this face most likely is come first, as in the info pane.
+                var likely = await ViewModel.LikelyNamesAsync(face, []);
+                if (likely.Count > 0 && box.Text.Trim().Length == 0)
+                {
+                    ShowSuggestions(box, likely);
+                    box.IsSuggestionListOpen = true;
+                }
+            };
+            flyout.ShowAt(target);
+        };
+        var hide = new MenuFlyoutItem { Text = Tr("Hide from all suggestions"), Icon = new FontIcon { Glyph = "\uED1A" } };
+        ToolTipService.SetToolTip(hide, Tr("Not someone to name, or not a face at all. Hidden faces can be brought back from the People page."));
+        hide.Click += (_, _) => hidden();
+        menu.Items.Add(someoneElse);
+        menu.Items.Add(hide);
+        return menu;
+    }
+
+    /// <summary>
+    /// The faces hidden as not worth naming, to bring back any hidden by mistake. Hidden faces stay hidden
+    /// across restarts until brought back here or the photo is looked at for people again.
+    /// </summary>
+    private async Task ShowHiddenFacesAsync()
+    {
+        var hiddenFaces = await ViewModel.GetHiddenFacesAsync();
+        if (hiddenFaces.Count == 0)
+        {
+            ViewModel.Inform(Tr("No faces are hidden."));
+            return;
+        }
+        const int Shown = 200;
+        var grid = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 68, ItemHeight = 68, MaximumRowsOrColumns = 8 };
+        var toggles = new List<(FaceChoice Choice, FoundFace Face)>();
+        foreach (var f in hiddenFaces.Take(Shown))
+        {
+            var choice = new FaceChoice(FacePicture(f.Thumbnail, 56));
+            choice.SetChosen(false);
+            ToolTipService.SetToolTip(choice.Element, PhotoToolTip(f.Path));
+            grid.Children.Add(choice.Element);
+            toggles.Add((choice, f));
+        }
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = Tr("Hidden faces"),
+            Content = new ScrollViewer
+            {
+                MaxHeight = 560,
+                Content = new StackPanel
+                {
+                    Spacing = 12,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = Tr("{0:N0} face(s) are hidden from naming and suggestions. Click the faces to bring back.", hiddenFaces.Count) +
+                                   (hiddenFaces.Count > Shown ? " " + Tr("Only the {0} found last are shown.", Shown) : ""),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                        SelectAllRow(() => toggles.Select(t => t.Choice)),
+                        grid,
+                    },
+                },
+            },
+            PrimaryButtonText = Tr("Bring back"),
+            CloseButtonText = Tr("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        dialog.Resources["ContentDialogMaxWidth"] = 720.0;
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return;
+        var chosen = toggles.Where(t => t.Choice.IsChosen).Select(t => t.Face).ToList();
+        if (chosen.Count == 0)
+            return;
+        await ViewModel.UnhideFacesAsync(chosen);
+        ViewModel.Inform(Tr("Brought back {0} face(s)", chosen.Count));
+    }
+
+    private async void HiddenFaces_Click(object sender, RoutedEventArgs e) => await ShowHiddenFacesAsync();
+
     private MenuFlyoutItem FaceMenuItem(string text, Func<Task> click)
     {
         var item = new MenuFlyoutItem { Text = text };
@@ -333,6 +458,7 @@ public sealed partial class MainWindow
                                    (similar.Count + 1 > Shown ? " " + Tr("Only the {0} most alike are shown.", Shown) : ""),
                             TextWrapping = TextWrapping.Wrap,
                         },
+                        SelectAllRow(() => toggles.Select(t => t.Choice)),
                         grid,
                     },
                 },
@@ -653,6 +779,7 @@ public sealed partial class MainWindow
         var hide = new Button { Content = Tr("Hide these faces") };
         ToolTipService.SetToolTip(hide, Tr("Not people to name: hide these faces"));
         var toggles = new List<(FaceChoice Choice, FoundFace Face)>();
+        var selectRow = SelectAllRow(() => toggles.Select(t => t.Choice));
 
         var dialog = new ContentDialog
         {
@@ -667,6 +794,7 @@ public sealed partial class MainWindow
                     Children =
                     {
                         heading,
+                        selectRow,
                         faces,
                         guess,
                         nameBox,
@@ -709,6 +837,15 @@ public sealed partial class MainWindow
             {
                 var choice = new FaceChoice(FacePicture(face.Thumbnail, 56));
                 ToolTipService.SetToolTip(choice.Element, PhotoToolTip(face.Path));
+                choice.Element.ContextFlyout = FaceChoiceMenu(face, choice.Element, name =>
+                {
+                    _ = ViewModel.NameFacesAsync([face], name);
+                    TakeOut(face);
+                }, () =>
+                {
+                    _ = ViewModel.IgnoreFacesAsync([face]);
+                    TakeOut(face);
+                });
                 faces.Children.Add(choice.Element);
                 toggles.Add((choice, face));
             }
@@ -730,10 +867,26 @@ public sealed partial class MainWindow
         IReadOnlyList<FoundFace> Chosen() => [.. toggles.Where(t => t.Choice.IsChosen).Select(t => t.Face)];
         IReadOnlyList<FoundFace> LeftOut() => [.. toggles.Where(t => !t.Choice.IsChosen).Select(t => t.Face)];
 
+        // A face named as someone else or hidden from its right-click menu leaves the page and the group,
+        // so the next page starts with the face that came after this page (Lasse, 2026-11-26).
+        void TakeOut(FoundFace face)
+        {
+            var at = toggles.FindIndex(t => t.Face.Id == face.Id);
+            if (at < 0)
+                return;
+            faces.Children.Remove(toggles[at].Choice.Element);
+            toggles.RemoveAt(at);
+            groups[index] = groups[index].With([.. groups[index].Faces.Where(f => f.Id != face.Id)]);
+            problem.Text = "";
+            if (toggles.Count == 0)
+                Next();
+        }
+
         // The next page of this group, keeping the name just used, or else the next group.
         void Next(string? name = null)
         {
-            start += Shown;
+            // The faces on this page (fewer than Shown when some were taken out) are the ones gone through.
+            start += toggles.Count;
             if (start < groups[index].Faces.Count)
             {
                 lastName = name ?? lastName;
@@ -813,7 +966,7 @@ public sealed partial class MainWindow
                 Next();
                 return;
             }
-            _ = ViewModel.RejectNameAsync([.. chosen, .. groups[index].Faces.Skip(start + Shown)], name);
+            _ = ViewModel.RejectNameAsync([.. chosen, .. groups[index].Faces.Skip(start + toggles.Count)], name);
             notNames.Add(name);
             lastName = null;
             suggestion = groups[index].SuggestWithout(notNames);
@@ -870,9 +1023,12 @@ internal sealed class FaceChoice
 
     public bool IsChosen { get; private set; } = true;
 
-    private void Switch()
+    private void Switch() => SetChosen(!IsChosen);
+
+    /// <summary>Includes or leaves out the face, e.g. for Select all and Deselect all.</summary>
+    public void SetChosen(bool chosen)
     {
-        IsChosen = !IsChosen;
+        IsChosen = chosen;
         Paint();
     }
 
