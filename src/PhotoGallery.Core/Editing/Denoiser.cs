@@ -21,6 +21,7 @@ public sealed class Denoiser : IDisposable
     private readonly string _modelPath;
     private InferenceSession _session;
     private readonly string _input;
+    private bool _checkedCard; // the graphics card's result was compared with the processor's
 
     private Denoiser(string modelPath, InferenceSession session, bool onGraphicsCard)
     {
@@ -97,24 +98,20 @@ public sealed class Denoiser : IDisposable
         const int plane = Tile * Tile;
         var (count, done) = (TileCount(width, height), 0);
 
+        // Once, before the first photo: does the graphics card give what the processor gives?
+        if (OnGraphicsCard && !_checkedCard)
+        {
+            var (checkTop, checkLeft) = ModelTileCheck.MostDetailed(bgra, width, height, Step);
+            Fill(buffer, bgra, width, height, checkTop, checkLeft);
+            CheckGraphicsCard(input);
+        }
+
         for (var top = 0; top < height; top += Step)
         {
             for (var left = 0; left < width; left += Step)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                // The tile reaches Overlap pixels past its part on each side; outside the picture the edge repeats.
-                for (var y = 0; y < Tile; y++)
-                {
-                    var row = Math.Clamp(top - Overlap + y, 0, height - 1) * width;
-                    for (var x = 0; x < Tile; x++)
-                    {
-                        var i = (row + Math.Clamp(left - Overlap + x, 0, width - 1)) * 4;
-                        var o = y * Tile + x;
-                        buffer[o] = bgra[i + 2] / 255f;
-                        buffer[plane + o] = bgra[i + 1] / 255f;
-                        buffer[2 * plane + o] = bgra[i] / 255f;
-                    }
-                }
+                Fill(buffer, bgra, width, height, top, left);
                 var output = RunSafely(input);
 
                 // Only the tile's own part is kept; the overlap was there so its edges look right.
@@ -138,6 +135,52 @@ public sealed class Denoiser : IDisposable
         return result;
     }
 
+    // The tile reaches Overlap pixels past its part on each side; outside the picture the edge repeats.
+    private static void Fill(Span<float> buffer, byte[] bgra, int width, int height, int top, int left)
+    {
+        const int plane = Tile * Tile;
+        for (var y = 0; y < Tile; y++)
+        {
+            var row = Math.Clamp(top - Overlap + y, 0, height - 1) * width;
+            for (var x = 0; x < Tile; x++)
+            {
+                var i = (row + Math.Clamp(left - Overlap + x, 0, width - 1)) * 4;
+                var o = y * Tile + x;
+                buffer[o] = bgra[i + 2] / 255f;
+                buffer[plane + o] = bgra[i + 1] / 255f;
+                buffer[2 * plane + o] = bgra[i] / 255f;
+            }
+        }
+    }
+
+    // Some drivers give a wrong picture without an error (see ModelTileCheck); then the processor does the work.
+    private void CheckGraphicsCard(DenseTensor<float> input)
+    {
+        _checkedCard = true;
+        float[] onCard;
+        try
+        {
+            onCard = Run(input);
+        }
+        catch (OnnxRuntimeException)
+        {
+            UseProcessor();
+            return;
+        }
+        using var processor = NewSession(_modelPath, onGraphicsCard: false);
+        var onProcessor = Run(processor, input);
+        if (!ModelTileCheck.Agrees(input.Buffer.Span, onCard, onProcessor))
+            UseProcessor();
+    }
+
+    private void UseProcessor()
+    {
+        var session = NewSession(_modelPath, onGraphicsCard: false);
+        _session.Dispose();
+        _session = session;
+        OnGraphicsCard = false;
+    }
+
     private static byte ToByte(float value) => (byte)Math.Clamp(MathF.Round(value * 255f), 0f, 255f);
 
     // A graphics card can fail mid-way (an old driver, out of memory); the processor then takes over.
@@ -145,21 +188,23 @@ public sealed class Denoiser : IDisposable
     {
         try
         {
-            return Run(input);
+            var output = Run(input);
+            // A tile that can't be right is done again on the processor, and so is the rest.
+            if (!OnGraphicsCard || ModelTileCheck.LooksSane(input.Buffer.Span, output))
+                return output;
         }
         catch (OnnxRuntimeException) when (OnGraphicsCard)
         {
-            var session = NewSession(_modelPath, onGraphicsCard: false);
-            _session.Dispose();
-            _session = session;
-            OnGraphicsCard = false;
-            return Run(input);
         }
+        UseProcessor();
+        return Run(input);
     }
 
-    private float[] Run(DenseTensor<float> input)
+    private float[] Run(DenseTensor<float> input) => Run(_session, input);
+
+    private float[] Run(InferenceSession session, DenseTensor<float> input)
     {
-        using var results = _session.Run([NamedOnnxValue.CreateFromTensor(_input, input)]);
+        using var results = session.Run([NamedOnnxValue.CreateFromTensor(_input, input)]);
         return results[0].AsTensor<float>() is DenseTensor<float> dense ? dense.Buffer.ToArray() : results[0].AsTensor<float>().ToArray();
     }
 

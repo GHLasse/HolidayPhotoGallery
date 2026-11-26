@@ -160,6 +160,48 @@ public sealed class DeblurTests
         Assert.Equal(0.5, Sharpen.Radius(1024, 768), 3);
     }
 
+    [Fact]
+    public void A_graphics_card_tile_that_differs_from_the_processor_is_caught()
+    {
+        var random = new Random(3);
+        var input = Enumerable.Range(0, 3 * 64 * 64).Select(_ => (float)random.NextDouble()).ToArray();
+        // The model sharpens: each value moves a little.
+        var onProcessor = input.Select((v, i) => Math.Clamp(v + (i % 7 - 3) * 0.01f, 0f, 1f)).ToArray();
+
+        // The same give or take rounding: fine.
+        var close = onProcessor.Select((v, i) => v + (i % 2 == 0 ? 0.002f : -0.002f)).ToArray();
+        Assert.True(ModelTileCheck.Agrees(input, close, onProcessor));
+        // The picture given back unchanged, a square of noise, or not a number: caught.
+        Assert.False(ModelTileCheck.Agrees(input, input, onProcessor));
+        var noise = input.Select(_ => (float)random.NextDouble()).ToArray();
+        Assert.False(ModelTileCheck.Agrees(input, noise, onProcessor));
+        var broken = (float[])close.Clone();
+        broken[100] = float.NaN;
+        Assert.False(ModelTileCheck.Agrees(input, broken, onProcessor));
+    }
+
+    [Fact]
+    public void A_tile_far_from_the_picture_that_went_in_is_not_sane()
+    {
+        var random = new Random(5);
+        var input = Enumerable.Range(0, 3 * 64 * 64).Select(_ => (float)random.NextDouble()).ToArray();
+        Assert.True(ModelTileCheck.LooksSane(input, input.Select(v => v * 0.97f).ToArray()));
+        Assert.False(ModelTileCheck.LooksSane(input, input.Select(v => 1 - v).ToArray()));
+        Assert.False(ModelTileCheck.LooksSane(input, input.Select(_ => float.PositiveInfinity).ToArray()));
+    }
+
+    [Fact]
+    public void The_check_uses_the_tile_with_the_most_detail()
+    {
+        // A flat grey picture with stripes only in its lower right part.
+        const int width = 300, height = 200;
+        var pixels = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+                pixels[(y * width + x) * 4 + 1] = (byte)(x >= 200 && y >= 100 && x % 3 == 0 ? 220 : 90);
+        Assert.Equal((100, 200), ModelTileCheck.MostDetailed(pixels, width, height, 100));
+    }
+
     [DeblurModelFact]
     public void Removes_camera_shake_and_keeps_the_picture_and_its_edges()
     {
