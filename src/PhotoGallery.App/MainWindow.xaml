@@ -1689,11 +1689,17 @@
                             </StackPanel>
                         </Button>
                         <ToggleButton x:Name="EditBeforeButton" Click="EditBefore_Click" Background="Transparent" BorderThickness="0"
-                                      ToolTipService.ToolTip="{local:Loc Text='Show the photo as it was before these changes (Y)'}">
+                                      ToolTipService.ToolTip="{local:Loc Text='Show the photo as it was before these changes (\)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE89A;" FontSize="16" />
                                 <TextBlock Text="{local:Loc Text='Before'}" />
                             </StackPanel>
+                        </ToggleButton>
+                        <!-- Before and after side by side, with a divider to drag (Lasse, 2026-11-27; MainWindow.SplitBefore.cs). -->
+                        <ToggleButton x:Name="EditSplitButton" Click="EditSplit_Click" IsEnabled="False" Background="Transparent" BorderThickness="0"
+                                      AutomationProperties.Name="{local:Loc Text='Before and after side by side'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Before and after side by side: drag the line across the photo (Y)'}">
+                            <FontIcon Glyph="&#xE90C;" FontSize="16" />
                         </ToggleButton>
                         <Button x:Name="EditResetButton" Click="EditReset_Click" Background="Transparent" BorderThickness="0" Content="{local:Loc Text='Reset'}"
                                 ToolTipService.ToolTip="{local:Loc Text='Drop all changes not saved yet; Undo brings them back'}" />
