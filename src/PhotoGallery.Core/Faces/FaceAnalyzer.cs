@@ -64,8 +64,8 @@ public sealed class FaceAnalyzer : IDisposable
     public static FaceAnalyzer Load(string folder)
     {
         using var options = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC };
-        // Leave a core free so the app stays responsive while a batch is analysed.
-        options.IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount - 1);
+        // Mostly runs in the background, so it leaves the window and the other jobs room (ModelThreads).
+        ModelThreads.Apply(options, ModelThreads.ForBackground);
         options.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
         var detector = new InferenceSession(Path.Combine(folder, FaceModel.DetectorFile), options);
         try

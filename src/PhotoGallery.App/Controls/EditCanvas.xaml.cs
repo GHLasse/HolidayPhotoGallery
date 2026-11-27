@@ -344,10 +344,30 @@ public sealed partial class EditCanvas : UserControl
     /// <summary>Raised the first time a photo is zoomed in past its fitted size, to load it sharper.</summary>
     public event EventHandler? ZoomedIn;
 
+    /// <summary>
+    /// The photo shown. Every picture given here is made for the canvas alone, so the one it replaces is let go
+    /// of at once: each preview while a slider moves is a new picture, and their memory outside .NET piled up
+    /// until a garbage collection came round.
+    /// </summary>
     public ImageSource? Source
     {
         get => Picture.Source;
-        set => Picture.Source = value;
+        set
+        {
+            var old = Picture.Source;
+            Picture.Source = value;
+            if (old is Microsoft.UI.Xaml.Media.Imaging.SoftwareBitmapSource replaced && !ReferenceEquals(old, value))
+            {
+                try
+                {
+                    replaced.Dispose();
+                }
+                catch (Exception ex) when (ex is ObjectDisposedException or System.Runtime.InteropServices.COMException)
+                {
+                    // Already gone.
+                }
+            }
+        }
     }
 
     /// <summary>Sets the photo's size in pixels, which decides its shape on screen.</summary>

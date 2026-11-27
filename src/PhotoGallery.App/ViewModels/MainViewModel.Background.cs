@@ -79,6 +79,57 @@ public sealed partial class MainViewModel
             await Task.Delay(TimeSpan.FromSeconds(5));
     }
 
+    // ---- One background job at a time, and only while the user isn't busy with the app ----
+    // The jobs used to run side by side: faces, auto-tagging, quality, fingerprints and file checks each took a
+    // photo at the same moment, two of them with AI models on nearly every core. After many changes (naming
+    // people on 20, then 50 photos...) they all had work for minutes, and the window got no processor time and
+    // stopped reacting (Lasse 2026-11-27). Now they take turns, photo by photo, and wait while the user is
+    // clicking or typing, so what the user does always comes first.
+
+    private readonly SemaphoreSlim _backgroundTurn = new(1, 1);
+    private long _lastUserActivity = Environment.TickCount64;
+
+    /// <summary>How long after the last key press or click the background jobs wait before their next photo.</summary>
+    private const int QuietMilliseconds = 1500;
+
+    /// <summary>The window calls this on every key press, click and wheel turn.</summary>
+    public void NoteUserActivity() => _lastUserActivity = Environment.TickCount64;
+
+    private bool UserIsActive => Environment.TickCount64 - _lastUserActivity < QuietMilliseconds;
+
+    /// <summary>
+    /// Waits until the app is free (nothing the user asked for running, no saves waiting, no recent input,
+    /// enough memory, and <paramref name="alsoWaitWhile"/> false) and no other background job is on a photo,
+    /// then holds the turn until disposed. Hold it for one photo only, so the jobs take turns.
+    /// </summary>
+    private async Task<IDisposable> BackgroundTurnAsync(Func<bool>? alsoWaitWhile = null)
+    {
+        while (true)
+        {
+            while (IsBusy || HasPendingSaves || alsoWaitWhile?.Invoke() == true)
+                await Task.Delay(2000);
+            while (UserIsActive)
+                await Task.Delay(500);
+            await WaitForMemoryAsync();
+            await _backgroundTurn.WaitAsync();
+            // Things may have changed while waiting for the turn.
+            if (!IsBusy && !HasPendingSaves && alsoWaitWhile?.Invoke() != true && !UserIsActive)
+                return new Turn(_backgroundTurn);
+            _backgroundTurn.Release();
+        }
+    }
+
+    private sealed class Turn(SemaphoreSlim gate) : IDisposable
+    {
+        private int _released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+                gate.Release();
+        }
+    }
+
     private bool _keepingJobsGoing;
 
     /// <summary>Every 15 minutes, the background jobs are started again (see above). Runs while the app does.</summary>

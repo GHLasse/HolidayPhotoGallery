@@ -139,9 +139,8 @@ public sealed partial class MainViewModel
                 foreach (var (path, modified) in todo)
                 {
                     ShowBackground("files", Tr("Checking files for damage…"));
-                    while (IsBusy || HasPendingSaves)
-                        await Task.Delay(2000);
-                    await WaitForMemoryAsync();
+                    // One photo at a time among all the background jobs, and only while the user isn't busy (BackgroundTurnAsync).
+                    using var turn = await BackgroundTurnAsync();
                     try
                     {
                         var health = await Task.Run(() => FileCheck.Check(path));

@@ -42,8 +42,8 @@ public sealed partial class MainViewModel
                 foreach (var (path, position) in todo)
                 {
                     ShowBackground("places", Tr("Adding place names: {0:N0} to go", Math.Max(1, waiting - failed.Count - n++)));
-                    while (IsBusy || HasPendingSaves)
-                        await Task.Delay(2000);
+                    // Waits while the user is busy; the turn isn't held, as this mostly waits for the internet (BackgroundTurnAsync).
+                    (await BackgroundTurnAsync()).Dispose();
                     if (!_settings.AddPlaceNamesAutomatically)
                         return;
                     _geocoder ??= new ReverseGeocoder(PlaceNameLanguageCode);
