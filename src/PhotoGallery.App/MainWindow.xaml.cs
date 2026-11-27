@@ -1659,7 +1659,7 @@ public sealed partial class MainWindow : Window
         return text;
     }
 
-    private async Task ShowSettingsAsync(CloudService? cloudTab = null, string? tab = null)
+    private async Task ShowSettingsAsync(CloudService? cloudTab = null, string? tab = null, bool showDetailChoice = false)
     {
         // Tagging tab
         var language = new ComboBox { Header = Tr("Language of the tags"), MinWidth = 160 };
@@ -1974,6 +1974,8 @@ public sealed partial class MainWindow : Window
             dialog?.Hide();
         }, out var chosenUpdates);
 
+        var detailHeading = new TextBlock { Text = Tr("More details in the info pane"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] };
+
         // App tab: how the gallery behaves, the details pane, the language and updates.
         gallery.Visibility = languagePage.Visibility = Visibility.Visible;
         var appPage = new ScrollViewer
@@ -1988,7 +1990,7 @@ public sealed partial class MainWindow : Window
                 {
                     gallery,
                     new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
-                    new TextBlock { Text = Tr("More details in the info pane"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
+                    detailHeading,
                     detailGrid,
                     new Border { Height = 1, Background = ThemeBrush("DividerStrokeColorDefaultBrush") },
                     new TextBlock { Text = Tr("Language"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
@@ -2083,6 +2085,16 @@ public sealed partial class MainWindow : Window
         };
         // Wide enough for the tab list next to the pages.
         dialog.Resources["ContentDialogMaxWidth"] = 900.0;
+        if (showDetailChoice)
+        {
+            // From the hint under "More details": scroll to the choice and put the keyboard on its first box.
+            dialog.Opened += (_, _) =>
+            {
+                detailHeading.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = false });
+                if (detailBoxes.Count > 0)
+                    detailBoxes[0].Box.Focus(FocusState.Programmatic);
+            };
+        }
         var answer = await dialog.ShowThemedAsync();
         dialogClosed.Cancel();
         if (showTag is not null)

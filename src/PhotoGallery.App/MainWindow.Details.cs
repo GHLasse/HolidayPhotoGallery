@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using PhotoGallery.Core.Metadata;
 using static PhotoGallery.Core.Localization.Strings;
 
@@ -193,9 +194,34 @@ public sealed partial class MainWindow
             MoreDetailsGrid.Children.Add(label);
             MoreDetailsGrid.Children.Add(value);
         }
-        MoreDetailsNote.Text = ViewModel.DetailKeys.Count == 0
-            ? Tr("Choose the details to show in Settings › App.")
-            : Tr("The file has none of the chosen details. Settings › App picks which ones are shown.");
+        ShowMoreDetailsNote(ViewModel.DetailKeys.Count == 0
+            ? Tr("Choose the details to show in {0}.")
+            : Tr("The file has none of the chosen details. {0} picks which ones are shown."));
         MoreDetailsNote.Visibility = details.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// The hint under "More details", with "Settings › App" in it as a link that opens Settings on the App
+    /// tab, at the details choice (Lasse: the hint should take you there). A Hyperlink inside the text can be
+    /// reached with Tab and opened with Enter; it takes the palette's link colour.
+    /// </summary>
+    private void RecolourMoreDetailsLink()
+    {
+        foreach (var link in MoreDetailsNote.Inlines.OfType<Hyperlink>())
+            link.Foreground = ThemeBrush("AccentTextFillColorPrimaryBrush");
+    }
+
+    private void ShowMoreDetailsNote(string sentence)
+    {
+        MoreDetailsNote.Inlines.Clear();
+        var parts = sentence.Split("{0}", 2);
+        if (parts[0].Length > 0)
+            MoreDetailsNote.Inlines.Add(new Run { Text = parts[0] });
+        var link = new Hyperlink { Foreground = ThemeBrush("AccentTextFillColorPrimaryBrush") };
+        link.Inlines.Add(new Run { Text = Tr("Settings › {0}", Tr("App")) });
+        link.Click += (_, _) => _ = ShowSettingsAsync(tab: Tr("App"), showDetailChoice: true);
+        MoreDetailsNote.Inlines.Add(link);
+        if (parts.Length > 1 && parts[1].Length > 0)
+            MoreDetailsNote.Inlines.Add(new Run { Text = parts[1] });
     }
 }
