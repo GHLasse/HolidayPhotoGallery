@@ -48,6 +48,57 @@ public static class ModelTileCheck
     }
 
     /// <summary>
+    /// Puts the input back wherever the model blew up. The blur model can run away on some patches of a photo (on
+    /// Lasse's 48 MP night shot a whole tile turned into a grid of coloured dots, on the processor as well), giving
+    /// values far outside 0 to 1. Each <paramref name="block"/>-pixel square with such a value, and the squares around
+    /// it (the run-away spreads out softly), gets the picture that went in. Returns how many squares were repaired.
+    /// Tiles are planar RGB from 0 to 1, <paramref name="size"/> pixels each way.
+    /// </summary>
+    public static int RepairBlowUps(Span<float> output, ReadOnlySpan<float> input, int size, int block = 16)
+    {
+        var plane = size * size;
+        var blocks = (size + block - 1) / block;
+        var bad = new bool[blocks * blocks];
+        var any = false;
+        for (var c = 0; c < 3; c++)
+        {
+            for (var i = 0; i < plane; i++)
+            {
+                var v = output[c * plane + i];
+                if (float.IsFinite(v) && v >= -0.35f && v <= 1.35f)
+                    continue;
+                bad[i / size / block * blocks + i % size / block] = true;
+                any = true;
+            }
+        }
+        if (!any)
+            return 0;
+
+        var repaired = 0;
+        for (var by = 0; by < blocks; by++)
+        {
+            for (var bx = 0; bx < blocks; bx++)
+            {
+                var near = false;
+                for (var dy = -1; dy <= 1 && !near; dy++)
+                    for (var dx = -1; dx <= 1 && !near; dx++)
+                    {
+                        var (ny, nx) = (by + dy, bx + dx);
+                        near = ny >= 0 && ny < blocks && nx >= 0 && nx < blocks && bad[ny * blocks + nx];
+                    }
+                if (!near)
+                    continue;
+                repaired++;
+                for (var y = by * block; y < Math.Min(size, (by + 1) * block); y++)
+                    for (var x = bx * block; x < Math.Min(size, (bx + 1) * block); x++)
+                        for (var c = 0; c < 3; c++)
+                            output[c * plane + y * size + x] = input[c * plane + y * size + x];
+            }
+        }
+        return repaired;
+    }
+
+    /// <summary>
     /// The top left corner of the tile with the most detail (the largest differences between neighbours), on a grid
     /// of tiles <paramref name="step"/> apart: the tile where a wrong result shows best.
     /// </summary>

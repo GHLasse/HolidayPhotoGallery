@@ -202,6 +202,48 @@ public sealed class DeblurTests
         Assert.Equal((100, 200), ModelTileCheck.MostDetailed(pixels, width, height, 100));
     }
 
+    [Fact]
+    public void Where_the_model_ran_away_the_input_is_put_back()
+    {
+        const int size = 64;
+        var random = new Random(9);
+        var input = Enumerable.Range(0, 3 * size * size).Select(_ => (float)random.NextDouble()).ToArray();
+        var output = input.Select(v => v * 0.98f + 0.01f).ToArray();
+        var clean = (float[])output.Clone();
+        Assert.Equal(0, ModelTileCheck.RepairBlowUps(clean, input, size));
+        Assert.Equal(output, clean);
+
+        // One pixel far out of range (green plane) in the 16-pixel square at row 1, column 2.
+        output[size * size + 20 * size + 40] = 900f;
+        var repaired = ModelTileCheck.RepairBlowUps(output, input, size);
+        Assert.Equal(9, repaired); // the square and its eight neighbours
+        Assert.Equal(input[20 * size + 40], output[20 * size + 40]);
+        Assert.Equal(input[size * size + 20 * size + 40], output[size * size + 20 * size + 40]);
+        Assert.Equal(input[size * size + 2 * size + 18], output[size * size + 2 * size + 18]); // a neighbouring square
+        Assert.Equal(clean[63 * size + 0], output[63 * size + 0]); // far away: the model's result stays
+        output[5] = float.NaN;
+        Assert.True(ModelTileCheck.RepairBlowUps(output, input, size) > 0);
+        Assert.Equal(input[5], output[5]);
+    }
+
+    [DeblurModelFact]
+    public void A_photo_larger_than_the_working_size_is_done_smaller_and_keeps_its_size()
+    {
+        var photo = TestImages.Decode(Path.Combine(DeblurModelFactAttribute.Folder!, "sharp.jpg"))!.Value;
+        const int width = Deblurrer.MaxSide + 400, height = 420;
+        var sharp = ImageMath.Resize(ImageMath.Crop(photo.Pixels, photo.Width, photo.Height, new PixelRect(0, 0, photo.Width, 100)),
+                                     photo.Width, 100, width, height);
+        var blurry = ShakenDiagonally(sharp, width, height, 15);
+
+        using var deblurrer = Deblurrer.Load(DeblurModel.ModelPath(DeblurModelFactAttribute.Folder!), processorOnly: true);
+        var result = deblurrer.DeblurPhoto(blurry, width, height);
+
+        Assert.Equal(blurry.Length, result.Length);
+        var (detailBefore, detailAfter) = (Detail(blurry, width, height), Detail(result, width, height));
+        Assert.True(detailAfter > detailBefore * 1.03, $"Edges should be crisper: detail {detailBefore:F2} before, {detailAfter:F2} after.");
+        Assert.True(Error(result, blurry) < 30, "The photo stays the photo.");
+    }
+
     [DeblurModelFact]
     public void Removes_camera_shake_and_keeps_the_picture_and_its_edges()
     {
