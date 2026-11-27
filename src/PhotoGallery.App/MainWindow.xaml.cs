@@ -620,6 +620,12 @@ public sealed partial class MainWindow : Window
             e.Handled = true;
             await ShowShortcutsAsync();
         }
+        else if (e.Character == '\\' && IsViewerOpen && EditBeforeButton.IsEnabled)
+        {
+            // \ shows the photo before the changes, like Lightroom (and Y).
+            e.Handled = true;
+            ToggleBefore();
+        }
         else if (IsViewerOpen && ChosenRetouchTool is not null && Retouch.BrushKeyStep(e.Character) is var step and not 0)
         {
             // [ and ] (or - and +) make the retouch brush smaller and larger.
@@ -680,6 +686,10 @@ public sealed partial class MainWindow : Window
             ("[ ]  - +", Tr("Make the retouch brush smaller or larger")),
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
+            ("Ctrl+Shift+U", Tr("Make dull colours livelier in the viewer")),
+            ("Y  \\", Tr("Show the photo in the viewer as it was before the changes")),
+            ("Ctrl+S", Tr("Save the changes in the viewer; Ctrl+Shift+S saves them as a copy")),
+            ("Esc", Tr("Put away the crop frame or the retouch brush; once more goes back to the gallery")),
             ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),
             ("Ctrl+Shift+D", Tr("Adjust the date and time of the selected photos")),
             ("↑ ↓", Tr("In the Date taken box: change the year, month, day, hour, minute or second at the cursor")),
@@ -2173,7 +2183,7 @@ public sealed partial class MainWindow : Window
     {
         SyncEditPane();
         FlattenPanoramaForEdit();
-        CropShapePanel.Visibility = _cropping ? Visibility.Visible : Visibility.Collapsed;
+        ShowToolCard(CropShapePanel, _cropping);
         UpdateEditFooter();
     }
 
@@ -2332,6 +2342,12 @@ public sealed partial class MainWindow : Window
     // The viewer's keys (Esc, arrows) only act while the viewer is open.
     private void ViewerAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
+        // Esc first puts away the crop frame or the retouch brush, and only then leaves the viewer.
+        if (sender.Key == VirtualKey.Escape && IsViewerOpen && EndEditTool())
+        {
+            args.Handled = true;
+            return;
+        }
         // On a slider of the Edit pane the arrows move the slider, not to the next photo (which would drop the edit).
         if (!IsViewerOpen || (sender.Key is VirtualKey.Left or VirtualKey.Right && FocusManager.GetFocusedElement(Root.XamlRoot) is Slider))
             args.Handled = true;

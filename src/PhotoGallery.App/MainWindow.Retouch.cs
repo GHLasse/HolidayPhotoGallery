@@ -93,7 +93,14 @@ public sealed partial class MainWindow
         var tool = ChosenRetouchTool;
         ViewerCanvas.IsPainting = tool is not null && _viewerPixels is not null;
         ViewerCanvas.BrushSize = BrushSizeSlider.Value;
-        RetouchOptions.Visibility = tool is null ? Visibility.Collapsed : Visibility.Visible;
+        ShowToolCard(RetouchOptions, tool is not null);
+        RetouchToolName.Text = tool switch
+        {
+            RetouchTool.Spot => Tr("Remove spots"),
+            RetouchTool.Erase => Tr("Magic eraser"),
+            RetouchTool.RedEye or RetouchTool.Eyeshine => Tr("Red eye"),
+            _ => "",
+        };
         EyeOptions.Visibility = tool is RetouchTool.RedEye or RetouchTool.Eyeshine ? Visibility.Visible : Visibility.Collapsed;
         // Animals' faces aren't found by the face finder, and their iris is rarely under the glow.
         FindRedEyesButton.Visibility = IrisColourBox.Visibility = tool == RetouchTool.Eyeshine ? Visibility.Collapsed : Visibility.Visible;

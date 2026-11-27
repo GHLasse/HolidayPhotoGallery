@@ -11,12 +11,14 @@ namespace PhotoGallery.App.Controls;
 /// </summary>
 internal static class ThemeInk
 {
-    public static void Follow(FrameworkElement icon, IReadOnlyList<Shape> shapes)
+    /// <param name="own">A colour the icon has for now instead (e.g. the palette tint of a pressed switch), or null.</param>
+    /// <returns>Paints the icon again, for when its own colour changes.</returns>
+    public static Action Follow(FrameworkElement icon, IReadOnlyList<Shape> shapes, Func<Brush?>? own = null)
     {
         void Paint()
         {
             // WinUI's primary text colours: white in dark mode, near-black in light mode.
-            var brush = new SolidColorBrush(icon.ActualTheme == ElementTheme.Dark
+            var brush = own?.Invoke() ?? new SolidColorBrush(icon.ActualTheme == ElementTheme.Dark
                 ? Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)
                 : Windows.UI.Color.FromArgb(0xE4, 0x00, 0x00, 0x00));
             foreach (var shape in shapes)
@@ -24,5 +26,6 @@ internal static class ThemeInk
         }
         icon.Loaded += (_, _) => Paint();
         icon.ActualThemeChanged += (_, _) => Paint();
+        return Paint;
     }
 }

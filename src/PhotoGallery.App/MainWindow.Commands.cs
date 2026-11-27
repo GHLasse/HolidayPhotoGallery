@@ -408,7 +408,8 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// The keys of the command list that are not single letters (those are in Root_KeyDown): Ctrl+C, Ctrl+V,
-    /// Ctrl+D, Ctrl+Z, Ctrl+Shift+D, Ctrl+Shift+F, Ctrl+Shift+A, Ctrl+I, Ctrl+K, Ctrl+1–3, Del and F5, and in the viewer R, Ctrl+U and the rotate keys.
+    /// Ctrl+D, Ctrl+Z, Ctrl+Shift+D, Ctrl+Shift+F, Ctrl+Shift+A, Ctrl+I, Ctrl+K, Ctrl+1–3, Del and F5, and in the viewer R, Y,
+    /// Ctrl+U, Ctrl+Shift+U, Ctrl+S, Ctrl+Shift+S and the rotate keys.
     /// True when the key was used. Typing in a box keeps its own Ctrl+C and Ctrl+V.
     /// </summary>
     private bool HandleCommandKeys(KeyRoutedEventArgs e)
@@ -449,6 +450,17 @@ public sealed partial class MainWindow
                 ShowEditPane();
                 SetAutoLight(!_autoLight);
             },
+            (true, true, VirtualKey.U) when editTools => () =>
+            {
+                ShowEditPane();
+                EditEnhanceButton.IsChecked = EditEnhanceButton.IsChecked != true;
+                EditEnhance_Click(EditEnhanceButton, new RoutedEventArgs());
+            },
+            // Save and Save as a copy, like the footer's Save button and its menu (Lasse, 2026-11-27).
+            (true, false, VirtualKey.S) when viewer && EditSaveButton.IsEnabled => () => ViewerSaveEdit_Click(this, new RoutedEventArgs()),
+            (true, true, VirtualKey.S) when viewer && EditSaveButton.IsEnabled => () => SaveCopy_Click(this, new RoutedEventArgs()),
+            // Y shows the photo before the changes, like Lightroom (\ does too, MainWindow.xaml.cs).
+            (false, false, VirtualKey.Y) when viewer && EditBeforeButton.IsEnabled => () => ToggleBefore(),
             // In the grid Ctrl+, and Ctrl+. are keyboard accelerators (MainWindow.Frame.cs).
             (true, false, CommaKey) when turnTools => () => ViewerRotateLeft_Click(this, new RoutedEventArgs()),
             (true, false, PeriodKey) when turnTools => () => ViewerRotateRight_Click(this, new RoutedEventArgs()),

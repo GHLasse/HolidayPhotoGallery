@@ -147,6 +147,6 @@ public sealed partial class MainWindow
         SaveAsJpegItem.Visibility = canKeepFormat && !isJpeg ? Visibility.Visible : Visibility.Collapsed;
         SaveCopyItem.Visibility = canKeepFormat ? Visibility.Visible : Visibility.Collapsed;
         SaveJpegCopyItem.Visibility = isJpeg ? Visibility.Collapsed : Visibility.Visible;
-        ToolTipService.SetToolTip(EditSaveButton, Tr("Write the edit into the photo"));
+        ToolTipService.SetToolTip(EditSaveButton, Tr("Write the edit into the photo (Ctrl+S)"));
     }
 }

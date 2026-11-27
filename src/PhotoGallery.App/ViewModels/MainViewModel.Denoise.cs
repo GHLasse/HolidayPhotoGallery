@@ -22,15 +22,21 @@ public sealed partial class MainViewModel
     public static bool IsDenoiseModelInstalled => DenoiseModel.IsInstalled(DenoiseModelFolder);
 
     /// <summary>Downloads the noise reduction model once (about 77 MB), showing progress in the filter row.</summary>
-    public async Task<bool> DownloadDenoiseModelAsync()
+    /// <remarks>The Edit pane passes its own progress (shown beside the slider) and a token its Cancel link stops.</remarks>
+    public async Task<bool> DownloadDenoiseModelAsync(IProgress<double>? shown = null, CancellationToken cancel = default)
     {
         IsBusy = true;
         try
         {
-            var progress = new Progress<double>(p => StatusText = Tr("Downloading noise reduction… {0:P0}", p));
-            await DenoiseModel.DownloadAsync(DenoiseModelFolder, progress);
+            var progress = shown ?? new Progress<double>(p => StatusText = Tr("Downloading noise reduction… {0:P0}", p));
+            await DenoiseModel.DownloadAsync(DenoiseModelFolder, progress, cancellationToken: cancel);
             StatusText = "";
             return true;
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            StatusText = ""; // stopped with Cancel: nothing went wrong
+            return false;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
         {
