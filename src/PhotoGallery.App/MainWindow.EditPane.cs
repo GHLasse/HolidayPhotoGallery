@@ -22,7 +22,8 @@ public sealed partial class MainWindow
     private string? _lookKey;                // the one-click look (E-9), or none
     private int _lookStrength = 100;
     private DecodedImage? _lookThumbsFor;    // the photo the look previews were made from
-    private const int LookThumbWidth = 72, LookThumbHeight = 54;
+    // Square previews (Lasse, 2026-11-27): the photo itself, cut to a square, reads better than a small landscape strip.
+    private const int LookThumbWidth = 64, LookThumbHeight = 64;
     private DecodedImage? _previewBase;      // the viewer's photo, made smaller for the preview
     private IReadOnlyList<BeautyFace>? _beautyFaces;  // the faces the Beauty look works on (E-10)
     private DecodedImage? _beautyFacesFor;            // the photo they were found on
@@ -227,31 +228,35 @@ public sealed partial class MainWindow
         foreach (var (key, name, tip) in new[] { ((string?)null, Tr("None"), Tr("The photo without a look")) }
                      .Concat(Looks.All.Select(l => ((string?)l.Key, l.Name(), l.Tip()))))
         {
-            var pinMark = new FontIcon { Glyph = "\uE718", FontSize = 10, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
-            var suggestMark = new FontIcon { Glyph = "\uE82F", FontSize = 10, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
-            ToolTipService.SetToolTip(suggestMark, Tr("Suggested for this photo"));
+            // Pinned and suggested show as small badges on the preview's corners, so the whole name fits below it.
+            var pinMark = Badge(new FontIcon { Glyph = "\uE718", FontSize = 10, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White) },
+                                HorizontalAlignment.Left, Tr("Pinned"));
+            var suggestMark = Badge(new Controls.AiSparkle { Width = 10, Height = 10, Ink = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White) },
+                                    HorizontalAlignment.Right, Tr("Suggested for this photo"));
             var button = new ToggleButton
             {
                 Tag = key,
                 Padding = new Thickness(3),
                 Content = new StackPanel
                 {
-                    Spacing = 2,
+                    Spacing = 3,
                     Children =
                     {
-                        new Image { Width = LookThumbWidth, Height = LookThumbHeight, Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill },
-                        new StackPanel
+                        new Grid
                         {
-                            Orientation = Orientation.Horizontal,
-                            Spacing = 3,
                             Width = LookThumbWidth,
-                            HorizontalAlignment = HorizontalAlignment.Center,
+                            Height = LookThumbHeight,
                             Children =
                             {
+                                new Image { Width = LookThumbWidth, Height = LookThumbHeight, Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill },
                                 pinMark,
                                 suggestMark,
-                                new TextBlock { Text = name, FontSize = 11, MaxWidth = LookThumbWidth, TextTrimming = TextTrimming.CharacterEllipsis },
                             },
+                        },
+                        new TextBlock
+                        {
+                            Text = name, FontSize = 11, MaxWidth = LookThumbWidth, HorizontalAlignment = HorizontalAlignment.Center,
+                            TextTrimming = TextTrimming.CharacterEllipsis,
                         },
                     },
                 },
@@ -275,7 +280,25 @@ public sealed partial class MainWindow
         ArrangeLookButtons();
     }
 
-    private readonly List<(string? Key, ToggleButton Button, FontIcon PinMark, FontIcon SuggestMark)> _lookButtons = [];
+    private readonly List<(string? Key, ToggleButton Button, UIElement PinMark, UIElement SuggestMark)> _lookButtons = [];
+
+    // A small dark round badge on a corner of a look's preview.
+    private static Border Badge(UIElement icon, HorizontalAlignment side, string tip)
+    {
+        var badge = new Border
+        {
+            Child = icon,
+            Padding = new Thickness(3),
+            Margin = new Thickness(3),
+            CornerRadius = new CornerRadius(8),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0xB0, 0x10, 0x14, 0x20)),
+            HorizontalAlignment = side,
+            VerticalAlignment = VerticalAlignment.Top,
+            Visibility = Visibility.Collapsed,
+        };
+        ToolTipService.SetToolTip(badge, tip);
+        return badge;
+    }
 
     // What the shown photo looks like, whether it shows faces and its tags, for the suggested looks (found once per photo).
     private (LookSuggestions.Traits Traits, int Faces, IReadOnlyList<string> Tags, IReadOnlyDictionary<string, double>? Scenes)? _lookHints;
@@ -449,7 +472,7 @@ public sealed partial class MainWindow
                 return;
             var look = Looks.Find((string?)button.Tag);
             var thumb = await Task.Run(() => Edited(small, null, look, 100, Adjustments.None, false, false, 0));
-            if (((StackPanel)button.Content).Children[0] is Image image)
+            if (((StackPanel)button.Content).Children[0] is Grid preview && preview.Children[0] is Image image)
                 image.Source = await ImageLoader.ToImageSourceAsync(thumb);
         }
     }
