@@ -60,7 +60,7 @@ public sealed class Upscaler : IDisposable
         else
         {
             // Leave a core free so the app stays responsive.
-            options.IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount - 1);
+            ModelThreads.Apply(options, ModelThreads.ForUser);
         }
         return new InferenceSession(modelPath, options);
     }

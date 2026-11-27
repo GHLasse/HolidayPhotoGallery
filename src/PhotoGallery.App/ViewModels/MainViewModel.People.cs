@@ -309,9 +309,8 @@ public sealed partial class MainViewModel
                 {
                     ShowBackground("faces", Tr("Looking for faces: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
                     // What the user asked for goes first.
-                    while (IsBusy || HasPendingSaves)
-                        await Task.Delay(2000);
-                    await WaitForMemoryAsync();
+                    // One photo at a time among all the background jobs, and only while the user isn't busy (BackgroundTurnAsync).
+                    using var turn = await BackgroundTurnAsync();
                     if (!_settings.FindPeopleAutomatically)
                         return;
                     try

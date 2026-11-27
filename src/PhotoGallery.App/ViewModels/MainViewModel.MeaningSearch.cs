@@ -136,9 +136,8 @@ public sealed partial class MainViewModel
                     ShowBackground("tagging", tagging.Automatic == AutoTagSettings.AutomaticAll
                         ? Tr("Auto-tagging photos: {0:N0} to go", Math.Max(1, waiting - n++))
                         : Tr("Auto-tagging new photos: {0:N0} to go", Math.Max(1, waiting - n++)));
-                    while (IsBusy || HasPendingSaves)
-                        await Task.Delay(2000);
-                    await WaitForMemoryAsync();
+                    // One photo at a time among all the background jobs, and only while the user isn't busy (BackgroundTurnAsync).
+                    using var turn = await BackgroundTurnAsync();
                     if (tagging.Automatic == AutoTagSettings.AutomaticOff)
                         return;
                     try
@@ -174,9 +173,8 @@ public sealed partial class MainViewModel
                 foreach (var path in todo)
                 {
                     ShowBackground("tagging", Tr("Preparing search by meaning: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
-                    while (IsBusy || HasPendingSaves)
-                        await Task.Delay(2000);
-                    await WaitForMemoryAsync();
+                    // One photo at a time among all the background jobs, and only while the user isn't busy (BackgroundTurnAsync).
+                    using var turn = await BackgroundTurnAsync();
                     if (!tagging.SearchByMeaning)
                         return;
                     try

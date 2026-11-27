@@ -188,6 +188,10 @@ public sealed partial class MainWindow : Window
         ViewModel.HealthChanged += () => _ = ShowRepairAsync();
         // handledEventsToo: the grid marks some keys as handled although it does nothing with them.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyDown), true);
+        // The background jobs wait while the user is clicking, typing or scrolling (MainViewModel.Background.cs).
+        Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, _) => ViewModel.NoteUserActivity()), true);
+        Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => ViewModel.NoteUserActivity()), true);
+        Root.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, _) => ViewModel.NoteUserActivity()), true);
         // The text box handles the press itself, so it is caught with handled events too.
         DateBox.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(DateBox_PointerPressed), true);
         // handledEventsToo: a slider or button with the focus (such as Brush size) must not swallow [ and ].

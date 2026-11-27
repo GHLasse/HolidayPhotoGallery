@@ -371,10 +371,37 @@ public sealed class MetadataEditorViewModel : ObservableObject
 
     // Whenever a shown photo's file changes (rating, rotation, location, place names...), show the new
     // values. Unsaved edits in the panel are kept; then only the details below the title are refreshed.
+    // A job over many selected photos (naming a person on 50, place names...) changes them one after another;
+    // each change used to load the whole pane again, with its file reads, 50 times over (Lasse 2026-11-27).
+    // Now the first change shows at once and the ones close behind it are shown together a moment later.
+    private const int ReloadPauseMilliseconds = 400;
+    private long _lastReload;
+    private bool _reloadWaiting;
+
     private void Item_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(PhotoItemViewModel.Photo))
+        if (e.PropertyName != nameof(PhotoItemViewModel.Photo) || _reloadWaiting)
             return;
+        var since = Environment.TickCount64 - _lastReload;
+        if (since >= ReloadPauseMilliseconds)
+        {
+            ShowChangedPhotos();
+            return;
+        }
+        _reloadWaiting = true;
+        _ = ShowChangedPhotosSoonAsync(ReloadPauseMilliseconds - (int)since);
+    }
+
+    private async Task ShowChangedPhotosSoonAsync(int delay)
+    {
+        await Task.Delay(delay);
+        _reloadWaiting = false;
+        ShowChangedPhotos();
+    }
+
+    private void ShowChangedPhotos()
+    {
+        _lastReload = Environment.TickCount64;
         if (!IsDirty)
             Load(_items);
         else
