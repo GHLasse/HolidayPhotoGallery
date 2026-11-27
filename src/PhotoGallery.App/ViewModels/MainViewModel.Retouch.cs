@@ -61,6 +61,15 @@ public sealed partial class MainViewModel
         _settings.Save(SettingsPath);
     }
 
+    /// <summary>Whether an Edit pane section was left open or folded away; null when it was never changed.</summary>
+    public bool? EditSectionOpen(string key) => _settings.EditSectionsOpen.TryGetValue(key, out var open) ? open : null;
+
+    public void SaveEditSectionOpen(string key, bool open)
+    {
+        _settings.EditSectionsOpen[key] = open;
+        _settings.Save(SettingsPath);
+    }
+
     public void SaveBeautyParts(BeautyParts parts)
     {
         _settings.BeautyParts = parts;

@@ -54,8 +54,8 @@ public sealed partial class MainWindow
         }
         foreach (var slider in EditSliders())
             ToolTipService.SetToolTip(slider, Tr("Double-click to set it back."));
-        MoreLooksExpander.Expanding += (_, _) => DispatcherQueue.TryEnqueue(UpdateMoreLooksHeader);
-        MoreLooksExpander.Collapsed += (_, _) => UpdateMoreLooksHeader();
+        MoreLooksExpander.ExpandedChanged += (_, _) => UpdateMoreLooksHeader();
+        SetUpEditSections();
     }
 
     private Slider[] EditSliders() =>

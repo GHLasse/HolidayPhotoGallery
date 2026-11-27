@@ -32,6 +32,9 @@ public sealed class LibrarySettings
     /// <summary>The looks pinned to the top of the Edit pane, in the order they were pinned (Look keys).</summary>
     public List<string> PinnedLooks { get; set; } = [];
 
+    /// <summary>The Edit pane's sections folded away (false) or opened (true) by hand, by their key; the others keep their default.</summary>
+    public Dictionary<string, bool> EditSectionsOpen { get; set; } = [];
+
     /// <summary>What the Beauty look does (E-10): smooth skin, brighten eyes, whiten teeth, soften shadows under the eyes.</summary>
     public Editing.BeautyParts BeautyParts { get; set; } = Editing.BeautyParts.All;
 

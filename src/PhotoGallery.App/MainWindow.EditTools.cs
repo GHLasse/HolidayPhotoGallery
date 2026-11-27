@@ -15,6 +15,8 @@ public sealed partial class MainWindow
         card.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         if (!on || wasOn)
             return;
+        // A tool started by its key opens its folded section first, so its card can be seen.
+        OpenEditSection(ReferenceEquals(card, CropShapePanel) ? CropSection : RetouchSection);
         // After the layout, so the card has its place and size; with its tool button above it in sight where it fits.
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
