@@ -106,8 +106,8 @@ public sealed partial class MainViewModel
                     break;
                 var progress = await Task.Run(_index.GetDateCheckProgress);
                 ShowBackground("dates", Tr("Syncing dates: {0:N0} of {1:N0}", progress.Done, progress.Total));
-                while (IsBusy || HasPendingSaves)
-                    await Task.Delay(2000);
+                // Its turn among the background jobs, for this batch (BackgroundTurnAsync).
+                using var turn = await BackgroundTurnAsync();
                 if (!_settings.SyncDatesInBackground)
                     break;
                 var checks = await Task.Run(() => DateSync.CheckAsync(exifTool, todo));

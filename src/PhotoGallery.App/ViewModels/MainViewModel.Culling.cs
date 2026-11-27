@@ -167,9 +167,8 @@ public sealed partial class MainViewModel
                 foreach (var (path, orientation) in todo)
                 {
                     ShowBackground("quality", Tr("Checking photo quality: {0:N0} of {1:N0}", Math.Min(progress.Done + n++, progress.Total), progress.Total));
-                    while (IsBusy || HasPendingSaves)
-                        await Task.Delay(2000);
-                    await WaitForMemoryAsync();
+                    // One photo at a time among all the background jobs, and only while the user isn't busy (BackgroundTurnAsync).
+                    using var turn = await BackgroundTurnAsync();
                     if (!_settings.CheckQualityAutomatically)
                         break;
                     QualityMeasure? measure = null;

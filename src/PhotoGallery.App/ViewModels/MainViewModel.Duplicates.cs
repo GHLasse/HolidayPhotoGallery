@@ -223,9 +223,8 @@ public sealed partial class MainViewModel
                 {
                     ShowBackground("hashes", Tr("Fingerprinting photos to find duplicates: {0:N0} of {1:N0}",
                                                 Math.Min(progress.Done + ++n, progress.Total), progress.Total));
-                    while (IsBusy || _findingDuplicates)
-                        await Task.Delay(2000);
-                    await WaitForMemoryAsync();
+                    // One photo at a time among all the background jobs, and only while the user isn't busy (BackgroundTurnAsync).
+                    using var turn = await BackgroundTurnAsync(() => _findingDuplicates);
                     if (!Fingerprinting)
                         return;
                     if (!File.Exists(path))
@@ -246,8 +245,7 @@ public sealed partial class MainViewModel
             if (!_settings.FindDuplicatesAutomatically)
                 return;
 
-            while (IsBusy || _findingDuplicates)
-                await Task.Delay(2000);
+            (await BackgroundTurnAsync(() => _findingDuplicates)).Dispose();
             var before = _duplicateCount;
             await CountDuplicatesAsync();
             if (_duplicateCount > before)

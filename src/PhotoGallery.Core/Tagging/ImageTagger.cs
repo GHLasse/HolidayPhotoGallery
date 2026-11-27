@@ -47,8 +47,8 @@ public sealed class ImageTagger : IDisposable
         // Only the basic optimisations: on Windows the extended ones (layer-norm fusion) break on the
         // half-precision model and ONNX Runtime refuses to load it.
         using var options = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC };
-        // Leave a core free so the app stays responsive while a batch is tagged.
-        options.IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount - 1);
+        // Mostly runs in the background, so it leaves the window and the other jobs room (ModelThreads).
+        ModelThreads.Apply(options, ModelThreads.ForBackground);
 
         SentencePieceTokenizer tokenizer;
         // SigLIP 2 texts end with an end mark and have no start mark.
