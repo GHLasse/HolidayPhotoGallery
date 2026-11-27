@@ -459,8 +459,8 @@ public sealed partial class MainWindow
             // Save and Save as a copy, like the footer's Save button and its menu (Lasse, 2026-11-27).
             (true, false, VirtualKey.S) when viewer && EditSaveButton.IsEnabled => () => ViewerSaveEdit_Click(this, new RoutedEventArgs()),
             (true, true, VirtualKey.S) when viewer && EditSaveButton.IsEnabled => () => SaveCopy_Click(this, new RoutedEventArgs()),
-            // Y shows the photo before the changes, like Lightroom (\ does too, MainWindow.xaml.cs).
-            (false, false, VirtualKey.Y) when viewer && EditBeforeButton.IsEnabled => () => ToggleBefore(),
+            // Y shows before and after side by side, like Lightroom (\ toggles Before, MainWindow.xaml.cs).
+            (false, false, VirtualKey.Y) when viewer && EditSplitButton.IsEnabled => () => ToggleSplit(),
             // In the grid Ctrl+, and Ctrl+. are keyboard accelerators (MainWindow.Frame.cs).
             (true, false, CommaKey) when turnTools => () => ViewerRotateLeft_Click(this, new RoutedEventArgs()),
             (true, false, PeriodKey) when turnTools => () => ViewerRotateRight_Click(this, new RoutedEventArgs()),

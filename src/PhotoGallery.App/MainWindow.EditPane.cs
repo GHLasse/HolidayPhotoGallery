@@ -147,6 +147,7 @@ public sealed partial class MainWindow
         if (!IsEditing)
             EditBeforeButton.IsChecked = false;
         EditBeforeButton.IsEnabled = EditResetButton.IsEnabled = IsEditing;
+        SyncSplit(IsEditing);
         UpdateMoreLooksHeader();
         _syncingEditPane = false;
     }
@@ -582,6 +583,8 @@ public sealed partial class MainWindow
                 if (!ReferenceEquals(pixels, _viewerPixels))
                     return;
                 ViewerCanvas.Source = await ImageLoader.ToImageSourceAsync(shown);
+                if (ViewerCanvas.IsSplit)
+                    await ShowSplitBeforeAsync(pixels);
             }
             while (_renderAgain);
         }

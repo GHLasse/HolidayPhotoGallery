@@ -370,6 +370,93 @@ public sealed partial class EditCanvas : UserControl
         }
     }
 
+    // ---- Split Before view (Lasse, 2026-11-27) ----
+
+    private double? _split;     // where the divider is, as a fraction of the photo's width; null when off
+    private bool _draggingSplit;
+
+    /// <summary>The photo before the changes, shown left of the divider while <see cref="Split"/> is on.</summary>
+    public ImageSource? BeforeSource
+    {
+        get => BeforePicture.Source;
+        set
+        {
+            var old = BeforePicture.Source;
+            BeforePicture.Source = value;
+            if (old is Microsoft.UI.Xaml.Media.Imaging.SoftwareBitmapSource replaced && !ReferenceEquals(old, value))
+            {
+                try
+                {
+                    replaced.Dispose();
+                }
+                catch (Exception ex) when (ex is ObjectDisposedException or System.Runtime.InteropServices.COMException)
+                {
+                    // Already gone.
+                }
+            }
+        }
+    }
+
+    /// <summary>The split Before view: on with the divider in the middle, or off.</summary>
+    public bool IsSplit
+    {
+        get => _split is not null;
+        set
+        {
+            if (value == IsSplit)
+                return;
+            _split = value ? 0.5 : null;
+            if (!value)
+                BeforeSource = null;
+            SplitBeforeText.Text = Core.Localization.Strings.Tr("Before");
+            SplitAfterText.Text = Core.Localization.Strings.Tr("After");
+            PlaceSplit();
+        }
+    }
+
+    // The before picture cut off at the divider, and the divider where it belongs at this zoom (it keeps its size on screen).
+    private void PlaceSplit()
+    {
+        var on = _split is not null && !double.IsNaN(Frame.Width);
+        var shown = on ? Visibility.Visible : Visibility.Collapsed;
+        BeforePicture.Visibility = SplitLayer.Visibility = SplitBeforeLabel.Visibility = SplitAfterLabel.Visibility = shown;
+        if (_split is not { } split || !on)
+            return;
+        var (w, h) = (Frame.Width, Frame.Height);
+        var x = split * w;
+        BeforePicture.Clip = new RectangleGeometry { Rect = new Rect(0, 0, x, h) };
+        var scale = Math.Max(Zoom.ScaleX, 0.01);
+        SplitHandle.Width = 24 / scale;
+        SplitHandle.Height = h;
+        SplitLine.Width = 2 / scale;
+        SplitLine.Height = h;
+        SplitKnobScale.ScaleX = SplitKnobScale.ScaleY = 1 / scale;
+        Canvas.SetLeft(SplitHandle, x - SplitHandle.Width / 2);
+        Canvas.SetTop(SplitHandle, 0);
+    }
+
+    private void SplitHandle_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _draggingSplit = SplitHandle.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void SplitHandle_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_draggingSplit || _split is null || Frame.Width <= 0)
+            return;
+        _split = Math.Clamp(e.GetCurrentPoint(Frame).Position.X / Frame.Width, 0.02, 0.98);
+        PlaceSplit();
+        e.Handled = true;
+    }
+
+    private void SplitHandle_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        _draggingSplit = false;
+        SplitHandle.ReleasePointerCaptures();
+        e.Handled = true;
+    }
+
     /// <summary>Sets the photo's size in pixels, which decides its shape on screen.</summary>
     public void SetPixelSize(int width, int height)
     {
@@ -461,6 +548,7 @@ public sealed partial class EditCanvas : UserControl
         Zoom.TranslateX = Zoom.TranslateY = 0;
         _zoomedIn = false;
         EndPan();
+        PlaceSplit();
     }
 
     private void Host_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
@@ -505,6 +593,7 @@ public sealed partial class EditCanvas : UserControl
 
         static double Fit(double shift, double size, double space, double offset) =>
             size <= space ? (space - size) / 2 - offset : Math.Clamp(shift, space - size - offset, -offset);
+        PlaceSplit();
     }
 
     private void Host_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -566,6 +655,7 @@ public sealed partial class EditCanvas : UserControl
         PaintLayer.Height = Frame.Height;
         WorkingLayer.Width = Frame.Width;
         WorkingLayer.Height = Frame.Height;
+        PlaceSplit();
     }
 
     private void Draw()

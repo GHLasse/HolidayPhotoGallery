@@ -622,7 +622,7 @@ public sealed partial class MainWindow : Window
         }
         else if (e.Character == '\\' && IsViewerOpen && EditBeforeButton.IsEnabled)
         {
-            // \ shows the photo before the changes, like Lightroom (and Y).
+            // \ shows the photo before the changes, like Lightroom.
             e.Handled = true;
             ToggleBefore();
         }
@@ -687,7 +687,8 @@ public sealed partial class MainWindow : Window
             ("R", Tr("Crop the photo in the viewer")),
             ("Ctrl+U", Tr("Adjust contrast and brightness automatically in the viewer")),
             ("Ctrl+Shift+U", Tr("Make dull colours livelier in the viewer")),
-            ("Y  \\", Tr("Show the photo in the viewer as it was before the changes")),
+            ("\\", Tr("Show the photo in the viewer as it was before the changes")),
+            ("Y", Tr("Show the photo before and after the changes side by side; drag the line across it")),
             ("Ctrl+S", Tr("Save the changes in the viewer; Ctrl+Shift+S saves them as a copy")),
             ("Esc", Tr("Put away the crop frame or the retouch brush; once more goes back to the gallery")),
             ("Ctrl+Z", Tr("Undo the last change: rating, flag, reject, tags, rename or move")),
@@ -1560,6 +1561,8 @@ public sealed partial class MainWindow : Window
         RecordEditStep("crop", coalesce: false);
         if (on)
             ResetCropRatio(); // before cropping starts, so the new shape is no step of its own
+        if (on && ViewerCanvas.IsSplit)
+            SetSplit(false); // the crop frame needs the whole photo
         _cropping = on;
         if (_cropping)
         {
