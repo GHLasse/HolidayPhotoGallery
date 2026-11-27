@@ -66,6 +66,7 @@ public sealed partial class MainWindow
         _ = ShowTopPeopleAsync();
         RecolourTabMarks();
         Tint(InfoRating);
+        RecolourMoreDetailsLink();
         foreach (var tree in new[] { FolderTree, DateTree, PlaceTree })
             RecolourTreeMark(tree);
         ShowNavFade(); // the fade takes the new background
