@@ -1316,24 +1316,33 @@
             <StackPanel Spacing="12">
                 <TextBlock x:Name="EditPaneHint" TextWrapping="Wrap" FontStyle="Italic" Visibility="Collapsed"
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <StackPanel x:Name="EditTools" Spacing="12">
-                    <TextBlock Text="{local:Loc Text='Quick fixes'}" Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                    <controls:WrapPanel Spacing="6">
-                        <ToggleButton x:Name="EditAutoButton" Click="EditAuto_Click"
+                <StackPanel x:Name="EditTools" Spacing="0">
+                    <!-- The sections (Lasse, 2026-11-27): light first, then shape, style, repairs and other apps. Each has a thin line
+                         above it instead of a box, folds away with a click on its name (remembered), and shows a dot while it holds
+                         changes not saved yet (MainWindow.EditSections.cs). -->
+                    <controls:EditSection x:Name="QuickFixSection" Key="quick-fixes" Header="{local:Loc Text='Quick fixes'}">
+                    <StackPanel Spacing="12" Margin="0,0,0,12">
+                    <!-- Equal widths, the icon beside the name (Lasse, 2026-11-27). -->
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton x:Name="EditAutoButton" Click="EditAuto_Click" HorizontalAlignment="Stretch"
                                       ToolTipService.ToolTip="{local:Loc Text='Adjust contrast and brightness automatically (Ctrl+U)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE706;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Enhance light'}" />
+                                <TextBlock Text="{local:Loc Text='Enhance light'}" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </ToggleButton>
-                        <ToggleButton x:Name="EditEnhanceButton" Click="EditEnhance_Click"
+                        <ToggleButton x:Name="EditEnhanceButton" Grid.Column="1" Click="EditEnhance_Click" HorizontalAlignment="Stretch"
                                       ToolTipService.ToolTip="{local:Loc Text='Make dull colours livelier; skin tones are spared (Ctrl+Shift+U)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE790;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Enhance colours'}" />
+                                <TextBlock Text="{local:Loc Text='Enhance colours'}" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </ToggleButton>
-                    </controls:WrapPanel>
+                    </Grid>
                     <!-- Reduce noise and Sharpen (Lasse, 2026-11-26): each slider is a fast classic filter, instant to move; the small
                          AI switch beside it hands the job to a local AI model instead (noise: SCUNet, MainWindow.Denoise.cs; blur:
                          NAFNet, MainWindow.Deblur.cs), which works once per photo in the background.
@@ -1397,159 +1406,12 @@
                         <ProgressBar x:Name="SharpenProgress" Minimum="0" Maximum="1" Opacity="0" IsTabStop="False"
                                      AutomationProperties.AccessibilityView="Raw" />
                     </StackPanel>
-                    <!-- Crop, rotate and flip: turning the photo, apart from the quick fixes. -->
-                    <TextBlock Text="{local:Loc Text='Crop and turn'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
-                    <controls:WrapPanel Spacing="6">
-                        <ToggleButton x:Name="EditCropButton" Click="EditCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop and straighten (R)'}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE7A8;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" />
-                            </StackPanel>
-                        </ToggleButton>
-                        <Button x:Name="EditRotateLeftButton" Click="ViewerRotateLeft_Click" AutomationProperties.Name="{local:Loc Text='Rotate left'}"
-                                ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
-                            <FontIcon Glyph="&#xE7AD;" FontSize="16" RenderTransformOrigin="0.5,0.5">
-                                <FontIcon.RenderTransform>
-                                    <ScaleTransform ScaleX="-1" />
-                                </FontIcon.RenderTransform>
-                            </FontIcon>
-                        </Button>
-                        <Button x:Name="EditRotateRightButton" Click="ViewerRotateRight_Click" AutomationProperties.Name="{local:Loc Text='Rotate right'}"
-                                ToolTipService.ToolTip="{local:Loc Text='Rotate right (Ctrl+.)'}">
-                            <FontIcon Glyph="&#xE7AD;" FontSize="16" />
-                        </Button>
-                        <ToggleButton x:Name="EditFlipHorizontalButton" Click="EditFlip_Click" AutomationProperties.Name="{local:Loc Text='Flip left to right'}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Flip left to right, like a mirror'}">
-                            <FontIcon Glyph="&#xE8AB;" FontSize="16" />
-                        </ToggleButton>
-                        <ToggleButton x:Name="EditFlipVerticalButton" Click="EditFlip_Click" AutomationProperties.Name="{local:Loc Text='Flip upside down'}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Flip upside down'}">
-                            <FontIcon Glyph="&#xE8AB;" FontSize="16" RenderTransformOrigin="0.5,0.5">
-                                <FontIcon.RenderTransform>
-                                    <RotateTransform Angle="90" />
-                                </FontIcon.RenderTransform>
-                            </FontIcon>
-                        </ToggleButton>
-                    </controls:WrapPanel>
-                    <!-- The crop's own controls open here while cropping, so nothing appears under the photo. Filled from
-                         code (CropRatios), starting with the shape chosen in Settings. -->
-                    <Border x:Name="CropShapePanel" Visibility="Collapsed" Padding="10" CornerRadius="6"
-                            Background="{ThemeResource LayerFillColorDefaultBrush}" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-                        <StackPanel Spacing="8">
-                            <Grid>
-                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
-                                <HyperlinkButton HorizontalAlignment="Right" Padding="4,2" Click="EditToolDone_Click"
-                                                 Content="{local:Loc Text='Done'}" ToolTipService.ToolTip="{local:Loc Text='Finish cropping (Esc)'}" />
-                            </Grid>
-                            <Grid ColumnSpacing="6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox x:Name="CropRatioCombo" HorizontalAlignment="Stretch" SelectionChanged="CropRatio_SelectionChanged"
-                                          AutomationProperties.Name="{local:Loc Text='Shape of the crop'}"
-                                          ToolTipService.ToolTip="{local:Loc Text='Shape of the crop'}" />
-                                <ToggleButton x:Name="CropTurnButton" Grid.Column="1" Click="CropTurn_Click"
-                                              AutomationProperties.Name="{local:Loc Text='Turn the crop between landscape and portrait'}"
-                                              ToolTipService.ToolTip="{local:Loc Text='Turn the crop between landscape and portrait'}">
-                                    <!-- Orientation, not the flip icon (E8AB) next to it. -->
-                                    <FontIcon Glyph="&#xE8B4;" FontSize="14" />
-                                </ToggleButton>
-                            </Grid>
-                            <!-- Straighten (E-14): turns the photo by up to 45° each way; the photo shrinks so no corner is empty.
-                                 The fine grid shows while it is turned. Double-click sets it back. -->
-                            <Slider x:Name="StraightenSlider" Minimum="-45" Maximum="45" StepFrequency="0.1" ValueChanged="Straighten_ValueChanged"
-                                    AutomationProperties.Name="{local:Loc Text='Straighten'}"
-                                    ToolTipService.ToolTip="{local:Loc Text='Turn the photo to level a tilted horizon. Double-click to set it back.'}">
-                                <Slider.Header>
-                                    <Grid>
-                                        <TextBlock Text="{local:Loc Text='Straighten'}" />
-                                        <TextBlock x:Name="StraightenValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    </Grid>
-                                </Slider.Header>
-                            </Slider>
-                            <TextBlock Text="{local:Loc Text='Drag the frame to move it and its corners to resize it.'}" TextWrapping="Wrap" FontSize="12"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Border>
-
-                    <!-- One-click looks (E-9), each a small preview of the photo; filled from code (MainWindow.EditPane.cs). -->
-                    <TextBlock Text="{local:Loc Text='Looks'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
-                    <controls:WrapPanel x:Name="LookPanel" Spacing="6" />
-                    <!-- The looks that are neither pinned (right-click) nor suggested for this photo wait here. -->
-                    <Expander x:Name="MoreLooksExpander" Header="{local:Loc Text='More looks'}" IsExpanded="False" Visibility="Collapsed"
-                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                        <controls:WrapPanel x:Name="MoreLookPanel" Spacing="6" />
-                    </Expander>
-                    <Slider x:Name="LookStrengthSlider" Header="{local:Loc Text='Strength of the look'}" Minimum="0" Maximum="100" StepFrequency="1"
-                            Value="100" Visibility="Collapsed" ValueChanged="LookStrength_ValueChanged" />
-
-                    <!-- Retouch (E-11): spots are healed instantly, the magic eraser uses a local AI model (MainWindow.Retouch.cs). -->
-                    <TextBlock Text="{local:Loc Text='Retouch'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
-                    <controls:WrapPanel Spacing="6">
-                        <ToggleButton x:Name="RetouchSpotButton" Click="RetouchTool_Click"
-                                      ToolTipService.ToolTip="{local:Loc Text='Remove spots, dust and blemishes: click on one or brush over it (H)'}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE7E6;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Remove spots'}" />
-                            </StackPanel>
-                        </ToggleButton>
-                        <ToggleButton x:Name="RetouchEraseButton" Click="RetouchTool_Click"
-                                      ToolTipService.ToolTip="{local:Loc Text='Paint over people or things that should go; the gap is filled with matching background (Shift+H)'}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE75C;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Magic eraser'}" />
-                            </StackPanel>
-                        </ToggleButton>
-                        <!-- E-15: red eye, and animals' eyeshine; only the glowing pupil changes (Core/Editing/EyeFix.cs). -->
-                        <ToggleButton x:Name="RetouchEyeButton" Click="RetouchTool_Click"
-                                      ToolTipService.ToolTip="{local:Loc Text='Fix eyes the flash turned red, yellow, green or white: click on an eye (J)'}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE7B3;" FontSize="16" />
-                                <TextBlock Text="{local:Loc Text='Red eye'}" />
-                            </StackPanel>
-                        </ToggleButton>
-                    </controls:WrapPanel>
-                    <!-- The chosen retouch tool's card, like the crop's (Lasse, 2026-11-27): its name, Done (or Esc), its options. -->
-                    <Border x:Name="RetouchOptions" Visibility="Collapsed" Padding="10" CornerRadius="6"
-                            Background="{ThemeResource LayerFillColorDefaultBrush}" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-                    <StackPanel Spacing="6">
-                        <Grid>
-                            <TextBlock x:Name="RetouchToolName" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
-                            <HyperlinkButton HorizontalAlignment="Right" Padding="4,2" Click="EditToolDone_Click"
-                                             Content="{local:Loc Text='Done'}" ToolTipService.ToolTip="{local:Loc Text='Put the brush away (Esc)'}" />
-                        </Grid>
-                        <StackPanel x:Name="EyeOptions" Spacing="6" Visibility="Collapsed">
-                            <Button x:Name="FindRedEyesButton" Click="FindRedEyes_Click" HorizontalAlignment="Stretch"
-                                    ToolTipService.ToolTip="{local:Loc Text='Finds the faces on the photo and fixes the eyes that are red; one Undo takes them all back'}">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon x:Name="FindRedEyesIcon" Glyph="&#xE721;" FontSize="14" />
-                                    <TextBlock x:Name="FindRedEyesText" Text="{local:Loc Text='Find red eyes'}" />
-                                </StackPanel>
-                            </Button>
-                            <CheckBox x:Name="AnimalEyesCheck" Content="{local:Loc Text='Yellow or white glow'}" Click="EyeOption_Changed"
-                                      ToolTipService.ToolTip="{local:Loc Text='For eyes that glow yellow, green or white instead of red, as in animals and sometimes in people'}" />
-                            <ComboBox x:Name="IrisColourBox" Header="{local:Loc Text='Colour of the iris'}" SelectedIndex="0" HorizontalAlignment="Stretch"
-                                      SelectionChanged="IrisColour_SelectionChanged"
-                                      ToolTipService.ToolTip="{local:Loc Text='Used where the red covers the whole coloured part of the eye. Automatic keeps the colour that is left, or uses a dark neutral shade.'}">
-                                <ComboBoxItem Content="{local:Loc Text='Automatic'}" />
-                                <ComboBoxItem Content="{local:Loc Text='Blue'}" />
-                                <ComboBoxItem Content="{local:Loc Text='Green'}" />
-                                <ComboBoxItem Content="{local:Loc Text='Hazel'}" />
-                                <ComboBoxItem Content="{local:Loc Text='Brown'}" />
-                                <ComboBoxItem Content="{local:Loc Text='Grey'}" />
-                            </ComboBox>
-                        </StackPanel>
-                        <Slider x:Name="BrushSizeSlider" Header="{local:Loc Text='Brush size'}" Minimum="6" Maximum="200" StepFrequency="1"
-                                Value="40" ValueChanged="BrushSize_ValueChanged" />
-                        <TextBlock x:Name="RetouchHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    </Border>
-
-                    <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06).
+                    </controls:EditSection>
+                    <controls:EditSection x:Name="FineTuneSection" Key="fine-tune" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False">
+                    <StackPanel Spacing="12" Margin="0,0,0,12">
+                    <!-- The sliders are for those who want them: folded away at first (Lasse, 2026-11-06).
                          Each shows its value beside its name, in the palette colour once it is moved. -->
-                    <Expander x:Name="EditSlidersExpander" Header="{local:Loc Text='Fine-tune light and colour'}" IsExpanded="False"
-                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,8,0,0">
                         <StackPanel Spacing="4">
                             <TextBlock Text="{local:Loc Text='Light and shade'}" Style="{ThemeResource BodyStrongTextBlockStyle}" />
                                 <Slider x:Name="BrightnessSlider" Minimum="-100" Maximum="100" StepFrequency="1" ValueChanged="EditSlider_ValueChanged"
@@ -1608,11 +1470,186 @@
                                     </Slider.Header>
                                 </Slider>
                         </StackPanel>
-                    </Expander>
-
+                    </StackPanel>
+                    </controls:EditSection>
+                    <controls:EditSection x:Name="CropSection" Key="crop" Header="{local:Loc Text='Crop and turn'}">
+                    <StackPanel Spacing="12" Margin="0,0,0,12">
+                    <!-- Crop, rotate and flip: turning the photo, apart from the quick fixes. -->
+                    <!-- Crop and straighten, then rotate and flip as one group of four (Lasse, 2026-11-27). -->
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton x:Name="EditCropButton" Click="EditCrop_Click" ToolTipService.ToolTip="{local:Loc Text='Crop and straighten (R)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7A8;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <Grid Grid.Column="1" ColumnSpacing="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                        <Button x:Name="EditRotateLeftButton" HorizontalAlignment="Stretch" CornerRadius="4,0,0,4" Click="ViewerRotateLeft_Click" AutomationProperties.Name="{local:Loc Text='Rotate left'}"
+                                ToolTipService.ToolTip="{local:Loc Text='Rotate left (Ctrl+,)'}">
+                            <FontIcon Glyph="&#xE7AD;" FontSize="16" RenderTransformOrigin="0.5,0.5">
+                                <FontIcon.RenderTransform>
+                                    <ScaleTransform ScaleX="-1" />
+                                </FontIcon.RenderTransform>
+                            </FontIcon>
+                        </Button>
+                        <Button x:Name="EditRotateRightButton" Grid.Column="1" HorizontalAlignment="Stretch" CornerRadius="0" Click="ViewerRotateRight_Click" AutomationProperties.Name="{local:Loc Text='Rotate right'}"
+                                ToolTipService.ToolTip="{local:Loc Text='Rotate right (Ctrl+.)'}">
+                            <FontIcon Glyph="&#xE7AD;" FontSize="16" />
+                        </Button>
+                        <ToggleButton x:Name="EditFlipHorizontalButton" Grid.Column="2" HorizontalAlignment="Stretch" CornerRadius="0" Click="EditFlip_Click" AutomationProperties.Name="{local:Loc Text='Flip left to right'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Flip left to right, like a mirror'}">
+                            <FontIcon Glyph="&#xE8AB;" FontSize="16" />
+                        </ToggleButton>
+                        <ToggleButton x:Name="EditFlipVerticalButton" Grid.Column="3" HorizontalAlignment="Stretch" CornerRadius="0,4,4,0" Click="EditFlip_Click" AutomationProperties.Name="{local:Loc Text='Flip upside down'}"
+                                      ToolTipService.ToolTip="{local:Loc Text='Flip upside down'}">
+                            <FontIcon Glyph="&#xE8AB;" FontSize="16" RenderTransformOrigin="0.5,0.5">
+                                <FontIcon.RenderTransform>
+                                    <RotateTransform Angle="90" />
+                                </FontIcon.RenderTransform>
+                            </FontIcon>
+                        </ToggleButton>
+                        </Grid>
+                    </Grid>
+                    <!-- The crop's own controls open here while cropping, so nothing appears under the photo. Filled from
+                         code (CropRatios), starting with the shape chosen in Settings. -->
+                    <Border x:Name="CropShapePanel" Visibility="Collapsed" Padding="10" CornerRadius="6"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                <HyperlinkButton HorizontalAlignment="Right" Padding="4,2" Click="EditToolDone_Click"
+                                                 Content="{local:Loc Text='Done'}" ToolTipService.ToolTip="{local:Loc Text='Finish cropping (Esc)'}" />
+                            </Grid>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="CropRatioCombo" HorizontalAlignment="Stretch" SelectionChanged="CropRatio_SelectionChanged"
+                                          AutomationProperties.Name="{local:Loc Text='Shape of the crop'}"
+                                          ToolTipService.ToolTip="{local:Loc Text='Shape of the crop'}" />
+                                <ToggleButton x:Name="CropTurnButton" Grid.Column="1" Click="CropTurn_Click"
+                                              AutomationProperties.Name="{local:Loc Text='Turn the crop between landscape and portrait'}"
+                                              ToolTipService.ToolTip="{local:Loc Text='Turn the crop between landscape and portrait'}">
+                                    <!-- Orientation, not the flip icon (E8AB) next to it. -->
+                                    <FontIcon Glyph="&#xE8B4;" FontSize="14" />
+                                </ToggleButton>
+                            </Grid>
+                            <!-- Straighten (E-14): turns the photo by up to 45° each way; the photo shrinks so no corner is empty.
+                                 The fine grid shows while it is turned. Double-click sets it back. -->
+                            <Slider x:Name="StraightenSlider" Minimum="-45" Maximum="45" StepFrequency="0.1" ValueChanged="Straighten_ValueChanged"
+                                    AutomationProperties.Name="{local:Loc Text='Straighten'}"
+                                    ToolTipService.ToolTip="{local:Loc Text='Turn the photo to level a tilted horizon. Double-click to set it back.'}">
+                                <Slider.Header>
+                                    <Grid>
+                                        <TextBlock Text="{local:Loc Text='Straighten'}" />
+                                        <TextBlock x:Name="StraightenValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </Grid>
+                                </Slider.Header>
+                            </Slider>
+                            <TextBlock Text="{local:Loc Text='Drag the frame to move it and its corners to resize it.'}" TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                    </StackPanel>
+                    </controls:EditSection>
+                    <controls:EditSection x:Name="LookSection" Key="looks" Header="{local:Loc Text='Looks'}">
+                    <StackPanel Spacing="12" Margin="0,0,0,12">
+                    <!-- One-click looks (E-9), each a small preview of the photo; filled from code (MainWindow.EditPane.cs). -->
+                    <controls:WrapPanel x:Name="LookPanel" Spacing="6" />
+                    <!-- The looks that are neither pinned (right-click) nor suggested for this photo wait here. -->
+                    <!-- A slim row, not a box (Lasse, 2026-11-27); the header says how many looks wait inside. -->
+                    <controls:EditSection x:Name="MoreLooksExpander" Header="{local:Loc Text='More looks'}" IsSubsection="True" IsExpanded="False"
+                                          Visibility="Collapsed" Key="more-looks">
+                        <controls:WrapPanel x:Name="MoreLookPanel" Spacing="6" />
+                    </controls:EditSection>
+                    <Slider x:Name="LookStrengthSlider" Header="{local:Loc Text='Strength of the look'}" Minimum="0" Maximum="100" StepFrequency="1"
+                            Value="100" Visibility="Collapsed" ValueChanged="LookStrength_ValueChanged" />
+                    </StackPanel>
+                    </controls:EditSection>
+                    <controls:EditSection x:Name="RetouchSection" Key="retouch" Header="{local:Loc Text='Retouch'}">
+                    <StackPanel Spacing="12" Margin="0,0,0,12">
+                    <!-- Retouch (E-11): spots are healed instantly, the magic eraser uses a local AI model (MainWindow.Retouch.cs). -->
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton x:Name="RetouchSpotButton" Click="RetouchTool_Click" HorizontalAlignment="Stretch" Padding="6,5"
+                                      ToolTipService.ToolTip="{local:Loc Text='Remove spots, dust and blemishes: click on one or brush over it (H)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7E6;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Remove spots'}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ToggleButton x:Name="RetouchEraseButton" Grid.Column="1" Click="RetouchTool_Click" HorizontalAlignment="Stretch" Padding="6,5"
+                                      ToolTipService.ToolTip="{local:Loc Text='Paint over people or things that should go; the gap is filled with matching background (Shift+H)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE75C;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Magic eraser'}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <!-- E-15: red eye, and animals' eyeshine; only the glowing pupil changes (Core/Editing/EyeFix.cs). -->
+                        <ToggleButton x:Name="RetouchEyeButton" Grid.Column="2" Click="RetouchTool_Click" HorizontalAlignment="Stretch" Padding="6,5"
+                                      ToolTipService.ToolTip="{local:Loc Text='Fix eyes the flash turned red, yellow, green or white: click on an eye (J)'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7B3;" FontSize="16" />
+                                <TextBlock Text="{local:Loc Text='Red eye'}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </ToggleButton>
+                    </Grid>
+                    <!-- The chosen retouch tool's card, like the crop's (Lasse, 2026-11-27): its name, Done (or Esc), its options. -->
+                    <Border x:Name="RetouchOptions" Visibility="Collapsed" Padding="10" CornerRadius="6"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                    <StackPanel Spacing="6">
+                        <Grid>
+                            <TextBlock x:Name="RetouchToolName" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                            <HyperlinkButton HorizontalAlignment="Right" Padding="4,2" Click="EditToolDone_Click"
+                                             Content="{local:Loc Text='Done'}" ToolTipService.ToolTip="{local:Loc Text='Put the brush away (Esc)'}" />
+                        </Grid>
+                        <StackPanel x:Name="EyeOptions" Spacing="6" Visibility="Collapsed">
+                            <Button x:Name="FindRedEyesButton" Click="FindRedEyes_Click" HorizontalAlignment="Stretch"
+                                    ToolTipService.ToolTip="{local:Loc Text='Finds the faces on the photo and fixes the eyes that are red; one Undo takes them all back'}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon x:Name="FindRedEyesIcon" Glyph="&#xE721;" FontSize="14" />
+                                    <TextBlock x:Name="FindRedEyesText" Text="{local:Loc Text='Find red eyes'}" />
+                                </StackPanel>
+                            </Button>
+                            <CheckBox x:Name="AnimalEyesCheck" Content="{local:Loc Text='Yellow or white glow'}" Click="EyeOption_Changed"
+                                      ToolTipService.ToolTip="{local:Loc Text='For eyes that glow yellow, green or white instead of red, as in animals and sometimes in people'}" />
+                            <ComboBox x:Name="IrisColourBox" Header="{local:Loc Text='Colour of the iris'}" SelectedIndex="0" HorizontalAlignment="Stretch"
+                                      SelectionChanged="IrisColour_SelectionChanged"
+                                      ToolTipService.ToolTip="{local:Loc Text='Used where the red covers the whole coloured part of the eye. Automatic keeps the colour that is left, or uses a dark neutral shade.'}">
+                                <ComboBoxItem Content="{local:Loc Text='Automatic'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Blue'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Green'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Hazel'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Brown'}" />
+                                <ComboBoxItem Content="{local:Loc Text='Grey'}" />
+                            </ComboBox>
+                        </StackPanel>
+                        <Slider x:Name="BrushSizeSlider" Header="{local:Loc Text='Brush size'}" Minimum="6" Maximum="200" StepFrequency="1"
+                                Value="40" ValueChanged="BrushSize_ValueChanged" />
+                        <TextBlock x:Name="RetouchHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    </Border>
+                    </StackPanel>
+                    </controls:EditSection>
+                    <controls:EditSection x:Name="OtherAppSection" Key="other-apps" Header="{local:Loc Text='Edit in another app'}">
+                    <StackPanel Spacing="12" Margin="0,0,0,12">
                     <!-- Bigger edits in a real editor: the favourite apps (Settings › Editing) and Windows' Open with. They are in the
                          viewer's top bar too, for quick access (Lasse, 2026-11-07: ask again later whether to keep both). -->
-                    <TextBlock Text="{local:Loc Text='Edit in another app'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
                     <controls:WrapPanel Spacing="6">
                         <Button x:Name="EditFavourite1Button" Tag="0" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
                         <Button x:Name="EditFavourite2Button" Tag="1" Visibility="Collapsed" Click="ViewerFavouriteApp_Click" />
@@ -1623,7 +1660,8 @@
                             </StackPanel>
                         </Button>
                     </controls:WrapPanel>
-
+                    </StackPanel>
+                    </controls:EditSection>
                     <!-- Only for a photo saved with edits before: going all the way back (Undo last save is in the footer). -->
                     <StackPanel x:Name="SavedEditsPanel" Orientation="Horizontal" Spacing="4" Visibility="Collapsed">
                         <TextBlock x:Name="SavedEditsText" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -1638,25 +1676,26 @@
 
             <!-- The footer: always there for an editable photo, so nothing jumps when the first change is made. Undo steps back
                  one change at a time (then takes back the last save), Before shows the photo without the changes, Reset drops
-                 them (Undo brings them back), and Save is the one filled button; its arrow saves as JPEG or as a copy (E-5). -->
+                 them (Undo brings them back), and Save is the one filled button; its arrow saves as JPEG or as a copy (E-5).
+                 Undo, Before and Reset have no box of their own, so Save stands out (Lasse, 2026-11-27). -->
             <Border x:Name="EditFooter" Grid.Row="1" Padding="8,10,16,10" BorderThickness="0,1,0,0"
                     BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
                 <StackPanel Spacing="8">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button x:Name="EditUndoButton" Click="EditUndo_Click" IsEnabled="False">
+                        <Button x:Name="EditUndoButton" Click="EditUndo_Click" IsEnabled="False" Background="Transparent" BorderThickness="0">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE7A7;" FontSize="16" />
                                 <TextBlock x:Name="EditUndoText" Text="{local:Loc Text='Undo'}" />
                             </StackPanel>
                         </Button>
-                        <ToggleButton x:Name="EditBeforeButton" Click="EditBefore_Click"
+                        <ToggleButton x:Name="EditBeforeButton" Click="EditBefore_Click" Background="Transparent" BorderThickness="0"
                                       ToolTipService.ToolTip="{local:Loc Text='Show the photo as it was before these changes (Y)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE89A;" FontSize="16" />
                                 <TextBlock Text="{local:Loc Text='Before'}" />
                             </StackPanel>
                         </ToggleButton>
-                        <Button x:Name="EditResetButton" Click="EditReset_Click" Content="{local:Loc Text='Reset'}"
+                        <Button x:Name="EditResetButton" Click="EditReset_Click" Background="Transparent" BorderThickness="0" Content="{local:Loc Text='Reset'}"
                                 ToolTipService.ToolTip="{local:Loc Text='Drop all changes not saved yet; Undo brings them back'}" />
                     </StackPanel>
                     <Grid ColumnSpacing="8">

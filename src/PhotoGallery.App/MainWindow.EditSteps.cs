@@ -122,6 +122,7 @@ public sealed partial class MainWindow
     {
         if (EditUndoButton is null)
             return;
+        ShowEditSectionChanges();
         var editing = IsEditing;
         var savedEdits = ViewerItem is { } shown && !editing && !HasEditSteps ? EditHistory.EditCount(shown.Path) : 0;
         EditUndoButton.IsEnabled = !_retouching && (HasEditSteps || savedEdits > 0);
