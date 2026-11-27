@@ -527,17 +527,72 @@ public sealed partial class MainWindow
     /// <summary>A box to type a name in, offering the names already used in the library.</summary>
     /// <param name="likely">The people it most likely is, listed first and shown as soon as the box gets the focus.</param>
     /// <remarks>
-    /// The names are listed right under the box, in the layout, not in the box's own popup. That popup opens above
+    /// The names float right under the box, in a popup of our own, not in the box's own list. That list opens above
     /// the box when there is little room below (often in the info pane), and Windows puts its own word guesses
     /// above the line being typed, so the two covered each other even with text prediction switched off (Lasse, 2026-11-26).
+    /// Our popup is always placed under the box (it may reach past the window) and floats over the pane, so it
+    /// pushes nothing down (Lasse, 2026-11-27).
     /// </remarks>
     private AutoSuggestBox NameBox(Func<string, Task> submit, IReadOnlyList<string>? likely = null)
     {
         likely ??= [];
         var box = new AutoSuggestBox { PlaceholderText = Tr("Who is this?"), HorizontalAlignment = HorizontalAlignment.Stretch };
         NoTextPrediction(box);
-        var list = new StackPanel { Spacing = 0, Margin = new Thickness(0, 2, 0, 0), Visibility = Visibility.Collapsed };
-        box.Description = list;
+        var list = new StackPanel { Spacing = 0, Visibility = Visibility.Collapsed };
+        var card = new Border
+        {
+            Child = list,
+            Padding = new Thickness(2),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            Background = ThemeBrush("SolidBackgroundFillColorQuarternaryBrush"),
+            BorderBrush = ThemeBrush("SurfaceStrokeColorFlyoutBrush"),
+        };
+        var popup = new Popup
+        {
+            Child = card,
+            // Not kept inside the window: there it would be pushed up over the box when the box is low.
+            ShouldConstrainToRootBounds = false,
+        };
+
+        void Place()
+        {
+            if (!popup.IsOpen || box.XamlRoot is null)
+                return;
+            // Under the typing line itself, not under a header above it.
+            FrameworkElement line = FindChild<TextBox>(box) ?? (FrameworkElement)box;
+            var at = line.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, line.ActualHeight));
+            if (popup.HorizontalOffset != at.X)
+                popup.HorizontalOffset = at.X;
+            if (popup.VerticalOffset != at.Y + 2)
+                popup.VerticalOffset = at.Y + 2;
+            var width = Math.Max(line.ActualWidth, 120);
+            if (card.Width != width)
+                card.Width = width;
+        }
+
+        // A popup that may reach past the window would stay on screen over other apps: close it when the app is left.
+        void Deactivated(object sender, WindowActivatedEventArgs e)
+        {
+            if (e.WindowActivationState == WindowActivationState.Deactivated)
+                Hide();
+        }
+
+        void OpenPopup()
+        {
+            if (box.XamlRoot is null)
+                return;
+            popup.XamlRoot = box.XamlRoot;
+            card.RequestedTheme = box.ActualTheme;
+            if (!popup.IsOpen)
+                Activated += Deactivated;
+            popup.IsOpen = true;
+            Place();
+        }
+
+        // Follows the box when the pane scrolls or the layout changes while the names are shown.
+        box.LayoutUpdated += (_, _) => Place();
+        box.Unloaded += (_, _) => Hide();
         var names = new List<string>();
         var highlighted = -1;
 
@@ -574,7 +629,7 @@ public sealed partial class MainWindow
                     Padding = new Thickness(11, 5, 11, 6),
                     BorderThickness = new Thickness(0),
                     Background = ThemeBrush("SubtleFillColorTransparentBrush"),
-                    Foreground = ThemeBrush("TextFillColorPrimaryBrush"), // not the grey of the box's description
+                    Foreground = ThemeBrush("TextFillColorPrimaryBrush"),
                     // Clicking a name must not take the focus from the box: that would close the list first.
                     AllowFocusOnInteraction = false,
                     IsTabStop = false,
@@ -584,11 +639,17 @@ public sealed partial class MainWindow
             }
             highlighted = -1;
             list.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (items.Count > 0)
+                OpenPopup();
+            else
+                Hide();
         }
 
         void Hide()
         {
             list.Visibility = Visibility.Collapsed;
+            popup.IsOpen = false;
+            Activated -= Deactivated;
             highlighted = -1;
         }
 
