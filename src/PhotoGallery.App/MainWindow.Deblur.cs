@@ -24,6 +24,8 @@ public sealed partial class MainWindow
     private DeblurredPhoto? _deblurResult;     // its answer, once there
     private ModelLayer? _deblurLayer;          // the answer at the preview's size
     private bool _deblurRunning;
+    private int _deblurRunningId;              // counts runs, so a stopped one leaves the next alone
+    private CancellationTokenSource? _deblurDownload; // while the model is downloading
 
     // What the preview and Save do with the slider: one of the two, never both.
     private int DeblurStrength => _sharpenAi ? _sharpenStrength : 0;
@@ -47,14 +49,15 @@ public sealed partial class MainWindow
     private async void SharpenAi_Click(object sender, RoutedEventArgs e)
     {
         var on = SharpenAiButton.IsChecked == true;
+        SharpenAiSparkle.Ink = on ? ThemeBrush("ToggleButtonForegroundChecked") : null;
         if (_viewerPixels is null)
         {
-            SharpenAiButton.IsChecked = false;
+            ShowAiSwitch(SharpenAiButton, SharpenAiSparkle, false);
             return;
         }
         if (on && !await EnsureDeblurModelAsync())
         {
-            SharpenAiButton.IsChecked = false;
+            ShowAiSwitch(SharpenAiButton, SharpenAiSparkle, false);
             return;
         }
         ChangeEdit("sharpen-ai", () =>
@@ -63,6 +66,8 @@ public sealed partial class MainWindow
             if (on && _sharpenStrength == 0)
                 _sharpenStrength = AiStartStrength;
         }, coalesce: false);
+        ShowAiSwitch(SharpenAiButton, SharpenAiSparkle, _sharpenAi);
+        ShowSharpenLabel();
         SetSharpenSlider(_sharpenStrength);
         ShowDeblurProgress();
     }
@@ -75,9 +80,9 @@ public sealed partial class MainWindow
         ShowSliderValue(SharpenValue, value, $"{value}");
     }
 
-    /// <summary>The progress bar under the slider: only while the AI model is at work for a photo that uses it.</summary>
+    /// <summary>Progress beside and under the slider: while the model downloads, or works for a photo that uses it.</summary>
     private void ShowDeblurProgress() =>
-        SharpenProgressPanel.Visibility = _deblurRunning && DeblurStrength > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DeblurRow.Show(_deblurDownload is not null || (_deblurRunning && DeblurStrength > 0));
 
     /// <summary>
     /// The shown photo before and after the blur removal at the preview's size, or null while the model is still at
@@ -108,22 +113,20 @@ public sealed partial class MainWindow
     {
         if (ViewerItem is not { } item)
             return;
+        var run = ++_deblurRunningId;
         _deblurRunning = true;
-        SharpenProgress.IsIndeterminate = true;
-        DeblurHint.Text = Tr("Taking out the blur…");
+        DeblurRow.Begin(Tr("Working…"));
         ShowDeblurProgress();
         try
         {
             var progress = new Progress<double>(p =>
             {
-                if (!ReferenceEquals(pixels, _deblurFor))
+                if (run != _deblurRunningId)
                     return;
-                SharpenProgress.IsIndeterminate = false;
-                SharpenProgress.Value = p;
-                DeblurHint.Text = Tr("Taking out the blur… {0:P0}", p);
+                DeblurRow.Report(p);
             });
             var result = await ViewModel.DeblurAsync(item.Path, progress);
-            if (!ReferenceEquals(pixels, _deblurFor))
+            if (!ReferenceEquals(pixels, _deblurFor) || run != _deblurRunningId)
                 return;
             _deblurResult = result;
             if (DeblurStrength > 0)
@@ -131,7 +134,7 @@ public sealed partial class MainWindow
         }
         catch (OperationCanceledException)
         {
-            // Another photo was opened.
+            // Another photo was opened, or Cancel was clicked.
         }
         catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidDataException
                                        or UnauthorizedAccessException or OutOfMemoryException or System.Runtime.InteropServices.COMException)
@@ -144,7 +147,7 @@ public sealed partial class MainWindow
         }
         finally
         {
-            if (ReferenceEquals(pixels, _deblurFor) || _deblurFor is null)
+            if (run == _deblurRunningId)
             {
                 _deblurRunning = false;
                 ShowDeblurProgress();
@@ -167,6 +170,48 @@ public sealed partial class MainWindow
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
-        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary && await ViewModel.DownloadDeblurModelAsync();
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return false;
+        // The download shows beside the slider, with a Cancel link.
+        using var cancel = new CancellationTokenSource();
+        _deblurDownload = cancel;
+        DeblurRow.Begin(Tr("Downloading…"));
+        ShowDeblurProgress();
+        try
+        {
+            return await ViewModel.DownloadDeblurModelAsync(new Progress<double>(p =>
+            {
+                if (_deblurDownload == cancel)
+                    DeblurRow.Report(p, downloading: true);
+            }), cancel.Token);
+        }
+        finally
+        {
+            _deblurDownload = null;
+            ShowDeblurProgress();
+        }
+    }
+
+    /// <summary>
+    /// Cancel beside the slider: stops the download, or stops the model and switches AI off as one step that Undo
+    /// takes back. The slider stays where it is, so the quick version shows at once.
+    /// </summary>
+    private void DeblurCancel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_deblurDownload is { } download)
+        {
+            download.Cancel(); // the AI switch goes back off when the download ends
+            return;
+        }
+        if (!_deblurRunning)
+            return;
+        _deblurRunningId++;
+        _deblurRunning = false;
+        ViewModel.ForgetDeblurred();
+        (_deblurFor, _deblurResult, _deblurLayer) = (null, null, null);
+        ChangeEdit("sharpen-ai", () => _sharpenAi = false, coalesce: false);
+        ShowAiSwitch(SharpenAiButton, SharpenAiSparkle, _sharpenAi);
+        ShowSharpenLabel();
+        ShowDeblurProgress();
     }
 }

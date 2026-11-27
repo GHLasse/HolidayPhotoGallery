@@ -21,6 +21,8 @@ public sealed partial class MainWindow
     private DenoisedPhoto? _noiseResult;     // its answer, once there
     private ModelLayer? _noiseLayer;         // the answer at the preview's size
     private bool _noiseRunning;
+    private int _noiseRunningId;             // counts runs, so a stopped one leaves the next alone
+    private CancellationTokenSource? _noiseDownload; // while the model is downloading
 
     // What the preview and Save do with the slider: one of the two, never both.
     private int AiNoiseStrength => _noiseAi ? _noiseStrength : 0;
@@ -47,14 +49,15 @@ public sealed partial class MainWindow
     private async void NoiseAi_Click(object sender, RoutedEventArgs e)
     {
         var on = NoiseAiButton.IsChecked == true;
+        NoiseAiSparkle.Ink = on ? ThemeBrush("ToggleButtonForegroundChecked") : null;
         if (_viewerPixels is null)
         {
-            NoiseAiButton.IsChecked = false;
+            ShowAiSwitch(NoiseAiButton, NoiseAiSparkle, false);
             return;
         }
         if (on && !await EnsureDenoiseModelAsync())
         {
-            NoiseAiButton.IsChecked = false;
+            ShowAiSwitch(NoiseAiButton, NoiseAiSparkle, false);
             return;
         }
         ChangeEdit("noise-ai", () =>
@@ -63,6 +66,7 @@ public sealed partial class MainWindow
             if (on && _noiseStrength == 0)
                 _noiseStrength = AiStartStrength;
         }, coalesce: false);
+        ShowAiSwitch(NoiseAiButton, NoiseAiSparkle, _noiseAi);
         SetNoiseSlider(_noiseStrength);
         ShowNoiseProgress();
     }
@@ -75,9 +79,9 @@ public sealed partial class MainWindow
         ShowSliderValue(NoiseValue, value, $"{value}");
     }
 
-    /// <summary>The progress bar under the slider: only while the AI model is at work for a photo that uses it.</summary>
+    /// <summary>Progress beside and under the slider: while the model downloads, or works for a photo that uses it.</summary>
     private void ShowNoiseProgress() =>
-        NoiseProgressPanel.Visibility = _noiseRunning && AiNoiseStrength > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoiseRow.Show(_noiseDownload is not null || (_noiseRunning && AiNoiseStrength > 0));
 
     // The preview with the fast noise reduction, kept for the picture and strength it was made for. Only the untouched
     // preview is kept: retouch strokes change their picture in place, so that one is worked out each time.
@@ -130,22 +134,20 @@ public sealed partial class MainWindow
     {
         if (ViewerItem is not { } item)
             return;
+        var run = ++_noiseRunningId;
         _noiseRunning = true;
-        NoiseProgress.IsIndeterminate = true;
-        NoiseHint.Text = Tr("Taking out the grain…");
+        NoiseRow.Begin(Tr("Working…"));
         ShowNoiseProgress();
         try
         {
             var progress = new Progress<double>(p =>
             {
-                if (!ReferenceEquals(pixels, _noiseFor))
+                if (run != _noiseRunningId)
                     return;
-                NoiseProgress.IsIndeterminate = false;
-                NoiseProgress.Value = p;
-                NoiseHint.Text = Tr("Taking out the grain… {0:P0}", p);
+                NoiseRow.Report(p);
             });
             var result = await ViewModel.DenoiseAsync(item.Path, progress);
-            if (!ReferenceEquals(pixels, _noiseFor))
+            if (!ReferenceEquals(pixels, _noiseFor) || run != _noiseRunningId)
                 return;
             _noiseResult = result;
             if (AiNoiseStrength > 0)
@@ -153,7 +155,7 @@ public sealed partial class MainWindow
         }
         catch (OperationCanceledException)
         {
-            // Another photo was opened.
+            // Another photo was opened, or Cancel was clicked.
         }
         catch (Exception ex) when (ex is Microsoft.ML.OnnxRuntime.OnnxRuntimeException or IOException or InvalidDataException
                                        or UnauthorizedAccessException or OutOfMemoryException or System.Runtime.InteropServices.COMException)
@@ -166,7 +168,7 @@ public sealed partial class MainWindow
         }
         finally
         {
-            if (ReferenceEquals(pixels, _noiseFor) || _noiseFor is null)
+            if (run == _noiseRunningId)
             {
                 _noiseRunning = false;
                 ShowNoiseProgress();
@@ -189,6 +191,47 @@ public sealed partial class MainWindow
             CloseButtonText = Tr("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
-        return await dialog.ShowThemedAsync() == ContentDialogResult.Primary && await ViewModel.DownloadDenoiseModelAsync();
+        if (await dialog.ShowThemedAsync() != ContentDialogResult.Primary)
+            return false;
+        // The download shows beside the slider, with a Cancel link.
+        using var cancel = new CancellationTokenSource();
+        _noiseDownload = cancel;
+        NoiseRow.Begin(Tr("Downloading…"));
+        ShowNoiseProgress();
+        try
+        {
+            return await ViewModel.DownloadDenoiseModelAsync(new Progress<double>(p =>
+            {
+                if (_noiseDownload == cancel)
+                    NoiseRow.Report(p, downloading: true);
+            }), cancel.Token);
+        }
+        finally
+        {
+            _noiseDownload = null;
+            ShowNoiseProgress();
+        }
+    }
+
+    /// <summary>
+    /// Cancel beside the slider: stops the download, or stops the model and switches AI off as one step that Undo
+    /// takes back. The slider stays where it is, so the quick version shows at once.
+    /// </summary>
+    private void NoiseCancel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_noiseDownload is { } download)
+        {
+            download.Cancel(); // the AI switch goes back off when the download ends
+            return;
+        }
+        if (!_noiseRunning)
+            return;
+        _noiseRunningId++;
+        _noiseRunning = false;
+        ViewModel.ForgetDenoised();
+        (_noiseFor, _noiseResult, _noiseLayer) = (null, null, null);
+        ChangeEdit("noise-ai", () => _noiseAi = false, coalesce: false);
+        ShowAiSwitch(NoiseAiButton, NoiseAiSparkle, _noiseAi);
+        ShowNoiseProgress();
     }
 }

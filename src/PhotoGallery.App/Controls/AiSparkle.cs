@@ -13,6 +13,19 @@ namespace PhotoGallery.App.Controls;
 public sealed partial class AiSparkle : UserControl
 {
     private readonly List<Shape> _stars = [];
+    private readonly Action _paint;
+    private Brush? _ink;
+
+    /// <summary>A colour of its own, such as the palette tint of a pressed AI switch; null goes back to the text colour.</summary>
+    public Brush? Ink
+    {
+        get => _ink;
+        set
+        {
+            _ink = value;
+            _paint();
+        }
+    }
 
     public AiSparkle()
     {
@@ -27,6 +40,6 @@ public sealed partial class AiSparkle : UserControl
             canvas.Children.Add(star);
         }
         Content = new Viewbox { Child = canvas };
-        ThemeInk.Follow(this, _stars);
+        _paint = ThemeInk.Follow(this, _stars, () => _ink);
     }
 }

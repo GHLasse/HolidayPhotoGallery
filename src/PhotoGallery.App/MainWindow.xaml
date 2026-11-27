@@ -49,6 +49,15 @@
                 <Setter Property="Background" Value="{ThemeResource SystemFillColorCautionBackgroundBrush}" />
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}" />
             </Style>
+            <!-- The AI switch beside a slider in the Edit pane: a small pill with the AI sparkle (Lasse, 2026-11-27),
+                 palette tinted while on like the other pressed toggles. -->
+            <Style x:Key="AiPillStyle" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
+                <Setter Property="Padding" Value="9,3" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="CornerRadius" Value="11" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -1327,56 +1336,67 @@
                     </controls:WrapPanel>
                     <!-- Reduce noise and Sharpen (Lasse, 2026-11-26): each slider is a fast classic filter, instant to move; the small
                          AI switch beside it hands the job to a local AI model instead (noise: SCUNet, MainWindow.Denoise.cs; blur:
-                         NAFNet, MainWindow.Deblur.cs), which works once per photo in the background with a progress bar. -->
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                         NAFNet, MainWindow.Deblur.cs), which works once per photo in the background.
+                         The rows never change height (Lasse, 2026-11-27, MainWindow.AiSliders.cs): the switch is a pill with the
+                         app's AI sparkle beside the value, so the slider gets the full width; while the model downloads or works,
+                         its progress and a Cancel link take the value's place and a thin bar fills the slot under the slider,
+                         which is always there. -->
+                    <StackPanel Spacing="0">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="NoiseLabel" Text="{local:Loc Text='Reduce noise'}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock x:Name="NoiseHint" Visibility="Collapsed" VerticalAlignment="Center" FontSize="12"
+                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                                <HyperlinkButton x:Name="NoiseCancelButton" Visibility="Collapsed" Padding="4,0" FontSize="12" Click="NoiseCancel_Click"
+                                                 Content="{local:Loc Text='Cancel'}"
+                                                 ToolTipService.ToolTip="{local:Loc Text='Stop the AI and use the quick version'}" />
+                                <TextBlock x:Name="NoiseValue" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleButton x:Name="NoiseAiButton" Grid.Column="2" Style="{StaticResource AiPillStyle}" Click="NoiseAi_Click"
+                                          AutomationProperties.Name="{local:Loc Text='Reduce noise with AI'}"
+                                          ToolTipService.ToolTip="{local:Loc Text='Reduce noise with AI: a cleaner result that keeps more detail, but it takes a while. Works on this PC.'}">
+                                <controls:AiSparkle x:Name="NoiseAiSparkle" Width="14" Height="14" />
+                            </ToggleButton>
+                        </Grid>
                         <Slider x:Name="NoiseSlider" Minimum="0" Maximum="100" StepFrequency="1" ValueChanged="NoiseSlider_ValueChanged"
                                 AutomationProperties.Name="{local:Loc Text='Reduce noise'}"
-                                ToolTipService.ToolTip="{local:Loc Text='Takes the grain out of night and indoor shots. Keep it low on faces so skin doesn’t look waxy.'}">
-                            <Slider.Header>
-                                <Grid>
-                                    <TextBlock Text="{local:Loc Text='Reduce noise'}" />
-                                    <TextBlock x:Name="NoiseValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                </Grid>
-                            </Slider.Header>
-                        </Slider>
-                        <ToggleButton x:Name="NoiseAiButton" Grid.Column="1" VerticalAlignment="Bottom" Margin="0,0,0,2" Padding="8,3" MinWidth="0"
-                                      Content="{local:Loc Text='AI'}" Click="NoiseAi_Click"
-                                      AutomationProperties.Name="{local:Loc Text='Reduce noise with AI'}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Reduce noise with AI: a cleaner result that keeps more detail, but it takes a while. Works on this PC.'}" />
-                    </Grid>
-                    <StackPanel x:Name="NoiseProgressPanel" Spacing="2" Visibility="Collapsed" Margin="0,-8,0,0">
-                        <ProgressBar x:Name="NoiseProgress" Minimum="0" Maximum="1" IsIndeterminate="True" />
-                        <TextBlock x:Name="NoiseHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                ToolTipService.ToolTip="{local:Loc Text='Takes the grain out of night and indoor shots. Keep it low on faces so skin doesn’t look waxy.'}" />
+                        <ProgressBar x:Name="NoiseProgress" Minimum="0" Maximum="1" Opacity="0" IsTabStop="False"
+                                     AutomationProperties.AccessibilityView="Raw" />
                     </StackPanel>
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="0">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SharpenLabel" Text="{local:Loc Text='Sharpen'}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock x:Name="DeblurHint" Visibility="Collapsed" VerticalAlignment="Center" FontSize="12"
+                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                                <HyperlinkButton x:Name="DeblurCancelButton" Visibility="Collapsed" Padding="4,0" FontSize="12" Click="DeblurCancel_Click"
+                                                 Content="{local:Loc Text='Cancel'}"
+                                                 ToolTipService.ToolTip="{local:Loc Text='Stop the AI and use the quick version'}" />
+                                <TextBlock x:Name="SharpenValue" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleButton x:Name="SharpenAiButton" Grid.Column="2" Style="{StaticResource AiPillStyle}" Click="SharpenAi_Click"
+                                          AutomationProperties.Name="{local:Loc Text='Remove blur with AI'}"
+                                          ToolTipService.ToolTip="{local:Loc Text='Remove blur with AI: takes out the blur of a shaking hand or a moving boat, e.g. in night shots, but it takes a while. Works on this PC.'}">
+                                <controls:AiSparkle x:Name="SharpenAiSparkle" Width="14" Height="14" />
+                            </ToggleButton>
+                        </Grid>
                         <Slider x:Name="SharpenSlider" Minimum="0" Maximum="100" StepFrequency="1" ValueChanged="SharpenSlider_ValueChanged"
                                 AutomationProperties.Name="{local:Loc Text='Sharpen'}"
-                                ToolTipService.ToolTip="{local:Loc Text='Makes edges a little crisper. Best for photos that are only slightly soft.'}">
-                            <Slider.Header>
-                                <Grid>
-                                    <TextBlock Text="{local:Loc Text='Sharpen'}" />
-                                    <TextBlock x:Name="SharpenValue" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                </Grid>
-                            </Slider.Header>
-                        </Slider>
-                        <ToggleButton x:Name="SharpenAiButton" Grid.Column="1" VerticalAlignment="Bottom" Margin="0,0,0,2" Padding="8,3" MinWidth="0"
-                                      Content="{local:Loc Text='AI'}" Click="SharpenAi_Click"
-                                      AutomationProperties.Name="{local:Loc Text='Remove blur with AI'}"
-                                      ToolTipService.ToolTip="{local:Loc Text='Remove blur with AI: takes out the blur of a shaking hand or a moving boat, e.g. in night shots, but it takes a while. Works on this PC.'}" />
-                    </Grid>
-                    <StackPanel x:Name="SharpenProgressPanel" Spacing="2" Visibility="Collapsed" Margin="0,-8,0,0">
-                        <ProgressBar x:Name="SharpenProgress" Minimum="0" Maximum="1" IsIndeterminate="True" />
-                        <TextBlock x:Name="DeblurHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                ToolTipService.ToolTip="{local:Loc Text='Makes edges a little crisper. Best for photos that are only slightly soft.'}" />
+                        <ProgressBar x:Name="SharpenProgress" Minimum="0" Maximum="1" Opacity="0" IsTabStop="False"
+                                     AutomationProperties.AccessibilityView="Raw" />
                     </StackPanel>
-
                     <!-- Crop, rotate and flip: turning the photo, apart from the quick fixes. -->
                     <TextBlock Text="{local:Loc Text='Crop and turn'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
                     <controls:WrapPanel Spacing="6">

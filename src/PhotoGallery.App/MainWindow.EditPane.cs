@@ -128,10 +128,11 @@ public sealed partial class MainWindow
         StraightenSlider.Value = _straighten;
         NoiseSlider.Value = _noiseStrength;
         ShowSliderValue(NoiseValue, _noiseStrength, $"{_noiseStrength}");
-        NoiseAiButton.IsChecked = _noiseAi;
+        ShowAiSwitch(NoiseAiButton, NoiseAiSparkle, _noiseAi);
         SharpenSlider.Value = _sharpenStrength;
         ShowSliderValue(SharpenValue, _sharpenStrength, $"{_sharpenStrength}");
-        SharpenAiButton.IsChecked = _sharpenAi;
+        ShowAiSwitch(SharpenAiButton, SharpenAiSparkle, _sharpenAi);
+        ShowSharpenLabel();
         ShowNoiseProgress();
         ShowDeblurProgress();
         foreach (var button in LookButtons())
