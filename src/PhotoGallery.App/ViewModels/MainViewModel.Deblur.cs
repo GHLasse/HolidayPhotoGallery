@@ -80,7 +80,7 @@ public sealed partial class MainViewModel
             lock (_deblurrerGate)
             {
                 using (deblurrer.OnGraphicsCard ? DeblurGuard.Running() : null)
-                    sharp = deblurrer.Deblur(blurry.Pixels, blurry.Width, blurry.Height, progress, cancel.Token);
+                    sharp = deblurrer.DeblurPhoto(blurry.Pixels, blurry.Width, blurry.Height, progress, cancel.Token);
             }
             return new DeblurredPhoto(blurry, sharp);
         });

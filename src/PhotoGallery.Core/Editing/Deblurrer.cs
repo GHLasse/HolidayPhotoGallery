@@ -82,6 +82,36 @@ public sealed class Deblurrer : IDisposable
 
     private static int Tiles(int length) => Math.Max(1, (length + Step - 1) / Step);
 
+    /// <summary>
+    /// The longest side the model works on (about 12 MP for a 4:3 photo). A larger photo is worked on at this size and
+    /// what the model changed is scaled up: the blur of a shaking hand spans more pixels than the model was trained on
+    /// at 48 MP, it takes a quarter of the time, and the model doesn't run away on parts of the photo, as it did at full
+    /// size on Lasse's 48 MP night shot.
+    /// </summary>
+    public const int MaxSide = 4096;
+
+    /// <summary>
+    /// A whole photo (8-bit BGRA) with the blur taken out, the same size; worked out at <see cref="MaxSide"/> at most.
+    /// Progress is a fraction from 0 to 1.
+    /// </summary>
+    public byte[] DeblurPhoto(byte[] bgra, int width, int height, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var scale = (double)MaxSide / Math.Max(width, height);
+        if (scale >= 1)
+            return Deblur(bgra, width, height, progress, cancellationToken);
+        var (w, h) = (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
+        var small = ImageMath.Resize(bgra, width, height, w, h);
+        var sharp = Deblur(small, w, h, progress, cancellationToken);
+        // What the model changed, at full size, on top of the photo.
+        var before = ImageMath.Resize(small, w, h, width, height);
+        var after = ImageMath.Resize(sharp, w, h, width, height);
+        var result = (byte[])bgra.Clone();
+        for (var i = 0; i < result.Length; i += 4)
+            for (var c = 0; c < 3; c++)
+                result[i + c] = (byte)Math.Clamp(bgra[i + c] + after[i + c] - before[i + c], 0, 255);
+        return result;
+    }
+
     /// <summary>The picture (8-bit BGRA) with the blur taken out, the same size. Progress is a fraction from 0 to 1.</summary>
     public byte[] Deblur(byte[] bgra, int width, int height, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -106,6 +136,7 @@ public sealed class Deblurrer : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 Fill(buffer, bgra, width, height, top, left);
                 var output = RunSafely(input);
+                ModelTileCheck.RepairBlowUps(output, buffer, Tile);
 
                 // Only the tile's own part is kept; the overlap was there so its edges look right.
                 var keepWidth = Math.Min(Step, width - left);
@@ -163,6 +194,9 @@ public sealed class Deblurrer : IDisposable
         }
         using var processor = NewSession(_modelPath, onGraphicsCard: false);
         var onProcessor = Run(processor, input);
+        // Where the model runs away on the processor too, the tile says nothing about the card.
+        if (ModelTileCheck.RepairBlowUps(onProcessor.ToArray(), input.Buffer.Span, Tile) > 0)
+            return;
         if (!ModelTileCheck.Agrees(input.Buffer.Span, onCard, onProcessor))
             UseProcessor();
     }
@@ -182,10 +216,8 @@ public sealed class Deblurrer : IDisposable
     {
         try
         {
-            var output = Run(input);
-            // A tile that can't be right is done again on the processor, and so is the rest.
-            if (!OnGraphicsCard || ModelTileCheck.LooksSane(input.Buffer.Span, output))
-                return output;
+            // A tile where the model ran away is repaired by the caller, on the card or not (the processor does the same).
+            return Run(input);
         }
         catch (OnnxRuntimeException) when (OnGraphicsCard)
         {
