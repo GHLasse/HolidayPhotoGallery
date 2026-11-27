@@ -1327,7 +1327,7 @@
                             </StackPanel>
                         </ToggleButton>
                         <ToggleButton x:Name="EditEnhanceButton" Click="EditEnhance_Click"
-                                      ToolTipService.ToolTip="{local:Loc Text='Make dull colours livelier; skin tones are spared'}">
+                                      ToolTipService.ToolTip="{local:Loc Text='Make dull colours livelier; skin tones are spared (Ctrl+Shift+U)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE790;" FontSize="16" />
                                 <TextBlock Text="{local:Loc Text='Enhance colours'}" />
@@ -1436,6 +1436,11 @@
                     <Border x:Name="CropShapePanel" Visibility="Collapsed" Padding="10" CornerRadius="6"
                             Background="{ThemeResource LayerFillColorDefaultBrush}" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                         <StackPanel Spacing="8">
+                            <Grid>
+                                <TextBlock Text="{local:Loc Text='Crop and straighten'}" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                <HyperlinkButton HorizontalAlignment="Right" Padding="4,2" Click="EditToolDone_Click"
+                                                 Content="{local:Loc Text='Done'}" ToolTipService.ToolTip="{local:Loc Text='Finish cropping (Esc)'}" />
+                            </Grid>
                             <Grid ColumnSpacing="6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -1471,8 +1476,6 @@
                     <!-- One-click looks (E-9), each a small preview of the photo; filled from code (MainWindow.EditPane.cs). -->
                     <TextBlock Text="{local:Loc Text='Looks'}" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
                     <controls:WrapPanel x:Name="LookPanel" Spacing="6" />
-                    <TextBlock x:Name="LookPinHint" Text="{local:Loc Text='Right-click a look to pin it to the top.'}" TextWrapping="Wrap" FontSize="12"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <!-- The looks that are neither pinned (right-click) nor suggested for this photo wait here. -->
                     <Expander x:Name="MoreLooksExpander" Header="{local:Loc Text='More looks'}" IsExpanded="False" Visibility="Collapsed"
                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
@@ -1507,7 +1510,15 @@
                             </StackPanel>
                         </ToggleButton>
                     </controls:WrapPanel>
-                    <StackPanel x:Name="RetouchOptions" Spacing="6" Visibility="Collapsed">
+                    <!-- The chosen retouch tool's card, like the crop's (Lasse, 2026-11-27): its name, Done (or Esc), its options. -->
+                    <Border x:Name="RetouchOptions" Visibility="Collapsed" Padding="10" CornerRadius="6"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                    <StackPanel Spacing="6">
+                        <Grid>
+                            <TextBlock x:Name="RetouchToolName" Style="{ThemeResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                            <HyperlinkButton HorizontalAlignment="Right" Padding="4,2" Click="EditToolDone_Click"
+                                             Content="{local:Loc Text='Done'}" ToolTipService.ToolTip="{local:Loc Text='Put the brush away (Esc)'}" />
+                        </Grid>
                         <StackPanel x:Name="EyeOptions" Spacing="6" Visibility="Collapsed">
                             <Button x:Name="FindRedEyesButton" Click="FindRedEyes_Click" HorizontalAlignment="Stretch"
                                     ToolTipService.ToolTip="{local:Loc Text='Finds the faces on the photo and fixes the eyes that are red; one Undo takes them all back'}">
@@ -1533,6 +1544,7 @@
                                 Value="40" ValueChanged="BrushSize_ValueChanged" />
                         <TextBlock x:Name="RetouchHint" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
+                    </Border>
 
                     <!-- The sliders are for those who want them: folded away, so the one-click fixes and looks come first (Lasse, 2026-11-06).
                          Each shows its value beside its name, in the palette colour once it is moved. -->
@@ -1638,7 +1650,7 @@
                             </StackPanel>
                         </Button>
                         <ToggleButton x:Name="EditBeforeButton" Click="EditBefore_Click"
-                                      ToolTipService.ToolTip="{local:Loc Text='Show the photo as it was before these changes'}">
+                                      ToolTipService.ToolTip="{local:Loc Text='Show the photo as it was before these changes (Y)'}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE89A;" FontSize="16" />
                                 <TextBlock Text="{local:Loc Text='Before'}" />

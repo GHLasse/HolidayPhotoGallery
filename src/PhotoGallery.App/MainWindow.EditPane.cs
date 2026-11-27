@@ -299,11 +299,20 @@ public sealed partial class MainWindow
             var isSuggested = key is not null && suggested.Contains(key);
             pinMark.Visibility = isPinned ? Visibility.Visible : Visibility.Collapsed;
             suggestMark.Visibility = isSuggested ? Visibility.Visible : Visibility.Collapsed;
+            // Hover and screen readers say why a look is up front, not only the tiny pin or bulb (Lasse, 2026-11-27).
+            if (Looks.Find(key) is { } look)
+            {
+                var why = isPinned ? Tr("Pinned") : isSuggested ? Tr("Suggested for this photo") : null;
+                ToolTipService.SetToolTip(button, why is null ? look.Tip() : look.Tip() + "\n" + why);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, why is null ? look.Name() : look.Name() + ", " + why);
+            }
             (key is null || isPinned || isSuggested ? LookPanel : MoreLookPanel).Children.Add(button);
         }
         MoreLooksExpander.Visibility = MoreLookPanel.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateMoreLooksHeader();
-        LookPinHint.Visibility = pinned.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        // Pinning is a one-time tip now, not a line that stays in the pane (Lasse, 2026-11-27).
+        if (pinned.Count == 0 && RightSide() == RightPane.Edit)
+            ViewModel.TipOnce("looks-pin", Tr("Tip: right-click a look to pin it to the front of the looks."));
     }
 
     // How many suggestions fill up the first row after `shown` buttons; when the row is already full, none.
